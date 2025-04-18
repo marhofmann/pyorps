@@ -1,0 +1,616 @@
+from typing import Union, Optional, Any, Callable
+import os
+from pathlib import Path
+import csv
+import json
+
+import pandas as pd
+import numpy as np
+
+from geopandas import GeoDataFrame
+
+from exceptions import InvalidSourceError, FileLoadError, FormatError, NoSuitableColumnsError
+
+
+def detect_feature_columns(gdf: GeoDataFrame,
+                           max_features_per_column: int = 50) -> tuple[str, list[str]]:
+    """
+    Analyze columns in a geodataframe to identify the best candidates for
+    main_feature and side_features based on statistical metrics.
+
+    Parameters:
+        gdf: GeoDataFrame to analyze
+        max_features_per_column: Maximum number of unique values allowed in a categorical column
+
+    Returns:
+        tuple of (main_feature, side_features)
+
+    Raises:
+        NoSuitableColumnsError: When no suitable columns are found for feature selection
+    """
+    # Filter out geometry and standard spatial columns
+    non_spatial_cols = [col for col in gdf.columns if col not in ['geometry', 'id', 'fid', 'gid']]
+
+    if not non_spatial_cols:
+        raise NoSuitableColumnsError("No suitable feature columns found in the geodataframe")
+
+    # Analyze columns by their data characteristics
+    col_stats = _calculate_column_statistics(gdf, non_spatial_cols, max_features_per_column)
+
+    # No good candidates found
+    if not col_stats:
+        raise NoSuitableColumnsError("No suitable categorical columns found in the geodataframe")
+
+    # Select main feature column
+    main_feature = _select_main_feature(col_stats)
+
+    # Find suitable side features
+    side_features = _find_side_features(gdf, main_feature, non_spatial_cols, col_stats)
+
+    return main_feature, side_features
+
+
+def _calculate_geometry_area_sum(geometries):
+    """
+    Calculate the sum of areas for a collection of geometries.
+
+    Parameters:
+        geometries: Collection of geometry objects
+
+    Returns:
+        Sum of areas of all geometries with area attribute
+    """
+    total_area = 0
+    for geom in geometries:
+        if hasattr(geom, 'area'):
+            total_area += geom.area
+    return total_area
+
+
+def _calculate_column_statistics(gdf: GeoDataFrame,
+                                 columns: list[str],
+                                 max_features_per_column: int = 50) -> dict[str, dict[str, Any]]:
+    """
+    Calculate statistical properties of columns for feature selection.
+
+    Parameters:
+        gdf: GeoDataFrame to analyze
+        columns: list of column names to analyze
+        max_features_per_column: Maximum number of unique values for a column to be considered categorical
+
+    Returns:
+        dictionary with column statistics
+
+    Raises:
+        ColumnAnalysisError: When column analysis fails unexpectedly
+    """
+    col_stats = {}
+
+    # First pass: filter columns and calculate basic stats
+    candidate_columns = []
+    for col in columns:
+        # Skip numeric columns with many unique values
+        if pd.api.types.is_numeric_dtype(gdf[col]) and gdf[col].nunique() > 20:
+            continue
+
+        # Calculate value counts
+        value_counts = gdf[col].value_counts()
+
+        # Skip columns with too many unique values (likely not categorical)
+        if len(value_counts) > max_features_per_column:
+            continue
+
+        # Calculate basic statistics
+        null_ratio = gdf[col].isna().mean()
+        is_good_candidate = (
+                len(value_counts) > 1 and
+                (len(value_counts) < len(gdf) * 0.3) and
+                null_ratio < 0.2
+        )
+
+        # Calculate entropy of count distribution
+        count_fractions = value_counts / len(gdf)
+        count_entropy = -sum((count_fractions * np.log2(count_fractions)).dropna())
+
+        # Store basic stats
+        col_stats[col] = {
+            'unique_values': len(value_counts),
+            'max_count': value_counts.max() if len(value_counts) > 0 else 0,
+            'min_count': value_counts.min() if len(value_counts) > 0 else 0,
+            'count_entropy': count_entropy,
+            'null_ratio': null_ratio,
+            'is_good_candidate': is_good_candidate
+        }
+
+        candidate_columns.append(col)
+
+    # Second pass: calculate area-based statistics only for candidates
+    for col in candidate_columns:
+        # Initialize area-based statistics
+        area_entropy = 0
+        area_by_value = None
+        area_fraction = None
+
+        try:
+            # Group by column and calculate total area for each value
+            area_by_value = gdf.groupby(col)['geometry'].apply(_calculate_geometry_area_sum)
+            total_area = area_by_value.sum()
+
+            if total_area > 0:
+                area_fraction = area_by_value / total_area
+                # Calculate entropy of area distribution
+                if not area_fraction.isna().all():
+                    area_entropy = -sum((area_fraction * np.log2(area_fraction)).dropna())
+        except (AttributeError, ValueError, TypeError):
+            # Continue with default values for area statistics
+            pass
+
+        # Update with area-based statistics
+        col_stats[col].update({
+            'area_by_value': area_by_value,
+            'area_fraction': area_fraction,
+            'area_entropy': area_entropy,
+        })
+
+    return col_stats
+
+
+def _calculate_entropy_score(column_name: str, col_stats: dict[str, dict[str, Any]]) -> float:
+    """
+    Calculate combined entropy score for a column, weighing area entropy more heavily.
+
+    Parameters:
+        column_name: Name of the column to calculate score for
+        col_stats: dictionary with column statistics
+
+    Returns:
+        Combined entropy score
+    """
+    stats = col_stats[column_name]
+    return stats['area_entropy'] * 0.7 + stats['count_entropy'] * 0.3
+
+
+def _select_main_feature(col_stats: dict[str, dict[str, Any]]) -> str:
+    """
+    Select the best main feature column based on statistics.
+
+    Parameters:
+        col_stats: dictionary with column statistics
+
+    Returns:
+        Name of the best main feature column
+    """
+    # Select the best main feature column
+    main_candidates = [col for col, stats in col_stats.items() if stats['is_good_candidate']]
+
+    if not main_candidates:
+        # Fall back to any column if no good candidates
+        main_candidates = list(col_stats.keys())
+
+    # Sort by entropy score (higher is better)
+    sorted_candidates = sorted(
+        main_candidates,
+        key=lambda c: _calculate_entropy_score(c, col_stats),
+        reverse=True
+    )
+
+    return sorted_candidates[0]
+
+
+def _check_column_adds_information(crosstab: pd.DataFrame) -> bool:
+    """
+    Check if a column adds meaningful information based on its crosstab with another column.
+
+    Parameters:
+        crosstab: Cross-tabulation DataFrame between two columns
+
+    Returns:
+        True if the column adds meaningful information, False otherwise
+    """
+    for _, row in crosstab.iterrows():
+        non_zero_counts = row[row > 0]
+        # Skip rows with only one value
+        if len(non_zero_counts) <= 1:
+            continue
+
+        # Check if distribution is meaningful (no single value dominates)
+        max_frac = non_zero_counts.max() / non_zero_counts.sum()
+        if max_frac < 0.9:
+            return True
+
+    return False
+
+
+def _find_side_features(gdf: GeoDataFrame,
+                        main_feature: str,
+                        columns: list[str],
+                        col_stats: dict[str, dict[str, Any]]) -> list[str]:
+    """
+    Find suitable side feature columns that refine the main feature.
+
+    Parameters:
+        gdf: GeoDataFrame to analyze
+        main_feature: Selected main feature column name
+        columns: list of all column names
+        col_stats: dictionary with column statistics
+
+    Returns:
+        list of side feature column names
+    """
+    # Pre-filter columns to reduce iterations
+    candidate_columns = [
+        col for col in columns
+        if col != main_feature
+           and col in col_stats
+           and col_stats[col]['null_ratio'] <= 0.3
+    ]
+
+    side_features = []
+
+    for col in candidate_columns:
+        try:
+            # Check if this column has a meaningful relationship with main feature
+            crosstab = pd.crosstab(gdf[main_feature], gdf[col])
+
+            # Only consider columns with a reasonable number of values
+            if len(crosstab.columns) >= 30:
+                continue
+
+            # Check if this column adds information
+            if _check_column_adds_information(crosstab):
+                side_features.append(col)
+
+        except (ValueError, TypeError, pd.core.base.DataError):
+            # Skip columns that can't be analyzed properly
+            continue
+
+    # Sort side features by information content
+    def get_entropy(col):
+        return col_stats[col]['count_entropy']
+
+    side_features.sort(key=get_entropy, reverse=True)
+
+    return side_features
+
+
+class CostAssumptions:
+    """
+    A class for handling cost assumptions for rasterization.
+
+    This class handles:
+    - Loading cost assumptions from files (CSV, Excel, JSON) or generating of cost assumptions from a GeoDataFrame.
+    - Mapping costs to features in a GeoDataFrame
+    - Managing hierarchical cost structures
+    """
+
+    def __init__(self, source: Optional[Union[str, dict]] = None):
+        """
+        Initialize the CostAssumptions object.
+
+        Parameters:
+            source:
+                1. Path to a cost assumptions file
+                2. A dictionary of cost values
+        """
+        self.source = source
+        self.cost_assumptions = {}
+        self.main_feature = None
+        self.side_features = []
+
+        if source is not None:
+            if isinstance(source, (dict, str)):
+                self.load(source)
+            else:
+                raise InvalidSourceError(
+                    f"Parameter 'source' must be either a string, a dictionary or a GeoDataFrame, "
+                    f"not {type(source)}"
+                )
+
+    def load(self, source: Union[str, dict]) -> dict:
+        """
+        Load cost assumptions from a file or dictionary.
+
+        Parameters:
+            source: Path to a file or a dictionary containing cost assumptions
+
+        Returns:
+            dictionary of cost assumptions
+        """
+        if isinstance(source, dict):
+            keys, costs = next(iter(source.items()))
+            if isinstance(keys, tuple):
+                self.main_feature, *self.side_features = keys
+            else:
+                self.main_feature = keys
+            self.cost_assumptions = costs
+            return self.cost_assumptions
+
+        if isinstance(source, str) and os.path.isfile(source):
+            file_ext = Path(source).suffix.lower()
+            loader_map = {
+                '.csv': self._load_csv_cost_assumptions,
+                '.json': self._load_json_cost_assumptions,
+                '.xlsx': self._load_excel_cost_assumptions,
+                '.xls': self._load_excel_cost_assumptions,
+            }
+
+            loader: Callable[[str], dict] |  None = loader_map.get(file_ext)
+            if not loader:
+                raise InvalidSourceError(f"Unsupported file format: {file_ext}")
+
+            return loader(source)
+
+        raise InvalidSourceError("Source must be a dictionary or a valid file path")
+
+    def _load_csv_cost_assumptions(self, filepath: str) -> dict:
+        """
+        Load cost assumptions from a CSV file with auto-detection of encoding,
+        delimiter, and decimal separator.
+
+        Parameters:
+        - filepath: Path to the CSV file
+
+        Returns:
+        - dictionary of cost assumptions
+        """
+        encodings = ['utf-8', 'latin-1', 'ISO-8859-1', 'cp1252']
+        decimal_separators = ['.', ',']
+        common_delimiters = [',', ';', '\t', '|']
+
+        # Try using csv.Sniffer to detect the delimiter
+        for encoding in encodings:
+            try:
+                # Read a sample to detect the dialect
+                with open(filepath, 'r', encoding=encoding) as f:
+                    sample = f.read(4096)
+
+                sniffer = csv.Sniffer()
+                dialect = sniffer.sniff(sample)
+                delimiter = dialect.delimiter
+
+                # Try with detected delimiter and different decimal separators
+                for decimal in decimal_separators:
+                    try:
+                        df = pd.read_csv(
+                            filepath,
+                            encoding=encoding,
+                            delimiter=delimiter,
+                            decimal=decimal
+                        )
+                        df = self._convert_numeric_columns(df)
+                        self.cost_assumptions = self._convert_df_to_cost_dict(df)
+                        return self.cost_assumptions
+                    except (pd.errors.ParserError, ValueError):
+                        continue
+            except (csv.Error, UnicodeDecodeError, IOError):
+                # If auto-detection fails, try common delimiters
+                for delimiter in common_delimiters:
+                    for decimal in decimal_separators:
+                        try:
+                            df = pd.read_csv(
+                                filepath,
+                                encoding=encoding,
+                                delimiter=delimiter,
+                                decimal=decimal
+                            )
+                            df = self._convert_numeric_columns(df)
+                            self.cost_assumptions = self._convert_df_to_cost_dict(df)
+                            return self.cost_assumptions
+                        except (pd.errors.ParserError, ValueError, UnicodeDecodeError):
+                            continue
+
+        raise FileLoadError(f"Could not read CSV file {filepath}. Tried multiple encodings and formats.")
+
+    def _load_json_cost_assumptions(self, filepath: str) -> dict:
+        """
+        Load cost assumptions from a JSON file with auto-detection of encoding.
+
+        Parameters:
+        - filepath: Path to the JSON file
+
+        Returns:
+        - dictionary of cost assumptions
+        """
+        encodings = ['utf-8', 'latin-1', 'ISO-8859-1', 'cp1252']
+        last_error = None
+
+        for encoding in encodings:
+            try:
+                with open(filepath, 'r', encoding=encoding) as f:
+                    self.cost_assumptions = json.load(f)
+                return self.cost_assumptions
+            except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                last_error = e
+                continue
+
+        raise FileLoadError(f"Could not read JSON file {filepath}: {last_error}")
+
+    def _load_excel_cost_assumptions(self, filepath: str) -> dict:
+        """
+        Load cost assumptions from an Excel file, handling different decimal separators.
+
+        Parameters:
+        - filepath: Path to the Excel file
+
+        Returns:
+        - dictionary of cost assumptions
+        """
+        try:
+            # First try default settings
+            df = pd.read_excel(filepath)
+            df = self._convert_numeric_columns(df)
+            self.cost_assumptions = self._convert_df_to_cost_dict(df)
+            return self.cost_assumptions
+        except (pd.errors.ParserError, ValueError, IOError) as first_error:
+            # If there's an issue, try reading as strings and convert manually
+            try:
+                df = pd.read_excel(filepath, dtype=str)
+                df = self._convert_numeric_columns(df)
+                self.cost_assumptions = self._convert_df_to_cost_dict(df)
+                return self.cost_assumptions
+            except (pd.errors.ParserError, ValueError, IOError) as e:
+                raise FileLoadError(
+                    f"Failed to read Excel file {filepath}. Original error: {first_error}. Second attempt error: {e}"
+                )
+
+    def _convert_df_to_cost_dict(self, df: pd.DataFrame) -> dict:
+        """
+        Convert a DataFrame to a nested dictionary for cost assumptions.
+
+        Uses one numeric column for costs, and all other columns as a hierarchical index:
+        - The first column is the 'main_feature'
+        - All additional columns are 'side_features'
+        """
+        # First ensure numeric columns are properly converted
+        df = self._convert_numeric_columns(df)
+
+        # Find the numeric column for costs
+        numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+        if not numeric_columns:
+            raise FormatError("No numeric column found for cost values")
+
+        # Use the first numeric column as the cost column
+        cost_column = numeric_columns[0]
+
+        # All non-numeric columns form the hierarchical index
+        index_columns = [col for col in df.columns if col != cost_column]
+        if not index_columns:
+            raise FormatError("No columns found for feature hierarchy")
+
+        # Fill NaN values and assign features
+        for ci, column in enumerate(index_columns):
+            df[column] = df[column].fillna('')
+            if ci == 0:
+                self.main_feature = column
+            else:
+                self.side_features.append(column)
+
+        # Create a series with a MultiIndex and convert to nested dictionaries
+        cost_series = df.set_index(index_columns)[cost_column]
+        return cost_series.to_dict()
+
+    @staticmethod
+    def _convert_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Convert columns to numeric, handling different decimal separators.
+
+        Parameters:
+        - df: DataFrame with potential numeric columns that might use different decimal separators
+
+        Returns:
+        - DataFrame with properly converted numeric columns
+        """
+        for col in df.columns:
+            # Skip columns that are already numeric or clearly not numeric
+            if pd.api.types.is_numeric_dtype(df[col]) or df[col].dtype != object:
+                continue
+
+            # Try to convert using various decimal separators
+            original_values = df[col].copy()
+
+            # Try standard conversion
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+            # If conversion successful and no NaN values were introduced, continue
+            if df[col].isna().sum() == original_values.isna().sum():
+                continue
+
+            # Restore original values for next attempt
+            df[col] = original_values
+
+            # Try comma as decimal separator
+            try:
+                df[col] = df[col].str.replace(',', '.').astype(float)
+            except (ValueError, AttributeError):
+                # Revert to original if both attempts fail
+                df[col] = original_values
+
+        return df
+
+    def apply_to_geodataframe(self, gdf, main_feature=None, side_features=None):
+        """
+        Apply cost assumptions to a GeoDataFrame.
+
+        Parameters:
+            gdf: GeoDataFrame to apply costs to
+            main_feature: Main feature column name
+            side_features: list of side feature column names or single side feature name
+
+        Returns:
+            GeoDataFrame with 'cost' column added
+        """
+        main_feature = main_feature or self.main_feature
+
+        if side_features is None:
+            side_features = self.side_features
+        elif isinstance(side_features, str):
+            side_features = [side_features]
+
+        if main_feature is None:
+            raise FormatError("Main feature column not specified")
+
+        # Fill NA values
+        gdf[main_feature] = gdf[main_feature].fillna('')
+        for feat in side_features:
+            gdf[feat] = gdf[feat].fillna('')
+
+        # Handle different cost assumption structures
+        first_key = next(iter(self.cost_assumptions), None)
+
+        if isinstance(first_key, tuple):
+            # Complex tuple keys structure - from multi-index
+            self._apply_tuple_costs(gdf, main_feature, side_features)
+        elif side_features and isinstance(next(iter(self.cost_assumptions.values()), None), dict):
+            # Nested dictionary structure
+            self._apply_nested_costs(gdf, main_feature, side_features)
+        else:
+            # Simple mapping with numeric values
+            gdf['cost'] = gdf[main_feature].map(self.cost_assumptions)
+
+        return gdf
+
+    def _apply_tuple_costs(self, gdf, main_feature, side_features):
+        """Apply costs from tuple-based cost structure."""
+        # Create wildcard dictionary for default values
+        wild_cards = {keys[0]: value for keys, value in self.cost_assumptions.items() if '' in keys}
+
+        # Apply specific mappings
+        for keys, value in self.cost_assumptions.items():
+            main_key, *side_keys = keys
+            mask = gdf[main_feature] == main_key
+            for side_feature, side_key in zip(side_features, side_keys):
+                mask &= gdf[side_feature] == side_key
+            gdf.loc[mask, 'cost'] = value
+
+        # Apply wildcards for missing values
+        cost_nan = gdf['cost'].isna()
+        for wild_card_key, wild_card_value in wild_cards.items():
+            mask = (gdf[main_feature] == wild_card_key) & cost_nan
+            gdf.loc[mask, 'cost'] = wild_card_value
+
+    def _apply_nested_costs(self, gdf, main_feature, side_features):
+        """Apply costs from nested dictionary structure."""
+        if len(side_features) != 1:
+            raise FormatError("Multiple side features not supported for nested dictionary structure")
+
+        side_feature = side_features[0]
+
+        # Iterate over each main feature value and its inner dictionary
+        for main_value, inner_dict in self.cost_assumptions.items():
+            # Create mask for the main feature
+            main_mask = gdf[main_feature] == main_value
+
+            # Apply costs for each side feature value
+            for side_value, cost in inner_dict.items():
+                if side_value == "" or pd.isnull(side_value):
+                    # Handle wildcard/default values
+                    side_mask = (gdf[side_feature].isnull() |
+                                 (gdf[side_feature] == side_value) |
+                                 ~gdf[side_feature].isin(inner_dict.keys()))
+                else:
+                    # Standard case - exact match
+                    side_mask = gdf[side_feature] == side_value
+
+                # Apply cost where both masks match
+                combined_mask = main_mask & side_mask
+                gdf.loc[combined_mask, 'cost'] = cost
