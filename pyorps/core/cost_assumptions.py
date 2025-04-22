@@ -4,12 +4,12 @@ from pathlib import Path
 import csv
 import json
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from geopandas import GeoDataFrame
 
-from exceptions import InvalidSourceError, FileLoadError, FormatError, NoSuitableColumnsError
+from .exceptions import InvalidSourceError, FileLoadError, FormatError, NoSuitableColumnsError
 
 
 def detect_feature_columns(gdf: GeoDataFrame,

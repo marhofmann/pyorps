@@ -1,12 +1,13 @@
+from typing import Optional, Any, Union
+from pathlib import Path
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
+from difflib import SequenceMatcher
+from xml.etree import ElementTree as et
 import tempfile
+
 import requests
 import geopandas as gpd
-from xml.etree import ElementTree as et
-from difflib import SequenceMatcher
-from typing import Optional, Any, Union
 import pandas as pd
 from shapely.geometry import box
 from shapely.ops import unary_union

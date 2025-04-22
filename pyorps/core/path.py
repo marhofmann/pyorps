@@ -1,10 +1,8 @@
-import numpy as np
-import geopandas as gpd
-from shapely.geometry import LineString
-from rasterio.transform import Affine
-from rasterio.windows import bounds as window_bounds
+from typing import Dict, Optional, Any
 from dataclasses import dataclass
-from typing import  Dict, Optional, Any
+
+import numpy as np
+from shapely.geometry import LineString
 
 
 @dataclass

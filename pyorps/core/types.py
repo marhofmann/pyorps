@@ -1,4 +1,5 @@
 from typing import Union, TypeAlias
+
 from shapely.geometry import Polygon
 from numpy import ndarray
 from geopandas import GeoDataFrame, GeoSeries

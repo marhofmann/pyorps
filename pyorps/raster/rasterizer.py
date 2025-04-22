@@ -12,7 +12,6 @@ from ..core.types import InputDataType, CostAssumptionsType, BboxType, GeometryM
 from ..core.cost_assumptions import CostAssumptions
 
 
-
 class GeoRasterizer:
     """
     A class for preparing and rasterizing geospatial data with cost assumptions.

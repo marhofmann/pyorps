@@ -1,23 +1,22 @@
+import time
+from typing import Optional
+from contextlib import contextmanager
+from importlib import import_module
+
 import numpy as np
 import geopandas as gpd
 from shapely.geometry import LineString
-from matplotlib import gridspec
 from rasterio.transform import Affine
-from rasterio.windows import bounds as window_bounds
-import time
-from contextlib import contextmanager
-from typing import Optional
+
 
 # Project imports
 from ..core.path import Path, PathCollection
 from ..core.types import BboxType, GeometryMaskType
 from ..raster.rasterizer import GeoRasterizer
 from ..raster.handler import RasterHandler
-from pyorps.utils.neighborhood import get_neighborhood_steps
+from ..utils.neighborhood import get_neighborhood_steps
 from ..io.geo_dataset import get_geo_dataset, VectorDataset, RasterDataset
 from ..utils.traversal import calculate_path_metrics_numba
-from ..utils.plotting import PathPlotter
-
 
 
 @contextmanager
@@ -45,22 +44,21 @@ def get_graph_api_class(graph_api: str):
         ValueError: If the specified graph API is not supported.
     """
     graph_api_classes = {
-        "networkit": "pyorps.graph.networkit_api.NetworkitAPI",
-        "igraph": "pyorps.graph.igraph_api.IgraphAPI",
-        "rustworkx": "pyorps.graph.rustworkx_api.RustworkxAPI",
-        "networkx": "pyorps.graph.networkx_api.NetworkxAPI",
-        "cugraph": "pyorps.graph.cugraph_api.CugraphAPI",
-        "dask_cugraph": "pyorps.graph.dask_cugraph_api.DaskCugraphAPI",
-        "cython": "pyorps.graph.cython_api.CythonAPI",
+        "networkit": ("pyorps.graph.api.networkit_api", "NetworkitAPI"),
+        "igraph": ("pyorps.graph.api.igraph_api", "IgraphAPI"),
+        "rustworkx": ("pyorps.graph.api.rustworkx_api", "RustworkxAPI"),
+        "networkx": ("pyorps.graph.api.networkx_api", "NetworkxAPI"),
+        "cugraph": ("pyorps.graph.api.cugraph_api", "CugraphAPI"),
+        "dask_cugraph": ("pyorps.graph.api.dask_cugraph_api", "DaskCugraphAPI"),
+        "cython": ("pyorps.graph.api.cython_api", "CythonAPI"),
     }
 
     if graph_api not in graph_api_classes:
         raise ValueError(f"Unsupported graph API: {graph_api}")
 
-    # Dynamically import the module and class
-    module_path, class_name = graph_api_classes[graph_api].rsplit(".", 1)
+    module_path, class_name = graph_api_classes[graph_api]
     try:
-        module = __import__(module_path, fromlist=[class_name])
+        module = import_module(module_path)
         return getattr(module, class_name)
     except ImportError as e:
         raise ImportError(f"Failed to import {graph_api}: {e}")
@@ -460,7 +458,7 @@ class RasterGraph:
         """
         return self.paths.get(path_id, source, target)
 
-    def create_path_geodataframe(self):
+    def create_path_geodataframe(self, save_path=None):
         """
         Create a GeoDataFrame containing all stored paths.
 
@@ -475,12 +473,17 @@ class RasterGraph:
         records = self.paths.to_geodataframe_records()
 
         # Create GeoDataFrame directly from records
-        return gpd.GeoDataFrame(records, geometry="geometry", crs=self.dataset.crs)
+        gdf = gpd.GeoDataFrame(records, geometry="geometry", crs=self.dataset.crs)
+        if save_path is not None:
+            gdf.to_file(save_path)
+        return gdf
 
     def plot_paths(self, plot_all=True, subplots=True, subplotsize=(10, 8),
                    source_color='green', target_color='red', path_colors=None,
                    source_marker='o', target_marker='x', path_linewidth=2,
                    show_raster=True, title=None, path_id=None):
+        from ..utils.plotting import PathPlotter
+
         plotter = PathPlotter(self.paths, self.raster_handler)
         plotter.plot_paths(plot_all=plot_all, subplots=subplots, subplotsize=subplotsize,
                            source_color=source_color, target_color=target_color, path_colors=path_colors,

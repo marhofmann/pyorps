@@ -1,14 +1,8 @@
 import numpy as np
-import geopandas as gpd
-from shapely.geometry import LineString
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from matplotlib import gridspec
-from rasterio.transform import Affine
 from rasterio.windows import bounds as window_bounds
-from dataclasses import dataclass
-import time
-from contextlib import contextmanager
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
@@ -18,7 +12,6 @@ from typing import List, Tuple, Dict, Union, Optional, Any
 # Project imports
 from ..raster.handler import RasterHandler
 from ..core.path import PathCollection, Path
-
 
 
 # Separate class instead of nested class for raster visualization data
