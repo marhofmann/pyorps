@@ -160,11 +160,11 @@ class PathCollection:
         Return a detailed string representation of the path collection.
         """
         if len(self._paths) <= 5:
-            paths_repr = ", ".join(repr(path) for path in self._paths.values())
+            paths_repr = ", \n".join(repr(path) for path in self._paths.values())
         else:
             # Show first 2 paths and last path for large collections
             paths = list(self._paths.values())
-            paths_repr = f"{repr(paths[0])}, {repr(paths[1])}, ..., {repr(paths[-1])}"
+            paths_repr = f"{repr(paths[0])}, \n{repr(paths[1])}, \n..., \n{repr(paths[-1])}"
 
         return f"PathCollection(paths=[{paths_repr}], count={len(self._paths)})"
 

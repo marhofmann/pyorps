@@ -500,15 +500,25 @@ class PathFinder:
         else:
             self.raster_handler.save_section_as_raster(save_path)
 
-    def plot_paths(self, plot_all=True, subplots=True, subplotsize=(10, 8),
+    def plot_paths(self, paths=None, plot_all=True, subplots=True, subplotsize=(10, 8),
                    source_color='green', target_color='red', path_colors=None,
                    source_marker='o', target_marker='x', path_linewidth=2,
-                   show_raster=True, title=None, path_id=None):
+                   show_raster=True, title=None, suptitle=None, path_id=None):
         from ..utils.plotting import PathPlotter
-
-        plotter = PathPlotter(self.paths, self.raster_handler)
+        if paths is None:
+            path_collection = self.paths
+        elif isinstance(paths, Path):
+            path_collection = PathCollection()
+            path_collection.add(paths)
+        elif isinstance(paths, list):
+            path_collection = PathCollection()
+            for path in paths:
+                path_collection.add(path)
+        else:
+            path_collection = paths
+        plotter = PathPlotter(paths=path_collection, raster_handler=self.raster_handler)
         plotter.plot_paths(plot_all=plot_all, subplots=subplots, subplotsize=subplotsize,
                            source_color=source_color, target_color=target_color, path_colors=path_colors,
                            source_marker=source_marker, target_marker=target_marker, path_linewidth=path_linewidth,
-                           show_raster=show_raster, title=title, path_id=path_id)
+                           show_raster=show_raster, title=title, suptitle=suptitle, path_id=path_id)
 

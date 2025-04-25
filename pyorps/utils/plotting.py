@@ -59,7 +59,8 @@ class PathPlotter:
                    path_linewidth: int = 2,
                    show_raster: bool = True,
                    title: Optional[Union[str, List[str]]] = None,
-                   path_id: Optional[int] = None,
+                   suptitle: Optional[str] = None,
+                   path_id: Optional[int | list[int]] = None,
                    reverse_colors: bool = True) -> Union[Axes, List[Axes]]:
         """
         Plot paths with options to display all paths or individual paths.
@@ -75,7 +76,8 @@ class PathPlotter:
             target_marker: Marker style for target. Defaults to 'x'.
             path_linewidth: Line width for paths. Defaults to 2.
             show_raster: Whether to show raster data as background. Defaults to True.
-            title: Plot title(s). If None, default titles are created.
+            title: Subplot title(s). If None, default titles are created.
+            suptitle: The subtitle of the entire figure. Defaults to None.
             path_id: ID of specific path to plot when plot_all is False.
             reverse_colors: Whether to reverse the color scheme (low=dark, high=bright)
 
@@ -93,6 +95,8 @@ class PathPlotter:
         # Create figure, axes, and legend area
         fig, axes, legend_ax = self._create_figure_and_axes(
             paths_to_plot, plot_all, subplots, subplotsize)
+        if suptitle:
+            fig.suptitle(suptitle, fontsize=16)
 
         # Initialize data for legend
         legend_handles: List[Any] = []
@@ -156,7 +160,7 @@ class PathPlotter:
             # Use colormap for multiple paths
             if plot_all and len(self.paths) > 1:
                 # Create colors from the viridis colormap based on number of paths
-                cmap = plt.get_cmap('viridis')
+                cmap = plt.get_cmap('hsv')
                 path_colors = [cmap(i / len(self.paths)) for i in range(len(self.paths))]
             else:
                 path_colors = 'blue'  # Default color for single path
@@ -169,7 +173,7 @@ class PathPlotter:
 
     def _determine_paths_to_plot(self,
                                  plot_all: bool,
-                                 path_id: Optional[int]) -> List[Path]:
+                                 path_id: Optional[int | list[int]]) -> List[Path]:
         """
         Determine which paths to plot based on user inputs.
 
@@ -187,11 +191,14 @@ class PathPlotter:
             # Return all paths in the collection
             return self.paths.all
         elif path_id is not None:
-            # Find specific path by ID
-            path = self.paths.get(path_id=path_id)
-            if path is None:
-                raise ValueError(f"No path found with ID {path_id}")
-            return [path]
+            if isinstance(path_id, int):
+                # Find specific path by ID
+                path = self.paths.get(path_id=path_id)
+                if path is None:
+                    raise ValueError(f"No path found with ID {path_id}")
+                return [path]
+            else:
+                return [self.paths.get(path_id=pid) for pid in path_id]
         else:
             # Default to the last path if no specific path is requested
             return [self.paths.all[-1]]
@@ -219,7 +226,7 @@ class PathPlotter:
         # Calculate grid dimensions
         n_paths = len(paths_to_plot)
         # Use max 3 columns, only if we're plotting multiple paths with subplots
-        n_cols = min(3, n_paths) if plot_all and subplots and n_paths > 1 else 1
+        n_cols = min(3, n_paths) if (plot_all or subplots) and n_paths > 1 else 1
         # Calculate required number of rows
         n_rows = int(np.ceil(n_paths / n_cols)) if plot_all and subplots and n_paths > 1 else 1
 
