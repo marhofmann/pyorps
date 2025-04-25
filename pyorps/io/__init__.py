@@ -20,7 +20,7 @@ from .geo_dataset import (
     LocalRasterDataset, InMemoryRasterDataset,
 
     # Factory function
-    get_geo_dataset
+    initialize_geo_dataset
 )
 
 # Data loading functions
@@ -43,7 +43,7 @@ __all__ = [
     "LocalRasterDataset", "InMemoryRasterDataset",
 
     # Factory function
-    "get_geo_dataset",
+    "initialize_geo_dataset",
 
     # Data loading functions
     "load_from_wfs",

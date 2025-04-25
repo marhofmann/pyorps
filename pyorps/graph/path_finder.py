@@ -1,5 +1,5 @@
 import time
-from typing import Optional
+from typing import Optional, Union
 from contextlib import contextmanager
 from importlib import import_module
 
@@ -15,7 +15,7 @@ from ..core.types import BboxType, GeometryMaskType
 from ..raster.rasterizer import GeoRasterizer
 from ..raster.handler import RasterHandler
 from ..utils.neighborhood import get_neighborhood_steps
-from ..io.geo_dataset import get_geo_dataset, VectorDataset, RasterDataset
+from ..io.geo_dataset import initialize_geo_dataset, VectorDataset, RasterDataset
 from ..utils.traversal import calculate_path_metrics_numba
 
 
@@ -64,7 +64,7 @@ def get_graph_api_class(graph_api: str):
         raise ImportError(f"Failed to import {graph_api}: {e}")
 
 
-class RasterGraph:
+class PathFinder:
     """
     A class that encapsulates RasterReader and graph-based routing capabilities.
 
@@ -83,8 +83,8 @@ class RasterGraph:
                  dataset_source,
                  source_coords,
                  target_coords,
-                 search_space_buffer_m,
-                 neighborhood_str="r2",
+                 search_space_buffer_m: Optional[float] = None,
+                 neighborhood_str: Optional[Union[str, int]] = "r2",
                  steps=None,
                  graph_api="networkit",
                  cost_assumptions=None,
@@ -93,6 +93,7 @@ class RasterGraph:
                  bbox: Optional[BboxType] = None,
                  mask: Optional[GeometryMaskType] = None,
                  transform: Optional[Affine] = None,
+                 raster_save_path: Optional[str] = None,
                  **kwargs):
         """
         Initialize the RasterGraph with a dataset source and routing parameters.
@@ -133,18 +134,19 @@ class RasterGraph:
 
         self.runtimes = {}
         self.paths = PathCollection()  # Initialize PathCollection instead of list
-        self.path_data = None  # For backward compatibility
 
-        # Initialize as None (to be lazily loaded)
+        # Initialize as None (to be lazily loaded/created)
         self.raster_handler = None
         self.geo_rasterizer = None
         self._graph_api = None
+        self.path_gdf = None
 
         # Load the dataset
-        self.dataset = get_geo_dataset(dataset_source, crs, bbox, mask, transform)
-        self.create_raster_handler(cost_assumptions, datasets_to_modify, **kwargs)
+        self.dataset = initialize_geo_dataset(dataset_source, crs, bbox, mask, transform)
+        if self.source_coords is not None and self.target_coords is not None:
+            self.create_raster_handler(cost_assumptions, datasets_to_modify, raster_save_path, **kwargs)
 
-    def create_raster_handler(self, cost_assumptions, datasets_to_modify, **kwargs):
+    def create_raster_handler(self, cost_assumptions, datasets_to_modify, raster_save_path, **kwargs):
         """
         Create a RasterReader object for the specified file and parameters.
 
@@ -161,7 +163,7 @@ class RasterGraph:
             if isinstance(self.dataset, VectorDataset) and cost_assumptions is not None:
                 # Create a GeoRasterizer and rasterize the vector data
                 self.geo_rasterizer = GeoRasterizer(self.dataset, cost_assumptions)
-                self.geo_rasterizer.rasterize(**kwargs)
+                self.geo_rasterizer.rasterize(save_path=raster_save_path, **kwargs)
 
                 # Apply any additional dataset modifications
                 if datasets_to_modify:
@@ -178,12 +180,15 @@ class RasterGraph:
             elif isinstance(self.dataset, RasterDataset):
                 if cost_assumptions is not None:
                     # If we have a raster but also cost assumptions, use GeoRasterizer to modify it
+                    self.dataset.load_data(**kwargs)
                     self.geo_rasterizer = GeoRasterizer(self.dataset, cost_assumptions)
 
                     # Apply any additional dataset modifications
                     if datasets_to_modify:
                         for dataset_params in datasets_to_modify:
                             self.geo_rasterizer.modify_raster_from_dataset(**dataset_params)
+                    if raster_save_path is not None:
+                        self.geo_rasterizer.save_raster(raster_save_path)
 
                     # Create RasterHandler with the modified raster
                     self.raster_handler = RasterHandler(
@@ -194,20 +199,20 @@ class RasterGraph:
                     )
                 else:
                     # Direct use of the raster without modifications
+                    self.dataset.load_data(**kwargs)
+
                     self.raster_handler = RasterHandler(
                         self.dataset,
                         self.source_coords,
                         self.target_coords,
                         self.search_space_buffer_m
                     )
+                    if raster_save_path is not None:
+                        self.raster_handler.save_section_as_raster(raster_save_path)
             else:
                 raise ValueError(f"Unsupported dataset type: {type(self.dataset)}")
 
         return self.raster_handler
-
-    @property
-    def raster(self):
-        return self.raster_handler.data
 
     def create_graph(self, band_index: int = 0):
         """
@@ -224,7 +229,7 @@ class RasterGraph:
             graph_api_class_constructor = get_graph_api_class(self.graph_api_name)
 
         # Get raster data for the specified band
-        raster_data = self.raster[band_index]
+        raster_data = self.raster_handler.data[band_index]
 
         # Create graph using the graph API
         self._graph_api = graph_api_class_constructor(raster_data, self.steps)
@@ -292,7 +297,8 @@ class RasterGraph:
         coords = self.raster_handler.indices_to_coords(indices_2d)
         return coords
 
-    def find_route(self, source=None, target=None, algorithm="dijkstra", calculate_metrics=True, pairwise=False):
+    def find_route(self, source=None, target=None, algorithm="dijkstra", calculate_metrics=True, pairwise=False,
+                   **kwargs):
         """
         Find the shortest path between source and target coordinates.
 
@@ -313,6 +319,10 @@ class RasterGraph:
             source = self.source_coords
         if target is None:
             target = self.target_coords
+        if source is None or target is None:
+            raise ValueError(f"Source and target coordinates must not be None!")
+        if self.raster_handler is None:
+            self.create_raster_handler(**kwargs)
 
         # Convert coordinates to node indices
         source_indices = self.get_node_indices_from_coords(source)
@@ -458,7 +468,7 @@ class RasterGraph:
         """
         return self.paths.get(path_id, source, target)
 
-    def create_path_geodataframe(self, save_path=None):
+    def create_path_geodataframe(self):
         """
         Create a GeoDataFrame containing all stored paths.
 
@@ -473,10 +483,22 @@ class RasterGraph:
         records = self.paths.to_geodataframe_records()
 
         # Create GeoDataFrame directly from records
-        gdf = gpd.GeoDataFrame(records, geometry="geometry", crs=self.dataset.crs)
-        if save_path is not None:
-            gdf.to_file(save_path)
-        return gdf
+        self.path_gdf = gpd.GeoDataFrame(records, geometry="geometry", crs=self.dataset.crs)
+        return self.path_gdf
+
+    def save_paths(self, save_path):
+        if self.path_gdf is None:
+            self.create_path_geodataframe()
+        if save_path is not None and not '':
+            self.path_gdf.to_file(save_path)
+
+    def save_raster(self, save_path: str) -> None:
+        if save_path is None:
+            save_path = "pyorps_raster.tiff"
+        if self.geo_rasterizer is not None:
+            self.geo_rasterizer.save_raster(save_path)
+        else:
+            self.raster_handler.save_section_as_raster(save_path)
 
     def plot_paths(self, plot_all=True, subplots=True, subplotsize=(10, 8),
                    source_color='green', target_color='red', path_colors=None,

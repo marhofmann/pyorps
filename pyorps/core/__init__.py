@@ -1,9 +1,8 @@
 """Core types and base classes for geospatial data processing."""
 
-from .cost_assumptions import CostAssumptions
-from .types import (
-    InputDataType, CostAssumptionsType, BboxType, GeometryMaskType
-)
+from .cost_assumptions import (CostAssumptions, get_zero_cost_assumptions, detect_feature_columns,
+                               save_empty_cost_assumptions)
+from .types import InputDataType, CostAssumptionsType, BboxType, GeometryMaskType
 from .path import Path, PathCollection
 from .exceptions import (
     # Cost assumption exceptions
@@ -17,7 +16,7 @@ from .exceptions import (
 
 __all__ = [
     # Cost assumptions
-    "CostAssumptions",
+    "CostAssumptions", "get_zero_cost_assumptions", "detect_feature_columns", "save_empty_cost_assumptions",
 
     # Types
     "InputDataType", "CostAssumptionsType", "BboxType", "GeometryMaskType",

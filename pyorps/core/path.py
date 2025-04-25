@@ -58,16 +58,44 @@ class Path:
 
         return result
 
+    def __str__(self) -> str:
+        """
+        Return a string representation of the path.
+        """
+        result = f"Path(id={self.path_id}, source={self.source}, target={self.target}"
+        if self.total_length is not None:
+            result += f", length={self.total_length:.2f}"
+        if self.total_cost is not None:
+            result += f", cost={self.total_cost:.2f}"
+        result += ")"
+        return result
+
+    def __repr__(self) -> str:
+        """
+        Return a detailed string representation of the path.
+        """
+        result = f"Path(path_id={self.path_id}, source={repr(self.source)}, target={repr(self.target)}"
+        if self.total_length is not None:
+            result += f", total_length={self.total_length:.2f}"
+        if self.total_cost is not None:
+            result += f", total_cost={self.total_cost:.2f}"
+        result += ")"
+        return result
+
 
 class PathCollection:
-    """Container for Path objects with O(1) retrieval by path ID."""
+    """
+    Container for Path objects with O(1) retrieval by path ID.
+    """
 
     def __init__(self):
         self._paths = {}  # Dictionary with path_id as keys for O(1) lookup
         self._next_id = 0  # Track the next available path ID
 
     def add(self, path: Path) -> None:
-        """Add a path to the collection."""
+        """
+        Add a path to the collection.
+        """
         if path.path_id is None:
             path.path_id = self._next_id
             self._next_id += 1
@@ -78,7 +106,9 @@ class PathCollection:
         self._paths[path.path_id] = path
 
     def get(self, path_id: int = None, source: Any = None, target: Any = None) -> Optional[Path]:
-        """Retrieve a stored path by ID, or by source AND target."""
+        """
+        Retrieve a stored path by ID, or by source AND target.
+        """
         if path_id is not None:
             # O(1) lookup by ID
             return self._paths.get(path_id)
@@ -102,19 +132,46 @@ class PathCollection:
         return [path.to_geodataframe_dict() for path in self._paths.values()]
 
     def __iter__(self):
-        """Iterate through paths."""
+        """
+        Iterate through paths.
+        """
         return iter(self._paths.values())
 
     def __len__(self):
-        """Return the number of paths."""
+        """
+        Return the number of paths.
+        """
         return len(self._paths)
 
     def __getitem__(self, path_id):
-        """Get path by ID."""
+        """
+        Get path by ID.
+        """
         return self._paths[path_id]
+
+    def __str__(self) -> str:
+        """
+        Return a string representation of the path collection.
+        """
+        return f"PathCollection(paths={len(self._paths)})"
+
+    def __repr__(self) -> str:
+        """
+        Return a detailed string representation of the path collection.
+        """
+        if len(self._paths) <= 5:
+            paths_repr = ", ".join(repr(path) for path in self._paths.values())
+        else:
+            # Show first 2 paths and last path for large collections
+            paths = list(self._paths.values())
+            paths_repr = f"{repr(paths[0])}, {repr(paths[1])}, ..., {repr(paths[-1])}"
+
+        return f"PathCollection(paths=[{paths_repr}], count={len(self._paths)})"
 
     @property
     def all(self):
-        """Return all paths as a list."""
+        """
+        Return all paths as a list.
+        """
         return list(self._paths.values())
 

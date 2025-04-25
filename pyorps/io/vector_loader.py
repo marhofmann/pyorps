@@ -718,7 +718,7 @@ def _parse_xml_response(response: requests.Response) -> Optional[gpd.GeoDataFram
             temp_file = Path(temp_dir) / "wfs_response.xml"
             temp_file.write_bytes(response.content)
             return gpd.read_file(temp_file)
-    except (IOError, gpd.io.file.DriverError) as e:
+    except IOError:
         return None
 
 

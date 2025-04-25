@@ -4,7 +4,7 @@ from rasterio.windows import Window
 from typing import Tuple, List, Union, Optional, Any
 from shapely.geometry import LineString, MultiPoint
 import rasterio.features
-from rasterio.transform import from_origin
+from rasterio.transform import from_origin, rowcol
 from pyproj import Transformer
 
 # Changed to a relative import from the io module
@@ -22,7 +22,7 @@ class RasterHandler:
                  raster_source: RasterDataset,
                  source_coords: Union[Tuple[float, float], List[Tuple[float, float]]],
                  target_coords: Union[Tuple[float, float], List[Tuple[float, float]]],
-                 search_space_buffer_m: float,
+                 search_space_buffer_m: Optional[float] = None,
                  input_crs: Optional[str] = None,
                  apply_mask: bool = True,
                  outside_value: Optional[Any] = None,
@@ -48,7 +48,6 @@ class RasterHandler:
         """
         # Determine the type of input we're working with
         self.raster_dataset = raster_source
-
         self._init_from_metadata(
                 source_coords,
                 target_coords,
@@ -107,7 +106,8 @@ class RasterHandler:
             # Create a convex hull from all points and buffer it
             multi_point = MultiPoint(all_points)
             buffer_geom = multi_point.convex_hull
-
+        if search_space_buffer_m is None:
+            search_space_buffer_m = self.estimate_optimal_buffer_width(source_coords, target_coords)
         self.buffer_geometry = buffer_geom.buffer(distance=search_space_buffer_m, quad_segs=32)
 
         # Calculate pixel bounds for the buffered geometry
@@ -175,6 +175,98 @@ class RasterHandler:
                 x, y = transformer.transform(coord[0], coord[1])
                 result.append((x, y))
             return result
+
+    def estimate_optimal_buffer_width(self, source_coords, target_coords, min_buffer=200, max_buffer=4000,
+                                      sample_radius=50):
+        """
+        Estimate an appropriate buffer width for path finding based on terrain characteristics.
+
+        Parameters:
+        -----------
+        raster_data : numpy.ndarray
+            2D array containing cost values for traversing each cell
+        source_coords : tuple
+            (x, y) coordinates of the source point
+        target_coords : tuple
+            (x, y) coordinates of the target point
+        min_buffer : int
+            Minimum buffer width to consider (meters)
+        max_buffer : int
+            Maximum buffer width to consider (meters)
+        sample_radius : int
+            Radius for sampling around the straight line to assess terrain complexity
+
+        Returns:
+        --------
+        int
+            Estimated optimal buffer width in meters
+        """
+        forbidden_value = np.iinfo(self.raster_dataset.dtype).max
+        # Calculate Euclidean distance between source and target
+        dx = target_coords[0] - source_coords[0]
+        dy = target_coords[1] - source_coords[1]
+        euclidean_dist = np.sqrt(dx * dx + dy * dy)
+
+        # Sample points along the straight line path
+        num_samples = min(int(euclidean_dist), 1000)  # Cap at 1000 samples
+        x_samples = np.linspace(source_coords[0], target_coords[0], num_samples).astype(int)
+        y_samples = np.linspace(source_coords[1], target_coords[1], num_samples).astype(int)
+
+        rows, cols = rowcol(self.raster_dataset.transform, list(x_samples), list(y_samples))
+
+        # Convert bounds to pixel coordinates
+        height, width = self.raster_dataset.shape
+        x_samples = np.clip(rows, 0, width - 1)
+        y_samples = np.clip(cols, 0, height - 1)
+
+        # Sample costs along the line
+        line_costs = self.raster_dataset.data[self.raster_dataset.count - 1][y_samples, x_samples]
+
+        # Count obstacles along the direct path
+        obstacle_count = np.sum(line_costs == forbidden_value)
+        obstacle_ratio = obstacle_count / len(line_costs)
+
+        # Calculate terrain complexity by examining cost variance in wider area
+        complexity_samples = []
+        for i in range(min(100, num_samples)):  # Limit to 100 sample points for efficiency
+            idx = i * (num_samples // min(100, num_samples))
+            x, y = x_samples[idx], y_samples[idx]
+
+            # Define sample region around this point
+            x_min = max(0, int(x - sample_radius))
+            y_min = max(0, int(y - sample_radius))
+            x_max = min(width - 1, int(x + sample_radius))
+            y_max = min(height - 1, int(y + sample_radius))
+
+            # Sample the region
+            region = self.raster_dataset.data[self.raster_dataset.count - 1][y_min:y_max, x_min:x_max]
+            valid_costs = region[region != forbidden_value]
+
+            if len(valid_costs) > 0:
+                # Calculate coefficient of variation to measure complexity
+                mean_cost = np.mean(valid_costs)
+                if mean_cost > 0:
+                    std_cost = np.std(valid_costs)
+                    complexity_samples.append(std_cost / mean_cost)
+
+        # Average complexity (coefficient of variation)
+        terrain_complexity = np.mean(complexity_samples) if complexity_samples else 0.5
+
+        # Base buffer width on distance
+        distance_factor = min(1.0, euclidean_dist / 10000)
+        base_buffer = min_buffer + distance_factor * (max_buffer - min_buffer) * 0.5
+
+        # Adjust for terrain complexity and obstacles
+        complexity_factor = min(1.0, terrain_complexity * 2)
+        obstacle_factor = min(1.0, obstacle_ratio * 5)
+
+        # Final buffer estimation
+        buffer_width = base_buffer * (1 + complexity_factor * 0.5 + obstacle_factor)
+
+        # Ensure we stay within bounds
+        buffer_width = min(max(buffer_width, min_buffer), max_buffer)
+
+        return int(buffer_width)
 
     def apply_geometry_mask(self, geometry, outside_value=None, bands=None):
         """
@@ -363,7 +455,6 @@ class RasterHandler:
                 transform=self.window_transform  # Use the section-specific transform
         ) as dst:
             dst.write(self.data)
-
 
 
 def create_test_tiff(output_path, width=100, height=100, transform=None, crs="EPSG:32632",

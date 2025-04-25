@@ -8,7 +8,7 @@ This module provides:
 """
 
 # Import main graph class and key function
-from .raster_graph import RasterGraph, get_graph_api_class
+from .path_finder import PathFinder, get_graph_api_class
 
 # Import Path classes from core (do not re-export from graph.raster_graph)
 from ..core.path import Path, PathCollection
@@ -21,7 +21,7 @@ from .api import GraphAPI, GraphLibraryAPI
 
 __all__ = [
     # Main graph class and factory function
-    "RasterGraph",
+    "PathFinder",
     "get_graph_api_class",
 
     # Path classes

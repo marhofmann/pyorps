@@ -164,9 +164,11 @@ class LocalRasterDataset(RasterDataset):
             self.data = src.read(**kwargs)
             self.crs = src.crs
             self.transform = src.transform
-            self.count = src.count
-            self.dtype = src.dtypes
-            self.shape = (src.height, src.width)
+            self.count = self.data.shape[0] if len(self.data.shape) > 2 else 1
+            height = self.data.shape[1] if len(self.data.shape) > 2 else self.data.shape[0]
+            width = self.data.shape[2] if len(self.data.shape) > 2 else self.data.shape[1]
+            self.shape = (height, width)
+            self.dtype = self.data.dtype
 
 
 class InMemoryRasterDataset(RasterDataset):
@@ -187,11 +189,11 @@ class InMemoryRasterDataset(RasterDataset):
         pass
 
 
-def get_geo_dataset(file_source: InputDataType,
-                    crs: Optional[str] = None,
-                    bbox: Optional[BboxType] = None,
-                    mask: Optional[GeometryMaskType] = None,
-                    transform: Optional[Affine] = None) -> GeoDataset:
+def initialize_geo_dataset(file_source: InputDataType,
+                           crs: Optional[str] = None,
+                           bbox: Optional[BboxType] = None,
+                           mask: Optional[GeometryMaskType] = None,
+                           transform: Optional[Affine] = None) -> GeoDataset:
     """
     Factory function to create the appropriate GeoDataset instance based on the provided input.
 
@@ -258,6 +260,8 @@ def _determine_data_type(file_source: Any) -> str:
             # Raster file extensions
             elif ext in [".tif", ".tiff", ".jp2", ".img", ".bil", ".dem"]:
                 return "raster"
+        else:
+            raise FileNotFoundError(f"File {file_source} not found.")
 
     return "unknown"
 

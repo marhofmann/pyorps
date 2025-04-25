@@ -12,267 +12,6 @@ from geopandas import GeoDataFrame
 from .exceptions import InvalidSourceError, FileLoadError, FormatError, NoSuitableColumnsError
 
 
-def detect_feature_columns(gdf: GeoDataFrame,
-                           max_features_per_column: int = 50) -> tuple[str, list[str]]:
-    """
-    Analyze columns in a geodataframe to identify the best candidates for
-    main_feature and side_features based on statistical metrics.
-
-    Parameters:
-        gdf: GeoDataFrame to analyze
-        max_features_per_column: Maximum number of unique values allowed in a categorical column
-
-    Returns:
-        tuple of (main_feature, side_features)
-
-    Raises:
-        NoSuitableColumnsError: When no suitable columns are found for feature selection
-    """
-    # Filter out geometry and standard spatial columns
-    non_spatial_cols = [col for col in gdf.columns if col not in ['geometry', 'id', 'fid', 'gid']]
-
-    if not non_spatial_cols:
-        raise NoSuitableColumnsError("No suitable feature columns found in the geodataframe")
-
-    # Analyze columns by their data characteristics
-    col_stats = _calculate_column_statistics(gdf, non_spatial_cols, max_features_per_column)
-
-    # No good candidates found
-    if not col_stats:
-        raise NoSuitableColumnsError("No suitable categorical columns found in the geodataframe")
-
-    # Select main feature column
-    main_feature = _select_main_feature(col_stats)
-
-    # Find suitable side features
-    side_features = _find_side_features(gdf, main_feature, non_spatial_cols, col_stats)
-
-    return main_feature, side_features
-
-
-def _calculate_geometry_area_sum(geometries):
-    """
-    Calculate the sum of areas for a collection of geometries.
-
-    Parameters:
-        geometries: Collection of geometry objects
-
-    Returns:
-        Sum of areas of all geometries with area attribute
-    """
-    total_area = 0
-    for geom in geometries:
-        if hasattr(geom, 'area'):
-            total_area += geom.area
-    return total_area
-
-
-def _calculate_column_statistics(gdf: GeoDataFrame,
-                                 columns: list[str],
-                                 max_features_per_column: int = 50) -> dict[str, dict[str, Any]]:
-    """
-    Calculate statistical properties of columns for feature selection.
-
-    Parameters:
-        gdf: GeoDataFrame to analyze
-        columns: list of column names to analyze
-        max_features_per_column: Maximum number of unique values for a column to be considered categorical
-
-    Returns:
-        dictionary with column statistics
-
-    Raises:
-        ColumnAnalysisError: When column analysis fails unexpectedly
-    """
-    col_stats = {}
-
-    # First pass: filter columns and calculate basic stats
-    candidate_columns = []
-    for col in columns:
-        # Skip numeric columns with many unique values
-        if pd.api.types.is_numeric_dtype(gdf[col]) and gdf[col].nunique() > 20:
-            continue
-
-        # Calculate value counts
-        value_counts = gdf[col].value_counts()
-
-        # Skip columns with too many unique values (likely not categorical)
-        if len(value_counts) > max_features_per_column:
-            continue
-
-        # Calculate basic statistics
-        null_ratio = gdf[col].isna().mean()
-        is_good_candidate = (
-                len(value_counts) > 1 and
-                (len(value_counts) < len(gdf) * 0.3) and
-                null_ratio < 0.2
-        )
-
-        # Calculate entropy of count distribution
-        count_fractions = value_counts / len(gdf)
-        count_entropy = -sum((count_fractions * np.log2(count_fractions)).dropna())
-
-        # Store basic stats
-        col_stats[col] = {
-            'unique_values': len(value_counts),
-            'max_count': value_counts.max() if len(value_counts) > 0 else 0,
-            'min_count': value_counts.min() if len(value_counts) > 0 else 0,
-            'count_entropy': count_entropy,
-            'null_ratio': null_ratio,
-            'is_good_candidate': is_good_candidate
-        }
-
-        candidate_columns.append(col)
-
-    # Second pass: calculate area-based statistics only for candidates
-    for col in candidate_columns:
-        # Initialize area-based statistics
-        area_entropy = 0
-        area_by_value = None
-        area_fraction = None
-
-        try:
-            # Group by column and calculate total area for each value
-            area_by_value = gdf.groupby(col)['geometry'].apply(_calculate_geometry_area_sum)
-            total_area = area_by_value.sum()
-
-            if total_area > 0:
-                area_fraction = area_by_value / total_area
-                # Calculate entropy of area distribution
-                if not area_fraction.isna().all():
-                    area_entropy = -sum((area_fraction * np.log2(area_fraction)).dropna())
-        except (AttributeError, ValueError, TypeError):
-            # Continue with default values for area statistics
-            pass
-
-        # Update with area-based statistics
-        col_stats[col].update({
-            'area_by_value': area_by_value,
-            'area_fraction': area_fraction,
-            'area_entropy': area_entropy,
-        })
-
-    return col_stats
-
-
-def _calculate_entropy_score(column_name: str, col_stats: dict[str, dict[str, Any]]) -> float:
-    """
-    Calculate combined entropy score for a column, weighing area entropy more heavily.
-
-    Parameters:
-        column_name: Name of the column to calculate score for
-        col_stats: dictionary with column statistics
-
-    Returns:
-        Combined entropy score
-    """
-    stats = col_stats[column_name]
-    return stats['area_entropy'] * 0.7 + stats['count_entropy'] * 0.3
-
-
-def _select_main_feature(col_stats: dict[str, dict[str, Any]]) -> str:
-    """
-    Select the best main feature column based on statistics.
-
-    Parameters:
-        col_stats: dictionary with column statistics
-
-    Returns:
-        Name of the best main feature column
-    """
-    # Select the best main feature column
-    main_candidates = [col for col, stats in col_stats.items() if stats['is_good_candidate']]
-
-    if not main_candidates:
-        # Fall back to any column if no good candidates
-        main_candidates = list(col_stats.keys())
-
-    # Sort by entropy score (higher is better)
-    sorted_candidates = sorted(
-        main_candidates,
-        key=lambda c: _calculate_entropy_score(c, col_stats),
-        reverse=True
-    )
-
-    return sorted_candidates[0]
-
-
-def _check_column_adds_information(crosstab: pd.DataFrame) -> bool:
-    """
-    Check if a column adds meaningful information based on its crosstab with another column.
-
-    Parameters:
-        crosstab: Cross-tabulation DataFrame between two columns
-
-    Returns:
-        True if the column adds meaningful information, False otherwise
-    """
-    for _, row in crosstab.iterrows():
-        non_zero_counts = row[row > 0]
-        # Skip rows with only one value
-        if len(non_zero_counts) <= 1:
-            continue
-
-        # Check if distribution is meaningful (no single value dominates)
-        max_frac = non_zero_counts.max() / non_zero_counts.sum()
-        if max_frac < 0.9:
-            return True
-
-    return False
-
-
-def _find_side_features(gdf: GeoDataFrame,
-                        main_feature: str,
-                        columns: list[str],
-                        col_stats: dict[str, dict[str, Any]]) -> list[str]:
-    """
-    Find suitable side feature columns that refine the main feature.
-
-    Parameters:
-        gdf: GeoDataFrame to analyze
-        main_feature: Selected main feature column name
-        columns: list of all column names
-        col_stats: dictionary with column statistics
-
-    Returns:
-        list of side feature column names
-    """
-    # Pre-filter columns to reduce iterations
-    candidate_columns = [
-        col for col in columns
-        if col != main_feature
-           and col in col_stats
-           and col_stats[col]['null_ratio'] <= 0.3
-    ]
-
-    side_features = []
-
-    for col in candidate_columns:
-        try:
-            # Check if this column has a meaningful relationship with main feature
-            crosstab = pd.crosstab(gdf[main_feature], gdf[col])
-
-            # Only consider columns with a reasonable number of values
-            if len(crosstab.columns) >= 30:
-                continue
-
-            # Check if this column adds information
-            if _check_column_adds_information(crosstab):
-                side_features.append(col)
-
-        except (ValueError, TypeError, pd.core.base.DataError):
-            # Skip columns that can't be analyzed properly
-            continue
-
-    # Sort side features by information content
-    def get_entropy(col):
-        return col_stats[col]['count_entropy']
-
-    side_features.sort(key=get_entropy, reverse=True)
-
-    return side_features
-
-
 class CostAssumptions:
     """
     A class for handling cost assumptions for rasterization.
@@ -614,3 +353,506 @@ class CostAssumptions:
                 # Apply cost where both masks match
                 combined_mask = main_mask & side_mask
                 gdf.loc[combined_mask, 'cost'] = cost
+
+    def to_csv(self, filepath: str, separator: str = ';', decimal: str = '.', encoding: str = 'ISO-8859-1') -> None:
+        """
+        Save the cost assumptions to a CSV file.
+
+        Parameters:
+            filepath: Path where to save the CSV file
+            separator: Column separator character (default is ';')
+            decimal: Decimal separator character (default is '.')
+            encoding: The encoding of the file (default is 'ISO-8859-1')
+        """
+        # Convert the nested dictionary to DataFrame
+        df = self._cost_dict_to_df(self.cost_assumptions)
+
+        # Handle decimal separator conversion if needed
+        if decimal == ',':
+            # Convert numeric columns to use comma as decimal separator
+            for col in df.select_dtypes(include=[np.number]).columns:
+                df[col] = df[col].astype(str).str.replace('.', ',')
+
+        # Save DataFrame to CSV
+        df.to_csv(filepath, sep=separator, index=False, encoding=encoding)
+
+    def to_json(self, filepath: str, indent: int = 2, encoding: str = 'ISO-8859-1') -> None:
+        """
+        Save the cost assumptions to a JSON file.
+
+        Parameters:
+            filepath: Path where to save the JSON file
+            indent: Number of spaces for indentation (default is 2)
+            encoding: The encoding of the file (default is 'ISO-8859-1')
+        """
+        with open(filepath, 'w', encoding=encoding) as f:
+            json.dump(self.cost_assumptions, f, indent=indent)
+
+    def to_excel(self, filepath: str, sheet_name: str = 'CostAssumptions', index: bool = False) -> None:
+        """
+        Save the cost assumptions to an Excel file.
+
+        Parameters:
+            filepath: Path where to save the Excel file
+            sheet_name: Name of the worksheet (default is 'CostAssumptions')
+            index: Whether to write row indices (default is False)
+        """
+        # Convert the nested dictionary to DataFrame
+        df = self._cost_dict_to_df(self.cost_assumptions)
+
+        # Save DataFrame to Excel
+        df.to_excel(filepath, sheet_name=sheet_name, index=index)
+
+    def _cost_dict_to_df(self, cost_dict: dict) -> pd.DataFrame:
+        """
+        Convert cost assumptions dictionary to DataFrame.
+
+        Parameters:
+            cost_dict: Dictionary of cost assumptions
+
+        Returns:
+            DataFrame representation of cost assumptions
+        """
+        # Check if it's a simple or nested dictionary
+        first_key = next(iter(cost_dict), None)
+
+        if isinstance(first_key, tuple):
+            # Handle tuple-based structure
+            data = []
+            for keys, cost in cost_dict.items():
+                main_key, *side_keys = keys
+                row = {self.main_feature: main_key}
+
+                for side_feature, side_key in zip(self.side_features, side_keys):
+                    row[side_feature] = side_key
+
+                row['cost'] = cost
+                data.append(row)
+
+            return pd.DataFrame(data)
+
+        elif self.side_features and isinstance(next(iter(cost_dict.values()), None), dict):
+            # Handle nested dictionary structure
+            data = []
+            for main_value, inner_dict in cost_dict.items():
+                for side_value, cost in inner_dict.items():
+                    row = {
+                        self.main_feature: main_value,
+                        self.side_features[0]: side_value,
+                        'cost': cost
+                    }
+                    data.append(row)
+
+            return pd.DataFrame(data)
+
+        else:
+            # Simple mapping
+            return pd.DataFrame({
+                self.main_feature: list(cost_dict.keys()),
+                'cost': list(cost_dict.values())
+            })
+
+
+def save_empty_cost_assumptions(geo_dataset: Any,
+                                save_path: Union[str, Path],
+                                main_feature: Optional[str] = None,
+                                side_features: Optional[list[str]] = None,
+                                file_type: str = 'csv',
+                                **kwargs) -> None:
+    """
+    Generate and save empty cost assumptions with zero values for a geo dataset.
+
+    This function analyzes the given dataset to detect appropriate feature columns,
+    creates a CostAssumptions object with zero costs for all feature combinations,
+    and saves it to the specified path in the requested format.
+
+    Parameters:
+        geo_dataset: GeoDataset object with a 'data' attribute containing a GeoDataFrame
+        save_path: File path where the cost assumptions should be saved
+        file_type: Output file format - one of 'json', 'csv', or 'excel'
+                  (default is 'json')
+
+    Raises:
+        TypeError: If file_type is not one of the supported formats
+        NoSuitableColumnsError: If no suitable columns can be detected in the dataset
+
+    Returns:
+        None: This function saves to a file and doesn't return a value
+    """
+    if main_feature is None or not side_features:
+        # Detect main feature and side features from the geodataframe
+        mf, sf = detect_feature_columns(geo_dataset.data)
+        main_feature = mf if main_feature is None else main_feature
+        side_features = sf if not side_features else side_features
+
+    # Generate cost assumptions with zero costs for all feature combinations
+    cost_assumptions = get_zero_cost_assumptions(geo_dataset.data, main_feature, side_features)
+
+    # Save the cost assumptions in the appropriate format
+    if file_type == 'json':
+        cost_assumptions.to_json(save_path, **kwargs)
+    elif file_type == 'csv':
+        cost_assumptions.to_csv(save_path, **kwargs)
+    elif file_type == "excel":
+        cost_assumptions.to_excel(save_path, **kwargs)
+    else:
+        raise TypeError("Parameter file_type must be 'json', 'csv' or 'excel'!")
+
+
+def detect_feature_columns(gdf: GeoDataFrame, max_features_per_column: int = 50) -> tuple[str, list[str]]:
+    """
+    Analyze columns in a geodataframe to identify the best candidates for
+    main_feature and side_features based on statistical metrics.
+
+    Parameters:
+        gdf: GeoDataFrame to analyze
+        max_features_per_column: Maximum number of unique values allowed in a categorical column
+
+    Returns:
+        tuple of (main_feature, side_features)
+
+    Raises:
+        NoSuitableColumnsError: When no suitable columns are found for feature selection
+    """
+    # Filter out geometry and standard spatial columns
+    non_spatial_cols = [col for col in gdf.columns if col not in ['geometry', 'id', 'fid', 'gid', 'oid']]
+
+    if not non_spatial_cols:
+        raise NoSuitableColumnsError("No suitable feature columns found in the geodataframe")
+
+    # Analyze columns by their data characteristics
+    col_stats = _calculate_column_statistics(gdf, non_spatial_cols, max_features_per_column)
+
+    # No good candidates found
+    if not col_stats:
+        raise NoSuitableColumnsError("No suitable categorical columns found in the geodataframe")
+
+    # Select main feature column (nutzart)
+    main_feature = _select_main_feature(col_stats)
+
+    # Find suitable side features (bez)
+    side_features = _find_side_features(gdf, main_feature, non_spatial_cols, col_stats)
+
+    return main_feature, side_features
+
+
+def _find_side_features(gdf: GeoDataFrame,
+                        main_feature: str,
+                        columns: list[str],
+                        col_stats: dict[str, dict[str, Any]]) -> list[str]:
+    """
+    Find suitable side feature columns that refine the main feature.
+
+    Parameters:
+        gdf: GeoDataFrame to analyze
+        main_feature: Selected main feature column name
+        columns: list of all column names
+        col_stats: dictionary with column statistics
+
+    Returns:
+        list of side feature column names
+    """
+    # Pre-defined list of known common side feature columns
+    known_side_features = ['bez', 'name', 'type', 'description', 'category', 'bezeichnung']
+
+    # First check if any known side feature columns exist in the data
+    # For these columns we'll use very relaxed criteria (allow up to 90% null values)
+    priority_candidates = [
+        col for col in columns
+        if col != main_feature and
+           col.lower() in [k.lower() for k in known_side_features] and
+           col in col_stats
+    ]
+
+    # For other columns use more standard criteria but still allow up to 70% nulls
+    general_candidates = [
+        col for col in col_stats
+        if col != main_feature and
+           col not in priority_candidates and
+           col_stats[col]['null_ratio'] <= 0.7
+    ]
+
+    side_features = []
+
+    # First add the priority candidates (like "bez") even if they have many nulls
+    for col in priority_candidates:
+        if _column_shows_relationship_to_main_feature(gdf, main_feature, col):
+            side_features.append(col)
+
+    # Then process other candidates with stricter criteria
+    for col in general_candidates:
+        if _column_shows_relationship_to_main_feature(gdf, main_feature, col):
+            side_features.append(col)
+
+    # Sort side features by information content
+    def get_entropy(col):
+        return col_stats.get(col, {}).get('count_entropy', 0)
+
+    side_features.sort(key=get_entropy, reverse=True)
+
+    return side_features if side_features else None
+
+
+def _column_shows_relationship_to_main_feature(gdf: GeoDataFrame, main_feature: str, side_feature: str) -> bool:
+    """
+    Determine if a column adds meaningful information in relation to the main feature.
+
+    Parameters:
+        gdf: GeoDataFrame containing the data
+        main_feature: Name of the main feature column
+        side_feature: Name of the potential side feature column
+
+    Returns:
+        True if the column shows a meaningful relationship, False otherwise
+    """
+    try:
+        # Create a cross-tabulation of the two columns
+        crosstab = pd.crosstab(gdf[main_feature], gdf[side_feature])
+
+        # Skip columns with too many unique values
+        if len(crosstab.columns) > 100:
+            return False
+
+        # Check for non-empty cells density
+        non_empty_cells = (crosstab > 0).sum().sum()
+        total_cells = crosstab.size
+
+        # If there's a good density of non-empty combinations, that's a good sign
+        if non_empty_cells / total_cells > 0.05:
+            return True
+
+        # Even with many nulls, check if there's a pattern to the non-nulls
+        for main_val, row in crosstab.iterrows():
+            non_zero_vals = row[row > 0]
+
+            # Skip rows with only one value
+            if len(non_zero_vals) <= 1:
+                continue
+
+            # Check if there's diversity in the values
+            if len(non_zero_vals) >= 2:
+                return True
+
+        # Special check for columns with many nulls:
+        # If certain main values have side values while others don't, that's meaningful
+        null_cols = [col for col in crosstab.columns if pd.isna(col) or col == '']
+        if null_cols:
+            non_null_main_values = 0
+            for main_val, row in crosstab.iterrows():
+                if row.drop(null_cols, errors='ignore').sum() > 0:
+                    non_null_main_values += 1
+
+            # If some main values have side values and others don't, that's meaningful
+            if 0 < non_null_main_values < len(crosstab.index):
+                return True
+
+        return False
+
+    except (ValueError, TypeError):
+        # If analysis fails, be conservative and return False
+        return False
+
+
+def get_zero_cost_assumptions(gdf: GeoDataFrame,
+                              main_feature: str,
+                              side_features: list[str]) -> CostAssumptions:
+    """
+    Generate cost assumptions with zero values for all feature combinations.
+
+    Creates structures matching format for CostAssumptions:
+    - Without side features: {main_feature: {val1: 0, val2: 0, ...}}
+    - With side features: {(main_feature, side_feature1, ...): {(val1, val2, ...): 0, ...}}
+
+    Parameters:
+        gdf: GeoDataFrame with feature columns
+        main_feature: Primary feature column name
+        side_features: List of secondary feature column names
+
+    Returns:
+        CostAssumptions: Instacne of zero-cost assumptions
+    """
+    if not side_features:
+        # For simple case with only main feature
+        unique_values = gdf[main_feature].unique()
+        cost_dict = {main_feature: dict(zip(unique_values, unique_values.size * [0]))}
+    else:
+        # For complex case with side features
+        columns = [main_feature] + side_features
+        keys = pd.MultiIndex.from_frame(gdf.loc[:, columns]).values
+        keys = [tuple(['' if not isinstance(key, str) and np.isnan(key) else key for key in row]) for row in keys]
+        cost_dict = {tuple(columns): dict(zip(keys, len(keys) * [0]))}
+    return CostAssumptions(cost_dict)
+
+
+def _calculate_geometry_area_sum(geometries):
+    """
+    Calculate the sum of areas for a collection of geometries.
+
+    Parameters:
+        geometries: Collection of geometry objects
+
+    Returns:
+        Sum of areas of all geometries with area attribute
+    """
+    total_area = 0
+    for geom in geometries:
+        if hasattr(geom, 'area'):
+            total_area += geom.area
+    return total_area
+
+
+def _calculate_column_statistics(gdf: GeoDataFrame,
+                                 columns: list[str],
+                                 max_features_per_column: int = 50) -> dict[str, dict[str, Any]]:
+    """
+    Calculate statistical properties of columns for feature selection.
+
+    Parameters:
+        gdf: GeoDataFrame to analyze
+        columns: list of column names to analyze
+        max_features_per_column: Maximum number of unique values for a column to be considered categorical
+
+    Returns:
+        dictionary with column statistics
+
+    Raises:
+        ColumnAnalysisError: When column analysis fails unexpectedly
+    """
+    col_stats = {}
+
+    # First pass: filter columns and calculate basic stats
+    candidate_columns = []
+    for col in columns:
+        # Skip numeric columns with many unique values
+        if pd.api.types.is_numeric_dtype(gdf[col]) and gdf[col].nunique() > 20:
+            continue
+
+        # Calculate value counts
+        value_counts = gdf[col].value_counts()
+
+        # Skip columns with too many unique values (likely not categorical)
+        if len(value_counts) > max_features_per_column:
+            continue
+
+        # Calculate basic statistics
+        null_ratio = gdf[col].isna().mean()
+        is_good_candidate = (
+                len(value_counts) > 1 and
+                (len(value_counts) < len(gdf) * 0.3) and
+                null_ratio < 0.2
+        )
+
+        # Calculate entropy of count distribution
+        count_fractions = value_counts / len(gdf)
+        count_entropy = -sum((count_fractions * np.log2(count_fractions)).dropna())
+
+        # Store basic stats
+        col_stats[col] = {
+            'unique_values': len(value_counts),
+            'max_count': value_counts.max() if len(value_counts) > 0 else 0,
+            'min_count': value_counts.min() if len(value_counts) > 0 else 0,
+            'count_entropy': count_entropy,
+            'null_ratio': null_ratio,
+            'is_good_candidate': is_good_candidate
+        }
+
+        candidate_columns.append(col)
+
+    # Second pass: calculate area-based statistics only for candidates
+    for col in candidate_columns:
+        # Initialize area-based statistics
+        area_entropy = 0
+        area_by_value = None
+        area_fraction = None
+
+        try:
+            # Group by column and calculate total area for each value
+            area_by_value = gdf.groupby(col)['geometry'].apply(_calculate_geometry_area_sum)
+            total_area = area_by_value.sum()
+
+            if total_area > 0:
+                area_fraction = area_by_value / total_area
+                # Calculate entropy of area distribution
+                if not area_fraction.isna().all():
+                    area_entropy = -sum((area_fraction * np.log2(area_fraction)).dropna())
+        except (AttributeError, ValueError, TypeError):
+            # Continue with default values for area statistics
+            pass
+
+        # Update with area-based statistics
+        col_stats[col].update({
+            'area_by_value': area_by_value,
+            'area_fraction': area_fraction,
+            'area_entropy': area_entropy,
+        })
+
+    return col_stats
+
+
+def _calculate_entropy_score(column_name: str, col_stats: dict[str, dict[str, Any]]) -> float:
+    """
+    Calculate combined entropy score for a column, weighing area entropy more heavily.
+
+    Parameters:
+        column_name: Name of the column to calculate score for
+        col_stats: dictionary with column statistics
+
+    Returns:
+        Combined entropy score
+    """
+    stats = col_stats[column_name]
+    return stats['area_entropy'] * 0.7 + stats['count_entropy'] * 0.3
+
+
+def _select_main_feature(col_stats: dict[str, dict[str, Any]]) -> str:
+    """
+    Select the best main feature column based on statistics.
+
+    Parameters:
+        col_stats: dictionary with column statistics
+
+    Returns:
+        Name of the best main feature column
+    """
+    # Select the best main feature column
+    main_candidates = [col for col, stats in col_stats.items() if stats['is_good_candidate']]
+
+    if not main_candidates:
+        # Fall back to any column if no good candidates
+        main_candidates = list(col_stats.keys())
+
+    # Sort by entropy score (higher is better)
+    sorted_candidates = sorted(
+        main_candidates,
+        key=lambda c: _calculate_entropy_score(c, col_stats),
+        reverse=True
+    )
+
+    return sorted_candidates[0]
+
+
+def _check_column_adds_information(crosstab: pd.DataFrame) -> bool:
+    """
+    Check if a column adds meaningful information based on its crosstab with another column.
+
+    Parameters:
+        crosstab: Cross-tabulation DataFrame between two columns
+
+    Returns:
+        True if the column adds meaningful information, False otherwise
+    """
+    for _, row in crosstab.iterrows():
+        non_zero_counts = row[row > 0]
+        # Skip rows with only one value
+        if len(non_zero_counts) <= 1:
+            continue
+
+        # Check if distribution is meaningful (no single value dominates)
+        max_frac = non_zero_counts.max() / non_zero_counts.sum()
+        if max_frac < 0.9:
+            return True
+
+    return False
+
+
+

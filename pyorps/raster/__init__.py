@@ -12,13 +12,7 @@ This module provides:
 from .handler import RasterHandler, create_test_tiff
 
 # Rasterization functionality
-from .rasterizer import (
-    # Main rasterization class
-    GeoRasterizer,
-
-    # Simplified rasterization utility
-    simply_rasterize
-)
+from .rasterizer import GeoRasterizer
 
 __all__ = [
     # Raster handling
@@ -26,7 +20,6 @@ __all__ = [
 
     # Rasterization
     "GeoRasterizer",
-    "simply_rasterize",
 
     # Testing utilities
     "create_test_tiff"

@@ -7,7 +7,7 @@ from typing import Union, Dict, List, Optional, Tuple, Any, TypeAlias
 from copy import deepcopy
 
 # Changed to relative imports from other modules
-from ..io.geo_dataset import get_geo_dataset, VectorDataset, RasterDataset, InMemoryRasterDataset, GeoDataset
+from ..io.geo_dataset import initialize_geo_dataset, VectorDataset, RasterDataset, InMemoryRasterDataset, GeoDataset
 from ..core.types import InputDataType, CostAssumptionsType, BboxType, GeometryMaskType
 from ..core.cost_assumptions import CostAssumptions
 
@@ -107,7 +107,7 @@ class GeoRasterizer:
             new_dataset = file_source
         else:
             # Create a new GeoDataset
-            new_dataset = get_geo_dataset(file_source, crs, bbox, mask, transform, **kwargs)
+            new_dataset = initialize_geo_dataset(file_source, crs, bbox, mask, transform, **kwargs)
 
         # Add to the list of additional datasets
         self.additional_datasets.append(new_dataset)
@@ -310,10 +310,10 @@ class GeoRasterizer:
                     transform=self.transform
                 )
 
+        self.raster_dataset = InMemoryRasterDataset(self.raster, self.crs, self.transform)
         # Write the rasterized data to a new raster file if a save path is provided
         if save_path is not None:
             self.save_raster(save_path)
-        self.raster_dataset = InMemoryRasterDataset(self.raster, self.crs, self.transform)
         return self.raster_dataset
 
     def _calculate_out_shape_from_bounding_box(self, bounding_box: Polygon,
@@ -489,7 +489,7 @@ class GeoRasterizer:
         if mask is None:
             mask = self.mask
 
-        dataset = get_geo_dataset(input_data, crs=self.crs, bbox=bbox, mask=mask, transform=transform)
+        dataset = initialize_geo_dataset(input_data, crs=self.crs, bbox=bbox, mask=mask, transform=transform)
         dataset.load_data(**kwargs)
         gdf = dataset.data
 
@@ -569,14 +569,14 @@ class GeoRasterizer:
                 save_path,
                 'w',
                 driver='GTiff',  # Specify the output format as GeoTIFF
-                height=self.raster.shape[0],  # Height of the raster
-                width=self.raster.shape[1],  # Width of the raster
+                height=self.raster_dataset.shape[0],  # Height of the raster
+                width=self.raster_dataset.shape[1],  # Width of the raster
                 count=1,  # Number of bands in the output raster
-                dtype=self.raster.dtype,  # Data type of the raster
-                crs=self.base_dataset.data.crs,  # Coordinate reference system of the raster
-                transform=self.transform  # Transformation for the raster
+                dtype=self.raster_dataset.dtype,  # Data type of the raster
+                crs=self.raster_dataset.crs,  # Coordinate reference system of the raster
+                transform=self.raster_dataset.transform  # Transformation for the raster
         ) as dst:
-            dst.write(self.raster, 1)  # Write the raster data to the first band
+            dst.write(self.raster_dataset.data, 1)  # Write the raster data to the first band
 
     def shrink_raster(self, exclude_value: int) -> np.ndarray:
         """
@@ -621,38 +621,3 @@ class GeoRasterizer:
         )
 
         return self.raster
-
-
-def simply_rasterize(input_data: InputDataType,
-                     cost_assumptions: CostAssumptionsType,
-                     bbox: Optional[BboxType] = None,
-                     mask: Optional[GeometryMaskType] = None,
-                     transform: Optional[rio.Affine] = None,
-                     default_crs: Optional[str] = None,
-                     main_feature: Optional[str] = None,
-                     side_features: Optional[list[str]] = None,
-                     resolution_in_m: float = 1.0,
-                     fill_value: int = 65535,
-                     dtype: str = "uint16",
-                     geometry_buffer_m: float = 0,
-                     save_path: Optional[str] = None,
-                     **kwargs) -> InMemoryRasterDataset:
-    rasterizer = GeoRasterizer(
-        input_data=input_data,
-        bbox=bbox,
-        mask=mask,
-        transform=transform,
-        cost_assumptions=cost_assumptions,
-        default_crs=default_crs,
-        main_feature=main_feature,
-        side_features=side_features,
-        **kwargs
-    )
-    rasterizer.rasterize(
-        resolution_in_m=resolution_in_m,
-        fill_value=fill_value,
-        dtype=dtype,
-        geometry_buffer_m=geometry_buffer_m,
-        save_path=save_path
-    )
-    return rasterizer.raster_dataset

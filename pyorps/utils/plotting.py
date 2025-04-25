@@ -59,7 +59,8 @@ class PathPlotter:
                    path_linewidth: int = 2,
                    show_raster: bool = True,
                    title: Optional[Union[str, List[str]]] = None,
-                   path_id: Optional[int] = None) -> Union[Axes, List[Axes]]:
+                   path_id: Optional[int] = None,
+                   reverse_colors: bool = True) -> Union[Axes, List[Axes]]:
         """
         Plot paths with options to display all paths or individual paths.
 
@@ -76,6 +77,7 @@ class PathPlotter:
             show_raster: Whether to show raster data as background. Defaults to True.
             title: Plot title(s). If None, default titles are created.
             path_id: ID of specific path to plot when plot_all is False.
+            reverse_colors: Whether to reverse the color scheme (low=dark, high=bright)
 
         Returns:
             The axes object(s) with the plot. If multiple subplots are created, returns a list.
@@ -104,7 +106,7 @@ class PathPlotter:
 
             # Plot raster background if requested
             if show_raster and self.raster_handler is not None:
-                raster_viz_data = self._plot_raster_background(ax, raster_viz_data)
+                raster_viz_data = self._plot_raster_background(ax, raster_viz_data, reverse_colors=reverse_colors)
 
             # Plot the path and add to legend
             path_color = path_colors[i] if isinstance(path_colors, list) else path_colors
@@ -298,13 +300,15 @@ class PathPlotter:
 
     def _plot_raster_background(self,
                                 ax: Axes,
-                                viz_data: Optional[RasterVizData] = None) -> RasterVizData:
+                                viz_data: Optional[RasterVizData] = None,
+                                reverse_colors: bool = True) -> RasterVizData:
         """
         Plot the raster data as background for a path.
 
         Args:
             ax: Matplotlib axes to plot on
             viz_data: Optional visualization data from previous plots
+            reverse_colors: Whether to reverse the color scheme (low=dark, high=bright)
 
         Returns:
             Object containing visualization data for raster legend
@@ -339,7 +343,6 @@ class PathPlotter:
         valid_data = raster_data[~mask]
 
         # Only compute unique values and colormap once for efficiency
-        # Fixed check: Now using array size instead of truthy evaluation
         if viz_data.unique_values.size == 0:
             # Get and sort the unique values
             viz_data.unique_values = np.unique(valid_data)
@@ -352,9 +355,14 @@ class PathPlotter:
             # Create mapping from raster values to colormap indices
             viz_data.value_to_index = {val: i for i, val in enumerate(viz_data.unique_values)}
 
-            # Create grayscale colormap with sorted values (low=white, high=black)
-            # White (0.95) represents lowest cost, black (0.05) represents highest cost
-            gray_values = np.linspace(0.95, 0.05, n_values)
+            # Create grayscale colormap with sorted values
+            if reverse_colors:
+                # Reversed: low values (dark/black) to high values (bright/white)
+                gray_values = np.linspace(0.05, 0.95, n_values)
+            else:
+                # Original: low values (bright/white) to high values (dark/black)
+                gray_values = np.linspace(0.95, 0.05, n_values)
+
             viz_data.gray_colors = [(v, v, v) for v in gray_values]
             custom_cmap = colors.ListedColormap(viz_data.gray_colors)
         else:
