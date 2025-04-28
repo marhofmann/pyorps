@@ -1,5 +1,5 @@
 import time
-from typing import Optional, Union
+from typing import Optional, Union, Any
 from contextlib import contextmanager
 from importlib import import_module
 
@@ -20,7 +20,7 @@ from ..utils.traversal import calculate_path_metrics_numba
 
 
 @contextmanager
-def timed(name, timings_dict):
+def timed(name: str, timings_dict: Optional[dict[str, float]]):
     """Simple context manager for timing code blocks."""
     start_time = time.time()
     try:
@@ -486,13 +486,59 @@ class PathFinder:
         self.path_gdf = gpd.GeoDataFrame(records, geometry="geometry", crs=self.dataset.crs)
         return self.path_gdf
 
-    def save_paths(self, save_path):
+    def save_paths(self, save_path: Optional[str] = None) -> None:
+        """
+        Save all calculated paths to a file in a GIS-compatible format.
+
+        This method creates a GeoDataFrame containing all paths from the PathCollection
+        and saves it to the specified file. The file format is automatically determined
+        from the file extension (e.g., '.shp' for Shapefile, '.gpkg' for GeoPackage).
+
+        Args:
+            save_path: Path to save the paths file. If None, no file is saved.
+                Common formats include:
+                - Shapefile (.shp)
+                - GeoPackage (.gpkg)
+                - GeoJSON (.geojson)
+                - CSV (.csv)
+
+        Returns:
+            None
+
+
+        Notes:
+            - The saved file includes all path attributes (ID, length, cost data)
+            - The geometries are saved as LineString features with the CRS from the source dataset
+            - If no paths have been calculated, an empty GeoDataFrame will be created first
+        """
         if self.path_gdf is None:
             self.create_path_geodataframe()
-        if save_path is not None and not '':
+        if save_path is not None and save_path != '':
             self.path_gdf.to_file(save_path)
 
-    def save_raster(self, save_path: str) -> None:
+    def save_raster(self, save_path: Optional[str] = None) -> None:
+        """
+        Save the raster data used for path calculations to a GeoTIFF file.
+
+        This method exports the current raster data to the specified file location.
+        The raster contains the cost values used for path calculations, including
+        any modifications from additional datasets. The exported file includes
+        complete georeferencing information and preserves the original CRS.
+
+        Args:
+            save_path: Path where the raster file should be saved. If None, uses
+                the default filename "pyorps_raster.tiff" in the current directory.
+
+        Returns:
+            None
+
+        Notes:
+            - The saved raster includes all cost modifications from additional datasets
+            - The file is saved in GeoTIFF format which preserves georeferencing information
+            - If the PathFinder uses a GeoRasterizer, the complete raster is saved
+            - Otherwise, only the section loaded in the RasterHandler is saved
+            - For large areas, the resulting file size may be substantial
+        """
         if save_path is None:
             save_path = "pyorps_raster.tiff"
         if self.geo_rasterizer is not None:
@@ -500,25 +546,94 @@ class PathFinder:
         else:
             self.raster_handler.save_section_as_raster(save_path)
 
-    def plot_paths(self, paths=None, plot_all=True, subplots=True, subplotsize=(10, 8),
-                   source_color='green', target_color='red', path_colors=None,
-                   source_marker='o', target_marker='x', path_linewidth=2,
-                   show_raster=True, title=None, suptitle=None, path_id=None):
+    def plot_paths(self,
+                   paths: Optional[Union[Path, PathCollection, list[Path]]] = None,
+                   plot_all: bool = True,
+                   subplots: bool = True,
+                   subplotsize: tuple[int, int] = (10, 8),
+                   source_color: str = 'green',
+                   target_color: str = 'red',
+                   path_colors: Optional[Union[str, list[str]]] = None,
+                   source_marker: str = 'o',
+                   target_marker: str = 'x',
+                   path_linewidth: int = 2,
+                   show_raster: bool = True,
+                   title: Optional[Union[str, list[str]]] = None,
+                   suptitle: Optional[str] = None,
+                   path_id: Optional[Union[int, list[int]]] = None,
+                   reverse_colors: bool = True) -> Union[Any, list[Any]]:
+        """
+        Plot paths with customizable styling and layout options.
+
+        This method visualizes the calculated paths, allowing for detailed customization of the
+        plot appearance. It delegates to the PathPlotter class to handle the actual visualization.
+
+        Args:
+            paths: Specific path(s) to plot. If None, uses all paths in this PathFinder instance.
+                Can be a single Path object, a list of Path objects, or a PathCollection.
+            plot_all: If True, plots all paths. If False, plots only the path with path_id.
+            subplots: If True and multiple paths are plotted, creates separate subplots for each path.
+            subplotsize: Size of each individual subplot in inches (width, height).
+            source_color: Color for source markers.
+            target_color: Color for target markers.
+            path_colors: Colors for path lines. Can be a single color or a list of colors.
+                If None, default color scheme is used.
+            source_marker: Marker style for source points.
+            target_marker: Marker style for target points.
+            path_linewidth: Line width for the paths.
+            show_raster: Whether to display the raster data as background.
+            title: Title for the plot or individual subplot titles if a list is provided.
+            suptitle: Overall title for the figure (when using multiple subplots).
+            path_id: ID of specific path to plot when plot_all is False.
+                Can be a single ID or a list of IDs.
+            reverse_colors: Whether to reverse the color scheme for raster data
+                (dark=low cost, bright=high cost).
+
+        Returns:
+            The matplotlib axes object(s) for the plot. Returns a list of axes if multiple
+            subplots are created, otherwise returns a single axes object.
+
+        Runtime Notes:
+            - The plotting operation itself is generally quick (0.1-0.5 seconds)
+            - Most time is spent on data preparation in the initial PathFinder setup
+            - When plotting many paths, using subplots=True can improve readability
+            - Displaying the raster background (show_raster=True) adds minimal overhead
+              once the PathFinder is initialized
+        """
         from ..utils.plotting import PathPlotter
+
+        # Determine which paths to plot based on the input
         if paths is None:
+            # Use all paths from this PathFinder instance
             path_collection = self.paths
         elif isinstance(paths, Path):
+            # Create a collection with a single path
             path_collection = PathCollection()
             path_collection.add(paths)
         elif isinstance(paths, list):
+            # Create a collection from a list of paths
             path_collection = PathCollection()
             for path in paths:
                 path_collection.add(path)
         else:
+            # Assume it's already a PathCollection
             path_collection = paths
-        plotter = PathPlotter(paths=path_collection, raster_handler=self.raster_handler)
-        plotter.plot_paths(plot_all=plot_all, subplots=subplots, subplotsize=subplotsize,
-                           source_color=source_color, target_color=target_color, path_colors=path_colors,
-                           source_marker=source_marker, target_marker=target_marker, path_linewidth=path_linewidth,
-                           show_raster=show_raster, title=title, suptitle=suptitle, path_id=path_id)
 
+        # Create PathPlotter and delegate the plotting
+        plotter = PathPlotter(paths=path_collection, raster_handler=self.raster_handler)
+        return plotter.plot_paths(
+            plot_all=plot_all,
+            subplots=subplots,
+            subplotsize=subplotsize,
+            source_color=source_color,
+            target_color=target_color,
+            path_colors=path_colors,
+            source_marker=source_marker,
+            target_marker=target_marker,
+            path_linewidth=path_linewidth,
+            show_raster=show_raster,
+            title=title,
+            suptitle=suptitle,
+            path_id=path_id,
+            reverse_colors=reverse_colors
+        )

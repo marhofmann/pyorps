@@ -22,6 +22,7 @@ from .graph_api import GraphAPI
 
 from pyorps.utils.traversal import construct_edges
 
+
 class GraphLibraryAPI(GraphAPI):
     """
     Base class for all graph library-based APIs.

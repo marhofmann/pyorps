@@ -156,8 +156,31 @@ class CostAssumptions:
         for encoding in encodings:
             try:
                 with open(filepath, 'r', encoding=encoding) as f:
-                    self.cost_assumptions = json.load(f)
-                return self.cost_assumptions
+                    data = json.load(f)
+
+                    # Check if it's the new format with metadata
+                    if isinstance(data, dict) and 'metadata' in data and 'cost_assumptions' in data:
+                        self.main_feature = data['metadata']['main_feature']
+                        self.side_features = data['metadata'].get('side_features', [])
+
+                        # Handle tuple keys if necessary
+                        if self.side_features:
+                            cost_dict = {}
+                            for key_str, value in data['cost_assumptions'].items():
+                                if "__" in key_str:
+                                    # Convert string representation back to tuple
+                                    tuple_key = tuple(key_str.split("__"))
+                                    cost_dict[tuple_key] = value
+                                else:
+                                    cost_dict[key_str] = value
+                            self.cost_assumptions = cost_dict
+                        else:
+                            self.cost_assumptions = data['cost_assumptions']
+                    else:
+                        # Legacy format - just a plain dictionary
+                        self.cost_assumptions = data
+
+                    return self.cost_assumptions
             except (UnicodeDecodeError, json.JSONDecodeError) as e:
                 last_error = e
                 continue
@@ -385,8 +408,29 @@ class CostAssumptions:
             indent: Number of spaces for indentation (default is 2)
             encoding: The encoding of the file (default is 'ISO-8859-1')
         """
+        # Create a structure that can be properly serialized to JSON
+        output_dict = {
+            'metadata': {
+                'main_feature': self.main_feature,
+                'side_features': self.side_features
+            },
+            'cost_assumptions': {}
+        }
+
+        # Convert the cost assumptions dictionary to a JSON-serializable format
+        if self.cost_assumptions:
+            first_key = next(iter(self.cost_assumptions))
+            if isinstance(first_key, tuple):
+                # Handle tuple keys by converting them to string representations
+                for key, value in self.cost_assumptions.items():
+                    key_str = "__".join(str(k) for k in key)
+                    output_dict['cost_assumptions'][key_str] = value
+            else:
+                # Regular keys can be directly serialized
+                output_dict['cost_assumptions'] = self.cost_assumptions
+
         with open(filepath, 'w', encoding=encoding) as f:
-            json.dump(self.cost_assumptions, f, indent=indent)
+            json.dump(output_dict, f, indent=indent)
 
     def to_excel(self, filepath: str, sheet_name: str = 'CostAssumptions', index: bool = False) -> None:
         """
@@ -458,7 +502,7 @@ def save_empty_cost_assumptions(geo_dataset: Any,
                                 main_feature: Optional[str] = None,
                                 side_features: Optional[list[str]] = None,
                                 file_type: str = 'csv',
-                                **kwargs) -> None:
+                                **kwargs) -> dict:
     """
     Generate and save empty cost assumptions with zero values for a geo dataset.
 
@@ -497,6 +541,7 @@ def save_empty_cost_assumptions(geo_dataset: Any,
         cost_assumptions.to_excel(save_path, **kwargs)
     else:
         raise TypeError("Parameter file_type must be 'json', 'csv' or 'excel'!")
+    return cost_assumptions.cost_assumptions
 
 
 def detect_feature_columns(gdf: GeoDataFrame, max_features_per_column: int = 50) -> tuple[str, list[str]]:
@@ -552,32 +597,15 @@ def _find_side_features(gdf: GeoDataFrame,
     Returns:
         list of side feature column names
     """
-    # Pre-defined list of known common side feature columns
-    known_side_features = ['bez', 'name', 'type', 'description', 'category', 'bezeichnung']
 
-    # First check if any known side feature columns exist in the data
-    # For these columns we'll use very relaxed criteria (allow up to 90% null values)
-    priority_candidates = [
-        col for col in columns
-        if col != main_feature and
-           col.lower() in [k.lower() for k in known_side_features] and
-           col in col_stats
-    ]
-
-    # For other columns use more standard criteria but still allow up to 70% nulls
+    # For all columns allow up to 70% nulls
     general_candidates = [
         col for col in col_stats
         if col != main_feature and
-           col not in priority_candidates and
            col_stats[col]['null_ratio'] <= 0.7
     ]
 
     side_features = []
-
-    # First add the priority candidates (like "bez") even if they have many nulls
-    for col in priority_candidates:
-        if _column_shows_relationship_to_main_feature(gdf, main_feature, col):
-            side_features.append(col)
 
     # Then process other candidates with stricter criteria
     for col in general_candidates:
