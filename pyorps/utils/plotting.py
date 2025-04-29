@@ -137,7 +137,7 @@ class PathPlotter:
 
         # Create the legend and finalize the plot
         self._create_legend(legend_ax, legend_handles, legend_labels)
-        self._finalize_plot(fig)
+        plt.show()
 
         # Return the axes objects
         return axes[0] if len(axes) == 1 else axes
@@ -246,7 +246,8 @@ class PathPlotter:
 
         # Create legend area
         legend_gs = gridspec.GridSpecFromSubplotSpec(1, 1, subplot_spec=outer_gs[1])
-        legend_ax = fig.add_subplot(legend_gs[0])
+        legend_rect = legend_gs[0].get_position(fig)
+        legend_ax = fig.add_axes((legend_rect.x0, legend_rect.y0, legend_rect.width, legend_rect.height))
         legend_ax.axis('off')  # Hide axis for the legend
 
         # Create axes for plots
@@ -560,16 +561,4 @@ class PathPlotter:
                 frameon=True  # Show a frame around the legend
             )
 
-    @staticmethod
-    def _finalize_plot(fig: Figure) -> None:
-        """
-        Finalize the plot settings and display it.
 
-        Args:
-            fig: Matplotlib figure to finalize
-        """
-        # Adjust layout to minimize whitespace and prevent overlap
-        fig.tight_layout(pad=0.5)
-
-        # Display the plot
-        plt.show()

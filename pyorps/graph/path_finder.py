@@ -45,7 +45,7 @@ def get_graph_api_class(graph_api: str):
     """
     graph_api_classes = {
         "networkit": ("pyorps.graph.api.networkit_api", "NetworkitAPI"),
-        "igraph": ("pyorps.graph.api.igraph_api", "IgraphAPI"),
+        "igraph": ("pyorps.graph.api.igraph_api", "IGraphAPI"),
         "rustworkx": ("pyorps.graph.api.rustworkx_api", "RustworkxAPI"),
         "networkx": ("pyorps.graph.api.networkx_api", "NetworkxAPI"),
         "cugraph": ("pyorps.graph.api.cugraph_api", "CugraphAPI"),
@@ -394,13 +394,13 @@ class PathFinder:
         # Calculate total runtime based on the graph API used
         if self.graph_api_name == "cython":
             self.runtimes["total"] = self.runtimes.get("raster_loading", 0) + \
-                                     self.runtimes["shortest_path"]
+                                     self.runtimes.get("shortest_path", 0.0)
         else:
             self.runtimes["total"] = self.runtimes.get("raster_loading", 0) + \
                                      self.runtimes.get("graph_creation", 0) + \
                                      self.runtimes.get("edge_construction", 0) + \
                                      self.runtimes.get("import_time_graph_api", 0) + \
-                                     self.runtimes["shortest_path"]
+                                     self.runtimes.get("shortest_path", 0.0)
 
         # Create path object using the Path dataclass
         path_id = len(self.paths)
@@ -637,3 +637,4 @@ class PathFinder:
             path_id=path_id,
             reverse_colors=reverse_colors
         )
+

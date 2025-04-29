@@ -1,25 +1,35 @@
-from typing import Optional
-
 # Third party
 import networkx as nx
-from numpy import concatenate
 
 # Project files
-from .graph_api import *
-from pyorps.graph.exceptions import AlgorthmNotImplementedError, NoPathFoundError
+from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError
+from .graph_library_api import *
 
 
-class NetworkxAPI(GraphAPI):
+class NetworkxAPI(GraphLibraryAPI):
 
-    def init_chunk_size(self, chunk_size: Optional[int] = None) -> int:
-        if chunk_size is None:
-            self.chunk_size = 0
+    def create_graph(self, from_nodes: ndarray[int], to_nodes: ndarray[int], cost: Optional[ndarray[int]] = None,
+                     **kwargs) -> Any:
+        """
+        Creates a graph object with the graph library specified in the selected interface.
+        :param from_nodes: The starting node indices from the edge data.
+        :param to_nodes: The ending node indices from the edge data.
+        :param cost: The weight of the edge data.
+        :param kwargs: Additional parameters for the underlying graph library.
+        :return: The graph object.
+        """
+        directed = kwargs.get('directed', False)
+        self.graph = nx.DiGraph() if directed else nx.Graph()
+
+        if cost is not None:
+            self.graph.add_weighted_edges_from(zip(from_nodes, to_nodes, cost))
         else:
-            self.chunk_size = chunk_size
-        return self.chunk_size
+            self.graph.add_edges_from(zip(from_nodes, to_nodes))
 
-    def get_graph(self):
-        return nx.Graph()
+        if kwargs.get('remove_isolated_nodes', False):
+            self.remove_isolates()
+
+        return self.graph
 
     def get_number_of_nodes(self):
         return self.graph.number_of_nodes()
@@ -27,36 +37,186 @@ class NetworkxAPI(GraphAPI):
     def get_number_of_edges(self):
         return self.graph.number_of_edges()
 
-    def add_edge(self, from_node, to_node, cost):
-        self.graph.add_edge(from_node, to_node, weight=cost)
-
-    def add_edges(self, from_nodes, to_nodes, cost):
-        self.graph.add_weighted_edges_from(zip(from_nodes, to_nodes, cost))
-
-    def get_graph_from_sparse_matrix(self, from_nodes, to_nodes, cost):
-        # make scipy optional dependency!
-        from scipy.sparse import coo_matrix
-        if self.undirected:
-            fn = concatenate([from_nodes, to_nodes])
-            tn = concatenate([to_nodes, from_nodes])
-            co = concatenate([cost, cost])
-        else:
-            fn, tn, co = from_nodes, to_nodes, cost
-        sparse_matrix = coo_matrix((co, (fn, tn)))
-        return nx.from_scipy_sparse_array(sparse_matrix)
-
     def remove_isolates(self):
         self.graph.remove_nodes_from(list(nx.isolates(self.graph)))
 
-    def shortest_path(self) -> list[int]:
-        if self.algorithm == "dijkstra":
-            return self.dijkstra_shortest_path()
-        else:
-            raise AlgorthmNotImplementedError(self.algorithm, self.__class__.__name__)
+    @staticmethod
+    def _ensure_path_endpoints(path, source, target):
+        """
+        Ensures the path starts with the source node and ends with the target node.
+        """
+        if len(path) > 0:
+            if path[0] != source:
+                path.insert(0, source)
+            if path[-1] != target:
+                path.append(target)
+        return path
 
-    def dijkstra_shortest_path(self):
+    def _compute_all_pairs_shortest_paths(self, sources, targets, algorithm, **kwargs):
+        """
+        Computes paths individually for each source-target pair using the specified algorithm.
+        Returns empty paths for unreachable targets.
+        """
+        paths = []
+        for source in sources:
+            for target in targets:
+                try:
+                    path = self._compute_single_path(source, target, algorithm, **kwargs)
+                    paths.append(path)
+                except NoPathFoundError:
+                    paths.append([])
+        return paths
+
+    def shortest_path(self, source_indices, target_indices, algorithm="dijkstra", **kwargs):
+        """
+        This method applies the specified shortest path algorithm on the created graph object and finds the shortest
+        path between source and target(s) as a list of node indices.
+
+        Parameters:
+        -----------
+        source_indices : int or list[int]
+            Index or indices of source node(s)
+        target_indices : int or list[int]
+            Index or indices of target node(s)
+        algorithm : str, default="dijkstra"
+            Algorithm to use for shortest path computation.
+            Options: "dijkstra", "bidirectional_dijkstra", "astar"
+        **kwargs:
+            pairwise : bool
+                If True, compute pairwise shortest paths between source_indices and target_indices.
+                Only allowed if len(source_indices) == len(target_indices)
+            heuristic : callable, optional
+                A function that takes two node indices (u, target) and returns an estimate of the distance
+                between them. Only used when algorithm="astar".
+
+        Returns:
+        --------
+        list[int] or list[list[int]]:
+            List of node indices representing the shortest path(s)
+        """
+        # Convert single indices to lists for uniform handling
+        if not isinstance(source_indices, (list, tuple, ndarray)):
+            source_indices = [source_indices]
+        if not isinstance(target_indices, (list, tuple, ndarray)):
+            target_indices = [target_indices]
+
+        # Check for pairwise computation
+        pairwise = kwargs.get('pairwise', False)
+        if pairwise:
+            if len(source_indices) != len(target_indices):
+                raise ValueError("Source and target lists must have the same length for pairwise computation")
+            return self._pairwise_shortest_path(source_indices, target_indices, algorithm)
+
+        # Single source, single target
+        if len(source_indices) == 1 and len(target_indices) == 1:
+            source = source_indices[0]
+            target = target_indices[0]
+            return self._compute_single_path(source, target, algorithm, **kwargs)
+
+        # Single source, multiple targets
+        elif len(source_indices) == 1:
+            source = source_indices[0]
+            return self._compute_single_source_multiple_targets(source, target_indices, algorithm, **kwargs)
+
+        # Multiple sources, multiple targets (all pairs)
+        else:
+            return self._all_pairs_shortest_path(source_indices, target_indices, algorithm, **kwargs)
+
+    def _compute_single_path(self, source, target, algorithm, **kwargs):
+        """
+        Computes shortest path between a single source and target using the specified algorithm.
+        """
         try:
-            node_path = nx.dijkstra_path(self.graph, self.source, self.target)
+            if algorithm == "dijkstra":
+                path = nx.dijkstra_path(self.graph, source, target, weight='weight')
+
+            elif algorithm == "bidirectional_dijkstra":
+                _, path = nx.bidirectional_dijkstra(self.graph, source, target, weight='weight')
+
+            elif algorithm == "astar":
+                heuristic = kwargs.get('heuristic', None)
+                if heuristic is None:
+                    raise ValueError("A heuristic must be specified for A* algorithm!")
+
+                path = nx.astar_path(self.graph, source, target, heuristic, weight='weight')
+
+            else:
+                raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
+
         except nx.NetworkXNoPath:
-            raise NoPathFoundError(self.source, self.target)
-        return node_path
+            raise NoPathFoundError(source=source, target=target)
+
+        path = self._ensure_path_endpoints(path, source, target)
+        return path
+
+    def _compute_single_source_multiple_targets(self, source, targets, algorithm, **kwargs):
+        """
+        Computes shortest paths from a single source to multiple targets.
+        """
+        paths = []
+
+        if algorithm == "dijkstra":
+            # Use single-source Dijkstra for efficiency
+            lengths, paths_dict = nx.single_source_dijkstra(self.graph, source, weight='weight')
+
+            for target in targets:
+                if target in paths_dict:
+                    path = paths_dict[target]
+                    path = self._ensure_path_endpoints(path, source, target)
+                    paths.append(path)
+                else:
+                    paths.append([])
+
+            return paths
+
+        elif algorithm in ["bidirectional_dijkstra", "astar"]:
+            # Run individual algorithm for each target
+            for target in targets:
+                try:
+                    path = self._compute_single_path(source, target, algorithm, **kwargs)
+                    paths.append(path)
+                except NoPathFoundError:
+                    paths.append([])
+            return paths
+
+        else:
+            raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
+
+    def _pairwise_shortest_path(self, sources, targets, algorithm, **kwargs):
+        """
+        Computes pairwise shortest paths between corresponding sources and targets.
+        """
+        paths = []
+        for source, target in zip(sources, targets):
+            try:
+                path = self._compute_single_path(source, target, algorithm, **kwargs)
+                paths.append(path)
+            except NoPathFoundError:
+                paths.append([])
+
+        return paths
+
+    def _all_pairs_shortest_path(self, sources, targets, algorithm, **kwargs):
+        """
+        Computes shortest paths between all pairs of sources and targets.
+        """
+        if algorithm == "dijkstra":
+            paths = []
+
+            # For each source, compute paths to all targets
+            for source in sources:
+                lengths, paths_dict = nx.single_source_dijkstra(self.graph, source, weight='weight')
+
+                for target in targets:
+                    if target in paths_dict:
+                        path = paths_dict[target]
+                        path = self._ensure_path_endpoints(path, source, target)
+                        paths.append(path)
+                    else:
+                        paths.append([])
+
+            return paths
+
+        else:
+            # For other algorithms, compute each path individually
+            return self._compute_all_pairs_shortest_paths(sources, targets, algorithm, **kwargs)

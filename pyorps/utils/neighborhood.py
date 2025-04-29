@@ -48,6 +48,8 @@ def _generate_full_steps(k, memo):
     if k in memo:
         return memo[k]
 
+    k = int(k)
+
     if k == 0:
         # R_0: cardinal directions
         steps = {(1, 0), (0, 1), (-1, 0), (0, -1)}

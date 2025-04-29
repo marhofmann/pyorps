@@ -238,6 +238,13 @@ def initialize_geo_dataset(file_source: InputDataType,
 
 def _determine_data_type(file_source: Any) -> str:
     """Determine whether the input is for a vector or raster dataset."""
+    # Check if it's already a GeoDataset subclass
+    if isinstance(file_source, GeoDataset):
+        if isinstance(file_source, VectorDataset):
+            return "vector"
+        elif isinstance(file_source, RasterDataset):
+            return "raster"
+
     # Check for in-memory vector data
     if isinstance(file_source, (gpd.GeoDataFrame, gpd.GeoSeries)):
         return "vector"

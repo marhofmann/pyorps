@@ -12,7 +12,7 @@ from pyorps.io.geo_dataset import (
     LocalRasterDataset, InMemoryRasterDataset,
     initialize_geo_dataset, _determine_data_type, _create_vector_dataset, _create_raster_dataset
 )
-from tests.test_io.test_helpers import GeoTestCase
+from .test_helpers import GeoTestCase
 
 
 class TestGeoDatasetAbstractBase(unittest.TestCase):
@@ -489,6 +489,3 @@ class TestFactoryFunctions(GeoTestCase):
         with self.assertRaises(ValueError):
             _create_raster_dataset(123)
 
-
-if __name__ == "__main__":
-    unittest.main()

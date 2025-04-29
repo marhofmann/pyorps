@@ -1,6 +1,8 @@
 """
 Exceptions for CostAssumptions
 """
+
+
 class CostAssumptionsError(Exception):
     """Base exception for CostAssumptions class."""
     pass
@@ -39,6 +41,8 @@ class ColumnAnalysisError(FeatureColumnError):
 """
 Exceptions for vector_loader
 """
+
+
 class WFSError(Exception):
     """Base exception for WFS-related errors."""
     pass

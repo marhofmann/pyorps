@@ -3,7 +3,7 @@ import geopandas as gpd
 import rasterio as rio
 from rasterio.features import rasterize, geometry_mask
 from shapely.geometry import Polygon, box
-from typing import Union, Dict, List, Optional, Tuple, Any, TypeAlias
+from typing import Union, Optional, Any
 from copy import deepcopy
 
 # Changed to relative imports from other modules
@@ -232,7 +232,7 @@ class GeoRasterizer:
         - bounding_box: Bounding box to define the rasterization extent
 
         Returns:
-        - Tuple of (raster_data, transform)
+        - tuple of (raster_data, transform)
         """
         if self.base_data.shape[0] == 0:
             raise ValueError("Base data is empty - nothing to rasterize!")
@@ -317,7 +317,7 @@ class GeoRasterizer:
         return self.raster_dataset
 
     def _calculate_out_shape_from_bounding_box(self, bounding_box: Polygon,
-                                               resolution_m2: float = 1.0) -> Tuple[int, int]:
+                                               resolution_m2: float = 1.0) -> tuple[int, int]:
         """
         Calculate the output shape (rows, columns) based on a bounding box and resolution.
 
@@ -326,7 +326,7 @@ class GeoRasterizer:
         - resolution_m2: The resolution in square meters
 
         Returns:
-        - Tuple of (rows, columns) representing the output shape
+        - tuple of (rows, columns) representing the output shape
         """
         # Calculate the bounding box dimensions
         bounds = bounding_box.bounds  # (minx, miny, maxx, maxy)
@@ -340,7 +340,7 @@ class GeoRasterizer:
 
     def _calculate_out_shape_from_geodataframe(self, gdf: gpd.GeoDataFrame,
                                                resolution_m2: float = 1.0,
-                                               bounding_box: Optional[Polygon] = None) -> Tuple[int, int]:
+                                               bounding_box: Optional[Polygon] = None) -> tuple[int, int]:
         """
         Calculate the output shape (rows, columns) based on a GeoDataFrame and resolution.
 
@@ -350,7 +350,7 @@ class GeoRasterizer:
         - bounding_box: Optional bounding box defining the output shape
 
         Returns:
-        - Tuple of (rows, columns) representing the output shape
+        - tuple of (rows, columns) representing the output shape
         """
         # Ensure the GeoDataFrame is in a projected CRS that uses meters
         if gdf.crs.is_geographic:
@@ -384,7 +384,7 @@ class GeoRasterizer:
         - total_area_m2: Total area in square meters
 
         Returns:
-        - Tuple of (rows, columns)
+        - tuple of (rows, columns)
         """
         # Calculate the aspect ratio
         aspect_ratio = width / height if height != 0 else 1.0
@@ -527,7 +527,7 @@ class GeoRasterizer:
                     multiply=multiply
                 )
         else:
-            if isinstance(cost_assumptions, str) or isinstance(cost_assumptions, Dict):
+            if isinstance(cost_assumptions, str) or isinstance(cost_assumptions, dict):
                 ca = CostAssumptions(source=cost_assumptions)
             else:
                 ca = cost_assumptions

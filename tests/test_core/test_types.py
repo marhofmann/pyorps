@@ -63,6 +63,3 @@ class TestTypes(unittest.TestCase):
         bbox_tuple: BboxType = (0, 0, 1, 1)
         self.assertEqual(bbox_tuple, (0, 0, 1, 1))
 
-
-if __name__ == '__main__':
-    unittest.main()

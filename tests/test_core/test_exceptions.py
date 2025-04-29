@@ -37,7 +37,3 @@ class TestExceptions(unittest.TestCase):
         # AlgorthmNotImplementedError
         error = AlgorthmNotImplementedError("dijkstra", "networkx")
         self.assertIn("Algorithm dijkstra for networkx not supported", str(error))
-
-
-if __name__ == '__main__':
-    unittest.main()

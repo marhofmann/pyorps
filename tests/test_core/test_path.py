@@ -176,7 +176,3 @@ class TestPathCollection(unittest.TestCase):
         self.assertEqual(len(all_paths), 2)
         self.assertIn(self.path1, all_paths)
         self.assertIn(self.path2, all_paths)
-
-
-if __name__ == '__main__':
-    unittest.main()

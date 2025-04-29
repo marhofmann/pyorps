@@ -309,7 +309,7 @@ class RustworkxAPI(GraphLibraryAPI):
         if pairwise:
             if len(source_indices) != len(target_indices):
                 raise ValueError("Source and target lists must have the same length for pairwise computation")
-            return self._pairwise_shortest_path(source_indices, target_indices, algorithm, **kwargs)
+            return self._pairwise_shortest_path(source_indices, target_indices, algorithm)
 
         # Single source, single target
         if len(source_indices) == 1 and len(target_indices) == 1:

@@ -231,7 +231,3 @@ class TestCostAssumptions(unittest.TestCase):
             # Clean up
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
-
-
-if __name__ == '__main__':
-    unittest.main()
