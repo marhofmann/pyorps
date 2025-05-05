@@ -43,12 +43,8 @@ class TestRustworkxAPI(unittest.TestCase):
                 pass
 
             def create_graph(self, from_nodes, to_nodes, cost=None, **kwargs):
-                # Record call parameters to verify proper calculations
-                if (n := kwargs.get('n', None)) is not None:
-                    self.n_value = n - 1  # Max node index
-                else:
-                    # Calculate max_node as in the original method
-                    self.n_value = np.max([np.max(from_nodes), np.max(to_nodes)])
+                # Calculate max_node as in the original method
+                self.n_value = np.max([np.max(from_nodes), np.max(to_nodes)])
 
                 # Record that we were called with the expected parameters
                 self.create_graph_called = True
@@ -240,3 +236,40 @@ class TestRustworkxAPI(unittest.TestCase):
             # Verify _all_pairs_shortest_path was called correctly
             mock_all_pairs.assert_called_once_with([0, 1], [2, 5, 7], "dijkstra")
             self.assertEqual(result, paths)
+
+    def test_get_nodes(self):
+        """Test get_nodes method."""
+        # Set up mock to return nodes
+        self.mock_graph_instance.nodes.return_value = [0, 1, 2, 3, 4, 5]
+
+        # Call the method
+        nodes = self.api.get_nodes()
+
+        # Verify the result
+        self.assertEqual(nodes, [0, 1, 2, 3, 4, 5])
+        self.mock_graph_instance.nodes.assert_called_once()
+
+    def test_get_a_star_heuristic(self):
+        """Test the get_a_star_heuristic method."""
+        # Configure mock to return list of nodes
+        self.mock_graph_instance.nodes.return_value = [0, 1, 2, 3, 4, 5]
+
+        # Call get_a_star_heuristic
+        target_node = 5  # Example target node
+        nodes, heuristic = self.api.get_a_star_heuristic(target_node)
+
+        # Verify the returned nodes are correct
+        self.assertEqual(len(nodes), 6)
+        self.assertEqual(list(nodes), [0, 1, 2, 3, 4, 5])
+
+        # Verify the heuristic for the target node is zero (or very close)
+        target_index = list(nodes).index(target_node)
+        self.assertAlmostEqual(heuristic[target_index], 0.0)
+
+        # Test with heuristic weight
+        nodes_weighted, heuristic_weighted = self.api.get_a_star_heuristic(target_node, heu_weight=2.0)
+
+        # Verify the weighted heuristic is twice the original
+        for i in range(len(heuristic)):
+            self.assertAlmostEqual(heuristic_weighted[i], heuristic[i] * 2.0)
+

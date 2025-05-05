@@ -1,3 +1,5 @@
+from typing import Union
+
 # Third party
 import networkx as nx
 
@@ -8,7 +10,8 @@ from .graph_library_api import *
 
 class NetworkxAPI(GraphLibraryAPI):
 
-    def create_graph(self, from_nodes: ndarray[int], to_nodes: ndarray[int], cost: Optional[ndarray[int]] = None,
+    def create_graph(self, from_nodes: np.ndarray[int], to_nodes: np.ndarray[int],
+                     cost: Optional[np.ndarray[int]] = None,
                      **kwargs) -> Any:
         """
         Creates a graph object with the graph library specified in the selected interface.
@@ -39,6 +42,15 @@ class NetworkxAPI(GraphLibraryAPI):
 
     def remove_isolates(self):
         self.graph.remove_nodes_from(list(nx.isolates(self.graph)))
+
+    def get_nodes(self) -> Union[list[int], np.ndarray[int]]:
+        """
+        This method returns the nodes in the graph as a list or numpy array of node indices.
+
+        :return: list[int]
+            The list of node indices of the nodes in the graph
+        """
+        return list(self.graph)
 
     @staticmethod
     def _ensure_path_endpoints(path, source, target):
@@ -95,9 +107,9 @@ class NetworkxAPI(GraphLibraryAPI):
             List of node indices representing the shortest path(s)
         """
         # Convert single indices to lists for uniform handling
-        if not isinstance(source_indices, (list, tuple, ndarray)):
+        if not isinstance(source_indices, (list, tuple, np.ndarray)):
             source_indices = [source_indices]
-        if not isinstance(target_indices, (list, tuple, ndarray)):
+        if not isinstance(target_indices, (list, tuple, np.ndarray)):
             target_indices = [target_indices]
 
         # Check for pairwise computation
@@ -134,11 +146,16 @@ class NetworkxAPI(GraphLibraryAPI):
                 _, path = nx.bidirectional_dijkstra(self.graph, source, target, weight='weight')
 
             elif algorithm == "astar":
-                heuristic = kwargs.get('heuristic', None)
-                if heuristic is None:
-                    raise ValueError("A heuristic must be specified for A* algorithm!")
+                heuristic_function = kwargs.get('heu', None)
 
-                path = nx.astar_path(self.graph, source, target, heuristic, weight='weight')
+                if heuristic_function is None:
+                    nodes, heuristic = self.get_a_star_heuristic(target, **kwargs)
+                    heuristic_dict = dict(zip(nodes, heuristic))
+
+                    def heuristic_function(node, _target):
+                        return heuristic_dict[node]
+
+                path = nx.astar_path(self.graph, source, target, heuristic_function, weight='weight')
 
             else:
                 raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
@@ -205,15 +222,10 @@ class NetworkxAPI(GraphLibraryAPI):
 
             # For each source, compute paths to all targets
             for source in sources:
-                lengths, paths_dict = nx.single_source_dijkstra(self.graph, source, weight='weight')
-
                 for target in targets:
-                    if target in paths_dict:
-                        path = paths_dict[target]
-                        path = self._ensure_path_endpoints(path, source, target)
-                        paths.append(path)
-                    else:
-                        paths.append([])
+                    _, path = nx.single_source_dijkstra(self.graph, source, target, weight='weight')
+                    path = self._ensure_path_endpoints(path, source, target)
+                    paths.append(path)
 
             return paths
 

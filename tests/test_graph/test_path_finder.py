@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import patch, MagicMock
 import numpy as np
@@ -679,6 +680,11 @@ class TestPathFinder(unittest.TestCase):
         path_finder.save_paths(self.test_output_path)
         mock_gdf.to_file.assert_called_once_with(self.test_output_path)
 
+        # Test with path_gdf set to None
+        path_finder.path_gdf = None
+        path_finder.save_paths(self.test_output_path)
+        self.assertIsNotNone(path_finder.path_gdf)
+
     @patch("pyorps.graph.path_finder.initialize_geo_dataset")
     @patch("pyorps.graph.path_finder.RasterHandler")
     def test_save_raster(self, mock_raster_handler, mock_initialize_geo_dataset):
@@ -856,13 +862,141 @@ class TestPathFinder(unittest.TestCase):
             mock_path_collection = MagicMock()
 
             with patch("pyorps.graph.path_finder.PathCollection", return_value=mock_path_collection):
-                result = path_finder.plot_paths(paths=test_path)
+                path_finder.plot_paths(paths=test_path)
 
                 # Check that PathCollection.add was called with the test path
+                # For a single Path object, the implementation doesn't use replace=False
                 mock_path_collection.add.assert_called_once_with(test_path)
 
-                # Check that PathPlotter was initialized with the mock collection
+                # Reset mock
+                mock_path_collection.reset_mock()
+
+            test_path2 = Path(
+                source=(500100, 5600100),
+                target=(500200, 5600200),
+                algorithm="dijkstra",
+                graph_api="networkit",
+                path_indices=np.array([303, 403, 503]),
+                path_coords=np.array([[500100, 5600100], [500150, 5600150], [500200, 5600200]]),
+                path_geometry=LineString([[500100, 5600100], [500150, 5600150], [500200, 5600200]]),
+                euclidean_distance=141.42,
+                runtimes={},
+                path_id=2
+            )
+
+            with patch("pyorps.graph.path_finder.PathCollection", return_value=mock_path_collection):
+                test_paths = [test_path, test_path2]
+                path_finder.plot_paths(paths=test_paths)
+                # For paths from a list, the implementation explicitly passes replace=False
+                mock_path_collection.add.assert_called_with(test_path2, replace=False)
+
+                # Reset path plotter mock before testing plot_paths with a path collection
+                mock_path_plotter_class.reset_mock()
+                mock_path_plotter.plot_paths.reset_mock()
+
+                # Test with PathCollection
+                path_collection = PathCollection()
+                path_collection.add(test_path)
+                path_finder.plot_paths(paths=path_collection)
                 mock_path_plotter_class.assert_called_once_with(
-                    paths=mock_path_collection,
+                    paths=path_collection,
                     raster_handler=path_finder.raster_handler
                 )
+
+    def test_path_collection_replace(self):
+        """Test the PathCollection replace functionality."""
+        # Create PathFinder
+        with patch("pyorps.graph.path_finder.initialize_geo_dataset") as mock_initialize_geo_dataset:
+            mock_initialize_geo_dataset.return_value = self.mock_raster_dataset
+
+            path_finder = PathFinder(
+                self.mock_raster_dataset,
+                self.source_coords,
+                self.target_coords,
+                graph_api="networkit"
+            )
+
+            # Create a test path with ID=5
+            path1 = Path(
+                source=self.source_coords,
+                target=self.target_coords,
+                algorithm="dijkstra",
+                graph_api="networkit",
+                path_indices=np.array([0, 1, 2]),
+                path_coords=np.array([[500000, 5600000], [500001, 5600001], [500002, 5600002]]),
+                path_geometry=LineString([[500000, 5600000], [500001, 5600001], [500002, 5600002]]),
+                euclidean_distance=100.0,
+                runtimes={},
+                path_id=5
+            )
+
+            # Add path with replace=False (should assign a new ID)
+            path_finder.paths.add(path1, replace=False)
+            self.assertEqual(path_finder.paths.get(0), path1)
+            self.assertEqual(path1.path_id, 0)  # ID was reassigned
+
+            # Create another path with ID=5
+            path2 = Path(
+                source=(500010, 5600010),
+                target=(500020, 5600020),
+                algorithm="astar",
+                graph_api="networkit",
+                path_indices=np.array([10, 11, 12]),
+                path_coords=np.array([[500010, 5600010], [500015, 5600015], [500020, 5600020]]),
+                path_geometry=LineString([[500010, 5600010], [500015, 5600015], [500020, 5600020]]),
+                euclidean_distance=50.0,
+                runtimes={},
+                path_id=5
+            )
+
+            # Add path with replace=True (should keep ID=5)
+            path_finder.paths.add(path2, replace=True)
+            self.assertEqual(path_finder.paths.get(5), path2)
+            self.assertEqual(path2.path_id, 5)  # ID was preserved
+
+            # Create a third path with ID=3
+            path3 = Path(
+                source=(500030, 5600030),
+                target=(500040, 5600040),
+                algorithm="bellman-ford",
+                graph_api="networkit",
+                path_indices=np.array([30, 31, 32]),
+                path_coords=np.array([[500030, 5600030], [500035, 5600035], [500040, 5600040]]),
+                path_geometry=LineString([[500030, 5600030], [500035, 5600035], [500040, 5600040]]),
+                euclidean_distance=40.0,
+                runtimes={},
+                path_id=3
+            )
+
+            # Add path with replace=True (should keep ID=3)
+            path_finder.paths.add(path3, replace=True)
+            self.assertEqual(path_finder.paths.get(3), path3)
+            self.assertEqual(path3.path_id, 3)
+
+            # Create a fourth path with an existing ID and replace=False (should reassign ID)
+            path4 = Path(
+                source=(500050, 5600050),
+                target=(500060, 5600060),
+                algorithm="dijkstra",
+                graph_api="networkit",
+                path_indices=np.array([50, 51, 52]),
+                path_coords=np.array([[500050, 5600050], [500055, 5600055], [500060, 5600060]]),
+                path_geometry=LineString([[500050, 5600050], [500055, 5600055], [500060, 5600060]]),
+                euclidean_distance=30.0,
+                runtimes={},
+                path_id=5  # Same as path2
+            )
+
+            # Add path with replace=False (should assign a new ID, not replace path2)
+            path_finder.paths.add(path4, replace=False)
+            self.assertEqual(path_finder.paths.get(6), path4)
+            self.assertEqual(path4.path_id, 6)  # ID was reassigned
+
+            # Check that path2 still exists with ID=5
+            self.assertEqual(path_finder.paths.get(5), path2)
+
+            # Check that the next_id counter was updated correctly
+            self.assertEqual(path_finder.paths._next_id, 7)
+
+            # Check total number of paths
+            self.assertEqual(len(path_finder.paths), 4)

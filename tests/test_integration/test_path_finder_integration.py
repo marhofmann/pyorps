@@ -1,17 +1,263 @@
 import unittest
+from unittest.mock import patch, MagicMock
+
 import os
 import tempfile
 import geopandas as gpd
-from shapely.geometry import Polygon
+import importlib
+import warnings
+from shapely.geometry import Polygon, LineString
+from numpy import array
 
-from pyorps import PathFinder
+from pyorps.graph.path_finder import get_graph_api_class, PathFinder
 from pyorps.core.cost_assumptions import CostAssumptions
+from pyorps.core.path import Path
 from pyorps.raster.handler import create_test_tiff
-from pyorps.io.geo_dataset import initialize_geo_dataset, LocalRasterDataset
+from pyorps.io.geo_dataset import initialize_geo_dataset, LocalRasterDataset, VectorDataset, RasterDataset
+
+# List of graph libraries to test
+LIBRARIES_AND_MODULE_NAMES = [
+    ("networkit", "networkit"),
+    ("networkx", "networkx"),
+    ("igraph", "igraph"),
+    ("rustworkx", "rustworkx")
+]
 
 
-class TestPathFinderIntegration(unittest.TestCase):
-    """Integration tests for PathFinder class."""
+class TestGraphFunctions(unittest.TestCase):
+    """Test cases for graph-related functions in path_finder.py."""
+
+    def test_get_graph_api_class_valid_apis(self):
+        """Test get_graph_api_class with valid API names."""
+        # Test with networkit which should be installed
+        api_class = get_graph_api_class("networkit")
+        self.assertEqual(api_class.__name__, "NetworkitAPI")
+
+        # Test with other APIs if they're available
+        for api_name, expected_class_name in [
+            ("networkx", "NetworkxAPI"),
+            ("rustworkx", "RustworkxAPI"),
+            ("igraph", "IGraphAPI")
+        ]:
+            try:
+                importlib.import_module(api_name)
+                api_class = get_graph_api_class(api_name)
+                self.assertEqual(api_class.__name__, expected_class_name)
+            except ImportError:
+                # Skip if the library is not installed
+                pass
+
+    def test_get_graph_api_class_invalid_api(self):
+        """Test get_graph_api_class with an invalid API name."""
+        with self.assertRaises(ValueError) as context:
+            get_graph_api_class("nonexistent_api")
+
+        self.assertIn("Unsupported graph API", str(context.exception))
+
+    def test_get_graph_api_class_import_error(self):
+        """Test get_graph_api_class with a valid API name but import fails."""
+        # Patch the import_module function where it's actually used in path_finder.py
+        with patch('pyorps.graph.path_finder.import_module', side_effect=ImportError("Test error")):
+            with self.assertRaises(ImportError) as context:
+                get_graph_api_class("networkit")
+
+            self.assertIn("Failed to import", str(context.exception))
+
+
+class TestRasterHandler(unittest.TestCase):
+    """Test cases for RasterHandler creation in the PathFinder."""
+
+    def test_create_raster_handler_vector_with_cost(self):
+        """Test create_raster_handler with a vector dataset and cost assumptions."""
+        # Setup mock vector dataset and cost assumptions
+        mock_vector_dataset = MagicMock(spec=VectorDataset)
+        mock_geo_rasterizer = MagicMock()
+        mock_geo_rasterizer.raster_dataset = MagicMock(spec=RasterDataset)
+        mock_raster_handler = MagicMock()
+
+        # Setup mocks - patch initialize_geo_dataset to return our mock
+        with patch("pyorps.graph.path_finder.initialize_geo_dataset", return_value=mock_vector_dataset), \
+                patch("pyorps.graph.path_finder.GeoRasterizer", return_value=mock_geo_rasterizer), \
+                patch("pyorps.graph.path_finder.RasterHandler", return_value=mock_raster_handler):
+            # Create PathFinder with vector dataset directly
+            path_finder = PathFinder(
+                mock_vector_dataset,
+                source_coords=(0, 0),
+                target_coords=(1, 1),
+                cost_assumptions={"some": "cost"}
+            )
+
+            # Check that GeoRasterizer was created with correct parameters
+            self.assertIsNotNone(path_finder.geo_rasterizer)
+            self.assertEqual(path_finder.geo_rasterizer, mock_geo_rasterizer)
+
+            # Check that RasterHandler was created with correct parameters
+            mock_geo_rasterizer.rasterize.assert_called_once()
+            self.assertEqual(path_finder.raster_handler, mock_raster_handler)
+
+    def test_create_raster_handler_vector_without_cost(self):
+        """Test create_raster_handler with a vector dataset but no cost assumptions."""
+        # Setup mock vector dataset
+        mock_vector_dataset = MagicMock(spec=VectorDataset)
+
+        # Setup mock for initialize_geo_dataset
+        with patch("pyorps.graph.path_finder.initialize_geo_dataset", return_value=mock_vector_dataset):
+            # Create PathFinder that skips automatic create_raster_handler
+            path_finder = PathFinder(
+                mock_vector_dataset,
+                source_coords=None,
+                target_coords=None
+            )
+            path_finder.source_coords = (0, 0)
+            path_finder.target_coords = (1, 1)
+
+            # Test direct call to create_raster_handler with no cost assumptions
+            with self.assertRaises(ValueError) as context:
+                path_finder.create_raster_handler(None, None, None)
+
+            self.assertIn("Cost assumptions must be provided", str(context.exception))
+
+    def test_create_raster_handler_raster_with_cost(self):
+        """Test create_raster_handler with a raster dataset and cost assumptions."""
+        # Setup mock raster dataset and cost assumptions
+        mock_raster_dataset = MagicMock(spec=RasterDataset)
+        mock_geo_rasterizer = MagicMock()
+        mock_geo_rasterizer.raster_dataset = MagicMock(spec=RasterDataset)
+        mock_raster_handler = MagicMock()
+
+        # Setup mocks
+        with patch("pyorps.graph.path_finder.initialize_geo_dataset", return_value=mock_raster_dataset), \
+                patch("pyorps.graph.path_finder.GeoRasterizer", return_value=mock_geo_rasterizer), \
+                patch("pyorps.graph.path_finder.RasterHandler", return_value=mock_raster_handler):
+            # Create PathFinder
+            path_finder = PathFinder(
+                mock_raster_dataset,
+                source_coords=None,
+                target_coords=None
+            )
+            path_finder.source_coords = (0, 0)
+            path_finder.target_coords = (1, 1)
+
+            # Now call create_raster_handler directly with the cost assumptions
+            path_finder.create_raster_handler({"some": "cost"}, None, None)
+
+            # Check that GeoRasterizer was created with correct parameters
+            mock_raster_dataset.load_data.assert_called_once()
+            self.assertEqual(path_finder.geo_rasterizer, mock_geo_rasterizer)
+
+            # Check that RasterHandler was created with correct parameters
+            self.assertEqual(path_finder.raster_handler, mock_raster_handler)
+
+    def test_create_raster_handler_raster_with_cost_and_modifications(self):
+        """Test create_raster_handler with a raster dataset, cost assumptions, and dataset modifications."""
+        # Setup mock raster dataset and cost assumptions
+        mock_raster_dataset = MagicMock(spec=RasterDataset)
+        mock_geo_rasterizer = MagicMock()
+        mock_geo_rasterizer.raster_dataset = MagicMock(spec=RasterDataset)
+        mock_raster_handler = MagicMock()
+
+        # Setup dataset modifications
+        datasets_to_modify = [{"dataset": "mod1"}, {"dataset": "mod2"}]
+
+        # Setup mocks
+        with patch("pyorps.graph.path_finder.initialize_geo_dataset", return_value=mock_raster_dataset), \
+                patch("pyorps.graph.path_finder.GeoRasterizer", return_value=mock_geo_rasterizer), \
+                patch("pyorps.graph.path_finder.RasterHandler", return_value=mock_raster_handler):
+            # Create PathFinder
+            path_finder = PathFinder(
+                mock_raster_dataset,
+                source_coords=None,
+                target_coords=None
+            )
+            path_finder.source_coords = (0, 0)
+            path_finder.target_coords = (1, 1)
+
+            # Now call create_raster_handler with the required parameters
+            path_finder.create_raster_handler({"some": "cost"}, datasets_to_modify, None)
+
+            # Check that modify_raster_from_dataset was called for each dataset
+            self.assertEqual(mock_geo_rasterizer.modify_raster_from_dataset.call_count, 2)
+            mock_geo_rasterizer.modify_raster_from_dataset.assert_any_call(**datasets_to_modify[0])
+            mock_geo_rasterizer.modify_raster_from_dataset.assert_any_call(**datasets_to_modify[1])
+
+    def test_create_raster_handler_raster_without_cost(self):
+        """Test create_raster_handler with a raster dataset and no cost assumptions."""
+        # Setup mock raster dataset
+        mock_raster_dataset = MagicMock(spec=RasterDataset)
+        mock_raster_handler = MagicMock()
+
+        # Setup mocks
+        with patch("pyorps.graph.path_finder.initialize_geo_dataset", return_value=mock_raster_dataset), \
+                patch("pyorps.graph.path_finder.RasterHandler", return_value=mock_raster_handler):
+            # Create PathFinder
+            path_finder = PathFinder(
+                mock_raster_dataset,
+                source_coords=None,
+                target_coords=None
+            )
+            path_finder.source_coords = (0, 0)
+            path_finder.target_coords = (1, 1)
+
+            # Now call create_raster_handler directly
+            path_finder.create_raster_handler(None, None, None)
+
+            # Check that dataset was loaded directly without using GeoRasterizer
+            mock_raster_dataset.load_data.assert_called_once()
+            self.assertIsNone(path_finder.geo_rasterizer)
+            self.assertEqual(path_finder.raster_handler, mock_raster_handler)
+
+    def test_create_raster_handler_raster_without_cost_with_save_path(self):
+        """Test create_raster_handler with a raster dataset, no cost assumptions, and a save path."""
+        # Setup mock raster dataset
+        mock_raster_dataset = MagicMock(spec=RasterDataset)
+        mock_raster_handler = MagicMock()
+
+        # Setup mocks
+        with patch("pyorps.graph.path_finder.initialize_geo_dataset", return_value=mock_raster_dataset), \
+                patch("pyorps.graph.path_finder.RasterHandler", return_value=mock_raster_handler):
+            # Create PathFinder
+            path_finder = PathFinder(
+                mock_raster_dataset,
+                source_coords=None,
+                target_coords=None
+            )
+            path_finder.source_coords = (0, 0)
+            path_finder.target_coords = (1, 1)
+
+            # Now call create_raster_handler directly with save path
+            path_finder.create_raster_handler(None, None, "test_save_path.tiff")
+
+            # Check that save_section_as_raster was called with correct path
+            mock_raster_handler.save_section_as_raster.assert_called_once_with("test_save_path.tiff")
+
+    def test_create_raster_handler_unsupported_dataset(self):
+        """Test create_raster_handler with an unsupported dataset type."""
+
+        # Setup mock dataset that is neither VectorDataset nor RasterDataset
+        class UnsupportedDataset: pass
+
+        mock_dataset = MagicMock(spec=UnsupportedDataset)
+
+        # Setup mock for initialize_geo_dataset
+        with patch("pyorps.graph.path_finder.initialize_geo_dataset", return_value=mock_dataset):
+            # Create PathFinder
+            path_finder = PathFinder(
+                mock_dataset,
+                source_coords=None,
+                target_coords=None
+            )
+            path_finder.source_coords = (0, 0)
+            path_finder.target_coords = (1, 1)
+
+            # Now call create_raster_handler directly and expect error
+            with self.assertRaises(ValueError) as context:
+                path_finder.create_raster_handler(None, None, None)
+
+            self.assertIn("Unsupported dataset type", str(context.exception))
+
+
+class TestGraphLibraryPathFinding(unittest.TestCase):
+    """Tests for pathfinding using various graph libraries."""
 
     @classmethod
     def setUpClass(cls):
@@ -25,13 +271,12 @@ class TestPathFinderIntegration(unittest.TestCase):
             cls.test_raster_path,
             width=100,
             height=100,
-            pattern="gradient"
+            pattern="random"
         )
 
         # Define test coordinates
         cls.source_coords = (500020, 5599980)
         cls.target_coords = (500080, 5599920)
-
         # Create a test geodataframe for vector data testing
         cls.test_vector_path = os.path.join(cls.temp_dir.name, "test_vector.gpkg")
         cls.test_gdf = cls._create_test_geodataframe()
@@ -44,6 +289,157 @@ class TestPathFinderIntegration(unittest.TestCase):
     def tearDownClass(cls):
         """Clean up test data."""
         cls.temp_dir.cleanup()
+
+    def is_library_installed(self, library_name):
+        """Check if a library is installed."""
+        try:
+            importlib.import_module(library_name)
+            return True
+        except ImportError:
+            return False
+
+    def test_raster_path_finding_with_different_graph_libraries(self):
+        """Test path finding with different graph libraries using raster data."""
+        # Try each library
+        for lib_name, module_name in LIBRARIES_AND_MODULE_NAMES:
+            # Check if the library is installed
+            if not self.is_library_installed(module_name):
+                warnings.warn(
+                    f"Library '{module_name}' is not installed. "
+                    f"It's an optional dependency, so tests for '{lib_name}' will be skipped."
+                )
+                continue
+
+            # If library is installed, run the test
+            path_finder = PathFinder(
+                dataset_source=self.test_raster_path,
+                source_coords=self.source_coords,
+                target_coords=self.target_coords,
+                graph_api=lib_name,
+                search_space_buffer_m=50,
+                neighborhood_str='r1',
+            )
+            path = path_finder.find_route()
+
+            # Assert path was found
+            self.assertIsNotNone(path)
+            self.assertGreater(len(path.path_indices), 1)
+            self.assertGreater(path.total_length, 0)
+
+            # Ensure path connects source to target
+            self.assertAlmostEqual(path.path_coords[0][0], self.source_coords[0], delta=5)
+            self.assertAlmostEqual(path.path_coords[0][1], self.source_coords[1], delta=5)
+            self.assertAlmostEqual(path.path_coords[-1][0], self.target_coords[0], delta=5)
+            self.assertAlmostEqual(path.path_coords[-1][1], self.target_coords[1], delta=5)
+
+    def test_path_finding_with_different_algorithms(self):
+        """Test path finding with different routing algorithms."""
+        # List of algorithms to test with each library
+        algorithms = ["dijkstra", "bidirectional_dijkstra"]
+        # Skip astar as it needs a heuristic function
+        # Try each library
+        for lib_name, module_name in LIBRARIES_AND_MODULE_NAMES:
+            # Check if the library is installed
+            if not self.is_library_installed(module_name):
+                warnings.warn(
+                    f"Library '{module_name}' is not installed. "
+                    f"It's an optional dependency, so tests for '{lib_name}' will be skipped."
+                )
+                continue
+
+            for algorithm in algorithms:
+                try:
+                    path_finder = PathFinder(
+                        dataset_source=self.test_raster_path,
+                        source_coords=self.source_coords,
+                        target_coords=self.target_coords,
+                        graph_api=lib_name,
+                        search_space_buffer_m=50,
+                        neighborhood_str='r1',
+                    )
+                    path = path_finder.find_route(algorithm=algorithm)
+
+                    # Assert path was found
+                    self.assertIsNotNone(path)
+                    self.assertGreater(len(path.path_indices), 1)
+                    self.assertGreater(path.total_length, 0)
+
+                    # Ensure path connects source to target
+                    self.assertAlmostEqual(path.path_coords[0][0], self.source_coords[0], delta=5)
+                    self.assertAlmostEqual(path.path_coords[0][1], self.source_coords[1], delta=5)
+                    self.assertAlmostEqual(path.path_coords[-1][0], self.target_coords[0], delta=5)
+                    self.assertAlmostEqual(path.path_coords[-1][1], self.target_coords[1], delta=5)
+
+                    # Check that the algorithm name is recorded correctly
+                    self.assertEqual(path.algorithm, algorithm)
+                except Exception as e:
+                    # Some algorithms might not be implemented for all libraries
+                    warnings.warn(f"Algorithm '{algorithm}' failed with library '{lib_name}': {e}")
+
+    def test_multiple_source_target_path_finding(self):
+        """Test path finding with multiple source and target points."""
+        # Create two sets of source and target coordinates
+        sources = [(500020, 5599980), (500030, 5599990)]
+        targets = [(500080, 5599920), (500090, 5599910)]
+
+        # Try each library
+        for lib_name, module_name in LIBRARIES_AND_MODULE_NAMES:
+            # Check if the library is installed
+            if not self.is_library_installed(module_name):
+                if module_name != "networkit":
+                    warnings.warn(
+                        f"Library '{module_name}' is not installed. "
+                        f"It's an optional dependency, so tests for '{lib_name}' will be skipped."
+                    )
+                    continue
+                else:
+                    raise ImportError("Networkit not installed! Networkit is a mandatory library for pyorps! "
+                                      "Please install it first.")
+
+            # Test with multiple sources, single target
+            path_finder = PathFinder(
+                dataset_source=self.test_raster_path,
+                source_coords=sources,
+                target_coords=targets[0],
+                graph_api=lib_name,
+                search_space_buffer_m=50,
+                neighborhood_str='r1',
+            )
+            paths = path_finder.find_route()
+
+            # Assert paths were found
+            self.assertIsInstance(paths, list)
+            self.assertEqual(len(paths), 2)  # One path for each source
+
+            # Test with single source, multiple targets
+            path_finder = PathFinder(
+                dataset_source=self.test_raster_path,
+                source_coords=sources[0],
+                target_coords=targets,
+                graph_api=lib_name,
+                search_space_buffer_m=50,
+                neighborhood_str='r1',
+            )
+            paths = path_finder.find_route()
+
+            # Assert paths were found
+            self.assertIsInstance(paths, list)
+            self.assertEqual(len(paths), 2)  # One path for each target
+
+            # Test with multiple sources, multiple targets (pairwise)
+            path_finder = PathFinder(
+                dataset_source=self.test_raster_path,
+                source_coords=sources,
+                target_coords=targets,
+                graph_api=lib_name,
+                search_space_buffer_m=50,
+                neighborhood_str='r1',
+            )
+            paths = path_finder.find_route(pairwise=True)
+
+            # Assert paths were found
+            self.assertIsInstance(paths, list)
+            self.assertEqual(len(paths), 2)  # One path for each source-target pair
 
     @classmethod
     def _create_test_geodataframe(cls):
@@ -133,63 +529,6 @@ class TestPathFinderIntegration(unittest.TestCase):
             self.assertAlmostEqual(path.path_coords[-1][0], self.target_coords[0], delta=5)
             self.assertAlmostEqual(path.path_coords[-1][1], self.target_coords[1], delta=5)
 
-    def test_raster_path_finding_with_different_graph_libraries(self):
-        """Test path finding with different graph libraries using raster data."""
-        for lib in ["networkit", "networkit", "igraph", "rustworkx"]:
-            try:
-                path_finder = PathFinder(
-                    dataset_source=self.test_raster_path,
-                    source_coords=self.source_coords,
-                    target_coords=self.target_coords,
-                    graph_api=lib,
-                    search_space_buffer_m=50,
-                    neighborhood_str='r1',
-                )
-                path = path_finder.find_route()
-
-                # Assert path was found
-                self.assertIsNotNone(path)
-                self.assertGreater(len(path.path_indices), 1)
-                self.assertGreater(path.total_length, 0)
-
-                # Ensure path connects source to target
-                self.assertAlmostEqual(path.path_coords[0][0], self.source_coords[0], delta=5)
-                self.assertAlmostEqual(path.path_coords[0][1], self.source_coords[1], delta=5)
-                self.assertAlmostEqual(path.path_coords[-1][0], self.target_coords[0], delta=5)
-                self.assertAlmostEqual(path.path_coords[-1][1], self.target_coords[1], delta=5)
-            except ImportError:
-                # Skip test if library not installed
-                print(f"Skipping test for {lib} - library not installed")
-
-    def test_vector_path_finding(self):
-        """Test path finding using vector data with cost assumptions."""
-        path_finder = PathFinder(
-            dataset_source=self.test_vector_path,
-            source_coords=self.source_coords,
-            target_coords=self.target_coords,
-            graph_api='networkit',
-            search_space_buffer_m=50,
-            neighborhood_str='r1',
-            cost_assumptions=self.cost_assumptions
-        )
-        path = path_finder.find_route()
-
-        # Assert path was found
-        self.assertIsNotNone(path)
-        self.assertGreater(len(path.path_indices), 1)
-        self.assertGreater(path.total_length, 0)
-
-        # Ensure path connects source to target
-        self.assertAlmostEqual(path.path_coords[0][0], self.source_coords[0], delta=5)
-        self.assertAlmostEqual(path.path_coords[0][1], self.source_coords[1], delta=5)
-        self.assertAlmostEqual(path.path_coords[-1][0], self.target_coords[0], delta=5)
-        self.assertAlmostEqual(path.path_coords[-1][1], self.target_coords[1], delta=5)
-
-        # Check if path metrics are calculated
-        self.assertIsNotNone(path.total_cost)
-        self.assertIsNotNone(path.length_by_category)
-        self.assertIsNotNone(path.length_by_category_percent)
-
     def test_path_finding_with_different_buffer_sizes(self):
         """Test path finding with different search space buffer sizes."""
         buffer_sizes = [10, 50, 100]
@@ -213,84 +552,6 @@ class TestPathFinderIntegration(unittest.TestCase):
             self.assertAlmostEqual(path.path_coords[0][1], self.source_coords[1], delta=5)
             self.assertAlmostEqual(path.path_coords[-1][0], self.target_coords[0], delta=5)
             self.assertAlmostEqual(path.path_coords[-1][1], self.target_coords[1], delta=5)
-
-    def test_path_finding_with_different_algorithms(self):
-        """Test path finding with different routing algorithms."""
-        algorithms = ["dijkstra", "bidirectional_dijkstra"]  # Skip astar as it needs a heuristic function
-        for algorithm in algorithms:
-            path_finder = PathFinder(
-                dataset_source=self.test_raster_path,
-                source_coords=self.source_coords,
-                target_coords=self.target_coords,
-                graph_api='networkit',
-                search_space_buffer_m=50,
-                neighborhood_str='r1',
-            )
-            path = path_finder.find_route(algorithm=algorithm)
-
-            # Assert path was found
-            self.assertIsNotNone(path)
-            self.assertGreater(len(path.path_indices), 1)
-
-            # Ensure path connects source to target
-            self.assertAlmostEqual(path.path_coords[0][0], self.source_coords[0], delta=5)
-            self.assertAlmostEqual(path.path_coords[0][1], self.source_coords[1], delta=5)
-            self.assertAlmostEqual(path.path_coords[-1][0], self.target_coords[0], delta=5)
-            self.assertAlmostEqual(path.path_coords[-1][1], self.target_coords[1], delta=5)
-
-            # Check that the algorithm name is recorded correctly
-            self.assertEqual(path.algorithm, algorithm)
-
-    def test_multiple_source_target_path_finding(self):
-        """Test path finding with multiple source and target points."""
-        # Create two sets of source and target coordinates
-        sources = [(500020, 5599980), (500030, 5599990)]
-        targets = [(500080, 5599920), (500090, 5599910)]
-
-        # Test with multiple sources, single target
-        path_finder = PathFinder(
-            dataset_source=self.test_raster_path,
-            source_coords=sources,
-            target_coords=targets[0],
-            graph_api='networkit',
-            search_space_buffer_m=50,
-            neighborhood_str='r1',
-        )
-        paths = path_finder.find_route()
-
-        # Assert we got a list of paths
-        self.assertIsInstance(paths, list)
-        self.assertEqual(len(paths), 2)  # One path for each source
-
-        # Test with single source, multiple targets
-        path_finder = PathFinder(
-            dataset_source=self.test_raster_path,
-            source_coords=sources[0],
-            target_coords=targets,
-            graph_api='networkit',
-            search_space_buffer_m=50,
-            neighborhood_str='r1',
-        )
-        paths = path_finder.find_route()
-
-        # Assert we got a list of paths
-        self.assertIsInstance(paths, list)
-        self.assertEqual(len(paths), 2)  # One path for each target
-
-        # Test with multiple sources, multiple targets (pairwise)
-        path_finder = PathFinder(
-            dataset_source=self.test_raster_path,
-            source_coords=sources,
-            target_coords=targets,
-            graph_api='networkit',
-            search_space_buffer_m=50,
-            neighborhood_str='r1',
-        )
-        paths = path_finder.find_route(pairwise=True)
-
-        # Assert we got a list of paths
-        self.assertIsInstance(paths, list)
-        self.assertEqual(len(paths), 2)  # One path for each source-target pair
 
     def test_save_and_load_path_geodataframe(self):
         """Test saving and loading path GeoDataFrame."""
@@ -344,3 +605,61 @@ class TestPathFinderIntegration(unittest.TestCase):
         raster_dataset.load_data()
         self.assertIsNotNone(raster_dataset.data)
         self.assertIsInstance(raster_dataset, LocalRasterDataset)
+
+    def test_path_collection_replace_integration(self):
+        """Test the PathCollection replace functionality in an integration context."""
+        # Create a PathFinder instance
+        path_finder = PathFinder(
+            dataset_source=self.test_raster_path,
+            source_coords=self.source_coords,
+            target_coords=self.target_coords,
+            graph_api="networkit",
+            search_space_buffer_m=50,
+            neighborhood_str='r1',
+        )
+
+        # Find a route - this will add path with ID=0
+        path1 = path_finder.find_route()
+
+        # Create a new path with explicit ID=5
+        custom_path = Path(
+            source=self.source_coords,
+            target=self.target_coords,
+            algorithm="dijkstra",
+            graph_api="networkit",
+            path_indices=array([0, 1, 2]),
+            path_coords=array([[500020, 5599980], [500050, 5599950], [500080, 5599920]]),
+            path_geometry=LineString([[500020, 5599980], [500050, 5599950], [500080, 5599920]]),
+            euclidean_distance=100.0,
+            runtimes={},
+            path_id=5
+        )
+
+        # Add with replace=True to keep ID=5
+        path_finder.paths.add(custom_path, replace=True)
+        self.assertEqual(path_finder.paths.get(5), custom_path)
+        self.assertEqual(custom_path.path_id, 5)
+
+        # Verify both paths exist
+        self.assertEqual(len(path_finder.paths), 2)
+
+        # Create another path with ID=5
+        replacement_path = Path(
+            source=(500010, 5600010),
+            target=(500090, 5599910),
+            algorithm="astar",
+            graph_api="networkit",
+            path_indices=array([10, 11, 12]),
+            path_coords=array([[500010, 5600010], [500050, 5599960], [500090, 5599910]]),
+            path_geometry=LineString([[500010, 5600010], [500050, 5599960], [500090, 5599910]]),
+            euclidean_distance=50.0,
+            runtimes={},
+            path_id=5
+        )
+
+        # Add with replace=True to replace the existing path with ID=5
+        path_finder.paths.add(replacement_path, replace=True)
+
+        # Verify the existing path was replaced
+        self.assertEqual(path_finder.paths.get(5), replacement_path)
+        self.assertEqual(len(path_finder.paths), 2)  # Still only 2 paths

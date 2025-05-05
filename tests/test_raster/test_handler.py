@@ -628,7 +628,3 @@ class TestRasterHandler(unittest.TestCase):
                 self.source_coords,
                 self.target_coords
             )
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 import csv
 import json
-
 import numpy as np
 import pandas as pd
 
@@ -44,6 +43,9 @@ class CostAssumptions:
                     f"Parameter 'source' must be either a string, a dictionary or a GeoDataFrame, "
                     f"not {type(source)}"
                 )
+            if not self.cost_assumptions:
+                raise FormatError(f"The format of the cost assumptions file or dictionary is invalid. Please check "
+                                  f"the format of your cost assumptions input: {self.source}")
 
     def load(self, source: Union[str, dict]) -> dict:
         """
@@ -73,7 +75,7 @@ class CostAssumptions:
                 '.xls': self._load_excel_cost_assumptions,
             }
 
-            loader: Callable[[str], dict] |  None = loader_map.get(file_ext)
+            loader: Callable[[str], dict] | None = loader_map.get(file_ext)
             if not loader:
                 raise InvalidSourceError(f"Unsupported file format: {file_ext}")
 
@@ -116,6 +118,8 @@ class CostAssumptions:
                             delimiter=delimiter,
                             decimal=decimal
                         )
+                        if df.empty:
+                            continue
                         df = self._convert_numeric_columns(df)
                         self.cost_assumptions = self._convert_df_to_cost_dict(df)
                         return self.cost_assumptions
@@ -132,6 +136,8 @@ class CostAssumptions:
                                 delimiter=delimiter,
                                 decimal=decimal
                             )
+                            if df.empty:
+                                continue
                             df = self._convert_numeric_columns(df)
                             self.cost_assumptions = self._convert_df_to_cost_dict(df)
                             return self.cost_assumptions
@@ -179,7 +185,9 @@ class CostAssumptions:
                     else:
                         # Legacy format - just a plain dictionary
                         self.cost_assumptions = data
-
+                    if len(self.cost_assumptions) == 0:
+                        raise FileLoadError(f"Failed to read json file {filepath}. File contains no data or is not in "
+                                            f"the correct format!")
                     return self.cost_assumptions
             except (UnicodeDecodeError, json.JSONDecodeError) as e:
                 last_error = e
@@ -200,6 +208,10 @@ class CostAssumptions:
         try:
             # First try default settings
             df = pd.read_excel(filepath)
+            if df.empty:
+                raise FileLoadError(f"Failed to read Excel file {filepath}. File contains no data or is not in the "
+                                    f"correct format!")
+
             df = self._convert_numeric_columns(df)
             self.cost_assumptions = self._convert_df_to_cost_dict(df)
             return self.cost_assumptions
@@ -207,6 +219,9 @@ class CostAssumptions:
             # If there's an issue, try reading as strings and convert manually
             try:
                 df = pd.read_excel(filepath, dtype=str)
+                if df.empty:
+                    raise FileLoadError(f"Failed to read Excel file {filepath}. File contains no data or is not in the "
+                                        f"correct format!")
                 df = self._convert_numeric_columns(df)
                 self.cost_assumptions = self._convert_df_to_cost_dict(df)
                 return self.cost_assumptions
@@ -857,30 +872,4 @@ def _select_main_feature(col_stats: dict[str, dict[str, Any]]) -> str:
     )
 
     return sorted_candidates[0]
-
-
-def _check_column_adds_information(crosstab: pd.DataFrame) -> bool:
-    """
-    Check if a column adds meaningful information based on its crosstab with another column.
-
-    Parameters:
-        crosstab: Cross-tabulation DataFrame between two columns
-
-    Returns:
-        True if the column adds meaningful information, False otherwise
-    """
-    for _, row in crosstab.iterrows():
-        non_zero_counts = row[row > 0]
-        # Skip rows with only one value
-        if len(non_zero_counts) <= 1:
-            continue
-
-        # Check if distribution is meaningful (no single value dominates)
-        max_frac = non_zero_counts.max() / non_zero_counts.sum()
-        if max_frac < 0.9:
-            return True
-
-    return False
-
-
 

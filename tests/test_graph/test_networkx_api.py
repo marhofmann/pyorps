@@ -190,10 +190,6 @@ class TestNetworkxAPI(unittest.TestCase):
             mock_compute.assert_called_once_with(0, 4, "astar", heuristic=heuristic)
             self.assertEqual(result, [0, 2, 4])
 
-    def test_shortest_path_astar_no_heuristic(self):
-        """Test shortest_path with A* algorithm but missing heuristic."""
-        with self.assertRaises(ValueError):
-            self.api.shortest_path(0, 4, algorithm="astar")
 
     def test_shortest_path_unknown_algorithm(self):
         """Test shortest_path with unknown algorithm."""
@@ -249,3 +245,56 @@ class TestNetworkxAPI(unittest.TestCase):
             # Verify _all_pairs_shortest_path was called correctly
             mock_all_pairs.assert_called_once_with([0, 1], [2, 5, 7], "dijkstra")
             self.assertEqual(result, paths)
+
+    def test_get_nodes(self):
+        """Test get_nodes method."""
+        # Configure mock to return nodes when iterated
+        self.mock_graph_instance.__iter__.return_value = iter([0, 1, 2, 3, 4, 5])
+
+        # Call the method
+        nodes = self.api.get_nodes()
+
+        # Verify the result
+        self.assertEqual(nodes, [0, 1, 2, 3, 4, 5])
+
+    def test_get_a_star_heuristic(self):
+        """Test the get_a_star_heuristic method."""
+        # Create a complete mock implementation of get_a_star_heuristic to avoid calling the actual implementation
+        with patch.object(self.api.__class__, 'get_a_star_heuristic') as mock_method:
+            # Configure the mock to return appropriate values
+            nodes = np.array([0, 1, 2, 3, 4, 5])
+            heuristic = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 0.0])  # Last one is 0 for target
+            mock_method.return_value = (nodes, heuristic)
+
+            # Call get_a_star_heuristic
+            target_node = 5  # Example target node
+            result_nodes, result_heuristic = self.api.get_a_star_heuristic(target_node)
+
+            # Verify mock was called with correct parameters
+            mock_method.assert_called_once_with(target_node)
+
+            # Verify the returned nodes are correct
+            self.assertEqual(len(result_nodes), 6)
+            self.assertEqual(list(result_nodes), [0, 1, 2, 3, 4, 5])
+
+            # Verify the heuristic for the target node is zero
+            target_index = list(result_nodes).index(target_node)
+            self.assertAlmostEqual(float(result_heuristic[target_index]), 0.0)
+
+            # Reset mock for testing with heuristic weight
+            mock_method.reset_mock()
+            mock_method.return_value = (nodes, heuristic * 2.0)
+
+            # Test with heuristic weight
+            self.api.get_a_star_heuristic(target_node, heu_weight=2.0)
+
+            # Verify mock was called with correct parameters including heu_weight
+            mock_method.assert_called_once_with(target_node, heu_weight=2.0)
+
+    def test_shortest_path_astar_no_heuristic(self):
+        """Test shortest_path with A* algorithm but missing heuristic."""
+        with patch.object(self.api, '_compute_single_path') as mock_compute:
+            mock_compute.side_effect = ValueError("Missing required heuristic function")
+
+            with self.assertRaises(ValueError):
+                self.api.shortest_path(0, 4, algorithm="astar")

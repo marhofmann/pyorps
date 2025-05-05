@@ -92,11 +92,11 @@ class PathCollection:
         self._paths = {}  # Dictionary with path_id as keys for O(1) lookup
         self._next_id = 0  # Track the next available path ID
 
-    def add(self, path: Path) -> None:
+    def add(self, path: Path, replace: bool = False) -> None:
         """
         Add a path to the collection.
         """
-        if path.path_id is None:
+        if path.path_id is None or not replace:
             path.path_id = self._next_id
             self._next_id += 1
         else:

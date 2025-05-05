@@ -614,7 +614,7 @@ class PathFinder:
             # Create a collection from a list of paths
             path_collection = PathCollection()
             for path in paths:
-                path_collection.add(path)
+                path_collection.add(path, replace=False)
         else:
             # Assume it's already a PathCollection
             path_collection = paths

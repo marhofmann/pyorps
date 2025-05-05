@@ -1023,6 +1023,3 @@ class TestWFSFunctions(GeoTestCase):
             self.assertIsInstance(result, gpd.GeoDataFrame)
             self.assertEqual(len(result), 4)
 
-if __name__ == '__main__':
-    unittest.main()
-

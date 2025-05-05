@@ -15,7 +15,7 @@ Please see the specific interfaces to the specific graph libraries for more deta
 """
 from typing import Optional, Any
 from abc import abstractmethod
-from numpy import ndarray
+import numpy as np
 from time import time
 
 from .graph_api import GraphAPI
@@ -32,11 +32,11 @@ class GraphLibraryAPI(GraphAPI):
     """
 
     def __init__(self,
-                 raster_data: ndarray[int],
-                 steps: ndarray[int],
-                 from_nodes: Optional[ndarray] = None,
-                 to_nodes: Optional[ndarray] = None,
-                 cost: Optional[ndarray] = None,
+                 raster_data: np.ndarray[int],
+                 steps: np.ndarray[int],
+                 from_nodes: Optional[np.ndarray] = None,
+                 to_nodes: Optional[np.ndarray] = None,
+                 cost: Optional[np.ndarray] = None,
                  ignore_max: Optional[bool] = True,
                  **kwargs):
         """
@@ -62,8 +62,8 @@ class GraphLibraryAPI(GraphAPI):
         self.graph_creation_time = time() - before_graph_creation
 
     @abstractmethod
-    def create_graph(self, from_nodes: ndarray[int], to_nodes: ndarray[int],
-                     cost: Optional[ndarray[int]] = None, **kwargs) -> Any:
+    def create_graph(self, from_nodes: np.ndarray[int], to_nodes: np.ndarray[int],
+                     cost: Optional[np.ndarray[int]] = None, **kwargs) -> Any:
         """
         Creates a graph object with the graph library specified in the selected interface.
 
@@ -116,4 +116,49 @@ class GraphLibraryAPI(GraphAPI):
             The list of node indices of the shortest path between source and target
         """
         pass
+
+    @abstractmethod
+    def get_nodes(self) -> list[int] | np.ndarray[int]:
+        """
+        This method returns the nodes in the graph as a list or numpy array of node indices.
+
+        :return:  list[int] | ndarray[int]
+            The list of node indices of the nodes in the graph
+        """
+        pass
+
+    def get_a_star_heuristic(self, target: int, **kwargs) -> tuple[np.ndarray[int], np.ndarray[float]]:
+        """
+        Calculate the A* heuristic based on the Euclidean distance from the target node.
+
+        :param target: int
+            The index of the target node in the raster data.
+
+        :return: tuple[np.ndarray[int], np.ndarray[float]]
+            A tuple containing:
+            - An array of node indices (nodes) in the graph.
+            - An array of heuristic values corresponding to each node, calculated as the
+              Euclidean distance to the target node multiplied by the minimum value in the raster data.
+        """
+        # Retrieve the current nodes in the graph
+        nodes = self.get_nodes()
+
+        # Convert node indices to 2D coordinates (x, y) based on the raster data shape
+        x_nodes, y_nodes = np.unravel_index(nodes, self.raster_data.shape)
+
+        # Convert the target index to its corresponding 2D coordinates
+        x_target, y_target = np.unravel_index(target, self.raster_data.shape)
+
+        # Calculate the Euclidean distance from each node to the target node
+        euclidean_distance = np.sqrt(np.power(x_target - x_nodes, 2) + np.power(y_target - y_nodes, 2))
+
+        # Get the minimum value from the raster data for scaling the heuristic
+        min_value = self.raster_data.min()
+
+        # Calculate the heuristic by scaling the Euclidean distance
+        heuristic = euclidean_distance * min_value
+
+        if 'heu_weight' in kwargs:
+            heuristic *= kwargs['heu_weight']
+        return nodes, heuristic
 

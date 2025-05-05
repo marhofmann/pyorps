@@ -1,6 +1,6 @@
 # Third party
 import rustworkx as rx
-from numpy import where, ndarray, ravel_multi_index, max
+from numpy import where, ndarray, ravel_multi_index, max, array, unravel_index, power, sqrt
 from typing import Union, Optional, Any, List
 
 # Project files
@@ -93,6 +93,15 @@ class RustworkxAPI(GraphLibraryAPI):
         """
         return self.graph.num_edges()
 
+    def get_nodes(self) -> Union[list[int], ndarray[int]]:
+        """
+        This method returns the nodes in the graph as a list or numpy array of node indices.
+
+        :return: list[int]
+            The list of node indices of the nodes in the graph
+        """
+        return self.graph.nodes()
+
     def add_edge(self, from_node: int, to_node: int, cost: float) -> None:
         """
         Adds a single edge to the graph.
@@ -183,9 +192,17 @@ class RustworkxAPI(GraphLibraryAPI):
             if algorithm == "dijkstra":
                 path = rx.dijkstra_shortest_paths(self.graph, source, target,
                                                   weight_fn=lambda edge_weight: edge_weight)
+                path = list(path[target])
             elif algorithm == "astar":
-                # Get heuristic function or use default zero heuristic
-                heuristic = kwargs.get('heuristic', lambda node: 0.0)
+                # Get heuristic function or use default manhattan distance as heuristic
+                heuristic_function = kwargs.get('heu', None)
+
+                if heuristic_function is None:
+                    nodes, heuristic = self.get_a_star_heuristic(target, **kwargs)
+                    heuristic_dict = dict(zip(nodes, heuristic))
+
+                    def heuristic_function(node):
+                        return heuristic_dict[node]
 
                 def goal_reached(node):
                     return node == target
@@ -193,14 +210,15 @@ class RustworkxAPI(GraphLibraryAPI):
                 path = rx.astar_shortest_path(self.graph, source,
                                               goal_fn=goal_reached,
                                               edge_cost_fn=lambda edge_weight: edge_weight,
-                                              estimate_cost_fn=heuristic)
+                                              estimate_cost_fn=heuristic_function)
             elif algorithm == "bellman_ford":
                 path = rx.bellman_ford_shortest_paths(self.graph, source, target=target,
                                                       weight_fn=lambda edge_weight: edge_weight)
+                path = list(path[target])
             else:
                 raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
 
-            return path[target]
+            return path
         except rx.NoPathFound:
             raise NoPathFoundError(source=source, target=target)
 
@@ -325,3 +343,5 @@ class RustworkxAPI(GraphLibraryAPI):
         # Multiple sources, multiple targets (all pairs)
         else:
             return self._all_pairs_shortest_path(source_indices, target_indices, algorithm, **kwargs)
+
+

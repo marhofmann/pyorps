@@ -495,6 +495,3 @@ class TestGeoRasterizer(unittest.TestCase):
         # Check that the transform was updated
         self.assertNotEqual(rasterizer.transform, self.transform)
 
-
-if __name__ == "__main__":
-    unittest.main()

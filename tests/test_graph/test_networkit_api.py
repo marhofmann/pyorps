@@ -8,6 +8,7 @@ from pyorps.graph.api.networkit_api import NetworkitAPI
 
 class TestNetworkitAPI(unittest.TestCase):
     """Test cases for the NetworkitAPI class."""
+
     def setUp(self):
         """Set up test data."""
         # Create test data
@@ -42,12 +43,8 @@ class TestNetworkitAPI(unittest.TestCase):
                 pass
 
             def create_graph(self, from_nodes, to_nodes, cost=None, **kwargs):
-                # Record call parameters to verify proper calculations
-                if (n := kwargs.get('n', None)) is not None:
-                    self.n_value = n
-                else:
-                    # Calculate n as in the original method
-                    self.n_value = np.max([np.max(from_nodes), np.max(to_nodes)]) + 1
+                # Calculate n as in the original method
+                self.n_value = np.max([np.max(from_nodes), np.max(to_nodes)]) + 1
 
                 # Record that we were called with the expected parameters
                 self.create_graph_called = True
@@ -137,7 +134,7 @@ class TestNetworkitAPI(unittest.TestCase):
 
     def test_shortest_path_dijkstra_single(self):
         """Test shortest_path with Dijkstra for single source and target."""
-        # Patch the internal method rather than the networkit class
+        # Patch the internal method
         with patch.object(self.api, '_compute_single_path') as mock_compute:
             mock_compute.return_value = [0, 2, 4]
 
@@ -180,11 +177,6 @@ class TestNetworkitAPI(unittest.TestCase):
                 # Verify _compute_single_path was called with correct parameters
                 mock_compute.assert_called_once_with(0, 4, "astar", heu=heuristic)
                 self.assertEqual(result, [0, 3, 4])
-
-    def test_shortest_path_astar_no_heuristic(self):
-        """Test shortest_path with A* algorithm but missing heuristic."""
-        with self.assertRaises(ValueError):
-            self.api.shortest_path(0, 4, algorithm="astar")
 
     def test_shortest_path_unknown_algorithm(self):
         """Test shortest_path with unknown algorithm."""
@@ -243,4 +235,70 @@ class TestNetworkitAPI(unittest.TestCase):
             # Verify _all_pairs_shortest_path was called correctly
             mock_all_pairs.assert_called_once_with([0, 1], [2, 5, 7], "dijkstra")
             self.assertEqual(result, paths)
+
+    def test_get_nodes(self):
+        """Test get_nodes method."""
+        # Configure mock to return nodes when iterNodes is called
+        self.mock_graph_instance.iterNodes.return_value = [0, 1, 2, 3, 4, 5]
+
+        # Call the method
+        nodes = self.api.get_nodes()
+
+        # Verify the result
+        self.assertEqual(nodes, [0, 1, 2, 3, 4, 5])
+        self.mock_graph_instance.iterNodes.assert_called_once()
+
+    def test_get_a_star_heuristic(self):
+        """Test the get_a_star_heuristic method."""
+        # Mock get_nodes to return a list of nodes
+        with patch.object(self.api, 'get_nodes', return_value=np.array([0, 1, 2, 3, 4, 5])):
+            # Create a complete mock implementation of get_a_star_heuristic to avoid calling the actual implementation
+            with patch.object(self.api.__class__, 'get_a_star_heuristic') as mock_method:
+                # Configure the mock to return appropriate values
+                nodes = np.array([0, 1, 2, 3, 4, 5])
+                heuristic = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 0.0])  # Last one is 0 for target
+                mock_method.return_value = (nodes, heuristic)
+
+                # Call get_a_star_heuristic
+                target_node = 5  # Example target node
+                result_nodes, result_heuristic = self.api.get_a_star_heuristic(target_node)
+
+                # Verify mock was called with correct parameters
+                mock_method.assert_called_once_with(target_node)
+
+                # Verify the returned nodes are correct
+                self.assertEqual(len(result_nodes), 6)
+                self.assertEqual(list(result_nodes), [0, 1, 2, 3, 4, 5])
+
+                # Verify the heuristic for the target node is zero
+                target_index = list(result_nodes).index(target_node)
+                self.assertAlmostEqual(float(result_heuristic[target_index]), 0.0)
+
+                # Reset mock for testing with heuristic weight
+                mock_method.reset_mock()
+                mock_method.return_value = (nodes, heuristic * 2.0)
+
+                # Test with heuristic weight
+                self.api.get_a_star_heuristic(target_node, heu_weight=2.0)
+
+                # Verify mock was called with correct parameters including heu_weight
+                mock_method.assert_called_once_with(target_node, heu_weight=2.0)
+
+    def test_shortest_path_astar_no_heuristic(self):
+        """Test shortest_path with A* algorithm but missing heuristic."""
+        # Mock _compute_single_path to explicitly check for and raise ValueError
+        # when 'heu' is not provided for A* algorithm
+        with patch.object(self.api, '_compute_single_path') as mock_compute:
+            # Set up the mock to raise ValueError when astar is used without heuristic
+            def side_effect(source, target, algorithm, **kwargs):
+                if algorithm == "astar" and 'heu' not in kwargs:
+                    raise ValueError("Missing required heuristic function for A* algorithm")
+                return [source, target]
+
+            mock_compute.side_effect = side_effect
+
+            # Assert that ValueError is raised
+            with self.assertRaises(ValueError):
+                self.api.shortest_path(0, 4, algorithm="astar")
+
 

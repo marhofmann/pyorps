@@ -131,3 +131,54 @@ class TestIGraphAPI(unittest.TestCase):
             [0, 1, 2, 3]
         )
 
+    def test_get_nodes(self):
+        """Test get_nodes method."""
+        # Create mock vertices
+        mock_vertices = []
+        for i in range(6):
+            vertex = MagicMock()
+            vertex.index = i
+            mock_vertices.append(vertex)
+
+        # Set up the mock to return vertices
+        self.mock_graph_instance.vs.return_value = mock_vertices
+
+        # Call the method
+        nodes = self.api.get_nodes()
+
+        # Verify we get expected node indices
+        self.assertEqual(nodes, [0, 1, 2, 3, 4, 5])
+
+    def test_get_a_star_heuristic(self):
+        """Test the get_a_star_heuristic method."""
+        # Create mock vertices
+        mock_vertices = []
+        for i in range(6):  # Create 6 mock vertices with indices 0-5
+            vertex = MagicMock()
+            vertex.index = i
+            mock_vertices.append(vertex)
+
+        # Setup the mock graph to return these vertices
+        self.mock_graph_instance.vs.return_value = mock_vertices
+
+        # Mock get_nodes to return node indices
+        with patch.object(self.api, 'get_nodes', return_value=[0, 1, 2, 3, 4, 5]):
+            # Call get_a_star_heuristic
+            target_node = 5  # Example target node
+            nodes, heuristic = self.api.get_a_star_heuristic(target_node)
+
+            # Verify the returned nodes are correct
+            self.assertEqual(len(nodes), 6)
+            self.assertEqual(list(nodes), [0, 1, 2, 3, 4, 5])
+
+            # Verify the heuristic for the target node is zero (or very close)
+            target_index = list(nodes).index(target_node)
+            self.assertAlmostEqual(heuristic[target_index], 0.0)
+
+            # Test with heuristic weight
+            nodes_weighted, heuristic_weighted = self.api.get_a_star_heuristic(target_node, heu_weight=2.0)
+
+            # Verify the weighted heuristic is twice the original
+            for i in range(len(heuristic)):
+                self.assertAlmostEqual(heuristic_weighted[i], heuristic[i] * 2.0)
+

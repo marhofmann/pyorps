@@ -11,8 +11,10 @@ class TestGraphAPI(unittest.TestCase):
         """Test the initialization of the GraphAPI."""
         # Create a minimal concrete implementation for testing since GraphAPI is abstract
         class ConcreteGraphAPI(GraphAPI):
-            # pragma: no cover
-            def shortest_path(self, source_indices, target_indices, algorithm="dijkstra", pairwise=False):
+            def shortest_path(self, source_indices,
+                              target_indices,
+                              algorithm="dijkstra",
+                              pairwise=False):  # pragma: no cover
                 return [[0, 1, 2]]
 
         # Create test data
@@ -23,3 +25,5 @@ class TestGraphAPI(unittest.TestCase):
         graph_api = ConcreteGraphAPI(raster_data, steps)
         self.assertTrue(np.array_equal(graph_api.raster_data, raster_data))
         self.assertTrue(np.array_equal(graph_api.steps, steps))
+
+

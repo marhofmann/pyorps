@@ -38,6 +38,9 @@ class TestGraphLibraryAPI(unittest.TestCase):
             def shortest_path(self, source_indices, target_indices, algorithm="dijkstra", **kwargs):  # pragma: no cover
                 return [0, 1, 2]
 
+            def get_nodes(self):  # Added new required method
+                return list(range(10))
+
         # Initialize with provided edge data
         api = ConcreteGraphLibraryAPI(
             self.raster_data,
@@ -72,6 +75,9 @@ class TestGraphLibraryAPI(unittest.TestCase):
             def shortest_path(self, source_indices, target_indices, algorithm="dijkstra", **kwargs):  # pragma: no cover
                 return [0, 1, 2]
 
+            def get_nodes(self):  # Added new required method
+                return list(range(10))
+
         # Create instance with provided edge data
         api = ConcreteGraphLibraryAPI(
             self.raster_data,
@@ -88,3 +94,57 @@ class TestGraphLibraryAPI(unittest.TestCase):
         # Verify timing metrics
         self.assertEqual(api.edge_construction_time, 0.0)
         self.assertEqual(api.graph_creation_time, 2.0)
+
+    def test_get_a_star_heuristic(self):
+        """Test the get_a_star_heuristic method."""
+
+        # Create a concrete implementation
+        class ConcreteGraphLibraryAPI(GraphLibraryAPI):
+            def create_graph(self, from_nodes, to_nodes, cost=None, **kwargs):
+                return "graph_created"
+
+            def get_number_of_nodes(self):  # pragma: no cover
+                return 6
+
+            def get_number_of_edges(self):  # pragma: no cover
+                return 5
+
+            def remove_isolates(self):  # pragma: no cover
+                pass
+
+            def shortest_path(self, source_indices, target_indices, algorithm="dijkstra", **kwargs):  # pragma: no cover
+                return [0, 1, 2]
+
+            def get_nodes(self):
+                # Return nodes that match our test data
+                return np.array([0, 1, 2, 3, 4, 5])
+
+        # Create instance with provided edge data
+        api = ConcreteGraphLibraryAPI(
+            self.raster_data,
+            self.steps,
+            from_nodes=self.from_nodes,
+            to_nodes=self.to_nodes,
+            cost=self.cost
+        )
+
+        # Test the A* heuristic calculation
+        target_node = 5  # Example target node
+        nodes, heuristic = api.get_a_star_heuristic(target_node)
+
+        # Verify the returned nodes are as expected
+        self.assertTrue(np.array_equal(nodes, np.array([0, 1, 2, 3, 4, 5])))
+
+        # Verify the heuristic shape
+        self.assertEqual(len(heuristic), 6)
+
+        # Verify the heuristic for the target node is zero (or very close)
+        target_index = np.where(nodes == target_node)[0][0]
+        self.assertAlmostEqual(heuristic[target_index], 0.0)
+
+        # Test with heuristic weight
+        nodes_weighted, heuristic_weighted = api.get_a_star_heuristic(target_node, heu_weight=2.0)
+
+        # Verify the weighted heuristic is twice the original
+        for i in range(len(heuristic)):
+            self.assertAlmostEqual(heuristic_weighted[i], heuristic[i] * 2.0)

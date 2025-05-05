@@ -94,23 +94,81 @@ class TestPathCollection(unittest.TestCase):
             euclidean_distance=1.0, runtimes={}, path_id=5
         )
 
-    def test_add_path(self):
-        """Test adding paths to collection."""
+        # Create another path with explicit ID for replace tests
+        self.path3 = Path(
+            source=3, target=4, algorithm="bellman-ford", graph_api="networkx",
+            path_indices=np.array([]), path_coords=np.array([]),
+            path_geometry=LineString([(2, 2), (3, 3)]),
+            euclidean_distance=1.0, runtimes={}, path_id=10
+        )
+
+    def test_add_path_default(self):
+        """Test adding paths to collection with default behavior (replace=False)."""
         # Add paths
         self.collection.add(self.path1)
         self.collection.add(self.path2)
 
         # Test automatic ID assignment
         self.assertEqual(self.path1.path_id, 0)
-        self.assertEqual(self.path2.path_id, 5)
+        self.assertEqual(self.path2.path_id, 1)  # Should get a new ID even though it had path_id=5
+
+        # The next available ID should be 2
+        self.assertEqual(self.collection._next_id, 2)
 
         # Test length
         self.assertEqual(len(self.collection), 2)
 
+    def test_add_path_with_replace_true(self):
+        """Test adding paths with replace=True."""
+        # Add path with no ID and replace=True (should behave like default)
+        self.collection.add(self.path1, replace=True)
+        self.assertEqual(self.path1.path_id, 0)
+        self.assertEqual(self.collection._next_id, 1)
+
+        # Add path with ID and replace=True (should keep the original ID)
+        self.collection.add(self.path2, replace=True)
+        self.assertEqual(self.path2.path_id, 5)
+
+        # The next available ID should be updated based on the highest ID + 1
+        self.assertEqual(self.collection._next_id, 6)
+
+        # Add another path with higher ID and replace=True
+        self.collection.add(self.path3, replace=True)
+        self.assertEqual(self.path3.path_id, 10)
+        self.assertEqual(self.collection._next_id, 11)
+
+        # Test length
+        self.assertEqual(len(self.collection), 3)
+
+    def test_add_path_replace_and_update(self):
+        """Test replacing an existing path."""
+        # Add initial path
+        self.collection.add(self.path1)
+        self.assertEqual(self.path1.path_id, 0)
+
+        # Create a new path with the same ID to replace the existing one
+        path_replacement = Path(
+            source=99, target=100, algorithm="modified", graph_api="networkx",
+            path_indices=np.array([]), path_coords=np.array([]),
+            path_geometry=LineString([(5, 5), (6, 6)]),
+            euclidean_distance=2.0, runtimes={}, path_id=0
+        )
+
+        # Add the replacement path with replace=True
+        self.collection.add(path_replacement, replace=True)
+
+        # Check that path was replaced
+        self.assertEqual(self.collection[0].source, 99)
+        self.assertEqual(self.collection[0].target, 100)
+        self.assertEqual(len(self.collection), 1)
+
+        # The next_id should still be 1
+        self.assertEqual(self.collection._next_id, 1)
+
     def test_get_path(self):
         """Test retrieving paths from collection."""
         self.collection.add(self.path1)
-        self.collection.add(self.path2)
+        self.collection.add(self.path2, replace=True)
 
         # Get by ID
         self.assertEqual(self.collection.get(path_id=0), self.path1)
@@ -127,7 +185,7 @@ class TestPathCollection(unittest.TestCase):
     def test_iteration(self):
         """Test iterating through the collection."""
         self.collection.add(self.path1)
-        self.collection.add(self.path2)
+        self.collection.add(self.path2, replace=True)
 
         paths = list(self.collection)
         self.assertEqual(len(paths), 2)
@@ -137,7 +195,7 @@ class TestPathCollection(unittest.TestCase):
     def test_getitem(self):
         """Test accessing paths by ID."""
         self.collection.add(self.path1)
-        self.collection.add(self.path2)
+        self.collection.add(self.path2, replace=True)
 
         self.assertEqual(self.collection[0], self.path1)
         self.assertEqual(self.collection[5], self.path2)
@@ -158,7 +216,7 @@ class TestPathCollection(unittest.TestCase):
     def test_string_representation(self):
         """Test string representation of PathCollection."""
         self.collection.add(self.path1)
-        self.collection.add(self.path2)
+        self.collection.add(self.path2, replace=True)
 
         str_repr = str(self.collection)
         self.assertIn("PathCollection(paths=2)", str_repr)
@@ -170,9 +228,13 @@ class TestPathCollection(unittest.TestCase):
     def test_all_property(self):
         """Test the all property."""
         self.collection.add(self.path1)
-        self.collection.add(self.path2)
+        self.collection.add(self.path2, replace=True)
 
         all_paths = self.collection.all
         self.assertEqual(len(all_paths), 2)
         self.assertIn(self.path1, all_paths)
         self.assertIn(self.path2, all_paths)
+
+
+if __name__ == "__main__":
+    unittest.main()

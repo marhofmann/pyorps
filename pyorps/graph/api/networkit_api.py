@@ -1,8 +1,8 @@
+from typing import Union
 
 # Third party
 from networkit import Graph
 from networkit.distance import Dijkstra, BidirectionalDijkstra, AStar, SPSP
-from numpy import float64, max
 
 # Project files
 from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError
@@ -11,7 +11,10 @@ from .graph_library_api import *
 
 class NetworkitAPI(GraphLibraryAPI):
 
-    def create_graph(self, from_nodes: ndarray[int], to_nodes: ndarray[int], cost: Optional[ndarray[int]] = None,
+    def create_graph(self,
+                     from_nodes: np.ndarray[int],
+                     to_nodes: np.ndarray[int],
+                     cost: Optional[np.ndarray[int]] = None,
                      **kwargs) -> Any:
         """
         Creates a graph object with the graph library specified in the selected interface.
@@ -27,7 +30,7 @@ class NetworkitAPI(GraphLibraryAPI):
             n = max([max(from_nodes), max(to_nodes)]) + 1
             self.graph = Graph(n=n, weighted=True, directed=False)
         if cost is not None:
-            self.graph.addEdges((cost.astype(float64, copy=False), (from_nodes, to_nodes)), addMissing=False)
+            self.graph.addEdges((cost.astype(np.float64, copy=False), (from_nodes, to_nodes)), addMissing=False)
         else:
             self.graph.addEdges((from_nodes, to_nodes), addMissing=False)
         if kwargs.get('remove_isolated_nodes', False):
@@ -44,6 +47,16 @@ class NetworkitAPI(GraphLibraryAPI):
         for n in self.graph.iterNodes():
             if self.graph.isIsolated(n):
                 self.graph.removeNode(n)
+
+    def get_nodes(self) -> Union[list[int], np.ndarray[int]]:
+        """
+        This method returns the nodes in the graph as a list or numpy array of node indices.
+
+        :return: list[int]
+            The list of node indices of the nodes in the graph
+        """
+        return [i for i in self.graph.iterNodes()]
+
 
     @staticmethod
     def _ensure_path_endpoints(path, source, target):
@@ -100,9 +113,9 @@ class NetworkitAPI(GraphLibraryAPI):
             List of node indices representing the shortest path(s)
         """
         # Convert single indices to lists for uniform handling
-        if not isinstance(source_indices, (list, tuple, ndarray)):
+        if not isinstance(source_indices, (list, tuple, np.ndarray)):
             source_indices = [source_indices]
-        if not isinstance(target_indices, (list, tuple, ndarray)):
+        if not isinstance(target_indices, (list, tuple, np.ndarray)):
             target_indices = [target_indices]
 
         # Check for pairwise computation
@@ -143,11 +156,12 @@ class NetworkitAPI(GraphLibraryAPI):
 
         elif algorithm == "astar":
             # Use provided heuristic function or default to zero heuristic
-            heuristic = kwargs.get('heu', None)
-            if heuristic is None:
-                raise ValueError("A heuristic must be specified!")
+            heuristic_function = kwargs.get('heu', None)
+            if heuristic_function is None:
+                _, heuristic = self.get_a_star_heuristic(target, **kwargs)
+                heuristic_function = list(heuristic)
 
-            astar = AStar(self.graph, heuristic, source, target)
+            astar = AStar(self.graph, heuristic_function, source, target)
             astar.run()
             path = astar.getPath()
 

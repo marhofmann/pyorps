@@ -1,6 +1,8 @@
+from typing import Union
+
 # Third party
 import igraph as ig
-from numpy import float64, ndarray, max
+from numpy import float64, ndarray, max, array, unravel_index, power, sqrt
 
 # Project files
 from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError
@@ -74,6 +76,15 @@ class IGraphAPI(GraphLibraryAPI):
         isolated_vertices.sort(reverse=True)
         for v in isolated_vertices:
             self.graph.delete_vertices(v)
+
+    def get_nodes(self) -> Union[list[int], ndarray[int]]:
+        """
+        This method returns the nodes in the graph as a list or numpy array of node indices.
+
+        :return: list[int]
+            The list of node indices of the nodes in the graph
+        """
+        return [v.index for v in self.graph.vs()]
 
     @staticmethod
     def _ensure_path_endpoints(path, source, target):
@@ -167,16 +178,22 @@ class IGraphAPI(GraphLibraryAPI):
             path = self.graph.get_shortest_paths(source, target, weights=weights, output="vpath")[0]
 
         elif algorithm == "bellman_ford":
-            path = \
-            self.graph.get_shortest_paths(source, target, weights=weights, output="vpath", algorithm="bellman_ford")[0]
+            path = self.graph.get_shortest_paths(source, target,
+                                                 weights=weights, output="vpath", algorithm="bellman_ford")[0]
 
         elif algorithm == "astar":
-            # igraph doesn't have a built-in A* implementation
-            # Fall back to Dijkstra if no heuristic is provided
-            if 'heuristic' not in kwargs:
-                path = self.graph.get_shortest_paths(source, target, weights=weights, output="vpath")[0]
-            else:
-                raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
+            heuristic_function = kwargs.get('heu', None)
+
+            if heuristic_function is None:
+                _, heuristic = self.get_a_star_heuristic(target, **kwargs)
+
+                def heuristic_function(_graph, node, _target):
+                    return heuristic[node]
+
+            path = self.graph.get_shortest_path_astar(source, target,
+                                                      heuristics=heuristic_function,
+                                                      weights=weights,
+                                                      output="vpath", mode="all")
 
         else:
             raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
@@ -208,19 +225,15 @@ class IGraphAPI(GraphLibraryAPI):
             return paths
 
         elif algorithm == "astar":
-            # For A*, handle each target separately or fall back to Dijkstra
-            if 'heuristic' not in kwargs:
-                return self._compute_single_source_multiple_targets(source, targets, "dijkstra", **kwargs)
-            else:
-                # If heuristic is provided, compute paths individually
-                paths = []
-                for target in targets:
-                    try:
-                        path = self._compute_single_path(source, target, algorithm, **kwargs)
-                        paths.append(path)
-                    except NoPathFoundError:
-                        paths.append([])
-                return paths
+            # For A*, handle each target separately
+            paths = []
+            for target in targets:
+                try:
+                    path = self._compute_single_path(source, target, algorithm, **kwargs)
+                    paths.append(path)
+                except NoPathFoundError:
+                    paths.append([])
+            return paths
 
         else:
             raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)

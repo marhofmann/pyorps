@@ -68,9 +68,7 @@ def ravel_index(row, col, cols):
     return uint32_type(row * cols + col)
 
 
-@nb.njit(nb.types.Tuple((nb.types.intp, nb.types.intp, nb.types.intp, nb.types.intp,
-                         nb.types.intp, nb.types.intp, nb.types.intp, nb.types.intp))
-             (int8_type, int8_type, nb.types.intp, nb.types.intp), cache=True, fastmath=True)
+@nb.njit(uint32_1d_array(int8_type, int8_type, nb.types.intp, nb.types.intp), cache=True, fastmath=True)
 def calculate_region_bounds(dr, dc, rows, cols):
     """Calculate region bounds for source and target regions"""
     # Source region bounds
@@ -95,8 +93,8 @@ def calculate_region_bounds(dr, dc, rows, cols):
     else:
         t_cols_start, t_cols_end = 0, cols + dc if dc != 0 else cols
 
-    return (s_rows_start, s_rows_end, s_cols_start, s_cols_end,
-            t_rows_start, t_rows_end, t_cols_start, t_cols_end)
+    return np.array([s_rows_start, s_rows_end, s_cols_start, s_cols_end,
+                            t_rows_start, t_rows_end, t_cols_start, t_cols_end], dtype=np.uint32)
 
 
 @nb.njit(boolean_type(
@@ -151,12 +149,12 @@ def find_valid_nodes(dr, dc, s_rows_start, s_rows_end, s_cols_start, s_cols_end,
 
     valid_count = 0
     cost_temp = np.zeros(1, dtype=np.float64)
-
+    dr_int, dc_int = int(dr), int(dc)
     # Find valid nodes and calculate costs
     for sr in range(s_rows_start, s_rows_end):
         for sc in range(s_cols_start, s_cols_end):
-            tr = sr + dr
-            tc = sc + dc
+            tr = sr + dr_int
+            tc = sc + dc_int
 
             # Check validity and get cost
             if is_valid_node(sr, sc, tr, tc, exclude_mask, intermediates, raster, rows, cols, cost_temp):
@@ -182,7 +180,7 @@ def get_max_number_of_edges(n, m, steps):
     :param steps: The set of steps for a neighborhood.
     :return: The maximum number of edges defined by a neighborhood and a given raster shape.
     """
-    max_nr_of_edges = 0.0
+    max_nr_of_edges = 0
     for step_idx in range(steps.shape[0]):
         dr = steps[step_idx, 0]
         dc = steps[step_idx, 1]
@@ -234,7 +232,7 @@ def construct_edges(raster, steps, ignore_max=True):
         # Get cost factor
         cost_factor = get_cost_factor_numba(dr, dc, intermediates.shape[0])
 
-        # Calculate remaining capacity - no need to check if it's zero
+        # Calculate remaining capacity
         remaining = nr_of_edges - last_index
 
         # Find valid nodes - direct use of linear indices
