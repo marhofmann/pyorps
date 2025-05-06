@@ -145,13 +145,17 @@ This allows you to balance accuracy (following real-world paths) and performance
 
 <figure style="display:inline-block; margin:10px; text-align:center;">
   <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/R3-complete.PNG" alt="R3 complete" 
-width="45%"/>
+width="35%"/>
   <figcaption>Figure 3: a) Steps for neighbourhoods R0 blue, R1 green, R2 yellow and R3 red</figcaption>
 </figure>
 <figure style="display:inline-block; margin:10px; text-align:center;">
-  <img src="path/to/image2.png" alt="intermediates" width="45%"/>
+  <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/intermediate_steps.PNG" alt="intermediates" 
+width="35%"/>
   <figcaption>Figure 3: b) Intermediate elements Ik for selected edges of vertex v5,5.</figcaption>
 </figure>
+
+
+
 
 ### Data Input: Raster & Vector, Local & Remote
 
