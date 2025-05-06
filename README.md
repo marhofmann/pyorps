@@ -21,8 +21,7 @@ Power line route planning is a complex and time-consuming process traditionally 
 - Allowing customization of neighborhood selection and search parameters
 - Enabling easy integration into existing planning workflows
 
-While initially developed for underground cable routing in distribution grids, PYORPS can be adapted for many 
-path-finding tasks for any kind of infrastructure.
+While tailored for distribution grids, it can be adapted for various infrastructures, optimizing routes for cost and environmental impact.
 
 ![Example Path Finding](https://github.com/marhofmann/pyorps/blob/master/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png)
 
@@ -127,8 +126,8 @@ This dramatically reduces memory and computation time, especially for high-resol
 
 The raster-to-graph conversion supports customizable neighborhood definitions:
 
-- **Predefined neighborhoods**:  
-  - `R0` (4-connectivity), `R1` (8-connectivity), `R2`, `R3` (tested and optimized for grid routing).
+- **Predefined and tested neighborhoods**:  
+  - `R0` (4-connectivity), `R1` (8-connectivity), `R2` (16-connectivity), `R3`  (32-connectivity),
 - **Custom neighborhoods**:  
   - Specify arbitrary step sets for advanced use cases or anisotropic cost surfaces.
 - **High-order neighborhoods**:  
@@ -136,8 +135,11 @@ The raster-to-graph conversion supports customizable neighborhood definitions:
 
 This allows you to balance accuracy (following real-world paths) and performance (sparser graphs).
 
-![Complete R_3 Neighborhood](https://github.com/marhofmann/pyorps/blob/master/docs/images/R3-complete.PNG)
-![Intermediate Cells ](https://github.com/marhofmann/pyorps/blob/master/docs/images/intermediate_steps.PNG)
+<p>
+  <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/R3-complete.PNG" alt="Complete R_3 Neighborhood" width="25%"/>
+  <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/intermediate_steps.PNG" alt="Intermediate Cells" 
+width="25%"/>
+</p>
 
 ### Data Input: Raster & Vector, Local & Remote
 
