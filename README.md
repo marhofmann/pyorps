@@ -24,7 +24,7 @@ Power line route planning is a complex and time-consuming process traditionally 
 While initially developed for underground cable routing in distribution grids, PYORPS can be adapted for many 
 path-finding tasks for any kind of infrastructure.
 
-![Example Path Finding](https://github.com/marhofmann/pyorps/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png)
+![Example Path Finding](https://github.com/marhofmann/pyorps/blob/master/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png)
 
 ## Features
 
@@ -121,7 +121,7 @@ Efficient path finding in large rasters requires limiting the search space. PYOR
 
 This dramatically reduces memory and computation time, especially for high-resolution data.
 
-![Various Search Spaces](https://github.com/marhofmann/pyorps/docs/images/buffer_600.png)
+![Various Search Spaces](https://github.com/marhofmann/pyorps/blob/master/docs/images/buffer_600.png)
 
 ### Neighborhoods: Fine-Grained Connectivity
 
@@ -136,8 +136,8 @@ The raster-to-graph conversion supports customizable neighborhood definitions:
 
 This allows you to balance accuracy (following real-world paths) and performance (sparser graphs).
 
-![Complete R_3 Neighborhood](https://github.com/marhofmann/pyorps/docs/images/R3-complete.PNG)
-![Intermediate Cells ](https://github.com/marhofmann/pyorps/raw/images/intermediate_steps.PNG)
+![Complete R_3 Neighborhood](https://github.com/marhofmann/pyorps/blob/master/docs/images/R3-complete.PNG)
+![Intermediate Cells ](https://github.com/marhofmann/pyorps/blob/master/docs/images/intermediate_steps.PNG)
 
 ### Data Input: Raster & Vector, Local & Remote
 
