@@ -23,7 +23,11 @@ Power line route planning is a complex and time-consuming process traditionally 
 
 While tailored for distribution grids, it can be adapted for various infrastructures, optimizing routes for cost and environmental impact.
 
-![Example Path Finding](https://github.com/marhofmann/pyorps/blob/master/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png)
+<figure style="text-align:center;">
+  <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png" alt="ex."/>
+  <figcaption>Figure 1: Parallel computation of 21 paths from single source to multiple targets. 332 s total runtime 
+on laptop with Intel(R) Core(TM) i7-8850H CPU @ 2.6 GHz and 32 GB memory</figcaption>
+</figure>
 
 ## Features
 
@@ -120,7 +124,11 @@ Efficient path finding in large rasters requires limiting the search space. PYOR
 
 This dramatically reduces memory and computation time, especially for high-resolution data.
 
-![Various Search Spaces](https://github.com/marhofmann/pyorps/blob/master/docs/images/buffer_600.png)
+<figure style="text-align:center;">
+  <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/buffer_600.png" alt="search spaces"/>
+  <figcaption>Figure 2: Various optimal paths for different search spaces on rasterised geodata with 1 m² resolution</figcaption>
+</figure>
+
 
 ### Neighborhoods: Fine-Grained Connectivity
 
@@ -135,11 +143,15 @@ The raster-to-graph conversion supports customizable neighborhood definitions:
 
 This allows you to balance accuracy (following real-world paths) and performance (sparser graphs).
 
-<p>
-  <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/R3-complete.PNG" alt="Complete R_3 Neighborhood" width="25%"/>
-  <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/intermediate_steps.PNG" alt="Intermediate Cells" 
-width="25%"/>
-</p>
+<figure style="display:inline-block; margin:10px; text-align:center;">
+  <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/R3-complete.PNG" alt="R3 complete" 
+width="45%"/>
+  <figcaption>Figure 3: a) Steps for neighbourhoods R0 blue, R1 green, R2 yellow and R3 red</figcaption>
+</figure>
+<figure style="display:inline-block; margin:10px; text-align:center;">
+  <img src="path/to/image2.png" alt="intermediates" width="45%"/>
+  <figcaption>Figure 3: b) Intermediate elements Ik for selected edges of vertex v5,5.</figcaption>
+</figure>
 
 ### Data Input: Raster & Vector, Local & Remote
 
