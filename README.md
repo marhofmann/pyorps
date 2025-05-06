@@ -1,7 +1,5 @@
 # PYORPS - Python for Optimal Routes in Power Systems
 
-# PYORPS - Python for Optimal Routes in Power Systems
-
 [![PyPI version](https://img.shields.io/pypi/v/pyorps.svg)](https://pypi.org/project/pyorps/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/pyorps.svg)](https://pypi.org/project/pyorps/)
 [![Documentation Status](https://readthedocs.org/projects/pyorps/badge/?version=latest)](https://pyorps.readthedocs.io/en/latest/?badge=latest)
