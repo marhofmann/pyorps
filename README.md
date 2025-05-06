@@ -5,7 +5,7 @@
 [![Documentation Status](https://readthedocs.org/projects/pyorps/badge/?version=latest)](https://pyorps.readthedocs.io/en/latest/?badge=latest)
 [![codecov](https://codecov.io/gh/yourusername/your-repo/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/your-repo)
 [![Code Quality](https://github.com/yourusername/your-repo/actions/workflows/lint.yml/badge.svg)](https://github.com/yourusername/your-repo/actions/workflows/lint.yml)
-[![License](https://img.shields.io/github/license/yourusername/your-repo.svg)](https://github.com/marhofmann/pyorps/blob/master/LICENSE)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/yourusername/your-repo/main?filepath=notebooks%2Fexample.ipynb)
 
 
