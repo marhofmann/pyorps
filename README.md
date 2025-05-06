@@ -26,10 +26,11 @@ While tailored for distribution grids, it can be adapted for various infrastruct
 <table>
   <tr>
     <td align="center" width="100%">
-      <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png" alt="ex." 
-width="100%"/><br>
-      <sub><b>Figure 1:</b> Parallel computation of 21 paths from single source to multiple targets.\n 332 s total 
-runtime on laptop with Intel(R) Core(TM) i7-8850H CPU @ 2.6 GHz and 32 GB memory</sub>
+      <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png" alt="ex." width="100%"/><br>
+      <sub>
+        <b>Figure 1:</b> Parallel computation of 21 paths from single source to multiple targets.<br>
+        332 s total runtime on laptop with Intel(R) Core(TM) i7-8850H CPU @ 2.6 GHz and 32 GB memory
+      </sub>
     </td>
   </tr>
 </table>
