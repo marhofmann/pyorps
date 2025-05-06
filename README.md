@@ -23,11 +23,15 @@ Power line route planning is a complex and time-consuming process traditionally 
 
 While tailored for distribution grids, it can be adapted for various infrastructures, optimizing routes for cost and environmental impact.
 
-<figure style="text-align:center;">
-  <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png" alt="ex."/>
-  <figcaption>Figure 1: Parallel computation of 21 paths from single source to multiple targets. 332 s total runtime 
-on laptop with Intel(R) Core(TM) i7-8850H CPU @ 2.6 GHz and 32 GB memory</figcaption>
-</figure>
+<table>
+  <tr>
+    <td align="center" width="100%">
+      <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png" alt="ex." width="60%"/><br>
+      <sub><b>Figure 1:</b> Parallel computation of 21 paths from single source to multiple targets. 332 s total runtime on laptop with Intel(R) Core(TM) i7-8850H CPU @ 2.6 GHz and 32 GB memory</sub>
+    </td>
+  </tr>
+</table>
+
 
 ## Features
 
@@ -124,10 +128,14 @@ Efficient path finding in large rasters requires limiting the search space. PYOR
 
 This dramatically reduces memory and computation time, especially for high-resolution data.
 
-<figure style="text-align:center;">
-  <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/buffer_600.png" alt="search spaces"/>
-  <figcaption>Figure 2: Various optimal paths for different search spaces on rasterised geodata with 1 m² resolution</figcaption>
-</figure>
+<table>
+  <tr>
+    <td align="center" width="100%">
+      <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/buffer_600.png" alt="search spaces" width="60%"/><br>
+      <sub><b>Figure 2:</b> Various optimal paths for different search spaces on rasterised geodata with 1 m² resolution</sub>
+    </td>
+  </tr>
+</table>
 
 
 ### Neighborhoods: Fine-Grained Connectivity
