@@ -95,7 +95,7 @@ The process can be configured with different neighborhood selections (R0-R3) and
 ## Use Cases
 
 - **Distribution Grid Planning**: Optimize new underground cable connections
-- **PV Plant Integration**: Determine optimal point of common coupling (PCC)
+- **Grid Integration of Renewable Energies**: Determine optimal point of common coupling (PCC)
 - **Environmental Impact Reduction**: Route infrastructure to minimize impact on protected areas
 - **Cost Optimization**: Balance construction costs with environmental considerations
 - **General Infrastructure Planning**: Adapt for other linear infrastructure planning tasks
