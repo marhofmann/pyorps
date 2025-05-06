@@ -143,18 +143,18 @@ The raster-to-graph conversion supports customizable neighborhood definitions:
 
 This allows you to balance accuracy (following real-world paths) and performance (sparser graphs).
 
-<figure style="display:inline-block; margin:10px; text-align:center;">
-  <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/R3-complete.PNG" alt="R3 complete" 
-width="35%"/>
-  <figcaption>Figure 3: a) Steps for neighbourhoods R0 blue, R1 green, R2 yellow and R3 red</figcaption>
-</figure>
-<figure style="display:inline-block; margin:10px; text-align:center;">
-  <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/intermediate_steps.PNG" alt="intermediates" 
-width="35%"/>
-  <figcaption>Figure 3: b) Intermediate elements Ik for selected edges of vertex v5,5.</figcaption>
-</figure>
-
-
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/R3-complete.PNG" alt="R3 complete" width="90%"/><br>
+      <sub><b>Figure 3a:</b> Steps for neighbourhoods R0 (blue), R1 (green), R2 (yellow), and R3 (red)</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="https://github.com/marhofmann/pyorps/blob/master/docs/images/intermediate_steps.PNG" alt="intermediates" width="90%"/><br>
+      <sub><b>Figure 3b:</b> Intermediate elements Ik for selected edges of vertex v<sub>5,5</sub>.</sub>
+    </td>
+  </tr>
+</table>
 
 
 ### Data Input: Raster & Vector, Local & Remote
