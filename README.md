@@ -24,7 +24,7 @@ Power line route planning is a complex and time-consuming process traditionally 
 While initially developed for underground cable routing in distribution grids, PYORPS can be adapted for many 
 path-finding tasks for any kind of infrastructure.
 
-![Example Path Finding](https://github.com/marhofmann/pyorps/raw/main/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png)
+![Example Path Finding](https://github.com/marhofmann/pyorps/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png)
 
 ## Features
 
