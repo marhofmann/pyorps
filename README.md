@@ -121,7 +121,7 @@ Efficient path finding in large rasters requires limiting the search space. PYOR
 
 This dramatically reduces memory and computation time, especially for high-resolution data.
 
-![Various Search Spaces](https://github.com/marhofmann/pyorps/raw/main/docs/images/buffer_600.png)
+![Various Search Spaces](https://github.com/marhofmann/pyorps/docs/images/buffer_600.png)
 
 ### Neighborhoods: Fine-Grained Connectivity
 
@@ -136,8 +136,8 @@ The raster-to-graph conversion supports customizable neighborhood definitions:
 
 This allows you to balance accuracy (following real-world paths) and performance (sparser graphs).
 
-![Complete R_3 Neighborhood](https://github.com/marhofmann/pyorps/raw/main/docs/images/R3-complete.PNG)
-![Intermediate Cells ](https://github.com/marhofmann/pyorps/raw/main/docs/images/intermediate_steps.PNG)
+![Complete R_3 Neighborhood](https://github.com/marhofmann/pyorps/docs/images/R3-complete.PNG)
+![Intermediate Cells ](https://github.com/marhofmann/pyorps/raw/images/intermediate_steps.PNG)
 
 ### Data Input: Raster & Vector, Local & Remote
 
@@ -232,7 +232,7 @@ If you use PYORPS in your research, please cite:
 
 ```
 Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for Automated Power Line Routing', CIRED 
-2025 - 28th Conference and Exhibition on Electricity Distribution, 16 - 19 June 2025,  Geneva, Switzerland
+2025 - 28th Conference and Exhibition on Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 ```
 
 ## Contact
