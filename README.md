@@ -45,11 +45,6 @@ While tailored for distribution grids, it can be adapted for various infrastruct
 - **Environmental Consideration**: Add cost modifiers for protected areas, water zones, and other sensitive regions
 - **GIS Integration**: Export results as GeoJSON for further analysis in GIS applications
 
-## Installation
-
-```bash
-pip install pyorps
-```
 
 ## Quick Start
 
@@ -79,6 +74,22 @@ path_finder.plot_paths()
 # Export to GeoJSON
 path_finder.save_paths("data/results/route.geojson")
 ```
+## Installation
+
+To run PYORPS you can install it using pip:
+```bash
+pip install pyorps
+```
+### Dependencies
+
+Additionally, the following Python packages will be installed:
+
+- [GeoPandas](https://github.com/geopandas/geopandas) >= 1.0.1
+- [Numba](https://github.com/numba/numba) >= 0.61.2
+- [NumPy](https://github.com/numpy/numpy) >= 2.2.5
+- [Pandas](https://github.com/pandas-dev/pandas) >= 2.2.3
+- [Rasterio](https://github.com/rasterio/rasterio) >= 1.4.3
+- [NetworKit](https://github.com/networkit/networkit) >= 11.1
 
 ## How It Works
 

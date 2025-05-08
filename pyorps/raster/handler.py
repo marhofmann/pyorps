@@ -107,8 +107,10 @@ class RasterHandler:
             multi_point = MultiPoint(all_points)
             buffer_geom = multi_point.convex_hull
         if search_space_buffer_m is None:
-            search_space_buffer_m = self.estimate_optimal_buffer_width(source_coords, target_coords)
-        self.buffer_geometry = buffer_geom.buffer(distance=search_space_buffer_m, quad_segs=32)
+            self.search_space_buffer_m = self.estimate_optimal_buffer_width(source_coords, target_coords)
+        else:
+            self.search_space_buffer_m = search_space_buffer_m
+        self.buffer_geometry = buffer_geom.buffer(distance=self.search_space_buffer_m, quad_segs=32)
 
         # Calculate pixel bounds for the buffered geometry
         bounds = self.buffer_geometry.bounds  # (minx, miny, maxx, maxy)

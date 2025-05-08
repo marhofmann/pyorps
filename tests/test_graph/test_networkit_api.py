@@ -300,5 +300,3 @@ class TestNetworkitAPI(unittest.TestCase):
             # Assert that ValueError is raised
             with self.assertRaises(ValueError):
                 self.api.shortest_path(0, 4, algorithm="astar")
-
-

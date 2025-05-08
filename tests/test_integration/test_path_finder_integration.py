@@ -14,6 +14,7 @@ from pyorps.core.cost_assumptions import CostAssumptions
 from pyorps.core.path import Path
 from pyorps.raster.handler import create_test_tiff
 from pyorps.io.geo_dataset import initialize_geo_dataset, LocalRasterDataset, VectorDataset, RasterDataset
+from pyorps.core.exceptions import AlgorthmNotImplementedError
 
 # List of graph libraries to test
 LIBRARIES_AND_MODULE_NAMES = [
@@ -663,3 +664,213 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
         # Verify the existing path was replaced
         self.assertEqual(path_finder.paths.get(5), replacement_path)
         self.assertEqual(len(path_finder.paths), 2)  # Still only 2 paths
+
+    def test_all_graph_libraries_all_algorithms(self):
+        """Test all available path finding algorithms for each graph library."""
+
+        # Define which algorithms each library should support based on implementation
+        library_algorithms = {
+            "networkit": ["dijkstra", "bidirectional_dijkstra", "astar"],
+            "networkx": ["dijkstra", "bidirectional_dijkstra", "astar"],
+            "igraph": ["dijkstra", "bellman_ford", "astar"],
+            "rustworkx": ["dijkstra", "bellman_ford", "astar"]
+        }
+
+        # Define source and target coordinates for testing
+        single_source = self.source_coords
+        single_target = self.target_coords
+        multi_sources = [(500020, 5599980), (500030, 5599990)]
+        multi_targets = [(500080, 5599920), (500090, 5599910)]
+
+        test_scenarios = [
+            # (name, source, target, pairwise)
+            ("single path", single_source, single_target, False),
+            ("multiple sources to single target", multi_sources, single_target, False),
+            ("single source to multiple targets", single_source, multi_targets, False),
+            ("pairwise multiple paths", multi_sources, multi_targets, True)
+        ]
+
+        # For each library
+        for lib_name, module_name in LIBRARIES_AND_MODULE_NAMES:
+            # Skip if library is not installed
+            if not self.is_library_installed(module_name):
+                if module_name == "networkit":
+                    raise ImportError("Networkit not installed! Networkit is a mandatory library for pyorps!")
+                else:
+                    warnings.warn(f"Library '{module_name}' is not installed. Skipping tests.")
+                    continue
+
+            # Get the algorithms this library should support
+            supported_algorithms = library_algorithms.get(lib_name, ["dijkstra"])
+
+            # Test each algorithm with each scenario
+            for algorithm in supported_algorithms:
+                for scenario_name, source, target, pairwise in test_scenarios:
+                    test_name = f"{lib_name} with {algorithm} ({scenario_name})"
+                    if not pairwise and algorithm == "astar" and lib_name == "rustworkx" and scenario_name == "'multiple sources to single target'":
+                        print()
+                    try:
+                        # Create PathFinder and find route
+                        path_finder = PathFinder(
+                            dataset_source=self.test_raster_path,
+                            source_coords=source,
+                            target_coords=target,
+                            graph_api=lib_name,
+                            search_space_buffer_m=50,
+                            neighborhood_str='r1',
+                        )
+
+                        result = path_finder.find_route(algorithm=algorithm, pairwise=pairwise)
+
+                        # Check results based on scenario
+                        self._validate_path_results(result, algorithm, test_name)
+
+                    except AlgorthmNotImplementedError:
+                        # If algorithm is truly not implemented, that's okay
+                        warnings.warn(f"{test_name}: Algorithm not implemented")
+                    except Exception as e:
+                        # Other errors indicate a real problem
+                        self.fail(f"{test_name} failed: {str(e)}")
+
+    def _validate_path_results(self, result, algorithm, test_name):
+        """Helper to validate path results from different scenarios."""
+        if isinstance(result, list):
+            # Should have at least one path
+            self.assertGreater(len(result), 0, f"No paths found for {test_name}")
+
+            # Validate each path
+            for i, path in enumerate(result):
+                # Some paths might legitimately be empty if no route exists
+                if path:
+                    self.assertGreater(len(path.path_indices), 1,
+                                       f"Path {i} has too few indices for {test_name}")
+                    self.assertEqual(path.algorithm, algorithm,
+                                     f"Path {i} has wrong algorithm for {test_name}")
+                    self.assertGreater(path.total_length, 0,
+                                       f"Path {i} has zero length for {test_name}")
+        else:
+            # Single path result
+            self.assertIsNotNone(result, f"No path found for {test_name}")
+            self.assertGreater(len(result.path_indices), 1,
+                               f"Path has too few indices for {test_name}")
+            self.assertEqual(result.algorithm, algorithm,
+                             f"Path has wrong algorithm for {test_name}")
+            self.assertGreater(result.total_length, 0,
+                               f"Path has zero length for {test_name}")
+
+    def test_algorithm_comparison(self):
+        """Test that different algorithms produce valid paths for the same problem."""
+        # We'll use networkit as it has a wide range of algorithm implementations
+        lib_name = "networkit"
+
+        # Skip if library is not installed
+        if not self.is_library_installed(lib_name):
+            raise ImportError(f"{lib_name} is required for this test")
+
+        algorithms = ["dijkstra", "bidirectional_dijkstra", "astar"]
+        paths = {}
+
+        # Create a pathfinder
+        path_finder = PathFinder(
+            dataset_source=self.test_raster_path,
+            source_coords=self.source_coords,
+            target_coords=self.target_coords,
+            graph_api=lib_name,
+            search_space_buffer_m=50,
+            neighborhood_str='r1',
+        )
+
+        # Find paths using different algorithms
+        for algorithm in algorithms:
+            try:
+                paths[algorithm] = path_finder.find_route(algorithm=algorithm)
+
+                # Validate the path
+                self.assertIsNotNone(paths[algorithm])
+                self.assertGreater(len(paths[algorithm].path_indices), 1)
+                self.assertEqual(paths[algorithm].algorithm, algorithm)
+
+                # Ensure the path connects source and target
+                start_coord = paths[algorithm].path_coords[0]
+                end_coord = paths[algorithm].path_coords[-1]
+                self.assertAlmostEqual(start_coord[0], self.source_coords[0], delta=5)
+                self.assertAlmostEqual(start_coord[1], self.source_coords[1], delta=5)
+                self.assertAlmostEqual(end_coord[0], self.target_coords[0], delta=5)
+                self.assertAlmostEqual(end_coord[1], self.target_coords[1], delta=5)
+
+            except AlgorthmNotImplementedError:
+                warnings.warn(f"Algorithm {algorithm} not implemented for {lib_name}")
+
+        # Compare the paths from different algorithms
+        # They might not be identical, but should be similar in cost and length
+        if len(paths) >= 2:
+            algorithms_with_paths = list(paths.keys())
+            for i in range(len(algorithms_with_paths) - 1):
+                for j in range(i + 1, len(algorithms_with_paths)):
+                    algo1 = algorithms_with_paths[i]
+                    algo2 = algorithms_with_paths[j]
+
+                    # Compare path lengths (allow 15% difference as algorithms may find slightly different routes)
+                    length1 = paths[algo1].total_length
+                    length2 = paths[algo2].total_length
+                    self.assertLess(abs(length1 - length2) / max(length1, length2), 0.15,
+                                    f"Paths from {algo1} and {algo2} differ too much in length")
+
+    def test_algorithm_comparison(self):
+        """Test that different algorithms produce valid paths for the same problem."""
+        # We'll use networkit as it has a wide range of algorithm implementations
+        lib_name = "networkit"
+
+        # Skip if library is not installed
+        if not self.is_library_installed(lib_name):
+            raise ImportError(f"{lib_name} is required for this test")
+
+        algorithms = ["dijkstra", "bidirectional_dijkstra", "astar"]
+        paths = {}
+
+        # Create a pathfinder
+        path_finder = PathFinder(
+            dataset_source=self.test_raster_path,
+            source_coords=self.source_coords,
+            target_coords=self.target_coords,
+            graph_api=lib_name,
+            search_space_buffer_m=50,
+            neighborhood_str='r1',
+        )
+
+        # Find paths using different algorithms
+        for algorithm in algorithms:
+            try:
+                paths[algorithm] = path_finder.find_route(algorithm=algorithm)
+
+                # Validate the path
+                self.assertIsNotNone(paths[algorithm])
+                self.assertGreater(len(paths[algorithm].path_indices), 1)
+                self.assertEqual(paths[algorithm].algorithm, algorithm)
+
+                # Ensure the path connects source and target
+                start_coord = paths[algorithm].path_coords[0]
+                end_coord = paths[algorithm].path_coords[-1]
+                self.assertAlmostEqual(start_coord[0], self.source_coords[0], delta=5)
+                self.assertAlmostEqual(start_coord[1], self.source_coords[1], delta=5)
+                self.assertAlmostEqual(end_coord[0], self.target_coords[0], delta=5)
+                self.assertAlmostEqual(end_coord[1], self.target_coords[1], delta=5)
+
+            except AlgorthmNotImplementedError:
+                warnings.warn(f"Algorithm {algorithm} not implemented for {lib_name}")
+
+        # Compare the paths from different algorithms
+        # They might not be identical, but should be similar in cost and length
+        if len(paths) >= 2:
+            algorithms_with_paths = list(paths.keys())
+            for i in range(len(algorithms_with_paths) - 1):
+                for j in range(i + 1, len(algorithms_with_paths)):
+                    algo1 = algorithms_with_paths[i]
+                    algo2 = algorithms_with_paths[j]
+
+                    # Compare path lengths (allow 15% difference as algorithms may find slightly different routes)
+                    length1 = paths[algo1].total_length
+                    length2 = paths[algo2].total_length
+                    self.assertLess(abs(length1 - length2) / max(length1, length2), 0.15,
+                                    f"Paths from {algo1} and {algo2} differ too much in length")
+

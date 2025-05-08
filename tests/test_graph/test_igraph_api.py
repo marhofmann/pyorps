@@ -181,4 +181,3 @@ class TestIGraphAPI(unittest.TestCase):
             # Verify the weighted heuristic is twice the original
             for i in range(len(heuristic)):
                 self.assertAlmostEqual(heuristic_weighted[i], heuristic[i] * 2.0)
-

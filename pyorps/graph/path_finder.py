@@ -211,7 +211,8 @@ class PathFinder:
                         self.raster_handler.save_section_as_raster(raster_save_path)
             else:
                 raise ValueError(f"Unsupported dataset type: {type(self.dataset)}")
-
+        if self.search_space_buffer_m is None:
+            self.search_space_buffer_m = self.raster_handler.search_space_buffer_m
         return self.raster_handler
 
     def create_graph(self, band_index: int = 0):

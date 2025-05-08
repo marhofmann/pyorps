@@ -211,6 +211,7 @@ class RustworkxAPI(GraphLibraryAPI):
                                               goal_fn=goal_reached,
                                               edge_cost_fn=lambda edge_weight: edge_weight,
                                               estimate_cost_fn=heuristic_function)
+                path = list(path)
             elif algorithm == "bellman_ford":
                 path = rx.bellman_ford_shortest_paths(self.graph, source, target=target,
                                                       weight_fn=lambda edge_weight: edge_weight)
@@ -334,7 +335,17 @@ class RustworkxAPI(GraphLibraryAPI):
             source = source_indices[0]
             target = target_indices[0]
             return self._compute_single_path(source, target, algorithm, **kwargs)
-
+        # Multiple sources, single target (special case handling)
+        elif len(source_indices) > 1 and len(target_indices) == 1:
+            target = target_indices[0]
+            paths = []
+            for source in source_indices:
+                try:
+                    path = self._compute_single_path(source, target, algorithm, **kwargs)
+                    paths.append(path)
+                except NoPathFoundError:
+                    paths.append([])
+            return paths
         # Single source, multiple targets
         elif len(source_indices) == 1:
             source = source_indices[0]
