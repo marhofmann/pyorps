@@ -52,7 +52,7 @@ tests/test_integration/test_path_finder_integration.py::TestGraphLibraryPathFind
     warnings.warn(f"Algorithm '{algorithm}' failed with library '{lib_name}': {e}")
 
 tests/test_io/test_vector_loader.py::TestVectorLoaderHelpers::test_clip_data_by_mask_gdf
-  D:\a\pyorps\pyorps\pyorps\io\vector_loader.py:151: UserWarning: The indices of the left and right GeoSeries' are not equal, and therefore they will be aligned (reordering and/or introducing missing values) before executing the operation. If this alignment is the desired behaviour, you can silence this warning by passing 'align=True'. If you don't want alignment and protect yourself of accidentally aligning, you can pass 'align=False'.
+  D:\a\pyorps\pyorps\pyorps\io\vector_loader.py:153: UserWarning: The indices of the left and right GeoSeries' are not equal, and therefore they will be aligned (reordering and/or introducing missing values) before executing the operation. If this alignment is the desired behaviour, you can silence this warning by passing 'align=True'. If you don't want alignment and protect yourself of accidentally aligning, you can pass 'align=False'.
     return gdf[gdf.geometry.intersects(mask)]
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
@@ -73,13 +73,13 @@ pyorps\graph\api\networkx_api.py          116     11    91%   33, 78-79, 119, 16
 pyorps\graph\api\rustworkx_api.py         133     34    74%   29, 42, 45, 59-63, 72-76, 143-144, 150-152, 224, 244-245, 266-267, 283-291, 330, 346-347
 pyorps\graph\path_finder.py               193     12    94%   133, 170-171, 191, 243-245, 324, 326, 361, 367, 397
 pyorps\io\geo_dataset.py                  160     16    90%   79, 86, 98, 100, 124-126, 148-150, 243-246, 271-273
-pyorps\io\vector_loader.py                276     43    84%   95, 126, 132, 155-156, 162, 186, 203, 207, 228, 234-237, 326-327, 415-429, 525, 544, 570-572, 580-606, 670, 720
+pyorps\io\vector_loader.py                277     43    84%   97, 128, 134, 157-158, 164, 188, 205, 209, 230, 236-239, 328-329, 417-431, 527, 546, 572-574, 582-608, 672, 722
 pyorps\raster\handler.py                  184      8    96%   144-150, 353-354, 423, 428
 pyorps\raster\rasterizer.py               220     37    83%   107, 136, 162, 193, 206, 241, 249, 252, 262, 316, 357, 368-371, 405, 426, 437, 484, 530-555, 566, 592, 602
 pyorps\utils\neighborhood.py              107      2    98%   44, 142
 pyorps\utils\plotting.py                  187      4    98%   204, 276-278
 pyorps\utils\traversal.py                 264     16    94%   168, 403-409, 433, 460-467, 470
 ---------------------------------------------------------------------
-TOTAL                                    2598    242    91%
+TOTAL                                    2599    242    91%
 Coverage XML written to file coverage.xml
-================= 299 passed, 7 warnings in 76.04s (0:01:16) ==================
+================= 299 passed, 7 warnings in 78.55s (0:01:18) ==================

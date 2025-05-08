@@ -42,6 +42,8 @@ def load_from_wfs(
     Raises:
         WFSLayerNotFoundError: If the layer cannot be found and auto_match is False
     """
+    import requests
+
     # Find the correct layer name
     if auto_match:
         layer = _resolve_layer(url, layer)
