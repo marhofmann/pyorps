@@ -2,6 +2,8 @@ Metadata-Version: 2.4
 Name: pyorps
 Version: 0.1.0
 Summary: PYORPS (Python for Optimal Routes in Power Systems)
+Home-page: https://github.com/marhofmann/pyorps
+Author: Martin Hofmann
 Author-email: Martin Hofmann <martin.hofmann-3@ei.thm.de>
 License: MIT
 Project-URL: Homepage, https://github.com/marhofmann/pyorps
@@ -39,7 +41,10 @@ Requires-Dist: coverage[toml]>=7.8.0; extra == "dev"
 Requires-Dist: pytest>=8.3.5; extra == "dev"
 Provides-Extra: full
 Requires-Dist: pyorps[dev,graph,interactive,viz,web]; extra == "full"
+Dynamic: author
+Dynamic: home-page
 Dynamic: license-file
+Dynamic: requires-python
 
 # PYORPS - Python for Optimal Routes in Power Systems
 
@@ -47,7 +52,7 @@ Dynamic: license-file
 [![Python Versions](https://img.shields.io/pypi/pyversions/pyorps.svg)](https://pypi.org/project/pyorps/)
 [![Documentation Status](https://readthedocs.org/projects/pyorps/badge/?version=latest)](https://pyorps.readthedocs.io/en/latest/?badge=latest)
 [![codecov](https://codecov.io/gh/marhofmann/pyorps/branch/master/graph/badge.svg)](https://codecov.io/gh/marhofmann/pyorps)
-[![Code Quality](https://github.com/marhofmann/pyorps/actions/workflows/lint.yml/badge.svg)](https://github.com/yourusername/your-repo/actions/workflows/lint.yml)
+[![Code Quality](https://github.com/marhofmann/pyorps/actions/workflows/code-quality.yml/badge.svg)](https://github.com/marhofmann/pyorps/actions/workflows/code-quality.yml)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/yourusername/your-repo/main?filepath=notebooks%2Fexample.ipynb)
 

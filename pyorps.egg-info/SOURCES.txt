@@ -1,6 +1,7 @@
 LICENSE
 README.md
 pyproject.toml
+setup.py
 pyorps/__init__.py
 pyorps.egg-info/PKG-INFO
 pyorps.egg-info/SOURCES.txt
