@@ -89,6 +89,7 @@ web = [
 graph = [
     "rustworkx>=0.16.0",
     "igraph>=0.11.8",
+    "networkx>=3.4.2"
 
 ]
 # Development and testing dependencies
