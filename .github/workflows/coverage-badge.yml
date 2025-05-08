@@ -8,8 +8,6 @@ on:
 jobs:
   coverage:
     runs-on: windows-latest
-    env:
-      NUMBA_DISABLE_JIT: 1
 
     steps:
       - name: Checkout code
@@ -29,7 +27,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest --cov=pyorps tests/ --cov-config=pyproject.toml > result.log
+          pytest --cov=pyorps tests/ --cov-config=pyproject.toml --cov-report=term-missing > result.log 
           type result.log | Select-Object -Last 10
 
       - name: Generate coverage badge
