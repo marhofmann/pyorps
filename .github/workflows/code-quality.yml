@@ -9,7 +9,7 @@ on:
 jobs:
   code-quality:
     name: Check Code Quality
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -34,4 +34,5 @@ jobs:
 
       - name: Lint with Pylint
         run: |
-          pylint --disable=C0111,R0903,C0103 $(git ls-files '*.py')
+          Get-ChildItem -Path . -Filter "*.py" -Recurse | ForEach-Object { pylint --disable=C0111,R0903,C0103 $_.FullName }
+        shell: pwsh
