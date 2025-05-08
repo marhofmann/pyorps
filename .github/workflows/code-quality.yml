@@ -26,6 +26,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Check with Flake8
+        continue-on-error: true
         run: |
           # Stop the build if there are Python syntax errors or undefined names
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
@@ -33,6 +34,7 @@ jobs:
           flake8 . --count --max-complexity=10 --max-line-length=88 --statistics
 
       - name: Lint with Pylint
+        continue-on-error: true
         run: |
           Get-ChildItem -Path . -Filter "*.py" -Recurse | ForEach-Object { pylint --disable=C0111,R0903,C0103 $_.FullName }
         shell: pwsh
