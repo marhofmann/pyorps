@@ -38,6 +38,8 @@ dependencies = [
 ]
 
 [tool.coverage.run]
+source = ["pyorps"]
+relative_files = true
 omit = [
     # Add paths to files you want to exclude
     "tests/*",
@@ -91,7 +93,7 @@ graph = [
 ]
 # Development and testing dependencies
 dev = [
-    "coverage>=7.8.0",
+    "coverage[toml]>=7.8.0",
     "pytest>=8.3.5",
 ]
 # All optional dependencies

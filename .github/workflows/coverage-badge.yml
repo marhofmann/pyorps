@@ -23,17 +23,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install build
           pip install pytest pytest-cov requests
-          pip install .[dev]
+          pip install -e .
 
       - name: Run tests with coverage
         run: |
-          pytest --cov=pyorps tests/ --cov-config=pyproject.toml --cov-report=term-missing > result.log 
+          python -m pytest --cov=pyorps tests/ --cov-config=pyproject.toml --cov-report=term-missing > result.log 
           type result.log | Select-Object -Last 10
 
       - name: Generate coverage badge
         shell: pwsh
         run: |
-          $coverage = (pytest --cov=pyorps tests/ --cov-report=term | Select-String -Pattern '\d+%$' | Select-Object -Last 1).Matches.Value -replace '%',''
+          $coverage = (python -m pytest --cov=pyorps tests/ --cov-report=term | Select-String -Pattern '\d+%$' | Select-Object -Last 1).Matches.Value -replace '%',''
           $color = if ($coverage -lt 70) { 'red' } elseif ($coverage -lt 90) { 'orange' } else { 'green' }
           Invoke-WebRequest -Uri "https://img.shields.io/badge/coverage-${coverage}%25-${color}.svg" -OutFile coverage.svg
 
