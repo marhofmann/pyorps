@@ -1,6 +1,0 @@
-[run]
-omit =
-    */.venv/*
-    */tests/*
-    */examples/*
-    */case_studies/*
