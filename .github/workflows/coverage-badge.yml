@@ -3,13 +3,13 @@ name: Coverage Badge
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   coverage:
     runs-on: windows-latest
     env:
-      NUMBA_DISABLE_JIT: 1  # Enable pure-Python mode for Numba
+      NUMBA_DISABLE_JIT: 1
 
     steps:
       - name: Checkout code
