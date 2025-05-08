@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/pyorps.svg)](https://pypi.org/project/pyorps/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/pyorps.svg)](https://pypi.org/project/pyorps/)
 [![Documentation Status](https://readthedocs.org/projects/pyorps/badge/?version=latest)](https://pyorps.readthedocs.io/en/latest/?badge=latest)
-[![Coverage](https://marhofmann.github.io/pyorps/coverage.svg?v=1)](https://github.com/marhofmann/pyorps/actions/workflows/coverage-badge.yml)
+[![codecov](https://codecov.io/gh/marhofmann/pyorps/branch/master/graph/badge.svg)](https://codecov.io/gh/marhofmann/pyorps)
 [![Code Quality](https://github.com/marhofmann/pyorps/actions/workflows/lint.yml/badge.svg)](https://github.com/yourusername/your-repo/actions/workflows/lint.yml)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/yourusername/your-repo/main?filepath=notebooks%2Fexample.ipynb)

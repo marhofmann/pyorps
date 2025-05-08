@@ -81,4 +81,5 @@ pyorps\utils\plotting.py                  187      4    98%   204, 276-278
 pyorps\utils\traversal.py                 264     16    94%   168, 403-409, 433, 460-467, 470
 ---------------------------------------------------------------------
 TOTAL                                    2598    242    91%
-================= 299 passed, 7 warnings in 109.05s (0:01:49) =================
+Coverage XML written to file coverage.xml
+================= 299 passed, 7 warnings in 82.27s (0:01:22) ==================
