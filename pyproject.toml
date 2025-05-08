@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyorps"
-version = "0.1.0"
+version = "0.1.5"
 description = "PYORPS (Python for Optimal Routes in Power Systems)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -34,8 +34,14 @@ dependencies = [
     "numpy>=2.2.5",
     "pandas>=2.2.3",
     "rasterio>=1.4.3",
-    "networkit>=11.1"
+    "networkit>=11.1",
+    "matplotlib>=3.10.1",
+    "requests>=2.32.3",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pyorps*"]
 
 [tool.coverage.run]
 source = ["pyorps"]
@@ -63,34 +69,29 @@ exclude_lines = [
     "raise ImportError"
 ]
 
-[tool.uv]
-python = "3.11"
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/pyorps/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true
 
 [project.urls]
 "Homepage" = "https://github.com/marhofmann/pyorps"
 "Bug Tracker" = "https://github.com/marhofmann/pyorps/issues"
 
 [project.optional-dependencies]
-# Visualization dependencies
-viz = [
-    "matplotlib>=3.10.1",
-]
 # Interactive usage dependencies
 interactive = [
     "notebook>=7.4.0",
     "fiona>=1.10.1",
     "openpyxl>=3.1.5",
 ]
-# Web API dependencies
-web = [
-    "requests>=2.32.3",
-]
+
 # Graph processing dependencies
 graph = [
     "rustworkx>=0.16.0",
     "igraph>=0.11.8",
     "networkx>=3.4.2"
-
 ]
 # Development and testing dependencies
 dev = [
@@ -99,11 +100,8 @@ dev = [
 ]
 # All optional dependencies
 full = [
-    "pyorps[viz,interactive,web,graph,dev]",
+    "pyorps[interactive,web,graph,dev]",
 ]
 
-# Package discovery configuration
-[tool.setuptools]
-# If using flat structure (package at root level)
-packages = ["pyorps"]
+
 
