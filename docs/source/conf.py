@@ -20,7 +20,10 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx_autodoc_typehints',
     'myst_parser',
+    'sphinx.ext.autosummary',
 ]
+
+autosummary_generate = True
 
 myst_enable_extensions = [
     "colon_fence",  # For ::: fenced code blocks
