@@ -85,7 +85,7 @@ for creating and setting up a dedicated raster dataset for your planning task.
 
 ## Installation
 
-To install PYORPS, you can use `pip` or `uv`. 
+To install PYORPS, you can use `pip` or other package management tools. 
 
 #### Using pip
 

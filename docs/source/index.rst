@@ -24,6 +24,6 @@ documentation for details.
    :maxdepth: 2
    :caption: Contents:
 
-   README
+   index
    CONTRIBUTING
-   LICENSE
+   api_reference
