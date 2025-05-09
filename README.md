@@ -53,7 +53,7 @@ Here's a minimal example to get you started:
 ```python
 from pyorps import PathFinder
 
-# Define a file path to a raster file
+# Define a file path to a raster file! 
 raster_path = r"<PATH>\<TO>\<YOUR>\<RASTER_FILE>.tiff" 
 
 # Define your source and target coordinates (must be in the same CRS)
@@ -76,6 +76,10 @@ path_finder.plot_paths()
 # Export to GeoJSON
 path_finder.save_paths(r"<PATH>\<TO>\<YOUR>\<RESULTS>.geojson" )
 ```
+
+Please check out the [example](https://github.com/marhofmann/pyorps/blob/master/examples/create_rasterized_geodata.ipynb) 
+for creating and setting up a dedicated raster dataset for your planning task.
+
 
 ## Installation
 
