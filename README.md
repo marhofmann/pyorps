@@ -196,8 +196,7 @@ alt="R3 complete" width="79%"/><br>
       <sub><b>Figure 3a:</b> Steps for neighbourhoods R0 (blue), R1 (green), R2 (yellow), and R3 (red)</sub>
     </td>
     <td align="center" width="50%">
-      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/intermediate_steps.
-PNG" alt="intermediates" width="90%"/><br>
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/intermediate_steps.PNG" alt="intermediates" width="90%"/><br>
       <sub><b>Figure 3b:</b> Intermediate elements Ik for selected edges of vertex v<sub>5,5</sub>.</sub>
     </td>
   </tr>
