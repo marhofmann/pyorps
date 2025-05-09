@@ -13,7 +13,7 @@ python:
   install:
     - method: pip
       path: .
-    - requirements: docs/requirements.txt  # Specify your documentation dependencies
+    - requirements: docs/source/requirements.txt  # Specify your documentation dependencies
 
 # Sphinx configuration
 sphinx:
