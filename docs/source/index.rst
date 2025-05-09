@@ -15,3 +15,15 @@ documentation for details.
    :maxdepth: 2
    :caption: Contents:
 
+   index
+
+.. include:: README.md
+   :start-line: 1
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Contents:
+
+   README
+   CONTRIBUTING
+   LICENSE

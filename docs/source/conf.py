@@ -17,7 +17,14 @@ release = '09.05.2025'
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
-    'sphinx.ext.napoleon'
+    'sphinx.ext.napoleon',
+    'sphinx_autodoc_typehints',
+    'myst_parser',
+]
+
+myst_enable_extensions = [
+    "colon_fence",  # For ::: fenced code blocks
+    "linkify",      # Automatically convert URLs into links
 ]
 
 templates_path = ['_templates']
@@ -28,5 +35,13 @@ exclude_patterns = []
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'alabaster'
+html_theme = "sphinx_rtd_theme"
+
+# Optional: Customize the sidebar depth
+html_theme_options = {
+    "navigation_depth": 2,  # Controls how many levels of headings are shown
+    "collapse_navigation": False,  # Keeps the sidebar expanded
+    "sticky_navigation": True,  # Keeps the sidebar visible while scrolling
+}
+
 html_static_path = ['_static']
