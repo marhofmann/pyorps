@@ -14,6 +14,6 @@ documentation for details.
    :maxdepth: 2
    :caption: Contents:
 
-   index
-   CONTRIBUTING
+   README
    api_reference
+   CONTRIBUTING
