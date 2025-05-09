@@ -1,25 +1,32 @@
-geopandas>=1.0.1
-numba>=0.61.2
 numpy>=2.2.5
 pandas>=2.2.3
+geopandas>=1.0.1
+numba>=0.61.2
 rasterio>=1.4.3
 networkit>=11.1
 matplotlib>=3.10.1
 requests>=2.32.3
 
+[addttionals]
+openpyxl>=3.1.5
+
+[case_studies]
+notebook>=7.4.0
+fiona>=1.10.1
+pandapower>=3.0.0
+
 [dev]
 coverage[toml]>=7.8.0
 pytest>=8.3.5
 
+[examples]
+notebook>=7.4.0
+fiona>=1.10.1
+
 [full]
-pyorps[dev,graph,interactive,web]
+pyorps[addttionals,case_studies,dev,examples,graph]
 
 [graph]
 rustworkx>=0.16.0
 igraph>=0.11.8
 networkx>=3.4.2
-
-[interactive]
-notebook>=7.4.0
-fiona>=1.10.1
-openpyxl>=3.1.5

@@ -38,11 +38,13 @@ While tailored for distribution grids, it can be adapted for various infrastruct
 
 ## Features
 
-- **Flexible Input Data**: Use local raster files, WFS services, or create custom rasterized geodata
+- **Flexible Input Data**: Use local raster files directly or create custom rasterized geodata from  WFS services or 
+  local vector files
 - **Customizable Costs**: Define terrain-specific cost values based on installation expenses or environmental impacts
-- **Multiple Path Finding**: Calculate routes between multiple sources and targets in parallel
+- **Multiple Path Finding**: Calculate optimal routes between multiple sources and targets in parallel
 - **Performance Optimization**: Control search space parameters to balance accuracy and computational efficiency
-- **Environmental Consideration**: Add cost modifiers for protected areas, water zones, and other sensitive regions
+- **Environmental Consideration**: Add cost modifiers for nature reserves, water protection zones, and other sensitive 
+  regions
 - **GIS Integration**: Export results as GeoJSON for further analysis in GIS applications
 
 
@@ -53,12 +55,12 @@ Here's a minimal example to get you started:
 ```python
 from pyorps import PathFinder
 
-# Define source and target coordinates
-source = (472000, 5593400)
-target = (472800, 5594000)
+# Define a file path to a raster file! 
+raster_path = r"<PATH>\<TO>\<YOUR>\<RASTER_FILE>.tiff" 
 
-# File path to a local raster file
-raster_path = r"data\raster\sample_raster.tiff" 
+# Define your source and target coordinates (must be in the same CRS)
+source = (..., ...)
+target = (..., ...)
 
 # Create PathFinder instance
 path_finder = PathFinder(
@@ -74,24 +76,58 @@ path_finder.find_route()
 path_finder.plot_paths()
 
 # Export to GeoJSON
-path_finder.save_paths("data/results/route.geojson")
+path_finder.save_paths(r"<PATH>\<TO>\<YOUR>\<RESULTS>.geojson" )
 ```
+
+Please check out the [example](https://github.com/marhofmann/pyorps/blob/master/examples/create_rasterized_geodata.ipynb) 
+for creating and setting up a dedicated raster dataset for your planning task.
+
+
 ## Installation
 
-To run PYORPS you can install it using pip:
+To install PYORPS, you can use `pip` or `uv`. 
+
+#### Using pip
+
+You can install the base package using pip:
+
 ```bash
 pip install pyorps
 ```
-### Dependencies
 
-Additionally, the following Python packages will be installed:
+This command will install the core functionality of PYORPS along with its essential dependencies, including:
 
-- [GeoPandas](https://github.com/geopandas/geopandas) >= 1.0.1
-- [Numba](https://github.com/numba/numba) >= 0.61.2
-- [NumPy](https://github.com/numpy/numpy) >= 2.2.5
-- [Pandas](https://github.com/pandas-dev/pandas) >= 2.2.3
-- [Rasterio](https://github.com/rasterio/rasterio) >= 1.4.3
-- [NetworKit](https://github.com/networkit/networkit) >= 11.1
+- [NumPy](https://github.com/numpy/numpy)
+- [Pandas](https://github.com/pandas-dev/pandas)
+- [GeoPandas](https://github.com/geopandas/geopandas)
+- [Numba](https://github.com/numba/numba)
+- [Rasterio](https://github.com/rasterio/rasterio)
+- [NetworKit](https://github.com/networkit/networkit) 
+
+#### Optional Dependencies
+
+PYORPS offers several optional dependencies that enhance its functionality. You can install these extras by specifying them in square brackets:
+
+- **Examples**: To include example scripts:
+  ```bash
+  pip install pyorps[examples]
+  ```
+
+- **Case Studies**: To include case study scripts:
+  ```bash
+  pip install pyorps[case_studies]
+  ```
+
+- **Development and Testing**: To include testing tools and the tests directory:
+  ```bash
+  pip install pyorps[dev]
+  ```
+
+- **Full Installation**: To install all optional dependencies at once:
+  ```bash
+  pip install pyorps[full]
+  ```
+
 
 ## How It Works
 
@@ -107,32 +143,16 @@ The process can be configured with different neighborhood selections (R0-R3) and
 
 ## Use Cases
 
-- **Distribution Grid Planning**: Optimize new underground cable connections
-- **Grid Integration of Renewable Energies**: Determine optimal point of common coupling (PCC)
-- **Environmental Impact Reduction**: Route infrastructure to minimize impact on protected areas
-- **Cost Optimization**: Balance construction costs with environmental considerations
-- **General Infrastructure Planning**: Adapt for other linear infrastructure planning tasks
+- **Distribution Grid Planning**: Optimize new underground cable connections to increase grid capacity
+- **Grid Integration of Renewable Energies**: Determine optimal point of common coupling (PCC) and find the most 
+  economical route for grid integration
+- **Environmental Impact Reduction**: Route underground cables to minimize impact on protected areas
+- **Cost Optimization**: Balance construction costs with environmental considerations and other aspects
+- **General Infrastructure Planning**: Adapt for other linear infrastructure planning tasks (e.g. fiber optic cables or
+  pipes)
 
 
 ## Technical Details
-
-### Various Graph Backends & Path-Finding Algorithms
-
-PYORPS supports multiple high-performance graph libraries as interchangeable backends for path finding:
-
-- **[NetworKit](https://networkit.github.io/)** (default): Fast C++/Python library for large-scale network analysis.
-- **[Rustworkx](https://qiskit.org/documentation/rustworkx/)**: Pythonic, Rust-powered graph algorithms.
-- **[NetworkX](https://networkx.org/)**: Widely-used, pure Python graph library.
-- **[iGraph](https://igraph.org/python/)**: Efficient C-based graph library.
-- **(Upcoming)**: GPU-accelerated backends (e.g., cuGraph, Dask-cuGraph).
-
-You can select the backend via the `graph_api` parameter in `PathFinder`. Each backend exposes a unified interface for shortest path computation, supporting:
-
-- **Dijkstra** (default): Robust and efficient.
-- **A***: Heuristic-based, faster for spatial graphs with good heuristics.
-- **Bellman-Ford**: Handles negative weights (where supported).
-- **Bidirectional Dijkstra**: Available in some backends for further speedup.
-
 
 ### Search Space Control: Buffering & Masking
 
@@ -171,11 +191,13 @@ This allows you to balance accuracy (following real-world paths) and performance
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/R3-complete.PNG" alt="R3 complete" width="90%"/><br>
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/R3-complete.PNG" 
+alt="R3 complete" width="79%"/><br>
       <sub><b>Figure 3a:</b> Steps for neighbourhoods R0 (blue), R1 (green), R2 (yellow), and R3 (red)</sub>
     </td>
     <td align="center" width="50%">
-      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/intermediate_steps.PNG" alt="intermediates" width="90%"/><br>
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/intermediate_steps.
+PNG" alt="intermediates" width="90%"/><br>
       <sub><b>Figure 3b:</b> Intermediate elements Ik for selected edges of vertex v<sub>5,5</sub>.</sub>
     </td>
   </tr>
@@ -235,9 +257,9 @@ Routing is driven by a **cost raster**. PYORPS supports:
 |...                                  |...                          |...    |
 
 **How to use:**  
-- Use as a CSV file with columns: `land_use`, `category`, `cost`  
+- Use as a CSV file with columns (e.g. `land_use`, `category`, `cost`)  
 - The `cost` value can be interpreted as €/m or as a relative score.
-- 65535 indicate forbidden areas.
+- Use uint16 and set 65535 to indicate forbidden areas.
 
 
 ### Rasterization: High-Resolution, Multi-Layer, and Overlay
@@ -257,13 +279,30 @@ Routing is driven by a **cost raster**. PYORPS supports:
 - **Data sources**: Land registry, nature reserves, water protection areas, custom user data
 
 
+### Various Graph Backends & Path-Finding Algorithms
+
+PYORPS supports multiple high-performance graph libraries as interchangeable backends for path finding:
+
+- **[NetworKit](https://networkit.github.io/)** (default): Fast C++/Python library for large-scale network analysis.
+- **[Rustworkx](https://qiskit.org/documentation/rustworkx/)**: Pythonic, Rust-powered graph algorithms.
+- **[NetworkX](https://networkx.org/)**: Widely-used, pure Python graph library.
+- **[iGraph](https://igraph.org/python/)**: Efficient C-based graph library.
+- **(Upcoming)**: GPU-accelerated backends (e.g., cuGraph, Dask-cuGraph).
+
+You can select the backend via the `graph_api` parameter in `PathFinder`. Each backend exposes a unified interface for shortest path computation, supporting:
+
+- **Dijkstra** (default): Robust and efficient.
+- **A***: Heuristic-based, faster for spatial graphs with good heuristics.
+- **Bellman-Ford**: Handles negative weights (where supported).
+- **Bidirectional Dijkstra**: Available in some backends for further speedup.
+
 ## Documentation
 
 For comprehensive documentation, examples, and tutorials, visit our [GitHub repository](https://github.com/marhofmann/pyorps).
 
 ## Contributing
 
-Contributions are welcome! Whether it's bug reports, feature requests, or code contributions, please feel free to reach out or submit a pull request.
+Contributions are welcome! If you want to contribute, please check out the [PYORPS contribution guidelines](https://github.com/marhofmann/pyorps/blob/master/CONTRIBUTING.md).
 
 ## License
 

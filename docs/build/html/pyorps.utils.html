@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>pyorps.utils package &#8212; PYORPS 09.05.2025 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=d2164c19"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="pyorps-utils-package">
+<h1>pyorps.utils package<a class="headerlink" href="#pyorps-utils-package" title="Link to this heading">¶</a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">¶</a></h2>
+</section>
+<section id="module-pyorps.utils.neighborhood">
+<span id="pyorps-utils-neighborhood-module"></span><h2>pyorps.utils.neighborhood module<a class="headerlink" href="#module-pyorps.utils.neighborhood" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.calculate_errors">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">calculate_errors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">directions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phi</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/pyorps/utils/neighborhood.html#calculate_errors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.calculate_errors" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate elongation error and maximum deviation for a given set of directions and path angle.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>directions</strong> – Sorted list of all possible move directions in radians</p></li>
+<li><p><strong>phi</strong> – The path direction in radians</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A dictionary with the calculated errors</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.elongation_error">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">elongation_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">theta_j</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">theta_j_plus_1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phi</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="reference internal" href="_modules/pyorps/utils/neighborhood.html#elongation_error"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.elongation_error" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate the elongation error for a lattice path.</p>
+<p>The elongation error is given by:
+e(φ) = (sin(θ_{j+1} - φ) + sin(φ - θ_j)) / sin(θ_{j+1} - θ_j)</p>
+<p class="rubric">References</p>
+<p>Goodchild, M. F.: ‘An evaluation of lattice solutions to the problem of corridor location’,
+Environment and Planning A: Economy and Space, 1977, 9, (7), pp 727-738</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.find_adjacent_directions">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">find_adjacent_directions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">phi</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">directions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/pyorps/utils/neighborhood.html#find_adjacent_directions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.find_adjacent_directions" title="Link to this definition">¶</a></dt>
+<dd><p>Find the adjacent directions θ_j and θ_{j+1} such that θ_j &lt; φ &lt; θ_{j+1}.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>phi</strong> – The path direction in radians</p></li>
+<li><p><strong>directions</strong> – Sorted list of all possible move directions in radians</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple (θ_j, θ_{j+1})</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.find_max_errors">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">find_max_errors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">directions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/pyorps/utils/neighborhood.html#find_max_errors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.find_max_errors" title="Link to this definition">¶</a></dt>
+<dd><p>Find the maximum elongation error and maximum deviation for a given set of directions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>directions</strong> – Sorted list of all possible move directions in radians</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A dictionary with the maximum calculated errors</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.get_move_directions">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">get_move_directions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">moves</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/pyorps/utils/neighborhood.html#get_move_directions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.get_move_directions" title="Link to this definition">¶</a></dt>
+<dd><p>Get all possible move directions in radians for a given move set.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>moves</strong> – List of move vectors</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A sorted list of angles in radians [0, 2π)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.get_neighborhood_steps">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">get_neighborhood_steps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">directed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span></span></span><a class="reference internal" href="_modules/pyorps/utils/neighborhood.html#get_neighborhood_steps"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.get_neighborhood_steps" title="Link to this definition">¶</a></dt>
+<dd><p>Generate the steps for a k-neighborhood.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>k</strong> (<em>int</em>) – The neighborhood parameter (k &gt;= 0)</p></li>
+<li><p><strong>directed</strong> (<em>bool</em>) – If True, includes all possible step directions;
+if False, includes a minimal set of steps that ensures
+bidirectional connectivity in the graph</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A numpy array with dtype int8 containing all steps</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.max_deviation">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">max_deviation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">theta_j</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">theta_j_plus_1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phi</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="reference internal" href="_modules/pyorps/utils/neighborhood.html#max_deviation"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.max_deviation" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate the maximum deviation for a lattice path.</p>
+<p>The maximum deviation is given by:
+δ(φ) = (sin(θ_{j+1} - φ) * sin(φ - θ_j)) / sin(θ_{j+1} - θ_j)</p>
+<p class="rubric">References</p>
+<p>Goodchild, M. F.: ‘An evaluation of lattice solutions to the problem of corridor location’,
+Environment and Planning A: Economy and Space, 1977, 9, (7), pp 727-738</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.normalize_angle">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">normalize_angle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">angle</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="reference internal" href="_modules/pyorps/utils/neighborhood.html#normalize_angle"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.normalize_angle" title="Link to this definition">¶</a></dt>
+<dd><p>Normalize an angle to the range [0, 2π).</p>
+</dd></dl>
+
+</section>
+<section id="module-pyorps.utils.plotting">
+<span id="pyorps-utils-plotting-module"></span><h2>pyorps.utils.plotting module<a class="headerlink" href="#module-pyorps.utils.plotting" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.utils.plotting.PathPlotter">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.utils.plotting.</span></span><span class="sig-name descname"><span class="pre">PathPlotter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">paths</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="pyorps.core.html#pyorps.core.path.PathCollection" title="pyorps.core.path.PathCollection"><span class="pre">PathCollection</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">raster_handler</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="pyorps.raster.html#pyorps.raster.handler.RasterHandler" title="pyorps.raster.handler.RasterHandler"><span class="pre">RasterHandler</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/plotting.html#PathPlotter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.plotting.PathPlotter" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A class for visualizing paths from a PathCollection.</p>
+<p>This class provides functionality to plot paths with options to:
+- Display all paths or individual paths
+- Show or hide the raster data as background
+- Customize markers, colors, and other visual elements
+- Create individual subplots for each path or combine them</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.utils.plotting.PathPlotter.plot_paths">
+<span class="sig-name descname"><span class="pre">plot_paths</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plot_all</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subplots</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subplotsize</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">(10,</span> <span class="pre">8)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_color</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'green'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_color</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'red'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_colors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_marker</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'o'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_marker</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'x'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_linewidth</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_raster</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">suptitle</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reverse_colors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Axes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Axes</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/pyorps/utils/plotting.html#PathPlotter.plot_paths"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.plotting.PathPlotter.plot_paths" title="Link to this definition">¶</a></dt>
+<dd><p>Plot paths with options to display all paths or individual paths.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plot_all</strong> – If True, plot all paths. If False, plot only the path with path_id.</p></li>
+<li><p><strong>subplots</strong> – If True and plot_all is True, create subplots for each path.</p></li>
+<li><p><strong>subplotsize</strong> – Size of each individual subplot in inches. Defaults to (10, 8).</p></li>
+<li><p><strong>source_color</strong> – Color for source marker. Defaults to ‘green’.</p></li>
+<li><p><strong>target_color</strong> – Color for target marker. Defaults to ‘red’.</p></li>
+<li><p><strong>path_colors</strong> – Colors for paths. If None, uses default colors.</p></li>
+<li><p><strong>source_marker</strong> – Marker style for source. Defaults to ‘o’.</p></li>
+<li><p><strong>target_marker</strong> – Marker style for target. Defaults to ‘x’.</p></li>
+<li><p><strong>path_linewidth</strong> – Line width for paths. Defaults to 2.</p></li>
+<li><p><strong>show_raster</strong> – Whether to show raster data as background. Defaults to True.</p></li>
+<li><p><strong>title</strong> – Subplot title(s). If None, default titles are created.</p></li>
+<li><p><strong>suptitle</strong> – The subtitle of the entire figure. Defaults to None.</p></li>
+<li><p><strong>path_id</strong> – ID of specific path to plot when plot_all is False.</p></li>
+<li><p><strong>reverse_colors</strong> – Whether to reverse the color scheme (low=dark, high=bright)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The axes object(s) with the plot. If multiple subplots are created, returns a list.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.utils.plotting.RasterVizData">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.utils.plotting.</span></span><span class="sig-name descname"><span class="pre">RasterVizData</span></span><a class="reference internal" href="_modules/pyorps/utils/plotting.html#RasterVizData"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.plotting.RasterVizData" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Container for raster visualization data used for plotting.</p>
+</dd></dl>
+
+</section>
+<section id="module-pyorps.utils.traversal">
+<span id="pyorps-utils-traversal-module"></span><h2>pyorps.utils.traversal module<a class="headerlink" href="#module-pyorps.utils.traversal" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.traversal.calculate_path_metrics_numba">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.traversal.</span></span><span class="sig-name descname"><span class="pre">calculate_path_metrics_numba</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_indices</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#calculate_path_metrics_numba"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.traversal.calculate_path_metrics_numba" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate metrics about the path including total length and length through each cost category.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.traversal.calculate_region_bounds">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.traversal.</span></span><span class="sig-name descname"><span class="pre">calculate_region_bounds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cols</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#calculate_region_bounds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.traversal.calculate_region_bounds" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate region bounds for source and target regions</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.traversal.calculate_segment_length">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.traversal.</span></span><span class="sig-name descname"><span class="pre">calculate_segment_length</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">abs_dr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">abs_dc</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#calculate_segment_length"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.traversal.calculate_segment_length" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate the length of a segment based on absolute differences in rows and columns.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.traversal.construct_edges">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.traversal.</span></span><span class="sig-name descname"><span class="pre">construct_edges</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#construct_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.traversal.construct_edges" title="Link to this definition">¶</a></dt>
+<dd><p>Optimized version using Numba with integer indexing and direct linear indices</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.traversal.euclidean_distances_numba">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.traversal.</span></span><span class="sig-name descname"><span class="pre">euclidean_distances_numba</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_point</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#euclidean_distances_numba"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.traversal.euclidean_distances_numba" title="Link to this definition">¶</a></dt>
+<dd><p>Numba-accelerated function to calculate Euclidean distances from all points to a target point.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.traversal.find_valid_nodes">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.traversal.</span></span><span class="sig-name descname"><span class="pre">find_valid_nodes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s_rows_start</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s_rows_end</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s_cols_start</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s_cols_end</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_mask</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raster</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediates</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cols</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost_factor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_nodes</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#find_valid_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.traversal.find_valid_nodes" title="Link to this definition">¶</a></dt>
+<dd><p>Find all valid nodes for a step direction</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.traversal.get_cost_factor_numba">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.traversal.</span></span><span class="sig-name descname"><span class="pre">get_cost_factor_numba</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediates_count</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#get_cost_factor_numba"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.traversal.get_cost_factor_numba" title="Link to this definition">¶</a></dt>
+<dd><p>JIT-compiled version of get_cost_factor</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.traversal.get_max_number_of_edges">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.traversal.</span></span><span class="sig-name descname"><span class="pre">get_max_number_of_edges</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">m</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#get_max_number_of_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.traversal.get_max_number_of_edges" title="Link to this definition">¶</a></dt>
+<dd><p>Returns the maximum number of edges defined by a neighborhood and a given raster shape.
+:param n: The number of rows in the raster.
+:param m: The number of columns in the raster.
+:param steps: The set of steps for a neighborhood.
+:return: The maximum number of edges defined by a neighborhood and a given raster shape.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.traversal.get_outgoing_edges">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.traversal.</span></span><span class="sig-name descname"><span class="pre">get_outgoing_edges</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raster</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cols</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#get_outgoing_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.traversal.get_outgoing_edges" title="Link to this definition">¶</a></dt>
+<dd><p>Get outgoing edges from a specific node only when needed</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.traversal.intermediate_steps_numba">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.traversal.</span></span><span class="sig-name descname"><span class="pre">intermediate_steps_numba</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dc</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#intermediate_steps_numba"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.traversal.intermediate_steps_numba" title="Link to this definition">¶</a></dt>
+<dd><p>JIT-compiled version of intermediate_steps with direct array manipulation</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.traversal.is_valid_node">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.traversal.</span></span><span class="sig-name descname"><span class="pre">is_valid_node</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_mask</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediates</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raster</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cols</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_cost</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#is_valid_node"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.traversal.is_valid_node" title="Link to this definition">¶</a></dt>
+<dd><p>Check if a node is valid and calculate its cost</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.traversal.ravel_index">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.traversal.</span></span><span class="sig-name descname"><span class="pre">ravel_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">row</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">col</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cols</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#ravel_index"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.traversal.ravel_index" title="Link to this definition">¶</a></dt>
+<dd><p>Convert 2D indices to 1D linear index - much faster than np.ravel_multi_index</p>
+</dd></dl>
+
+</section>
+<section id="module-pyorps.utils">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-pyorps.utils" title="Link to this heading">¶</a></h2>
+<p>Utility functions for geospatial data processing and visualization.</p>
+<p>This module provides:
+1. Numba-accelerated traversal functions for path calculation and metrics
+2. Helper functions for spatial calculations and operations
+3. Utilities for working with raster indices and graph construction</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.calculate_path_metrics_numba">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.</span></span><span class="sig-name descname"><span class="pre">calculate_path_metrics_numba</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_indices</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#calculate_path_metrics_numba"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.calculate_path_metrics_numba" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate metrics about the path including total length and length through each cost category.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.calculate_region_bounds">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.</span></span><span class="sig-name descname"><span class="pre">calculate_region_bounds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cols</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#calculate_region_bounds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.calculate_region_bounds" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate region bounds for source and target regions</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.calculate_segment_length">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.</span></span><span class="sig-name descname"><span class="pre">calculate_segment_length</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">abs_dr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">abs_dc</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#calculate_segment_length"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.calculate_segment_length" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate the length of a segment based on absolute differences in rows and columns.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.construct_edges">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.</span></span><span class="sig-name descname"><span class="pre">construct_edges</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#construct_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.construct_edges" title="Link to this definition">¶</a></dt>
+<dd><p>Optimized version using Numba with integer indexing and direct linear indices</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.euclidean_distances_numba">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.</span></span><span class="sig-name descname"><span class="pre">euclidean_distances_numba</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_point</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#euclidean_distances_numba"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.euclidean_distances_numba" title="Link to this definition">¶</a></dt>
+<dd><p>Numba-accelerated function to calculate Euclidean distances from all points to a target point.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.find_valid_nodes">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.</span></span><span class="sig-name descname"><span class="pre">find_valid_nodes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s_rows_start</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s_rows_end</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s_cols_start</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s_cols_end</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_mask</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raster</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediates</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cols</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost_factor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_nodes</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#find_valid_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.find_valid_nodes" title="Link to this definition">¶</a></dt>
+<dd><p>Find all valid nodes for a step direction</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.get_cost_factor_numba">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.</span></span><span class="sig-name descname"><span class="pre">get_cost_factor_numba</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediates_count</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#get_cost_factor_numba"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.get_cost_factor_numba" title="Link to this definition">¶</a></dt>
+<dd><p>JIT-compiled version of get_cost_factor</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.get_max_number_of_edges">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.</span></span><span class="sig-name descname"><span class="pre">get_max_number_of_edges</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">m</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#get_max_number_of_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.get_max_number_of_edges" title="Link to this definition">¶</a></dt>
+<dd><p>Returns the maximum number of edges defined by a neighborhood and a given raster shape.
+:param n: The number of rows in the raster.
+:param m: The number of columns in the raster.
+:param steps: The set of steps for a neighborhood.
+:return: The maximum number of edges defined by a neighborhood and a given raster shape.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.get_outgoing_edges">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.</span></span><span class="sig-name descname"><span class="pre">get_outgoing_edges</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raster</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cols</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#get_outgoing_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.get_outgoing_edges" title="Link to this definition">¶</a></dt>
+<dd><p>Get outgoing edges from a specific node only when needed</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.intermediate_steps_numba">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.</span></span><span class="sig-name descname"><span class="pre">intermediate_steps_numba</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dc</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#intermediate_steps_numba"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.intermediate_steps_numba" title="Link to this definition">¶</a></dt>
+<dd><p>JIT-compiled version of intermediate_steps with direct array manipulation</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.is_valid_node">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.</span></span><span class="sig-name descname"><span class="pre">is_valid_node</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_mask</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediates</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raster</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cols</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_cost</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#is_valid_node"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.is_valid_node" title="Link to this definition">¶</a></dt>
+<dd><p>Check if a node is valid and calculate its cost</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.ravel_index">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.</span></span><span class="sig-name descname"><span class="pre">ravel_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">row</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">col</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cols</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/utils/traversal.html#ravel_index"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.ravel_index" title="Link to this definition">¶</a></dt>
+<dd><p>Convert 2D indices to 1D linear index - much faster than np.ravel_multi_index</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">PYORPS</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Martin Hofmann.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/pyorps.utils.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
