@@ -1,7 +1,8 @@
 API Reference
 =============
 
-.. automodule:: pyorps
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. autosummary::
+   :toctree: generated/
+   :recursive:
+
+   pyorps

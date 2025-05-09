@@ -1,4 +1,4 @@
-"""Python Optimal Routing on Path Surfaces (PYORPS) package."""
+"""PYORPS - Python for Optimal Routes in Power Systems."""
 
 __version__ = "0.1.0"
 
