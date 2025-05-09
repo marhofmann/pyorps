@@ -146,24 +146,6 @@ The process can be configured with different neighborhood selections (R0-R3) and
 
 ## Technical Details
 
-### Various Graph Backends & Path-Finding Algorithms
-
-PYORPS supports multiple high-performance graph libraries as interchangeable backends for path finding:
-
-- **[NetworKit](https://networkit.github.io/)** (default): Fast C++/Python library for large-scale network analysis.
-- **[Rustworkx](https://qiskit.org/documentation/rustworkx/)**: Pythonic, Rust-powered graph algorithms.
-- **[NetworkX](https://networkx.org/)**: Widely-used, pure Python graph library.
-- **[iGraph](https://igraph.org/python/)**: Efficient C-based graph library.
-- **(Upcoming)**: GPU-accelerated backends (e.g., cuGraph, Dask-cuGraph).
-
-You can select the backend via the `graph_api` parameter in `PathFinder`. Each backend exposes a unified interface for shortest path computation, supporting:
-
-- **Dijkstra** (default): Robust and efficient.
-- **A***: Heuristic-based, faster for spatial graphs with good heuristics.
-- **Bellman-Ford**: Handles negative weights (where supported).
-- **Bidirectional Dijkstra**: Available in some backends for further speedup.
-
-
 ### Search Space Control: Buffering & Masking
 
 Efficient path finding in large rasters requires limiting the search space. PYORPS provides:
@@ -265,9 +247,9 @@ Routing is driven by a **cost raster**. PYORPS supports:
 |...                                  |...                          |...    |
 
 **How to use:**  
-- Use as a CSV file with columns: `land_use`, `category`, `cost`  
+- Use as a CSV file with columns (e.g. `land_use`, `category`, `cost`)  
 - The `cost` value can be interpreted as €/m or as a relative score.
-- 65535 indicate forbidden areas.
+- Use uint16 and set 65535 to indicate forbidden areas.
 
 
 ### Rasterization: High-Resolution, Multi-Layer, and Overlay
@@ -286,6 +268,23 @@ Routing is driven by a **cost raster**. PYORPS supports:
 - **Raster formats**: GeoTIFF, IMG, JP2, BIL, DEM, in-memory numpy arrays
 - **Data sources**: Land registry, nature reserves, water protection areas, custom user data
 
+
+### Various Graph Backends & Path-Finding Algorithms
+
+PYORPS supports multiple high-performance graph libraries as interchangeable backends for path finding:
+
+- **[NetworKit](https://networkit.github.io/)** (default): Fast C++/Python library for large-scale network analysis.
+- **[Rustworkx](https://qiskit.org/documentation/rustworkx/)**: Pythonic, Rust-powered graph algorithms.
+- **[NetworkX](https://networkx.org/)**: Widely-used, pure Python graph library.
+- **[iGraph](https://igraph.org/python/)**: Efficient C-based graph library.
+- **(Upcoming)**: GPU-accelerated backends (e.g., cuGraph, Dask-cuGraph).
+
+You can select the backend via the `graph_api` parameter in `PathFinder`. Each backend exposes a unified interface for shortest path computation, supporting:
+
+- **Dijkstra** (default): Robust and efficient.
+- **A***: Heuristic-based, faster for spatial graphs with good heuristics.
+- **Bellman-Ford**: Handles negative weights (where supported).
+- **Bidirectional Dijkstra**: Available in some backends for further speedup.
 
 ## Documentation
 
