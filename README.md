@@ -53,12 +53,12 @@ Here's a minimal example to get you started:
 ```python
 from pyorps import PathFinder
 
-# Define source and target coordinates
-source = (472000, 5593400)
-target = (472800, 5594000)
+# Define a file path to a raster file
+raster_path = r"<PATH>\<TO>\<YOUR>\<RASTER_FILE>.tiff" 
 
-# File path to a local raster file
-raster_path = r"data\raster\sample_raster.tiff" 
+# Define your source and target coordinates (must be in the same CRS)
+source = (..., ...)
+target = (..., ...)
 
 # Create PathFinder instance
 path_finder = PathFinder(
@@ -74,24 +74,54 @@ path_finder.find_route()
 path_finder.plot_paths()
 
 # Export to GeoJSON
-path_finder.save_paths("data/results/route.geojson")
+path_finder.save_paths(r"<PATH>\<TO>\<YOUR>\<RESULTS>.geojson" )
 ```
+
 ## Installation
 
-To run PYORPS you can install it using pip:
+To install PYORPS, you can use `pip` or `uv`. 
+
+#### Using pip
+
+You can install the base package using pip:
+
 ```bash
 pip install pyorps
 ```
-### Dependencies
 
-Additionally, the following Python packages will be installed:
+This command will install the core functionality of PYORPS along with its essential dependencies, including:
 
-- [GeoPandas](https://github.com/geopandas/geopandas) >= 1.0.1
-- [Numba](https://github.com/numba/numba) >= 0.61.2
-- [NumPy](https://github.com/numpy/numpy) >= 2.2.5
-- [Pandas](https://github.com/pandas-dev/pandas) >= 2.2.3
-- [Rasterio](https://github.com/rasterio/rasterio) >= 1.4.3
-- [NetworKit](https://github.com/networkit/networkit) >= 11.1
+- [NumPy](https://github.com/numpy/numpy)
+- [Pandas](https://github.com/pandas-dev/pandas)
+- [GeoPandas](https://github.com/geopandas/geopandas)
+- [Numba](https://github.com/numba/numba)
+- [Rasterio](https://github.com/rasterio/rasterio)
+- [NetworKit](https://github.com/networkit/networkit) 
+
+#### Optional Dependencies
+
+PYORPS offers several optional dependencies that enhance its functionality. You can install these extras by specifying them in square brackets:
+
+- **Examples**: To include example scripts:
+  ```bash
+  pip install pyorps[examples]
+  ```
+
+- **Case Studies**: To include case study scripts:
+  ```bash
+  pip install pyorps[case_studies]
+  ```
+
+- **Development and Testing**: To include testing tools and the tests directory:
+  ```bash
+  pip install pyorps[dev]
+  ```
+
+- **Full Installation**: To install all optional dependencies at once:
+  ```bash
+  pip install pyorps[full]
+  ```
+
 
 ## How It Works
 
@@ -263,7 +293,7 @@ For comprehensive documentation, examples, and tutorials, visit our [GitHub repo
 
 ## Contributing
 
-Contributions are welcome! Whether it's bug reports, feature requests, or code contributions, please feel free to reach out or submit a pull request.
+Contributions are welcome! If you want to contribute, please check out the [PYORPS contribution guidelines](https://github.com/marhofmann/pyorps/blob/master/CONTRIBUTING.md).
 
 ## License
 

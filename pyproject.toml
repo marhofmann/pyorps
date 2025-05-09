@@ -1,4 +1,3 @@
-
 [build-system]
 requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -29,10 +28,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
-    "geopandas>=1.0.1",
-    "numba>=0.61.2",
     "numpy>=2.2.5",
     "pandas>=2.2.3",
+    "geopandas>=1.0.1",
+    "numba>=0.61.2",
     "rasterio>=1.4.3",
     "networkit>=11.1",
     "matplotlib>=3.10.1",
@@ -47,7 +46,6 @@ include = ["pyorps*"]
 source = ["pyorps"]
 relative_files = true
 omit = [
-    # Add paths to files you want to exclude
     "tests/*",
     "docs/*",
     "case_studies/*",
@@ -80,12 +78,6 @@ explicit = true
 "Bug Tracker" = "https://github.com/marhofmann/pyorps/issues"
 
 [project.optional-dependencies]
-# Interactive usage dependencies
-interactive = [
-    "notebook>=7.4.0",
-    "fiona>=1.10.1",
-    "openpyxl>=3.1.5",
-]
 
 # Graph processing dependencies
 graph = [
@@ -93,15 +85,34 @@ graph = [
     "igraph>=0.11.8",
     "networkx>=3.4.2"
 ]
+
 # Development and testing dependencies
 dev = [
     "coverage[toml]>=7.8.0",
     "pytest>=8.3.5",
+    "file://./tests",
 ]
+
+# Examples dependencies
+examples = [
+    "notebook>=7.4.0",
+    "fiona>=1.10.1",
+    "file://./examples",
+]
+
+# Case-studies dependencies
+case_studies = [
+    "notebook>=7.4.0",
+    "fiona>=1.10.1",
+    "file://./case_studies",
+]
+
+# Addittional dependencies
+addttionals = [
+    "openpyxl>=3.1.5",
+]
+
 # All optional dependencies
 full = [
-    "pyorps[interactive,web,graph,dev]",
+    "pyorps[interactive,graph,dev,examples,case_studies,addttionals]",
 ]
-
-
-
