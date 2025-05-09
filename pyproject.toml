@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyorps"
-version = "0.1.5"
+version = "0.1.6"
 description = "PYORPS (Python for Optimal Routes in Power Systems)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -42,6 +42,9 @@ dependencies = [
 where = ["."]
 include = ["pyorps*"]
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.coverage.run]
 source = ["pyorps"]
 relative_files = true
@@ -78,7 +81,6 @@ explicit = true
 "Bug Tracker" = "https://github.com/marhofmann/pyorps/issues"
 
 [project.optional-dependencies]
-
 # Graph processing dependencies
 graph = [
     "rustworkx>=0.16.0",
@@ -90,21 +92,19 @@ graph = [
 dev = [
     "coverage[toml]>=7.8.0",
     "pytest>=8.3.5",
-    "file://./tests",
 ]
 
 # Examples dependencies
 examples = [
     "notebook>=7.4.0",
     "fiona>=1.10.1",
-    "file://./examples",
 ]
 
 # Case-studies dependencies
 case_studies = [
     "notebook>=7.4.0",
     "fiona>=1.10.1",
-    "file://./case_studies",
+    "pandapower>=3.0.0"
 ]
 
 # Addittional dependencies
@@ -114,5 +114,5 @@ addttionals = [
 
 # All optional dependencies
 full = [
-    "pyorps[interactive,graph,dev,examples,case_studies,addttionals]",
+    "pyorps[graph,dev,examples,case_studies,addttionals]",
 ]

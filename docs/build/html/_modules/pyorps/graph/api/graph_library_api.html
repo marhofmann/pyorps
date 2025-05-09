@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pyorps.graph.api.graph_library_api &#8212; PYORPS 09.05.2025 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../../_static/documentation_options.js?v=d2164c19"></script>
+    <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for pyorps.graph.api.graph_library_api</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">This file contains the abstract base class for the interface to the graph libraries. All specific graph library</span>
+<span class="sd">interfaces should inherit from this class. The workflow of the specific interfaces are determined by the respective</span>
+<span class="sd">graph library. The workflow of the graph libraries can vary!</span>
+
+<span class="sd">- For rustworkx and igraph the nodes need to be created before the edges can be added</span>
+<span class="sd">- For networkit and networkx the edges can be added on the fly when adding the nodes</span>
+
+<span class="sd">- For rustworkx and igraph the edges can only be added as a list of tuples. This means that the edge information as</span>
+<span class="sd">retrieved by numpy arrays, need to be converted into a list, which leads to a much higher (more than double) memory</span>
+<span class="sd">usage!</span>
+<span class="sd">- For networkit and networkx edges can be added as a sparse matrix or as numpy arrays</span>
+
+<span class="sd">Please see the specific interfaces to the specific graph libraries for more details!</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">abstractmethod</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">time</span><span class="w"> </span><span class="kn">import</span> <span class="n">time</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.graph_api</span><span class="w"> </span><span class="kn">import</span> <span class="n">GraphAPI</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyorps.utils.traversal</span><span class="w"> </span><span class="kn">import</span> <span class="n">construct_edges</span>
+
+
+<div class="viewcode-block" id="GraphLibraryAPI">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GraphLibraryAPI</span><span class="p">(</span><span class="n">GraphAPI</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Base class for all graph library-based APIs.</span>
+
+<span class="sd">    This class extends GraphAPI with common functionality needed by standard graph libraries</span>
+<span class="sd">    that require edge data to be explicitly provided and a graph to be constructed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">raster_data</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+                 <span class="n">steps</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+                 <span class="n">from_nodes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">to_nodes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">cost</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">ignore_max</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                 <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the graph library API.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            raster_data: 2D numpy array representing the raster</span>
+<span class="sd">            steps: Array defining the neighborhood connections</span>
+<span class="sd">            from_nodes: Source node indices for each edge</span>
+<span class="sd">            to_nodes: Target node indices for each edge</span>
+<span class="sd">            cost: Edge weights</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">raster_data</span><span class="p">,</span> <span class="n">steps</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">edge_construction_time</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">if</span> <span class="n">from_nodes</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">to_nodes</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">before_constructing_edge_data</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span>
+            <span class="n">from_nodes</span><span class="p">,</span> <span class="n">to_nodes</span><span class="p">,</span> <span class="n">cost</span> <span class="o">=</span> <span class="n">construct_edges</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">steps</span><span class="p">,</span> <span class="n">ignore_max</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">edge_construction_time</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">before_constructing_edge_data</span>
+
+        <span class="n">before_graph_creation</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">graph</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_graph</span><span class="p">(</span><span class="n">from_nodes</span><span class="p">,</span> <span class="n">to_nodes</span><span class="p">,</span> <span class="n">cost</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">graph_creation_time</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">before_graph_creation</span>
+
+<div class="viewcode-block" id="GraphLibraryAPI.create_graph">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.create_graph">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_graph</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">from_nodes</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">to_nodes</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+                     <span class="n">cost</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Creates a graph object with the graph library specified in the selected interface.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            from_nodes: The starting node indices from the edge data</span>
+<span class="sd">            to_nodes: The ending node indices from the edge data</span>
+<span class="sd">            cost: The weight of the edge data</span>
+<span class="sd">            kwargs: Additional parameters for the underlying graph library</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The graph object</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="GraphLibraryAPI.get_number_of_nodes">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.get_number_of_nodes">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_number_of_nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the number of nodes in the graph.</span>
+
+<span class="sd">        :return: The number of Nodes</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="GraphLibraryAPI.get_number_of_edges">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.get_number_of_edges">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_number_of_edges</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the number of edges in the graph.</span>
+
+<span class="sd">        :return: The number of Edges</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="GraphLibraryAPI.remove_isolates">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.remove_isolates">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove_isolates</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        If the graph object was initialized with the maximum number of nodes, this function helps to reduce the occupied</span>
+<span class="sd">        memory by removing nodes without any edge (degree == 0).</span>
+
+<span class="sd">        :return: None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="GraphLibraryAPI.shortest_path">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.shortest_path">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">shortest_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source_indices</span><span class="p">,</span> <span class="n">target_indices</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="s2">&quot;dijkstra&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        This method applies the specified shortest path algorithm on the created graph object and finds the shortest</span>
+<span class="sd">        path between source and target(s) as a list of node indices.</span>
+
+<span class="sd">        :return: list[int]</span>
+<span class="sd">            The list of node indices of the shortest path between source and target</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="GraphLibraryAPI.get_nodes">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.get_nodes">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        This method returns the nodes in the graph as a list or numpy array of node indices.</span>
+
+<span class="sd">        :return:  list[int] | ndarray[int]</span>
+<span class="sd">            The list of node indices of the nodes in the graph</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="GraphLibraryAPI.get_a_star_heuristic">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.get_a_star_heuristic">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_a_star_heuristic</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">target</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">float</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the A* heuristic based on the Euclidean distance from the target node.</span>
+
+<span class="sd">        :param target: int</span>
+<span class="sd">            The index of the target node in the raster data.</span>
+
+<span class="sd">        :return: tuple[np.ndarray[int], np.ndarray[float]]</span>
+<span class="sd">            A tuple containing:</span>
+<span class="sd">            - An array of node indices (nodes) in the graph.</span>
+<span class="sd">            - An array of heuristic values corresponding to each node, calculated as the</span>
+<span class="sd">              Euclidean distance to the target node multiplied by the minimum value in the raster data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Retrieve the current nodes in the graph</span>
+        <span class="n">nodes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_nodes</span><span class="p">()</span>
+
+        <span class="c1"># Convert node indices to 2D coordinates (x, y) based on the raster data shape</span>
+        <span class="n">x_nodes</span><span class="p">,</span> <span class="n">y_nodes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unravel_index</span><span class="p">(</span><span class="n">nodes</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+        <span class="c1"># Convert the target index to its corresponding 2D coordinates</span>
+        <span class="n">x_target</span><span class="p">,</span> <span class="n">y_target</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unravel_index</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+        <span class="c1"># Calculate the Euclidean distance from each node to the target node</span>
+        <span class="n">euclidean_distance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">x_target</span> <span class="o">-</span> <span class="n">x_nodes</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">y_target</span> <span class="o">-</span> <span class="n">y_nodes</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+
+        <span class="c1"># Get the minimum value from the raster data for scaling the heuristic</span>
+        <span class="n">min_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+
+        <span class="c1"># Calculate the heuristic by scaling the Euclidean distance</span>
+        <span class="n">heuristic</span> <span class="o">=</span> <span class="n">euclidean_distance</span> <span class="o">*</span> <span class="n">min_value</span>
+
+        <span class="k">if</span> <span class="s1">&#39;heu_weight&#39;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+            <span class="n">heuristic</span> <span class="o">*=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;heu_weight&#39;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">nodes</span><span class="p">,</span> <span class="n">heuristic</span></div>
+</div>
+
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../../index.html">PYORPS</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Martin Hofmann.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
