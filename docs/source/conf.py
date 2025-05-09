@@ -1,3 +1,8 @@
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath('../pyorps'))
+
 # Configuration file for the Sphinx documentation builder.
 #
 # For the full list of built-in configuration values, see the documentation:
@@ -33,6 +38,13 @@ myst_enable_extensions = [
 source_suffix = {
     '.rst': 'restructuredtext',
     '.md': 'markdown',
+}
+
+autodoc_default_options = {
+    'members': True,
+    'undoc-members': True,
+    'private-members': True,
+    'imported-members': True,
 }
 
 templates_path = ['_templates']
