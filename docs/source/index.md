@@ -87,7 +87,7 @@ for creating and setting up a dedicated raster dataset for your planning task.
 
 To install PYORPS, you can use `pip` or `uv`. 
 
-#### Using pip
+### Using pip
 
 You can install the base package using pip:
 
@@ -104,26 +104,30 @@ This command will install the core functionality of PYORPS along with its essent
 - [Rasterio](https://github.com/rasterio/rasterio)
 - [NetworKit](https://github.com/networkit/networkit) 
 
-#### Optional Dependencies
+### Optional Dependencies
 
 PYORPS offers several optional dependencies that enhance its functionality. You can install these extras by specifying them in square brackets:
 
 - **Examples**: To include example scripts:
+
   ```bash
   pip install pyorps[examples]
   ```
 
 - **Case Studies**: To include case study scripts:
+
   ```bash
   pip install pyorps[case_studies]
   ```
 
 - **Development and Testing**: To include testing tools and the tests directory:
+
   ```bash
   pip install pyorps[dev]
   ```
 
 - **Full Installation**: To install all optional dependencies at once:
+
   ```bash
   pip install pyorps[full]
   ```
@@ -208,12 +212,9 @@ PNG" alt="intermediates" width="90%"/><br>
 
 PYORPS is agnostic to data source and format:
 
-- **Raster data**:  
-  - Directly use high-resolution GeoTIFFs or similar formats (tested up to 0.25 m² per pixel).
-- **Vector data**:  
-  - Shapefiles, GeoJSON, GPKG, or remote WFS layers (e.g., land registry, nature reserves, water protection zones).
-- **Hybrid workflows**:  
-  - Rasterize vector data with custom cost assumptions, overlay multiple datasets, and apply complex modifications.
+- **Raster data**: Directly use high-resolution GeoTIFFs or similar formats (tested up to 0.25 m² per pixel).
+- **Vector data**: Shapefiles, GeoJSON, GPKG, or remote WFS layers (e.g., land registry, nature reserves, water protection zones).
+- **Hybrid workflows**: Rasterize vector data with custom cost assumptions, overlay multiple datasets, and apply complex modifications.
 
 All data is internally harmonized to a common CRS and resolution.
 
@@ -221,17 +222,13 @@ All data is internally harmonized to a common CRS and resolution.
 
 Routing is driven by a **cost raster**. PYORPS supports:
 
-- **Simple costs**:  
-  - Assign a single cost per land use class or feature.
-- **Hierarchical/multi-attribute costs**:  
-  - Use CSV, Excel, or JSON files to define costs based on multiple attributes (e.g., land use + soil type).
-- **Dynamic overlays**:  
-  - Overlay additional datasets (e.g., protected areas) with additive or multiplicative cost modifiers, or set areas as forbidden.
-- **Custom logic**:  
-  - Apply buffers, ignore fields, or use complex rules for cost assignment.
+- **Simple costs**: Assign a single cost per land use class or feature.
+- **Hierarchical/multi-attribute costs**: Use CSV, Excel, or JSON files to define costs based on multiple attributes (e.g., land use + soil type).
+- **Dynamic overlays**: Overlay additional datasets (e.g., protected areas) with additive or multiplicative cost modifiers, or set areas as forbidden.
+- **Custom logic**: Apply buffers, ignore fields, or use complex rules for cost assignment.
 
 
-#### Example: Cost Assumptions Table
+**Example: Cost Assumptions Table**
 
 | land_use                            | category                   | cost  |
 |--------------------------------------|----------------------------|-------|
@@ -264,13 +261,10 @@ Routing is driven by a **cost raster**. PYORPS supports:
 
 ### Rasterization: High-Resolution, Multi-Layer, and Overlay
 
-- **High-resolution rasterization**:  
-  - Rasterize vector data at arbitrary resolutions (tested up to 0.25 m² per pixel) using [Rasterio](https://rasterio.readthedocs.io/).
-- **Buffering and overlays**:  
-  - Apply geometric buffers to features before rasterization.
+- **High-resolution rasterization**: Rasterize vector data at arbitrary resolutions (tested up to 0.25 m² per pixel) using [Rasterio](https://rasterio.readthedocs.io/).
+- **Buffering and overlays**: Apply geometric buffers to features before rasterization.
   - Overlay multiple datasets, each with its own cost logic.
-- **Selective masking**:  
-  - Mask out fields or regions, set forbidden values, or combine multiple masks.
+- **Selective masking**: Mask out fields or regions, set forbidden values, or combine multiple masks.
 
 ### Supported Data Types
 
@@ -302,7 +296,7 @@ For comprehensive documentation, examples, and tutorials, visit our [GitHub repo
 
 ## Contributing
 
-Contributions are welcome! If you want to contribute, please check out the [PYORPS contribution guidelines](https://github.com/marhofmann/pyorps/blob/master/CONTRIBUTING.md).
+Contributions are welcome! If you want to contribute, please check out the [PYORPS contribution guidelines](https://pyorps.readthedocs.io/en/latest/CONTRIBUTING.html#).
 
 ## License
 
