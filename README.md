@@ -38,11 +38,13 @@ While tailored for distribution grids, it can be adapted for various infrastruct
 
 ## Features
 
-- **Flexible Input Data**: Use local raster files, WFS services, or create custom rasterized geodata
+- **Flexible Input Data**: Use local raster files directly or create custom rasterized geodata from  WFS services or 
+  local vector files
 - **Customizable Costs**: Define terrain-specific cost values based on installation expenses or environmental impacts
-- **Multiple Path Finding**: Calculate routes between multiple sources and targets in parallel
+- **Multiple Path Finding**: Calculate optimal routes between multiple sources and targets in parallel
 - **Performance Optimization**: Control search space parameters to balance accuracy and computational efficiency
-- **Environmental Consideration**: Add cost modifiers for protected areas, water zones, and other sensitive regions
+- **Environmental Consideration**: Add cost modifiers for nature reserves, water protection zones, and other sensitive 
+  regions
 - **GIS Integration**: Export results as GeoJSON for further analysis in GIS applications
 
 
@@ -141,11 +143,13 @@ The process can be configured with different neighborhood selections (R0-R3) and
 
 ## Use Cases
 
-- **Distribution Grid Planning**: Optimize new underground cable connections
-- **Grid Integration of Renewable Energies**: Determine optimal point of common coupling (PCC)
-- **Environmental Impact Reduction**: Route infrastructure to minimize impact on protected areas
-- **Cost Optimization**: Balance construction costs with environmental considerations
-- **General Infrastructure Planning**: Adapt for other linear infrastructure planning tasks
+- **Distribution Grid Planning**: Optimize new underground cable connections to increase grid capacity
+- **Grid Integration of Renewable Energies**: Determine optimal point of common coupling (PCC) and find the most 
+  economical route for grid integration
+- **Environmental Impact Reduction**: Route underground cables to minimize impact on protected areas
+- **Cost Optimization**: Balance construction costs with environmental considerations and other aspects
+- **General Infrastructure Planning**: Adapt for other linear infrastructure planning tasks (e.g. fiber optic cables or
+  pipes)
 
 
 ## Technical Details
