@@ -22,6 +22,5 @@ sphinx:
 # Build documentation formats
 formats:
   - htmlzip
-  - html
   - pdf
   - epub
