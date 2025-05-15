@@ -1,10 +1,11 @@
+from typing import Union
 import math
 import re
 
 import numpy as np
 
 
-def get_neighborhood_steps(k: int, directed: bool = True) -> np.ndarray:
+def get_neighborhood_steps(k: Union[int, str], directed: bool = True) -> np.ndarray:
     """
     Generate the steps for a k-neighborhood.
 

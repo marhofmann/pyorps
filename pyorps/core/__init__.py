@@ -2,7 +2,8 @@
 
 from .cost_assumptions import (CostAssumptions, get_zero_cost_assumptions, detect_feature_columns,
                                save_empty_cost_assumptions)
-from .types import InputDataType, CostAssumptionsType, BboxType, GeometryMaskType
+from .types import (InputDataType, CostAssumptionsType, BboxType, GeometryMaskType, Coord, CoordList, CoordinateInput,
+                    CoordinateOutput)
 from .path import Path, PathCollection
 from .exceptions import (
     # Cost assumption exceptions
@@ -19,7 +20,8 @@ __all__ = [
     "CostAssumptions", "get_zero_cost_assumptions", "detect_feature_columns", "save_empty_cost_assumptions",
 
     # Types
-    "InputDataType", "CostAssumptionsType", "BboxType", "GeometryMaskType",
+    "InputDataType", "CostAssumptionsType", "BboxType", "GeometryMaskType", "Coord", "CoordList", "CoordinateInput",
+    "CoordinateOutput",
 
     # Path classes
     "Path", "PathCollection",

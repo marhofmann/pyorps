@@ -12,14 +12,15 @@ import pandas as pd
 from shapely.geometry import box
 from shapely.ops import unary_union
 
+from ..core.types import BboxType, GeometryMaskType
 from ..core.exceptions import WFSLayerNotFoundError, WFSConnectionError, WFSResponseParsingError, WFSError
 
 
 def load_from_wfs(
         url: str,
         layer: str,
-        bbox: Optional[tuple[float, float, float, float]] = None,
-        mask: Optional[Union[gpd.GeoDataFrame, gpd.GeoSeries, Any]] = None,
+        bbox: Optional[BboxType] = None,
+        mask: Optional[GeometryMaskType] = None,
         filter_params: Optional[dict] = None,
         auto_match: bool = True,
         max_workers: int = 4
@@ -463,7 +464,7 @@ def _add_buffer_to_bbox(
 
 
 def _create_grid(
-        bbox: tuple[float, float, float, float],
+        bbox: BboxType,
         x_divisions: int,
         y_divisions: int
 ) -> list[tuple[float, float, float, float]]:
@@ -478,7 +479,10 @@ def _create_grid(
     Returns:
         list of bounding boxes representing grid cells
     """
-    minx, miny, maxx, maxy = bbox
+    if isinstance(bbox, tuple):
+        minx, miny, maxx, maxy = bbox
+    else:
+        minx, miny, maxx, maxy = bbox.total_bounds
     width = (maxx - minx) / x_divisions
     height = (maxy - miny) / y_divisions
 

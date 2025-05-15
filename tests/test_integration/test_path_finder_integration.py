@@ -133,14 +133,10 @@ class TestRasterHandler(unittest.TestCase):
             # Create PathFinder
             path_finder = PathFinder(
                 mock_raster_dataset,
-                source_coords=None,
-                target_coords=None
+                source_coords=(0, 0),
+                target_coords=(1, 1),
+                cost_assumptions={"some": "cost"}
             )
-            path_finder.source_coords = (0, 0)
-            path_finder.target_coords = (1, 1)
-
-            # Now call create_raster_handler directly with the cost assumptions
-            path_finder.create_raster_handler({"some": "cost"}, None, None)
 
             # Check that GeoRasterizer was created with correct parameters
             mock_raster_dataset.load_data.assert_called_once()
@@ -633,7 +629,9 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
             path_geometry=LineString([[500020, 5599980], [500050, 5599950], [500080, 5599920]]),
             euclidean_distance=100.0,
             runtimes={},
-            path_id=5
+            path_id=5,
+            search_space_buffer_m=1,
+            neighborhood="r0",
         )
 
         # Add with replace=True to keep ID=5
@@ -655,7 +653,9 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
             path_geometry=LineString([[500010, 5600010], [500050, 5599960], [500090, 5599910]]),
             euclidean_distance=50.0,
             runtimes={},
-            path_id=5
+            path_id=5,
+            search_space_buffer_m=1,
+            neighborhood="r0",
         )
 
         # Add with replace=True to replace the existing path with ID=5
