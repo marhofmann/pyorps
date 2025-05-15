@@ -87,7 +87,7 @@ for creating and setting up a dedicated raster dataset for your planning task.
 You can quickly start testing the functionalities of PYORPS using Binder. Click the badge below to launch an interactive
 environment where you can run the example notebooks directly in your browser.
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/marhofmann/pyorps/master?filepath=examples/minimal_example.ipynb)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/marhofmann/pyorps/master?filepath=examples)
 
 This Binder connection allows you to explore the examples provided in the `examples` directory without needing to 
 install anything on your local machine. It's a great way to get a hands-on experience with PYORPS and see how it can 
