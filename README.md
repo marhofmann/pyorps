@@ -6,7 +6,7 @@
 [![codecov](https://codecov.io/gh/marhofmann/pyorps/branch/master/graph/badge.svg)](https://codecov.io/gh/marhofmann/pyorps)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/YOUR_PROJECT_ID)](https://www.codacy.com/gh/marhofmann/pyorps/dashboard)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/yourusername/your-repo/main?filepath=notebooks%2Fexample.ipynb)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/marhofmann/pyorps/master?filepath=examples/minimal_example.ipynb)
 
 
 PYORPS is an open-source tool designed to automate route planning for underground cables in power systems. It uses high-resolution raster geodata to perform least-cost path analyses, optimizing routes based on economic and environmental factors.
@@ -297,7 +297,10 @@ You can select the backend via the `graph_api` parameter in `PathFinder`. Each b
 
 ## Documentation
 
-For comprehensive documentation, examples, and tutorials, visit our [GitHub repository](https://github.com/marhofmann/pyorps).
+The documentation for PYORPS, including detailed explanations and usage instructions, can be found on 
+https://pyorps.readthedocs.io.
+Examples demonstrating the functionality of PYORPS, along with practical use cases, are included as jupyter notebooks
+in the [examples directory](https://github.com/marhofmann/pyorps/blob/master/examples).
 
 ## Contributing
 
