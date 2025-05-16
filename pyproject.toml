@@ -27,7 +27,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
-    "numpy==1.26.4",
+    "numpy==2.2.5",
     "scipy==1.15.3",
     "pandas==2.2.3",
     "geopandas==1.0.1",
@@ -104,7 +104,9 @@ examples = [
 case_studies = [
     "notebook==7.4.0",
     "fiona==1.10.1",
-    "pandapower==3.0.0"
+    "pandapower==3.0.0",
+    "contextily==1.6.2"
+
 ]
 
 # Addittional dependencies
