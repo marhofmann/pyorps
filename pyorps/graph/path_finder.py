@@ -434,7 +434,7 @@ class PathFinder:
         # If path_indices is a list of paths (multiple source-target pairs)
         if isinstance(path_indices, list) and all(
                 isinstance(p, list) or isinstance(p, np.ndarray) for p in path_indices):
-            for i, path in enumerate(path_indices):
+            for path in path_indices:
                 if not path:
                     continue
                 source = self.get_coords_from_node_indices(path[0])[0]

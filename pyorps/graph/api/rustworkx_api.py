@@ -1,7 +1,7 @@
 # Third party
 import rustworkx as rx
-from numpy import where, ndarray, ravel_multi_index, max, array, unravel_index, power, sqrt
-from typing import Union, Optional, Any, List
+from numpy import where, ndarray, ravel_multi_index, max
+from typing import Union, Optional
 
 # Project files
 from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError

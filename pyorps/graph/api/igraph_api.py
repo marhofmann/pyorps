@@ -2,7 +2,7 @@ from typing import Union
 
 # Third party
 import igraph as ig
-from numpy import float64, ndarray, max, array, unravel_index, power, sqrt
+from numpy import float64, ndarray, max
 
 # Project files
 from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError

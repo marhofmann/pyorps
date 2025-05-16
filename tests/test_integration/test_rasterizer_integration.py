@@ -5,7 +5,7 @@ import numpy as np
 import geopandas as gpd
 from shapely.geometry import Polygon, Point
 import random
-from typing import Tuple, List, Dict, Union, Optional
+from typing import Tuple, Optional
 
 from pyorps.raster.rasterizer import GeoRasterizer
 from pyorps.io.geo_dataset import InMemoryVectorDataset, InMemoryRasterDataset
@@ -273,7 +273,7 @@ class TestGeoRasterizerIntegration(unittest.TestCase):
         # Process forbidden zones
         forbidden_zones = zoning_gdf[zoning_gdf['zone'] == 'forbidden']
         if not forbidden_zones.empty:
-            modified_raster = rasterizer.modify_raster_with_geodataframe(
+            rasterizer.modify_raster_with_geodataframe(
                 forbidden_zones,
                 value=65535  # Set to forbidden value
             )

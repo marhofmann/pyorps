@@ -1,13 +1,10 @@
 import unittest
-from unittest.mock import patch, MagicMock, mock_open
-import os
+from unittest.mock import patch, MagicMock
 import tempfile
 import geopandas as gpd
-import pandas as pd
 import numpy as np
 from shapely.geometry import Point, Polygon, box
 import requests
-from xml.etree import ElementTree as et
 
 from .test_helpers import GeoTestCase
 

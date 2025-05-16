@@ -1,11 +1,10 @@
 # test_utils/test_neighborhood.py
 import unittest
 import numpy as np
-import re
 import math
 
 from pyorps.utils.neighborhood import (
-    get_neighborhood_steps, _generate_full_steps, normalize_angle,
+    get_neighborhood_steps, normalize_angle,
     get_move_directions, find_adjacent_directions, elongation_error,
     max_deviation, calculate_errors, find_max_errors
 )

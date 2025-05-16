@@ -2,7 +2,7 @@ from typing import Union
 
 # Third party
 from networkit import Graph
-from networkit.distance import Dijkstra, BidirectionalDijkstra, AStar, SPSP
+from networkit.distance import Dijkstra, BidirectionalDijkstra, AStar
 
 # Project files
 from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError

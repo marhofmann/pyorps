@@ -1,4 +1,4 @@
-from typing import Optional, Any, Union
+from typing import Optional
 from pathlib import Path
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
@@ -43,8 +43,6 @@ def load_from_wfs(
     Raises:
         WFSLayerNotFoundError: If the layer cannot be found and auto_match is False
     """
-    import requests
-
     # Find the correct layer name
     if auto_match:
         layer = _resolve_layer(url, layer)
@@ -186,7 +184,7 @@ def _try_direct_load(
     # Extract namespace if present
     namespace = None
     if ':' in layer:
-        namespace, local_name = layer.split(':', 1)
+        namespace, _ = layer.split(':', 1)
 
     # Try different WFS versions
     for version in ["2.0.0", "1.1.0", "1.0.0"]:
@@ -598,7 +596,7 @@ def _load_data_in_parallel(
                             [(sub_chunk, new_x_div, new_y_div) for sub_chunk in sub_chunks]
                         )
 
-                except (WFSError, requests.RequestException) as e:
+                except (WFSError, requests.RequestException):
                     # If a chunk fails, try to subdivide it
                     sub_chunks = _create_grid(chunk, 2, 2)
 
@@ -705,7 +703,7 @@ def _parse_geojson_response(response: requests.Response) -> Optional[gpd.GeoData
         geojson_data = response.json()
         if 'features' in geojson_data and geojson_data['features']:
             return gpd.GeoDataFrame.from_features(geojson_data['features'])
-    except ValueError as e:
+    except ValueError:
         return None
 
 

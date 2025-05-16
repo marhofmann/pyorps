@@ -271,7 +271,7 @@ class TestRasterHandler(unittest.TestCase):
             source = (500050, 5599950)
             target = (500150, 5599850)
             buffer_dist = 50
-            result = handler.apply_line_buffer_mask(source, target, buffer_dist)
+            handler.apply_line_buffer_mask(source, target, buffer_dist)
 
             # Check that apply_geometry_mask was called with a buffer polygon
             mock_apply_mask.assert_called_once()
@@ -444,7 +444,7 @@ class TestRasterHandler(unittest.TestCase):
             )
 
             # Initialize handler with different CRS
-            handler = RasterHandler(
+            RasterHandler(
                 self.raster_dataset,
                 (4.33, 52.12),  # WGS84 coordinates
                 (4.34, 52.13),  # WGS84 coordinates
@@ -623,7 +623,7 @@ class TestRasterHandler(unittest.TestCase):
 
         # Should raise AttributeError
         with self.assertRaises(AttributeError):
-            handler = RasterHandler(
+            RasterHandler(
                 invalid_dataset,
                 self.source_coords,
                 self.target_coords

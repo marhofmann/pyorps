@@ -267,7 +267,7 @@ class TestRustworkxAPI(unittest.TestCase):
         self.assertAlmostEqual(heuristic[target_index], 0.0)
 
         # Test with heuristic weight
-        nodes_weighted, heuristic_weighted = self.api.get_a_star_heuristic(target_node, heu_weight=2.0)
+        _, heuristic_weighted = self.api.get_a_star_heuristic(target_node, heu_weight=2.0)
 
         # Verify the weighted heuristic is twice the original
         for i in range(len(heuristic)):

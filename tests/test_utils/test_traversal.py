@@ -303,7 +303,7 @@ class TestTraversalHelpers(unittest.TestCase):
         from_nodes_no_ignore, to_nodes_no_ignore, costs_no_ignore = construct_edges(
             raster_with_max, self.steps, ignore_max=False
         )
-        self.assertEqual(len(from_nodes_no_ignore), len(from_nodes) - len(self.steps))  # Should be same as original
+        self.assertEqual(len(from_nodes_no_ignore), len(from_nodes))  # Should be same as original
 
     def test_get_outgoing_edges(self):
         """Test get_outgoing_edges function."""

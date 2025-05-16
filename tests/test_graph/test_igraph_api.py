@@ -40,7 +40,7 @@ class TestIGraphAPI(unittest.TestCase):
             mock_graph_cls.return_value = mock_graph
 
             # Create a test API instance
-            api = IGraphAPI(
+            IGraphAPI(
                 self.raster_data,
                 self.steps,
                 from_nodes=self.from_nodes,
@@ -64,7 +64,7 @@ class TestIGraphAPI(unittest.TestCase):
             mock_graph_cls.return_value = mock_graph
 
             # Create a test API instance with no cost
-            api = IGraphAPI(
+            IGraphAPI(
                 self.raster_data,
                 self.steps,
                 from_nodes=self.from_nodes,
@@ -176,7 +176,7 @@ class TestIGraphAPI(unittest.TestCase):
             self.assertAlmostEqual(heuristic[target_index], 0.0)
 
             # Test with heuristic weight
-            nodes_weighted, heuristic_weighted = self.api.get_a_star_heuristic(target_node, heu_weight=2.0)
+            _, heuristic_weighted = self.api.get_a_star_heuristic(target_node, heu_weight=2.0)
 
             # Verify the weighted heuristic is twice the original
             for i in range(len(heuristic)):

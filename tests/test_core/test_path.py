@@ -1,7 +1,6 @@
 import unittest
 import numpy as np
 from shapely.geometry import LineString
-import geopandas as gpd
 
 from pyorps.core.path import Path, PathCollection
 

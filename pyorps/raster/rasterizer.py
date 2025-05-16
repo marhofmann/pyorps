@@ -496,36 +496,8 @@ class GeoRasterizer:
         # Apply buffer if needed
         gdf = self.create_buffer(gdf, geometry_buffer_m)
         if isinstance(cost_assumptions, float) or isinstance(cost_assumptions, int):
-            # Handle zoning if specified
-            if zone_field and forbidden_zone:
-                forbidden_areas = gdf.loc[gdf[zone_field] == forbidden_zone]
-                other_areas = gdf.loc[gdf[zone_field] != forbidden_zone]
-
-                # Apply multiplication factor to non-forbidden zones
-                if not other_areas.empty:
-                    self.modify_raster_with_geodataframe(
-                        gdf=other_areas,
-                        value=cost_assumptions,
-                        ignore_value=ignore_value,
-                        multiply=multiply
-                    )
-
-                # Set forbidden zones to forbidden value
-                if not forbidden_areas.empty:
-                    self.modify_raster_with_geodataframe(
-                        gdf=forbidden_areas,
-                        value=forbidden_value,
-                        ignore_value=ignore_value,
-                        multiply=False
-                    )
-            else:
-                # Standard modification for the entire dataset
-                self.modify_raster_with_geodataframe(
-                    gdf=gdf,
-                    value=cost_assumptions,
-                    ignore_value=ignore_value,
-                    multiply=multiply
-                )
+            self._modify_raster_from_dataset_simple_cost_assumptions(gdf, cost_assumptions, forbidden_value,
+                                                                     forbidden_zone, ignore_value, multiply, zone_field)
         else:
             if isinstance(cost_assumptions, str) or isinstance(cost_assumptions, dict):
                 ca = CostAssumptions(source=cost_assumptions)
@@ -554,6 +526,39 @@ class GeoRasterizer:
                 mask = mask_array & ignore_value_mask
                 self.raster[mask] = unique_value
         return self.raster
+
+    def _modify_raster_from_dataset_simple_cost_assumptions(self, gdf, cost_assumptions, forbidden_value,
+                                                            forbidden_zone, ignore_value, multiply, zone_field):
+        # Handle zoning if specified
+        if zone_field and forbidden_zone:
+            forbidden_areas = gdf.loc[gdf[zone_field] == forbidden_zone]
+            other_areas = gdf.loc[gdf[zone_field] != forbidden_zone]
+
+            # Apply multiplication factor to non-forbidden zones
+            if not other_areas.empty:
+                self.modify_raster_with_geodataframe(
+                    gdf=other_areas,
+                    value=cost_assumptions,
+                    ignore_value=ignore_value,
+                    multiply=multiply
+                )
+
+            # Set forbidden zones to forbidden value
+            if not forbidden_areas.empty:
+                self.modify_raster_with_geodataframe(
+                    gdf=forbidden_areas,
+                    value=forbidden_value,
+                    ignore_value=ignore_value,
+                    multiply=False
+                )
+        else:
+            # Standard modification for the entire dataset
+            self.modify_raster_with_geodataframe(
+                gdf=gdf,
+                value=cost_assumptions,
+                ignore_value=ignore_value,
+                multiply=multiply
+            )
 
     def save_raster(self, save_path: str) -> None:
         """
