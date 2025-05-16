@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyorps"
-version = "0.1.7"
+version = "0.1.8"
 description = "PYORPS (Python for Optimal Routes in Power Systems)"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license-files = ["LICENSE"]
 authors = [
     {name = "Martin Hofmann", email = "martin.hofmann-3@ei.thm.de"},
 ]
@@ -23,20 +23,19 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
-    "License :: OSI Approved :: MIT License",
     "Topic :: Scientific/Engineering :: GIS",
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
-    "numpy==2.2.5",
+    "numpy==1.26.4",
+    "scipy==1.15.3",
     "pandas==2.2.3",
     "geopandas==1.0.1",
     "numba==0.61.2",
     "rasterio==1.4.3",
-    "networkit==11.0",
+    "networkit==11.1",
     "matplotlib==3.10.1",
     "requests==2.32.3",
-
 ]
 
 [tool.setuptools.packages.find]
