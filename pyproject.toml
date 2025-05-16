@@ -28,7 +28,6 @@ classifiers = [
 ]
 dependencies = [
     "numpy==2.2.5",
-    "scipy==1.15.3",
     "pandas==2.2.3",
     "geopandas==1.0.1",
     "numba==0.61.2",
