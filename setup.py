@@ -28,7 +28,7 @@ setup(
         "numpy>=2.2.5",
         "pandas>=2.2.3",
         "rasterio>=1.4.3",
-        "networkit>=11.1",
+        "networkit==11.1",
     ],
     extras_require={
         "viz": [
