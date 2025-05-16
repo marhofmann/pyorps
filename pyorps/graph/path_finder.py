@@ -86,6 +86,7 @@ class PathFinder:
                  search_space_buffer_m: Optional[float] = None,
                  neighborhood_str: Optional[Union[str, int]] = "r2",
                  steps=None,
+                 ignore_max_cost=True,
                  graph_api="networkit",
                  cost_assumptions=None,
                  datasets_to_modify=None,
@@ -114,6 +115,8 @@ class PathFinder:
             neighborhood_str (str, optional): Neighborhood type. Defaults to "r2".
             steps (ndarray, optional): Steps which define the neighborhood. If None, will be created from
             neighborhood_str.
+            ignore_max_cost (bool, True): Whether to ignore all cells in the raster which have the maximum cost
+            value or not
             graph_api (str, optional): Graph API to use. Defaults to "networkit".
             cost_assumptions (optional): Cost assumptions to use for rasterization. Required if dataset_source is
             vector data.
@@ -125,6 +128,7 @@ class PathFinder:
         self.search_space_buffer_m = search_space_buffer_m
         self.neighborhood_str = neighborhood_str
         self.graph_api_name = graph_api
+        self.ignore_max_cost = ignore_max_cost
 
         if steps is None and neighborhood_str:
             directed = True if self.graph_api_name == "cython" else False
@@ -299,7 +303,7 @@ class PathFinder:
         raster_data = self.raster_handler.data[band_index]
 
         # Create graph using the graph API
-        self._graph_api = graph_api_class_constructor(raster_data, self.steps)
+        self._graph_api = graph_api_class_constructor(raster_data, self.steps, ignore_max=self.ignore_max_cost)
         # Save edge construction and graph creation times
         if hasattr(self._graph_api, 'edge_construction_time') and hasattr(self._graph_api, 'graph_creation_time'):
             self.runtimes["edge_construction"] = self._graph_api.edge_construction_time

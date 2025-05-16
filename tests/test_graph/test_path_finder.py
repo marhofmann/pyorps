@@ -812,7 +812,7 @@ class TestPathFinder(unittest.TestCase):
                 title=None,
                 suptitle=None,
                 path_id=None,
-                reverse_colors=True
+                reverse_colors=False
             )
 
             # Check the return value

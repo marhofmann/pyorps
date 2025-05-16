@@ -57,7 +57,6 @@ class NetworkitAPI(GraphLibraryAPI):
         """
         return [i for i in self.graph.iterNodes()]
 
-
     @staticmethod
     def _ensure_path_endpoints(path, source, target):
         """
