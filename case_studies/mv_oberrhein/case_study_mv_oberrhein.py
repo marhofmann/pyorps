@@ -441,6 +441,6 @@ if __name__ == "__main__":
 
     net = pp.networks.mv_oberrhein(scenario='generation', separation_by_sub=True, include_substations=True)[1]
 
-    #prepare_raster_data(net, net_crs, gis_data_crs, request, raster_path)  # Prepare raster file
-    #find_routes_for_connection_lines(net, raster_path, result_path, source, net_crs, gis_data_crs)  # Run route finding
+    prepare_raster_data(net, net_crs, gis_data_crs, request, raster_path)  # Prepare raster file
+    find_routes_for_connection_lines(net, raster_path, result_path, source, net_crs, gis_data_crs)  # Run route finding
     analyze_mv_oberrhein(result_path, net_crs, gis_data_crs)  # Run analysis of routes
