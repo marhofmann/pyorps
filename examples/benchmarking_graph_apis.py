@@ -73,8 +73,8 @@ def plot_benchmark_results(data_file, max_euclidean_distance=None):
 
 def random_points_with_distance(raster, target_distance):
     """
-    Yields pairs of random points within a raster that are separated by the target Euclidean distance
-    and have pixel values lower than 65535.
+    Yields pairs of random points within a raster that are separated by the target
+    Euclidean distance and have pixel values lower than 65535.
 
     Parameters:
     -----------
@@ -98,7 +98,8 @@ def random_points_with_distance(raster, target_distance):
     max_possible_distance = math.sqrt((max_x - min_x) ** 2 + (max_y - min_y) ** 2)
     if target_distance > max_possible_distance:
         raise ValueError(
-            f"Target distance {target_distance} exceeds maximum possible distance in raster {max_possible_distance}")
+            f"Target distance {target_distance} exceeds maximum possible distance "
+            f"in raster {max_possible_distance}")
 
     while True:
         # Generate first random point
@@ -149,7 +150,8 @@ def sample_raster_value(raster, x, y):
     return value
 
 
-def benchmark_graph_apis(raster_path, euclidean_distances, neighborhoods, graph_apis, repeat=3):
+def benchmark_graph_apis(raster_path, euclidean_distances, neighborhoods, graph_apis,
+                         repeat=3):
     output_csv = "test.csv"  # benchmark_graph_apis.csv"
     results = []
     with rio.open(raster_path) as raster:
@@ -160,7 +162,9 @@ def benchmark_graph_apis(raster_path, euclidean_distances, neighborhoods, graph_
             count = 0
             while count < repeat + 1:
                 source, target = next(random_points_with_distance(raster, ed))
-                print("ED = ", np.sqrt(np.power(source[0] - target[0], 2) + np.power(source[1] - target[1], 2)))
+                x_square = np.power(source[0] - target[0], 2)
+                y_square = np.power(source[1] - target[1], 2)
+                print("ED = ", np.sqrt(x_square + y_square))
                 new_point = False
                 for graph_api in graph_apis:
                     for neighborhood in neighborhoods:
@@ -192,9 +196,9 @@ def benchmark_graph_apis(raster_path, euclidean_distances, neighborhoods, graph_
                                 "graph_api": graph_api,
                                 "source": str(source),
                                 "target": str(target),
-                                "search_space_buffer_m": path_finder.search_space_buffer_m,
-                                "number_of_nodes": path_finder.graph_api.get_number_of_nodes(),
-                                "number_of_edges": path_finder.graph_api.get_number_of_edges()
+                                "search_space_m": path_finder.search_space_buffer_m,
+                                "nr_nodes": path_finder.graph_api.get_number_of_nodes(),
+                                "nr_edges": path_finder.graph_api.get_number_of_edges()
                             }
 
                             # Add path metrics if path was found
@@ -214,7 +218,8 @@ def benchmark_graph_apis(raster_path, euclidean_distances, neighborhoods, graph_
                                     "path_length": None,
                                     "path_cost": None,
                                 })
-                                for key in ["raster_loading", "graph_creation", "shortest_path", "total"]:
+                                keys = ["raster_loading", "graph_creation", "shortest_path", "total"]
+                                for key in keys:
                                     result[f"runtime_{key}"] = None
 
                             # Append to results list
@@ -232,10 +237,10 @@ def benchmark_graph_apis(raster_path, euclidean_distances, neighborhoods, graph_
                                 "graph_api": graph_api,
                                 "source": str(source),
                                 "target": str(target),
-                                "search_space_buffer_m":  path_finder.search_space_buffer_m,
+                                "search_space_m":  path_finder.search_space_buffer_m,
                                 "error": str(e),
-                                "number_of_nodes": 0,
-                                "number_of_edges": 0
+                                "nr_nodes": 0,
+                                "nr_edges": 0
                             }
                             results.append(result)
 
@@ -248,9 +253,10 @@ def benchmark_graph_apis(raster_path, euclidean_distances, neighborhoods, graph_
 
 
 if __name__ == "__main__":
-
-    euclidean_distances = list(range(3000, 21000, 1000)) # list(range(100, 1100, 100)) + list(range(1000, 21000, 1000))
-    benchmark_graph_apis(r"C:\Users\mhnn82\Documents\3_python_projects\pyorps\examples\data\raster\big_raster.tiff",
+    raster_path = (r"C:\Users\mhnn82\Documents\3_python_projects\pyorps\examples\data"
+                   r"\raster\big_raster.tiff")
+    euclidean_distances = list(range(3000, 21000, 1000))
+    benchmark_graph_apis(raster_path,
                          euclidean_distances,
                          ['r0', 'r1', 'r2', 'r3'],
                          ['rustworkx', 'networkit', 'igraph', 'networkx'])

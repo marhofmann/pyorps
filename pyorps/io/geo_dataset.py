@@ -106,19 +106,27 @@ class LocalVectorDataset(InMemoryVectorDataset):
     def apply_bbox(self):
         if self.bbox is not None:
             if hasattr(self.bbox, 'crs') and self.bbox.crs != self.data.crs:
-                raise ValueError(f"CRS-Missmatch: The CRS of the vector source and the bbox are different!\n"
-                                 f"CRS of vector source:\n{self.data.crs}\nCRS of bbox:\n{self.bbox.crs}\n"
-                                 f"\nWhen reading a {self.__class__.__name__} 'bbox' needs to have  the same CRS then "
-                                 f"the Vector file! A CRS-Missmatch may lead to empty datasets!")
+                raise ValueError(f"CRS-Missmatch: The CRS of the vector source and the "
+                                 f"bbox are different!\n"
+                                 f"CRS of vector source:\n{self.data.crs}\n"
+                                 f"CRS of bbox:\n{self.bbox.crs}\n"
+                                 f"\nWhen reading a {self.__class__.__name__} "
+                                 f"'bbox' needs to have  the same CRS then "
+                                 f"the Vector file! A CRS-Missmatch may lead to empty "
+                                 f"datasets!")
 
     # noinspection PyUnresolvedReferences
     def apply_mask(self):
         if self.bbox is None and self.mask is not None:
             if hasattr(self.mask, 'crs') and self.mask.crs != self.data.crs:
-                raise ValueError(f"CRS-Missmatch: The CRS of the vector source and the mask are different!\n"
-                                 f"CRS of vector source:\n{self.data.crs}\nCRS of mask:\n{self.mask.crs}\n"
-                                 f"\nWhen reading a {self.__class__.__name__} 'mask' needs to have  the same CRS then "
-                                 f"the Vector file! A CRS-Missmatch may lead to empty datasets!")
+                raise ValueError(f"CRS-Missmatch: The CRS of the vector source and the "
+                                 f"mask are different!\n"
+                                 f"CRS of vector source:\n{self.data.crs}\n"
+                                 f"CRS of mask:\n{self.mask.crs}\n"
+                                 f"\nWhen reading a {self.__class__.__name__} "
+                                 f"'mask' needs to have  the same CRS then "
+                                 f"the Vector file! A CRS-Missmatch may lead to empty "
+                                 f"datasets!")
         else:
             if self.mask is not None:
                 if hasattr(self.mask, 'crs') and self.mask.crs != self.data.crs:
@@ -129,8 +137,10 @@ class LocalVectorDataset(InMemoryVectorDataset):
 class WFSVectorDataset(LocalVectorDataset):
     def load_data(self, **kwargs):
         if "url" not in self.file_source or "layer" not in self.file_source:
-            raise ValueError(f"Unsupported dataset source for WFSVectorDataset: {self.file_source}!"
-                             f"\nPlease provide a dictionary with a valid 'url' and 'layer' key-value pairs!")
+            raise ValueError(f"Unsupported dataset source for WFSVectorDataset: "
+                             f"{self.file_source}!"
+                             f"\nPlease provide a dictionary with a valid 'url' and "
+                             f"'layer' key-value pairs!")
         else:
 
             self.data = load_from_wfs(
@@ -165,8 +175,14 @@ class LocalRasterDataset(RasterDataset):
             self.crs = src.crs
             self.transform = src.transform
             self.count = self.data.shape[0] if len(self.data.shape) > 2 else 1
-            height = self.data.shape[1] if len(self.data.shape) > 2 else self.data.shape[0]
-            width = self.data.shape[2] if len(self.data.shape) > 2 else self.data.shape[1]
+            if len(self.data.shape) > 2:
+                height = self.data.shape[1]
+            else:
+                height = self.data.shape[0]
+            if len(self.data.shape) > 2:
+                width = self.data.shape[2]
+            else:
+                width = self.data.shape[1]
             self.shape = (height, width)
             self.dtype = self.data.dtype
 
@@ -195,7 +211,8 @@ def initialize_geo_dataset(file_source: InputDataType,
                            mask: Optional[GeometryMaskType] = None,
                            transform: Optional[Affine] = None) -> GeoDataset:
     """
-    Factory function to create the appropriate GeoDataset instance based on the provided input.
+    Factory function to create the appropriate GeoDataset instance based on the
+    provided input.
 
     Args:
         file_source: Source data (file path, GeoDataFrame, URL dict, numpy array, etc.)
@@ -215,13 +232,15 @@ def initialize_geo_dataset(file_source: InputDataType,
         vector_dataset = create_geo_dataset(gdf, bbox=(x1, y1, x2, y2))
 
         # From WFS source
-        wfs_dataset = create_geo_dataset({"url": "https://example.com/wfs", "layer": "layer1"})
+        wfs_dataset = create_geo_dataset({"url": "https://example.com/wfs",
+                                          "layer": "layer1"})
 
         # From local raster file
         raster_dataset = create_geo_dataset("path/to/dem.tif")
 
         # From numpy array
-        raster_dataset = create_geo_dataset(array_data, transform=transform, crs="EPSG:4326")
+        raster_dataset = create_geo_dataset(array_data, transform=transform,
+                                            crs="EPSG:4326")
     """
     # Determine data type (vector or raster)
     data_type = _determine_data_type(file_source)
@@ -232,7 +251,8 @@ def initialize_geo_dataset(file_source: InputDataType,
     elif data_type == "raster":
         geodataset = _create_raster_dataset(file_source, crs, transform)
     else:
-        raise ValueError(f"Unable to determine appropriate dataset type for: {file_source}")
+        raise ValueError(f"Unable to determine appropriate dataset type for: "
+                         f"{file_source}")
     return geodataset
 
 
@@ -254,7 +274,8 @@ def _determine_data_type(file_source: Any) -> str:
         return "raster"
 
     # Check for WFS data
-    if isinstance(file_source, dict) and "url" in file_source and "layer" in file_source:
+    if (isinstance(file_source, dict) and "url" in file_source
+            and "layer" in file_source):
         return "vector"
 
     # Check file extension for local files
@@ -283,7 +304,8 @@ def _create_vector_dataset(file_source: Any,
         return InMemoryVectorDataset(file_source, crs, bbox=bbox, mask=mask)
 
     # WFS data source
-    elif isinstance(file_source, dict) and "url" in file_source and "layer" in file_source:
+    elif (isinstance(file_source, dict) and "url" in file_source and
+          "layer" in file_source):
         return WFSVectorDataset(file_source, crs, bbox=bbox, mask=mask)
 
     # Local file
@@ -301,7 +323,8 @@ def _create_raster_dataset(file_source: Any,
     # In-memory numpy array
     if isinstance(file_source, ndarray):
         if not transform or not isinstance(transform, Affine):
-            raise ValueError("A valid 'transform' of type Affine is required for InMemoryRasterDataset")
+            raise ValueError("A valid 'transform' of type Affine is required for "
+                             "InMemoryRasterDataset")
         return InMemoryRasterDataset(file_source, crs, transform=transform)
 
     # Local file

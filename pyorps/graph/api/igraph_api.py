@@ -11,7 +11,8 @@ from .graph_library_api import *
 
 class IGraphAPI(GraphLibraryAPI):
 
-    def create_graph(self, from_nodes: ndarray[int], to_nodes: ndarray[int], cost: Optional[ndarray[int]] = None,
+    def create_graph(self, from_nodes: ndarray[int], to_nodes: ndarray[int],
+                     cost: Optional[ndarray[int]] = None,
                      **kwargs) -> Any:
         """
         Creates a graph object with the igraph library.
@@ -79,7 +80,8 @@ class IGraphAPI(GraphLibraryAPI):
 
     def get_nodes(self) -> Union[list[int], ndarray[int]]:
         """
-        This method returns the nodes in the graph as a list or numpy array of node indices.
+        This method returns the nodes in the graph as a list or numpy array of node
+        indices.
 
         :return: list[int]
             The list of node indices of the nodes in the graph
@@ -100,23 +102,27 @@ class IGraphAPI(GraphLibraryAPI):
 
     def _compute_all_pairs_shortest_paths(self, sources, targets, algorithm, **kwargs):
         """
-        Computes paths individually for each source-target pair using the specified algorithm.
+        Computes paths individually for each source-target pair using the specified
+        algorithm.
         Returns empty paths for unreachable targets.
         """
         paths = []
         for source in sources:
             for target in targets:
                 try:
-                    path = self._compute_single_path(source, target, algorithm, **kwargs)
+                    path = self._compute_single_path(source, target, algorithm,
+                                                     **kwargs)
                     paths.append(path)
                 except NoPathFoundError:
                     paths.append([])
         return paths
 
-    def shortest_path(self, source_indices, target_indices, algorithm="dijkstra", **kwargs):
+    def shortest_path(self, source_indices, target_indices, algorithm="dijkstra",
+                      **kwargs):
         """
-        This method applies the specified shortest path algorithm on the created graph object and finds the shortest
-        path between source and target(s) as a list of node indices.
+        This method applies the specified shortest path algorithm on the created graph
+        object and finds the shortest path between source and target(s) as a list of
+        node indices.
 
         Parameters:
         -----------
@@ -129,11 +135,12 @@ class IGraphAPI(GraphLibraryAPI):
             Options: "dijkstra", "bellman_ford", "astar"
         **kwargs:
             pairwise : bool
-                If True, compute pairwise shortest paths between source_indices and target_indices.
+                If True, compute pairwise shortest paths between source_indices and
+                target_indices.
                 Only allowed if len(source_indices) == len(target_indices)
             heuristic : callable, optional
-                A function that takes two node indices (u, target) and returns an estimate of the distance
-                between them. Only used when algorithm="astar".
+                A function that takes two node indices (u, target) and returns an
+                estimate of the distance between them. Only used when algorithm="astar".
 
         Returns:
         --------
@@ -150,7 +157,9 @@ class IGraphAPI(GraphLibraryAPI):
         pairwise = kwargs.get('pairwise', False)
         if pairwise:
             if len(source_indices) != len(target_indices):
-                raise ValueError("Source and target lists must have the same length for pairwise computation")
+                msg = ("Source and target lists must have the same length for pairwise "
+                       "computation")
+                raise ValueError()
             return self._pairwise_shortest_path(source_indices, target_indices, algorithm)
 
         # Single source, single target
@@ -162,24 +171,32 @@ class IGraphAPI(GraphLibraryAPI):
         # Single source, multiple targets
         elif len(source_indices) == 1:
             source = source_indices[0]
-            return self._compute_single_source_multiple_targets(source, target_indices, algorithm, **kwargs)
+            return self._compute_single_source_multiple_targets(source, target_indices,
+                                                                algorithm, **kwargs)
 
         # Multiple sources, multiple targets (all pairs)
         else:
-            return self._all_pairs_shortest_path(source_indices, target_indices, algorithm, **kwargs)
+            return self._all_pairs_shortest_path(source_indices, target_indices,
+                                                 algorithm, **kwargs)
 
     def _compute_single_path(self, source, target, algorithm, **kwargs):
         """
-        Computes shortest path between a single source and target using the specified algorithm.
+        Computes shortest path between a single source and target using the specified
+        algorithm.
         """
-        weights = self.graph.es.get_attribute_values('weight') if 'weight' in self.graph.es.attributes() else None
+        if 'weight' in self.graph.es.attributes():
+            weights = self.graph.es.get_attribute_values('weight')
+        else:
+            weights = None
 
         if algorithm == "dijkstra":
-            path = self.graph.get_shortest_paths(source, target, weights=weights, output="vpath")[0]
+            path = self.graph.get_shortest_paths(source, target, weights=weights,
+                                                 output="vpath")[0]
 
         elif algorithm == "bellman_ford":
-            path = self.graph.get_shortest_paths(source, target,
-                                                 weights=weights, output="vpath", algorithm="bellman_ford")[0]
+            path = self.graph.get_shortest_paths(source, target, weights=weights,
+                                                 output="vpath",
+                                                 algorithm="bellman_ford")[0]
 
         elif algorithm == "astar":
             heuristic_function = kwargs.get('heu', None)
@@ -204,16 +221,22 @@ class IGraphAPI(GraphLibraryAPI):
         path = self._ensure_path_endpoints(path, source, target)
         return path
 
-    def _compute_single_source_multiple_targets(self, source, targets, algorithm, **kwargs):
+    def _compute_single_source_multiple_targets(self, source, targets, algorithm,
+                                                **kwargs):
         """
         Computes shortest paths from a single source to multiple targets.
         """
-        weights = self.graph.es.get_attribute_values('weight') if 'weight' in self.graph.es.attributes() else None
+        if 'weight' in self.graph.es.attributes():
+            weights = self.graph.es.get_attribute_values('weight')
+        else:
+            weights = None
 
         if algorithm in ["dijkstra", "bellman_ford"]:
             # igraph can compute paths to multiple targets at once
             algo = "dijkstra" if algorithm == "dijkstra" else "bellman_ford"
-            all_paths = self.graph.get_shortest_paths(source, targets, weights=weights, output="vpath", algorithm=algo)
+            all_paths = self.graph.get_shortest_paths(source, targets,
+                                                      weights=weights, output="vpath",
+                                                      algorithm=algo)
 
             # Process each path
             paths = []
@@ -229,7 +252,8 @@ class IGraphAPI(GraphLibraryAPI):
             paths = []
             for target in targets:
                 try:
-                    path = self._compute_single_path(source, target, algorithm, **kwargs)
+                    path = self._compute_single_path(source, target, algorithm,
+                                                     **kwargs)
                     paths.append(path)
                 except NoPathFoundError:
                     paths.append([])
@@ -259,12 +283,17 @@ class IGraphAPI(GraphLibraryAPI):
         """
         if algorithm in ["dijkstra", "bellman_ford"]:
             paths = []
-            weights = self.graph.es.get_attribute_values('weight') if 'weight' in self.graph.es.attributes() else None
+            if 'weight' in self.graph.es.attributes():
+                weights = self.graph.es.get_attribute_values('weight')
+            else:
+                weights = None
             algo = "dijkstra" if algorithm == "dijkstra" else "bellman_ford"
 
             for source in sources:
                 # For each source, compute paths to all targets at once
-                target_paths = self.graph.get_shortest_paths(source, targets, weights=weights, output="vpath",
+                target_paths = self.graph.get_shortest_paths(source, targets,
+                                                             weights=weights,
+                                                             output="vpath",
                                                              algorithm=algo)
 
                 # Process each path
@@ -272,10 +301,12 @@ class IGraphAPI(GraphLibraryAPI):
                     if len(path) == 0:
                         paths.append([])  # No path found
                     else:
-                        paths.append(self._ensure_path_endpoints(path, source, targets[i]))
+                        paths.append(self._ensure_path_endpoints(path, source,
+                                                                 targets[i]))
 
             return paths
 
         else:
             # For other algorithms, compute each path individually
-            return self._compute_all_pairs_shortest_paths(sources, targets, algorithm, **kwargs)
+            return self._compute_all_pairs_shortest_paths(sources, targets, algorithm,
+                                                          **kwargs)

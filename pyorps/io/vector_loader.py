@@ -13,7 +13,8 @@ from shapely.geometry import box
 from shapely.ops import unary_union
 
 from ..core.types import BboxType, GeometryMaskType
-from ..core.exceptions import WFSLayerNotFoundError, WFSConnectionError, WFSResponseParsingError, WFSError
+from ..core.exceptions import (WFSLayerNotFoundError, WFSConnectionError,
+                               WFSResponseParsingError, WFSError)
 
 
 def load_from_wfs(
@@ -32,9 +33,11 @@ def load_from_wfs(
         url: The base URL of the WFS service
         layer: Name of the layer to retrieve
         bbox: Optional bounding box to limit the query extent (minx, miny, maxx, maxy)
-        mask: Optional geometry mask to limit the query (Shapely Polygon, GeoDataFrame, or GeoSeries)
+        mask: Optional geometry mask to limit the query (Shapely Polygon, GeoDataFrame,
+                or GeoSeries)
         filter_params: Additional WFS parameters to filter results
-        auto_match: Whether to attempt finding similar layer names if exact match not found
+        auto_match: Whether to attempt finding similar layer names if exact match not
+                found
         max_workers: Maximum number of parallel threads to use
 
     Returns:
@@ -179,7 +182,8 @@ def _try_direct_load(
         mask: Optional geometry mask to limit the query
 
     Returns:
-        tuple of (GeoDataFrame or None, boolean indicating if a server limit was likely reached)
+        tuple of (GeoDataFrame or None, boolean indicating if a server limit was
+        likely reached)
     """
     # Extract namespace if present
     namespace = None
@@ -201,7 +205,8 @@ def _try_direct_load(
 
         # Add namespace parameter if needed
         if namespace and version == "2.0.0":
-            params['NAMESPACES'] = f'xmlns({namespace}=https://www.adv-online.de/namespaces/adv/gid/{namespace})'
+            base = 'https://www.adv-online.de/namespaces/adv/gid'
+            params['NAMESPACES'] = f'xmlns({namespace}={base}/{namespace})'
 
         # Add any additional filter parameters
         if filter_params:
@@ -224,11 +229,13 @@ def _try_direct_load(
                 if mask is not None:
                     gdf = _clip_data_by_mask(gdf, mask)
 
-                    # If the mask filtered out all data, consider it empty but not limited
+                    # If the mask filtered out all data, consider it empty but not
+                    # limited
                     if gdf.empty:
                         return gdf, False
 
-                # Check if we likely hit a server limit (common limits are 10,000 or 100,000)
+                # Check if we likely hit a server limit (common limits are 10,000 or
+                # 100,000)
                 limit_reached = len(gdf) in (10_000, 100_000, 1_000, 5_000, 50_000)
                 return gdf, limit_reached
 
@@ -266,7 +273,8 @@ def _resolve_layer(url: str, requested_layer: str) -> str:
     if best_match:
         return best_match
 
-    raise WFSLayerNotFoundError(f"Layer '{requested_layer}' not found and no similar layers available.")
+    raise WFSLayerNotFoundError(f"Layer '{requested_layer}' not found and no similar "
+                                f"layers available.")
 
 
 def _get_available_layers(url: str) -> list[str]:
@@ -307,7 +315,8 @@ def _get_available_layers(url: str) -> list[str]:
 
         # Try different paths to find feature types
         for namespace_prefix in ['wfs:', 'wfs1:', '']:
-            feature_types = root.findall(f'.//{namespace_prefix}FeatureType', namespaces)
+            feature_types = root.findall(f'.//{namespace_prefix}FeatureType',
+                                         namespaces)
             if feature_types:
                 break
 
@@ -315,7 +324,8 @@ def _get_available_layers(url: str) -> list[str]:
         layers = []
         for feature_type in feature_types:
             for namespace_prefix in ['wfs:', 'wfs1:', '']:
-                name_elem = feature_type.find(f'.//{namespace_prefix}Name', namespaces)
+                name_elem = feature_type.find(f'.//{namespace_prefix}Name',
+                                              namespaces)
                 if name_elem is not None and name_elem.text:
                     layers.append(name_elem.text)
                     break
@@ -325,10 +335,12 @@ def _get_available_layers(url: str) -> list[str]:
     except et.ParseError as e:
         raise WFSResponseParsingError(f"Failed to parse WFS capabilities: {e}")
     except Exception as e:
-        raise WFSResponseParsingError(f"Unexpected error parsing WFS capabilities: {str(e)}")
+        raise WFSResponseParsingError(f"Unexpected error parsing WFS capabilities: "
+                                      f"{str(e)}")
 
 
-def _find_best_matching_layer(target_name: str, available_layers: list[str]) -> Optional[str]:
+def _find_best_matching_layer(target_name: str,
+                              available_layers: list[str]) -> Optional[str]:
     """
     Find the layer name with highest similarity to the target name.
 
@@ -357,7 +369,11 @@ def _find_best_matching_layer(target_name: str, available_layers: list[str]) -> 
     return best_match if score > 0.3 else None
 
 
-def _get_extent_from_capabilities(url: str, layer: str) -> Optional[tuple[float, float, float, float]]:
+def _get_extent_from_capabilities(url: str,
+                                  layer: str) -> Optional[tuple[float,
+                                                                float,
+                                                                float,
+                                                                float]]:
     """
     Extract layer extent from WFS GetCapabilities response.
 
@@ -413,15 +429,18 @@ def _get_extent_from_capabilities(url: str, layer: str) -> Optional[tuple[float,
 
             if name and name == layer:
                 # Try to find WGS 84 bounding box
-                for bbox_path in ['./ows:WGS84BoundingBox', './WGS84BoundingBox', './BoundingBox']:
+                for bbox_path in ['./ows:WGS84BoundingBox', './WGS84BoundingBox',
+                                  './BoundingBox']:
                     bbox_elem = feature_type.find(bbox_path, namespaces)
                     if bbox_elem is not None:
                         break
 
                 if bbox_elem is not None:
                     # Get lower and upper corners
-                    lower_corner = bbox_elem.find('./ows:LowerCorner', namespaces) or bbox_elem.find('./LowerCorner')
-                    upper_corner = bbox_elem.find('./ows:UpperCorner', namespaces) or bbox_elem.find('./UpperCorner')
+                    lower_corner = (bbox_elem.find('./ows:LowerCorner', namespaces)
+                                    or bbox_elem.find('./LowerCorner'))
+                    upper_corner = (bbox_elem.find('./ows:UpperCorner', namespaces)
+                                    or bbox_elem.find('./UpperCorner'))
 
                     if lower_corner is not None and upper_corner is not None:
                         # Parse coordinates
@@ -526,7 +545,8 @@ def _load_data_in_parallel(
 
     # Filter chunks by mask if provided
     if mask is not None:
-        initial_chunks = [chunk for chunk in initial_chunks if _chunk_intersects_mask(chunk, mask)]
+        initial_chunks = [chunk for chunk in initial_chunks
+                          if _chunk_intersects_mask(chunk, mask)]
 
     # Track chunks to process and processed chunks
     chunks_to_process = [(chunk, 2, 2) for chunk in initial_chunks]
@@ -555,7 +575,8 @@ def _load_data_in_parallel(
             future_to_chunk_info = {}
             for chunk_info in filtered_batch:
                 chunk = chunk_info[0]
-                future = executor.submit(_fetch_wfs_data, url, layer, chunk, filter_params)
+                future = executor.submit(_fetch_wfs_data, url, layer,
+                                         chunk, filter_params)
                 future_to_chunk_info[future] = chunk_info
 
             # Process results as they complete
@@ -593,7 +614,8 @@ def _load_data_in_parallel(
 
                         # Add new sub-chunks to queue
                         chunks_to_process.extend(
-                            [(sub_chunk, new_x_div, new_y_div) for sub_chunk in sub_chunks]
+                            [(sub_chunk, new_x_div, new_y_div)
+                             for sub_chunk in sub_chunks]
                         )
 
                 except (WFSError, requests.RequestException):
@@ -608,7 +630,8 @@ def _load_data_in_parallel(
                         ]
 
                     chunks_to_process.extend(
-                        [(sub_chunk, x_div * 2, y_div * 2) for sub_chunk in sub_chunks]
+                        [(sub_chunk, x_div * 2, y_div * 2)
+                         for sub_chunk in sub_chunks]
                     )
 
     # Combine all collected data
@@ -667,7 +690,8 @@ def _fetch_wfs_data(
 
         # Add namespace parameter if needed
         if namespace and version == "2.0.0":
-            params['NAMESPACES'] = f'xmlns({namespace}=https://www.adv-online.de/namespaces/adv/gid/{namespace})'
+            base = 'https://www.adv-online.de/namespaces/adv/gid'
+            params['NAMESPACES'] = f'xmlns({namespace}={base}/{namespace})'
 
         # Add any additional filter parameters
         if filter_params:

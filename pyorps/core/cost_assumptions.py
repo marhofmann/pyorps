@@ -8,7 +8,8 @@ import pandas as pd
 
 from geopandas import GeoDataFrame
 
-from .exceptions import InvalidSourceError, FileLoadError, FormatError, NoSuitableColumnsError
+from .exceptions import (InvalidSourceError, FileLoadError, FormatError,
+                         NoSuitableColumnsError)
 
 
 class CostAssumptions:
@@ -16,7 +17,8 @@ class CostAssumptions:
     A class for handling cost assumptions for rasterization.
 
     This class handles:
-    - Loading cost assumptions from files (CSV, Excel, JSON) or generating of cost assumptions from a GeoDataFrame.
+    - Loading cost assumptions from files (CSV, Excel, JSON) or generating of cost
+    assumptions from a GeoDataFrame.
     - Mapping costs to features in a GeoDataFrame
     - Managing hierarchical cost structures
     """
@@ -40,12 +42,15 @@ class CostAssumptions:
                 self.load(source)
             else:
                 raise InvalidSourceError(
-                    f"Parameter 'source' must be either a string, a dictionary or a GeoDataFrame, "
+                    f"Parameter 'source' must be either a string, a dictionary or a "
+                    f"GeoDataFrame, "
                     f"not {type(source)}"
                 )
             if not self.cost_assumptions:
-                raise FormatError(f"The format of the cost assumptions file or dictionary is invalid. Please check "
-                                  f"the format of your cost assumptions input: {self.source}")
+                raise FormatError(f"The format of the cost assumptions file or "
+                                  f"dictionary is invalid. Please check "
+                                  f"the format of your cost assumptions input: "
+                                  f"{self.source}")
 
     def load(self, source: Union[str, dict]) -> dict:
         """
@@ -144,7 +149,8 @@ class CostAssumptions:
                         except (pd.errors.ParserError, ValueError, UnicodeDecodeError):
                             continue
 
-        raise FileLoadError(f"Could not read CSV file {filepath}. Tried multiple encodings and formats.")
+        raise FileLoadError(f"Could not read CSV file {filepath}. Tried multiple "
+                            f"encodings and formats.")
 
     def _load_json_cost_assumptions(self, filepath: str) -> dict:
         """
@@ -165,7 +171,8 @@ class CostAssumptions:
                     data = json.load(f)
 
                     # Check if it's the new format with metadata
-                    if isinstance(data, dict) and 'metadata' in data and 'cost_assumptions' in data:
+                    if (isinstance(data, dict) and 'metadata' in data and
+                            'cost_assumptions' in data):
                         self.main_feature = data['metadata']['main_feature']
                         self.side_features = data['metadata'].get('side_features', [])
 
@@ -186,7 +193,8 @@ class CostAssumptions:
                         # Legacy format - just a plain dictionary
                         self.cost_assumptions = data
                     if len(self.cost_assumptions) == 0:
-                        raise FileLoadError(f"Failed to read json file {filepath}. File contains no data or is not in "
+                        raise FileLoadError(f"Failed to read json file {filepath}. "
+                                            f"File contains no data or is not in "
                                             f"the correct format!")
                     return self.cost_assumptions
             except (UnicodeDecodeError, json.JSONDecodeError) as e:
@@ -209,7 +217,8 @@ class CostAssumptions:
             # First try default settings
             df = pd.read_excel(filepath)
             if df.empty:
-                raise FileLoadError(f"Failed to read Excel file {filepath}. File contains no data or is not in the "
+                raise FileLoadError(f"Failed to read Excel file {filepath}. File "
+                                    f"contains no data or is not in the "
                                     f"correct format!")
 
             df = self._convert_numeric_columns(df)
@@ -220,21 +229,23 @@ class CostAssumptions:
             try:
                 df = pd.read_excel(filepath, dtype=str)
                 if df.empty:
-                    raise FileLoadError(f"Failed to read Excel file {filepath}. File contains no data or is not in the "
-                                        f"correct format!")
+                    msg = (f"Failed to read Excel file {filepath}. File contains no "
+                           f"data or is not in the correct format!")
+                    raise FileLoadError(msg)
                 df = self._convert_numeric_columns(df)
                 self.cost_assumptions = self._convert_df_to_cost_dict(df)
                 return self.cost_assumptions
             except (pd.errors.ParserError, ValueError, IOError) as e:
-                raise FileLoadError(
-                    f"Failed to read Excel file {filepath}. Original error: {first_error}. Second attempt error: {e}"
-                )
+                msg = (f"Failed to read Excel file {filepath}. Original error: "
+                       f"{first_error}. Second attempt error: {e}")
+                raise FileLoadError(msg)
 
     def _convert_df_to_cost_dict(self, df: pd.DataFrame) -> dict:
         """
         Convert a DataFrame to a nested dictionary for cost assumptions.
 
-        Uses one numeric column for costs, and all other columns as a hierarchical index:
+        Uses one numeric column for costs, and all other columns as a hierarchical
+        index:
         - The first column is the 'main_feature'
         - All additional columns are 'side_features'
         """
@@ -272,7 +283,8 @@ class CostAssumptions:
         Convert columns to numeric, handling different decimal separators.
 
         Parameters:
-        - df: DataFrame with potential numeric columns that might use different decimal separators
+        - df: DataFrame with potential numeric columns that might use different decimal
+        separators
 
         Returns:
         - DataFrame with properly converted numeric columns
@@ -337,7 +349,8 @@ class CostAssumptions:
         if isinstance(first_key, tuple):
             # Complex tuple keys structure - from multi-index
             self._apply_tuple_costs(gdf, main_feature, side_features)
-        elif side_features and isinstance(next(iter(self.cost_assumptions.values()), None), dict):
+        elif side_features and isinstance(next(iter(self.cost_assumptions.values()),
+                                               None), dict):
             # Nested dictionary structure
             self._apply_nested_costs(gdf, main_feature, side_features)
         else:
@@ -348,7 +361,8 @@ class CostAssumptions:
 
     def _apply_tuple_costs(self, gdf, main_feature, side_features):
         # Create wildcard dictionary for default values
-        wild_cards = {keys[0]: value for keys, value in self.cost_assumptions.items() if '' in keys}
+        iter_items = self.cost_assumptions.items()
+        wild_cards = {keys[0]: value for keys, value in iter_items if '' in keys}
 
         # Apply specific mappings
         for keys, value in self.cost_assumptions.items():
@@ -366,7 +380,8 @@ class CostAssumptions:
 
     def _apply_nested_costs(self, gdf, main_feature, side_features):
         if len(side_features) != 1:
-            raise FormatError("Multiple side features not supported for nested dictionary structure")
+            msg = "Multiple side features not supported for nested dictionary structure"
+            raise FormatError(msg)
 
         side_feature = side_features[0]
 
@@ -390,7 +405,8 @@ class CostAssumptions:
                 combined_mask = main_mask & side_mask
                 gdf.loc[combined_mask, 'cost'] = cost
 
-    def to_csv(self, filepath: str, separator: str = ';', decimal: str = '.', encoding: str = 'ISO-8859-1') -> None:
+    def to_csv(self, filepath: str, separator: str = ';', decimal: str = '.',
+               encoding: str = 'ISO-8859-1') -> None:
         """
         Save the cost assumptions to a CSV file.
 

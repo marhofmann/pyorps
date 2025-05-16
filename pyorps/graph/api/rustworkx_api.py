@@ -10,7 +10,8 @@ from .graph_library_api import GraphLibraryAPI
 
 class RustworkxAPI(GraphLibraryAPI):
 
-    def create_graph(self, from_nodes: ndarray[int], to_nodes: ndarray[int], cost: Optional[ndarray[int]] = None,
+    def create_graph(self, from_nodes: ndarray[int], to_nodes: ndarray[int],
+                     cost: Optional[ndarray[int]] = None,
                      **kwargs) -> rx.PyGraph:
         """
         Creates a graph object using rustworkx.
@@ -39,7 +40,9 @@ class RustworkxAPI(GraphLibraryAPI):
             self.graph.add_edges_from(list(zip(from_nodes, to_nodes, cost)))
         else:
             # Add edges with default weight of 1.0
-            self.graph.add_edges_from(list(zip(from_nodes, to_nodes, [1.0] * len(from_nodes))))
+            # Rustworkx only takes a list of tuples instead of edges!
+            edge_list = list(zip(from_nodes, to_nodes, [1.0] * len(from_nodes)))
+            self.graph.add_edges_from(edge_list)
 
         if kwargs.get('remove_isolated_nodes', False):
             self.remove_isolates()
@@ -95,7 +98,8 @@ class RustworkxAPI(GraphLibraryAPI):
 
     def get_nodes(self) -> Union[list[int], ndarray[int]]:
         """
-        This method returns the nodes in the graph as a list or numpy array of node indices.
+        This method returns the nodes in the graph as a list or numpy array of node
+        indices.
 
         :return: list[int]
             The list of node indices of the nodes in the graph
@@ -113,7 +117,8 @@ class RustworkxAPI(GraphLibraryAPI):
         """
         self.graph.add_edge(from_node, to_node, cost)
 
-    def add_edges(self, from_nodes: Union[ndarray[int], list[int]], to_nodes: Union[ndarray[int], list[int]],
+    def add_edges(self, from_nodes: Union[ndarray[int], list[int]],
+                  to_nodes: Union[ndarray[int], list[int]],
                   cost: Union[ndarray[float], list[float]]) -> None:
         """
         Adds multiple edges to the graph.
@@ -125,10 +130,11 @@ class RustworkxAPI(GraphLibraryAPI):
         """
         self.graph.add_edges_from(list(zip(from_nodes, to_nodes, cost)))
 
-    def get_graph_from_sparse_matrix(self,
-                                     from_nodes: Union[ndarray[int], list[int]],
-                                     to_nodes: Union[ndarray[int], list[int]],
-                                     cost: Union[ndarray[float], list[float]]) -> rx.PyGraph:
+    def get_graph_from_sparse_matrix(
+            self,
+            from_nodes: Union[ndarray[int], list[int]],
+            to_nodes: Union[ndarray[int], list[int]],
+            cost: Union[ndarray[float], list[float]]) -> rx.PyGraph:
         """
         Creates a graph from edge data.
 
@@ -188,10 +194,14 @@ class RustworkxAPI(GraphLibraryAPI):
             NoPathFoundError: If no path exists between source and target.
             AlgorthmNotImplementedError: If the specified algorithm is not implemented.
         """
+
+        def weight_fn(edge_weight):
+            return edge_weight
+
         try:
             if algorithm == "dijkstra":
                 path = rx.dijkstra_shortest_paths(self.graph, source, target,
-                                                  weight_fn=lambda edge_weight: edge_weight)
+                                                  weight_fn=weight_fn)
                 path = list(path[target])
             elif algorithm == "astar":
                 # Get heuristic function or use default manhattan distance as heuristic
@@ -209,12 +219,12 @@ class RustworkxAPI(GraphLibraryAPI):
 
                 path = rx.astar_shortest_path(self.graph, source,
                                               goal_fn=goal_reached,
-                                              edge_cost_fn=lambda edge_weight: edge_weight,
+                                              edge_cost_fn=weight_fn,
                                               estimate_cost_fn=heuristic_function)
                 path = list(path)
             elif algorithm == "bellman_ford":
                 path = rx.bellman_ford_shortest_paths(self.graph, source, target=target,
-                                                      weight_fn=lambda edge_weight: edge_weight)
+                                                      weight_fn=weight_fn)
                 path = list(path[target])
             else:
                 raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
@@ -223,7 +233,8 @@ class RustworkxAPI(GraphLibraryAPI):
         except rx.NoPathFound:
             raise NoPathFoundError(source=source, target=target)
 
-    def _compute_single_source_multiple_targets(self, source, targets, algorithm, **kwargs):
+    def _compute_single_source_multiple_targets(self, source, targets, algorithm,
+                                                **kwargs):
         """
         Computes shortest paths from a single source to multiple targets.
 
@@ -284,16 +295,19 @@ class RustworkxAPI(GraphLibraryAPI):
         for source in sources:
             for target in targets:
                 try:
-                    path = self._compute_single_path(source, target, algorithm, **kwargs)
+                    path = self._compute_single_path(source, target, algorithm,
+                                                     **kwargs)
                     paths.append(path)
                 except NoPathFoundError:
                     paths.append([])
         return paths
 
-    def shortest_path(self, source_indices, target_indices, algorithm="dijkstra", **kwargs):
+    def shortest_path(self, source_indices, target_indices, algorithm="dijkstra",
+                      **kwargs):
         """
-        This method applies the specified shortest path algorithm on the created graph object and finds the shortest
-        path between source and target(s) as a list of node indices.
+        This method applies the specified shortest path algorithm on the created graph
+        object and finds the shortest path between source and target(s) as a list of
+        node indices.
 
         Parameters:
         -----------
@@ -306,10 +320,12 @@ class RustworkxAPI(GraphLibraryAPI):
             Options: "dijkstra", "bidirectional_dijkstra", "astar"
         **kwargs:
             pairwise : bool
-                If True, compute pairwise shortest paths between source_indices and target_indices.
+                If True, compute pairwise shortest paths between source_indices and
+                target_indices.
                 Only allowed if len(source_indices) == len(target_indices)
             heuristic : callable, optional
-                A function that takes a node index and returns an estimate of the distance
+                A function that takes a node index and returns an estimate of the
+                distance
                 to the target. Only used when algorithm="astar".
 
         Returns:
@@ -327,8 +343,11 @@ class RustworkxAPI(GraphLibraryAPI):
         pairwise = kwargs.get('pairwise', False)
         if pairwise:
             if len(source_indices) != len(target_indices):
-                raise ValueError("Source and target lists must have the same length for pairwise computation")
-            return self._pairwise_shortest_path(source_indices, target_indices, algorithm)
+                msg = ("Source and target lists must have the same length for pairwise "
+                       "computation")
+                raise ValueError(msg)
+            return self._pairwise_shortest_path(source_indices, target_indices,
+                                                algorithm)
 
         # Single source, single target
         if len(source_indices) == 1 and len(target_indices) == 1:
@@ -341,7 +360,8 @@ class RustworkxAPI(GraphLibraryAPI):
             paths = []
             for source in source_indices:
                 try:
-                    path = self._compute_single_path(source, target, algorithm, **kwargs)
+                    path = self._compute_single_path(source, target, algorithm,
+                                                     **kwargs)
                     paths.append(path)
                 except NoPathFoundError:
                     paths.append([])
@@ -349,10 +369,10 @@ class RustworkxAPI(GraphLibraryAPI):
         # Single source, multiple targets
         elif len(source_indices) == 1:
             source = source_indices[0]
-            return self._compute_single_source_multiple_targets(source, target_indices, algorithm, **kwargs)
+            return self._compute_single_source_multiple_targets(source, target_indices,
+                                                                algorithm, **kwargs)
 
         # Multiple sources, multiple targets (all pairs)
         else:
-            return self._all_pairs_shortest_path(source_indices, target_indices, algorithm, **kwargs)
-
-
+            return self._all_pairs_shortest_path(source_indices, target_indices,
+                                                 algorithm, **kwargs)

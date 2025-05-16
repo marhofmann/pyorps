@@ -8,30 +8,45 @@ from .cost_assumptions import CostAssumptions
 
 # Input for geodata sources
 InputDataType: TypeAlias = Union[
-    str,                                # File path to a local file (vector or raster)
-    dict,                               # Dictionary containing a request for a geodata server (needs at least an 'url')
-    GeoDataFrame,                       # GeoDataframe containing vector data to be rasterized
-    GeoSeries,                          # GeoSeries containing geometries for Vectorization
-    ndarray                             # Numpy array containing raster data
+    # File path to a local file (vector or raster)
+    str,
+    # Dictionary containing a request for a geodata server (needs at least an 'url')
+    dict,
+    # GeoDataframe containing vector data to be rasterized
+    GeoDataFrame,
+    # GeoSeries containing geometries for Vectorization
+    GeoSeries,
+    # Numpy array containing raster data
+    ndarray
 ]
 
 CostAssumptionsType: TypeAlias = Union[
-    dict,                               # Dictionary containing attribute - cost pairs (or a nested dictionaries)
-    str,                                # File path to a local file (.csv, .xlsx, .xls, .json)
-    CostAssumptions                     # CostAssumptions object
+    # Dictionary containing attribute - cost pairs (or a nested dictionaries)
+    dict,
+    # File path to a local file (.csv, .xlsx, .xls, .json)
+    str,
+    # CostAssumptions object
+    CostAssumptions
 ]
 
 BboxType: TypeAlias = Union[
-    Polygon,                            # Rectangle as a Polygon
-    GeoDataFrame,                       # GeoDataFrame containing a rectangle as a Polygon
-    GeoSeries,                          # GeoSeries containing a rectangle as a Polygon
-    tuple[float, float, float, float]   # Tuple defining (x-min, y-min, x-max, y-max)
+    # Rectangle as a Polygon
+    Polygon,
+    # GeoDataFrame containing a rectangle as a Polygon
+    GeoDataFrame,
+    # GeoSeries containing a rectangle as a Polygon
+    GeoSeries,
+    # Tuple defining (x-min, y-min, x-max, y-max)
+    tuple[float, float, float, float]
 ]
 
 GeometryMaskType: TypeAlias = Union[
-    Polygon,                            # Polygon as a mask (does not have to be a rectangle)
-    GeoDataFrame,                       # GeoDataFrame containing one of multiple Polygons
-    tuple                               # Tuple defining (x-min, y-min, x-max, y-max)
+    # Polygon as a mask (does not have to be a rectangle)
+    Polygon,
+    # GeoDataFrame containing one of multiple Polygons
+    GeoDataFrame,
+    # Tuple defining (x-min, y-min, x-max, y-max)
+    tuple
 ]
 
 Coord = tuple[float, float]             # Float pair of coordinates
@@ -39,20 +54,33 @@ Coord = tuple[float, float]             # Float pair of coordinates
 CoordList = list[Coord]                 # List of float pairs of coordinates
 
 CoordinateInput: TypeAlias = Union[
-    Coord,                              # Float pair of coordinates
-    CoordList,                          # List of float pairs of coordinates
-    list[list[float]],                  # List of float pairs of coordinates
-    list[tuple[float]],                 # List of float pairs of coordinates
-    list[Point],                        # List of float pairs of coordinates
-    list[MultiPoint],                   # List of multiple float pairs of coordinates
-    ndarray,                            # Array of float pairs of coordinates
-    Point,                              # Shapely Point with pair of coordinates
-    MultiPoint,                         # MultiPoint for multiple float pairs of coordinates
-    GeoSeries,                          # GeoSeries with Point or MultiPoint
-    GeoDataFrame                        # GeoDataFrame with Point or MultiPoint
+    # Float pair of coordinates
+    Coord,
+    # List of float pairs of coordinates
+    CoordList,
+    # List of float pairs of coordinates
+    list[list[float]],
+    # List of float pairs of coordinates
+    list[tuple[float]],
+    # List of float pairs of coordinates
+    list[Point],
+    # List of multiple float pairs of coordinates
+    list[MultiPoint],
+    # Array of float pairs of coordinates
+    ndarray,
+    # Shapely Point with pair of coordinates
+    Point,
+    # MultiPoint for multiple float pairs of coordinates
+    MultiPoint,
+    # GeoSeries with Point or MultiPoint
+    GeoSeries,
+    # GeoDataFrame with Point or MultiPoint
+    GeoDataFrame
 ]
 
 CoordinateOutput: TypeAlias = Union[
-    Coord,                              # Uniform handling of single Point (float pair of coordinates)
-    CoordList                           # Uniform handling of multiple Points (multiple float pairs of coordinates)
+    # Uniform handling of single Point (float pair of coordinates)
+    Coord,
+    # Uniform handling of multiple Points (multiple float pairs of coordinates)
+    CoordList
 ]

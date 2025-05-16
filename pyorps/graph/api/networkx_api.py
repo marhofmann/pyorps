@@ -14,7 +14,9 @@ class NetworkxAPI(GraphLibraryAPI):
                      cost: Optional[np.ndarray[int]] = None,
                      **kwargs) -> Any:
         """
-        Creates a graph object with the graph library specified in the selected interface.
+        Creates a graph object with the graph library specified in the selected
+        interface.
+
         :param from_nodes: The starting node indices from the edge data.
         :param to_nodes: The ending node indices from the edge data.
         :param cost: The weight of the edge data.
@@ -45,7 +47,8 @@ class NetworkxAPI(GraphLibraryAPI):
 
     def get_nodes(self) -> Union[list[int], np.ndarray[int]]:
         """
-        This method returns the nodes in the graph as a list or numpy array of node indices.
+        This method returns the nodes in the graph as a list or numpy array of node
+        indices.
 
         :return: list[int]
             The list of node indices of the nodes in the graph
@@ -66,22 +69,26 @@ class NetworkxAPI(GraphLibraryAPI):
 
     def _compute_all_pairs_shortest_paths(self, sources, targets, algorithm, **kwargs):
         """
-        Computes paths individually for each source-target pair using the specified algorithm.
+        Computes paths individually for each source-target pair using the specified
+        algorithm.
         Returns empty paths for unreachable targets.
         """
         paths = []
         for source in sources:
             for target in targets:
                 try:
-                    path = self._compute_single_path(source, target, algorithm, **kwargs)
+                    path = self._compute_single_path(source, target, algorithm,
+                                                     **kwargs)
                     paths.append(path)
                 except NoPathFoundError:
                     paths.append([])
         return paths
 
-    def shortest_path(self, source_indices, target_indices, algorithm="dijkstra", **kwargs):
+    def shortest_path(self, source_indices, target_indices, algorithm="dijkstra",
+                      **kwargs):
         """
-        This method applies the specified shortest path algorithm on the created graph object and finds the shortest
+        This method applies the specified shortest path algorithm on the created graph
+        object and finds the shortest
         path between source and target(s) as a list of node indices.
 
         Parameters:
@@ -95,10 +102,12 @@ class NetworkxAPI(GraphLibraryAPI):
             Options: "dijkstra", "bidirectional_dijkstra", "astar"
         **kwargs:
             pairwise : bool
-                If True, compute pairwise shortest paths between source_indices and target_indices.
+                If True, compute pairwise shortest paths between source_indices and
+                target_indices.
                 Only allowed if len(source_indices) == len(target_indices)
             heuristic : callable, optional
-                A function that takes two node indices (u, target) and returns an estimate of the distance
+                A function that takes two node indices (u, target) and returns an
+                estimate of the distance
                 between them. Only used when algorithm="astar".
 
         Returns:
@@ -116,8 +125,11 @@ class NetworkxAPI(GraphLibraryAPI):
         pairwise = kwargs.get('pairwise', False)
         if pairwise:
             if len(source_indices) != len(target_indices):
-                raise ValueError("Source and target lists must have the same length for pairwise computation")
-            return self._pairwise_shortest_path(source_indices, target_indices, algorithm)
+                msg = ("Source and target lists must have the same length for pairwise "
+                       "computation")
+                raise ValueError(msg)
+            return self._pairwise_shortest_path(source_indices, target_indices,
+                                                algorithm)
 
         # Single source, single target
         if len(source_indices) == 1 and len(target_indices) == 1:
@@ -128,22 +140,26 @@ class NetworkxAPI(GraphLibraryAPI):
         # Single source, multiple targets
         elif len(source_indices) == 1:
             source = source_indices[0]
-            return self._compute_single_source_multiple_targets(source, target_indices, algorithm, **kwargs)
+            return self._compute_single_source_multiple_targets(source, target_indices,
+                                                                algorithm, **kwargs)
 
         # Multiple sources, multiple targets (all pairs)
         else:
-            return self._all_pairs_shortest_path(source_indices, target_indices, algorithm, **kwargs)
+            return self._all_pairs_shortest_path(source_indices, target_indices,
+                                                 algorithm, **kwargs)
 
     def _compute_single_path(self, source, target, algorithm, **kwargs):
         """
-        Computes shortest path between a single source and target using the specified algorithm.
+        Computes shortest path between a single source and target using the specified
+        algorithm.
         """
         try:
             if algorithm == "dijkstra":
                 path = nx.dijkstra_path(self.graph, source, target, weight='weight')
 
             elif algorithm == "bidirectional_dijkstra":
-                _, path = nx.bidirectional_dijkstra(self.graph, source, target, weight='weight')
+                _, path = nx.bidirectional_dijkstra(self.graph, source, target,
+                                                    weight='weight')
 
             elif algorithm == "astar":
                 heuristic_function = kwargs.get('heu', None)
@@ -155,7 +171,8 @@ class NetworkxAPI(GraphLibraryAPI):
                     def heuristic_function(node, _target):
                         return heuristic_dict[node]
 
-                path = nx.astar_path(self.graph, source, target, heuristic_function, weight='weight')
+                path = nx.astar_path(self.graph, source, target, heuristic_function,
+                                     weight='weight')
 
             else:
                 raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
@@ -166,7 +183,8 @@ class NetworkxAPI(GraphLibraryAPI):
         path = self._ensure_path_endpoints(path, source, target)
         return path
 
-    def _compute_single_source_multiple_targets(self, source, targets, algorithm, **kwargs):
+    def _compute_single_source_multiple_targets(self, source, targets, algorithm,
+                                                **kwargs):
         """
         Computes shortest paths from a single source to multiple targets.
         """
@@ -174,7 +192,8 @@ class NetworkxAPI(GraphLibraryAPI):
 
         if algorithm == "dijkstra":
             # Use single-source Dijkstra for efficiency
-            _, paths_dict = nx.single_source_dijkstra(self.graph, source, weight='weight')
+            _, paths_dict = nx.single_source_dijkstra(self.graph, source,
+                                                      weight='weight')
 
             for target in targets:
                 if target in paths_dict:
@@ -190,7 +209,8 @@ class NetworkxAPI(GraphLibraryAPI):
             # Run individual algorithm for each target
             for target in targets:
                 try:
-                    path = self._compute_single_path(source, target, algorithm, **kwargs)
+                    path = self._compute_single_path(source, target, algorithm,
+                                                     **kwargs)
                     paths.append(path)
                 except NoPathFoundError:
                     paths.append([])
@@ -223,7 +243,8 @@ class NetworkxAPI(GraphLibraryAPI):
             # For each source, compute paths to all targets
             for source in sources:
                 for target in targets:
-                    _, path = nx.single_source_dijkstra(self.graph, source, target, weight='weight')
+                    _, path = nx.single_source_dijkstra(self.graph, source, target,
+                                                        weight='weight')
                     path = self._ensure_path_endpoints(path, source, target)
                     paths.append(path)
 
@@ -231,4 +252,5 @@ class NetworkxAPI(GraphLibraryAPI):
 
         else:
             # For other algorithms, compute each path individually
-            return self._compute_all_pairs_shortest_paths(sources, targets, algorithm, **kwargs)
+            return self._compute_all_pairs_shortest_paths(sources, targets, algorithm,
+                                                          **kwargs)

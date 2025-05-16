@@ -11,7 +11,8 @@ from rasterio.transform import Affine
 
 # Project imports
 from ..core.path import Path, PathCollection
-from ..core.types import BboxType, GeometryMaskType, InputDataType, CoordinateInput, CoordinateOutput
+from ..core.types import (BboxType, GeometryMaskType, InputDataType, CoordinateInput,
+                          CoordinateOutput)
 from ..raster.rasterizer import GeoRasterizer
 from ..raster.handler import RasterHandler
 from ..utils.neighborhood import get_neighborhood_steps
@@ -34,7 +35,8 @@ def get_graph_api_class(graph_api: str):
     Dynamically import and return the graph API class based on the selected graph API.
 
     Args:
-        graph_api (str): The name of the graph API to use (e.g., "networkit", "igraph", "cython").
+        graph_api (str): The name of the graph API to use (e.g., "networkit", "igraph",
+        "networkx").
 
     Returns:
         class: The corresponding graph API class.
@@ -99,7 +101,8 @@ class PathFinder:
         """
         Initialize the RasterGraph with a dataset source and routing parameters.
 
-        Args:
+        Parameters:
+        -----------
             dataset_source: Either:
                           - Path to a file (str)
                           - Tuple of (data_array, crs, transform)
@@ -111,17 +114,18 @@ class PathFinder:
             target_coords (tuple or list): CoordinateInput
                 Can be: tuple, list of tuples, array of arrays, shapely Point,
                 shapely MultiPoint, GeoSeries of points, or GeoDataFrame of points.
-            search_space_buffer_m (float): Buffer around the source and target coordinates in meters.
+            search_space_buffer_m (float): Buffer around the source and target
+            coordinates in meters.
             neighborhood_str (str, optional): Neighborhood type. Defaults to "r2".
-            steps (ndarray, optional): Steps which define the neighborhood. If None, will be created from
-            neighborhood_str.
-            ignore_max_cost (bool, True): Whether to ignore all cells in the raster which have the maximum cost
-            value or not
+            steps (ndarray, optional): Steps which define the neighborhood. If None,
+            will be created from neighborhood_str.
+            ignore_max_cost (bool, True): Whether to ignore all cells in the raster
+            which have the maximum cost value or not
             graph_api (str, optional): Graph API to use. Defaults to "networkit".
-            cost_assumptions (optional): Cost assumptions to use for rasterization. Required if dataset_source is
-            vector data.
-            datasets_to_modify (list, optional): List of datasets to use to modify the raster using
-            GeoRasterizer.modify_raster_from_dataset
+            cost_assumptions (optional): Cost assumptions to use for rasterization.
+            Required if dataset_source is vector data.
+            datasets_to_modify (list, optional): List of datasets to use to modify the
+            raster using GeoRasterizer.modify_raster_from_dataset
         """
         self.source_coords = PathFinder.normalize_coordinates(source_coords)
         self.target_coords = PathFinder.normalize_coordinates(target_coords)
@@ -146,12 +150,15 @@ class PathFinder:
         self.path_gdf = None
 
         # Load the dataset
-        self.dataset = initialize_geo_dataset(dataset_source, crs, bbox, mask, transform)
+        self.dataset = initialize_geo_dataset(dataset_source, crs, bbox, mask,
+                                              transform)
         if self.source_coords is not None and self.target_coords is not None:
-            self.create_raster_handler(cost_assumptions, datasets_to_modify, raster_save_path, **kwargs)
+            self.create_raster_handler(cost_assumptions, datasets_to_modify,
+                                       raster_save_path, **kwargs)
 
     @staticmethod
-    def normalize_coordinates(input_data: Optional[CoordinateInput]) -> Optional[CoordinateOutput]:
+    def normalize_coordinates(
+            input_data: Optional[CoordinateInput]) -> Optional[CoordinateOutput]:
         """
         Normalize different coordinate formats into tuples or lists of tuples.
 
@@ -164,7 +171,8 @@ class PathFinder:
         Returns:
         --------
         CoordinateOutput
-            A single coordinate tuple (x, y) or list of coordinate tuples [(x1, y1), (x2, y2), ...]
+            A single coordinate tuple (x, y) or list of coordinate tuples
+            [(x1, y1), (x2, y2), ...]
         """
         if input_data is None:
             coordinate_output = None
@@ -188,13 +196,13 @@ class PathFinder:
             if all(isinstance(item, tuple) and len(item) == 2 for item in input_data):
                 coordinate_output = input_data
             elif all(isinstance(item, list) and len(item) == 2 for item in input_data):
-                coordinate_output = [(float(item[0]), float(item[1])) for item in input_data]
+                coordinate_output = [(float(i[0]), float(i[1])) for i in input_data]
             else:
                 coordinate_output = PathFinder._point_or_multipoints(input_data)
         # Case: Input is a numpy array
         elif isinstance(input_data, np.ndarray):
             if len(input_data.shape) == 2 and input_data.shape[1] == 2:
-                coordinate_output = [(float(coord[0]), float(coord[1])) for coord in input_data]
+                coordinate_output = [(float(c[0]), float(c[1])) for c in input_data]
             else:
                 coordinate_output = PathFinder._point_or_multipoints(input_data)
         else:
@@ -216,7 +224,8 @@ class PathFinder:
         else:
             raise ValueError("Input data cannot be interpreted as coordinates")
 
-    def create_raster_handler(self, cost_assumptions, datasets_to_modify, raster_save_path, **kwargs):
+    def create_raster_handler(self, cost_assumptions, datasets_to_modify,
+                              raster_save_path, **kwargs):
         """
         Create a RasterReader object for the specified file and parameters.
 
@@ -227,7 +236,8 @@ class PathFinder:
         with timed("raster_loading", self.runtimes):
             # Check if we have vector data but no cost_assumptions
             if isinstance(self.dataset, VectorDataset) and cost_assumptions is None:
-                raise ValueError("Cost assumptions must be provided when using vector data")
+                msg = "Cost assumptions must be provided when using vector data"
+                raise ValueError(msg)
 
             # Process the dataset based on its type and parameters
             if isinstance(self.dataset, VectorDataset) and cost_assumptions is not None:
@@ -249,14 +259,15 @@ class PathFinder:
                 )
             elif isinstance(self.dataset, RasterDataset):
                 if cost_assumptions is not None:
-                    # If we have a raster but also cost assumptions, use GeoRasterizer to modify it
+                    # If we have a raster but also cost assumptions, use GeoRasterizer
+                    # to modify it
                     self.dataset.load_data(**kwargs)
                     self.geo_rasterizer = GeoRasterizer(self.dataset, cost_assumptions)
 
                     # Apply any additional dataset modifications
                     if datasets_to_modify:
-                        for dataset_params in datasets_to_modify:
-                            self.geo_rasterizer.modify_raster_from_dataset(**dataset_params)
+                        for params in datasets_to_modify:
+                            self.geo_rasterizer.modify_raster_from_dataset(**params)
                     if raster_save_path is not None:
                         self.geo_rasterizer.save_raster(raster_save_path)
 
@@ -303,9 +314,11 @@ class PathFinder:
         raster_data = self.raster_handler.data[band_index]
 
         # Create graph using the graph API
-        self._graph_api = graph_api_class_constructor(raster_data, self.steps, ignore_max=self.ignore_max_cost)
+        self._graph_api = graph_api_class_constructor(raster_data, self.steps,
+                                                      ignore_max=self.ignore_max_cost)
         # Save edge construction and graph creation times
-        if hasattr(self._graph_api, 'edge_construction_time') and hasattr(self._graph_api, 'graph_creation_time'):
+        if (hasattr(self._graph_api, 'edge_construction_time') and
+                hasattr(self._graph_api, 'graph_creation_time')):
             self.runtimes["edge_construction"] = self._graph_api.edge_construction_time
             self.runtimes["graph_creation"] = self._graph_api.graph_creation_time
             return self._graph_api.graph
@@ -318,7 +331,8 @@ class PathFinder:
     def graph_api(self):
         if self._graph_api is None:
             self.create_graph()
-            # Overwrite the shortest_path_start_time, to make sure, that graph creation is not part of it
+            # Overwrite the shortest_path_start_time, to make sure, that graph creation
+            # is not part of it
             self.runtimes["shortest_path_start_time"] = time.time()
         return self._graph_api
 
@@ -345,7 +359,8 @@ class PathFinder:
         _, rows, cols = self.raster_handler.data.shape
 
         # Convert 2D indices to 1D node indices using ravel_multi_index
-        node_indices = np.ravel_multi_index((indices_2d[:, 0], indices_2d[:, 1]), (rows, cols))
+        node_indices = np.ravel_multi_index(
+            (indices_2d[:, 0], indices_2d[:, 1]), (rows, cols))
         return node_indices
 
     def get_coords_from_node_indices(self, node_indices):
@@ -368,21 +383,28 @@ class PathFinder:
         coords = self.raster_handler.indices_to_coords(indices_2d)
         return coords
 
-    def find_route(self, source: Optional[CoordinateInput] = None, target: Optional[CoordinateInput] = None, algorithm:
-                   str = "dijkstra", calculate_metrics: bool = True, pairwise: bool = False, **kwargs):
+    def find_route(self,
+                   source: Optional[CoordinateInput] = None,
+                   target: Optional[CoordinateInput] = None,
+                   algorithm: str = "dijkstra",
+                   calculate_metrics: bool = True,
+                   pairwise: bool = False,
+                   **kwargs):
         """
         Find the shortest path between source and target coordinates.
 
         Args:
-            source: CoordinateInput - Source coordinates. If None, uses the source_coords provided at initialization.
-                Can be: tuple, list of tuples, array of arrays, shapely Point,
+            source: CoordinateInput - Source coordinates. If None, uses the
+                source_coords provided at initialization. Can be: tuple, list of
+                tuples, array of arrays, shapely Point,
                 shapely MultiPoint, GeoSeries of points, or GeoDataFrame of points.
-            target: Target coordinates. If None, uses the target_coords provided at initialization.
-                Can be a single pair (x, y) or a list of pairs [(x1, y1), (x2, y2), ...].
+            target: Target coordinates. If None, uses the target_coords provided at
+                initialization. Can be a single pair (x, y) or a list of pairs
+                [(x1, y1), (x2, y2), ...].
             algorithm: Algorithm to use for shortest path. Defaults to "dijkstra".
             calculate_metrics: Whether to calculate path metrics. Defaults to True.
-            pairwise: Whether to calculate paths pairwise (requires equal number of sources and targets).
-                Default is False.
+            pairwise: Whether to calculate paths pairwise (requires equal number of
+                sources and targets). Default is False.
         Returns:
             Dictionary or list of dictionaries containing path information
         """
@@ -425,7 +447,8 @@ class PathFinder:
 
         # Case 1: Single source, single target -> single path
         if not is_source_list and not is_target_list:
-            return self._create_path_result(path_indices, source, target, algorithm, calculate_metrics)
+            return self._create_path_result(path_indices, source, target, algorithm,
+                                            calculate_metrics)
 
         # Case 2 & 3: Multiple paths
         # For single source + multiple targets OR multiple sources + multiple targets
@@ -439,14 +462,17 @@ class PathFinder:
                     continue
                 source = self.get_coords_from_node_indices(path[0])[0]
                 target = self.get_coords_from_node_indices(path[-1])[0]
-                results.append(self._create_path_result(path, source, target, algorithm, calculate_metrics))
+                results.append(self._create_path_result(path, source, target, algorithm,
+                                                        calculate_metrics))
         else:
             # In case the graph API returns a single path even for multiple inputs
-            results.append(self._create_path_result(path_indices, source, target, algorithm, calculate_metrics))
+            results.append(self._create_path_result(path_indices, source, target,
+                                                    algorithm, calculate_metrics))
 
         return results
 
-    def _create_path_result(self, path_indices, source, target, algorithm, calculate_metrics):
+    def _create_path_result(self, path_indices, source, target, algorithm,
+                            calculate_metrics):
         """
         Helper method to create a path result dictionary from path indices.
 
@@ -523,14 +549,16 @@ class PathFinder:
         raster_data = self.raster_handler.data[0]
 
         # Calculate metrics using Numba-accelerated function
-        path.total_length, categories, lengths = calculate_path_metrics_numba(raster_data, path_indices)
+        path.total_length, cat, len = calculate_path_metrics_numba(raster_data,
+                                                                   path_indices)
 
         # Convert to regular Python dictionary
-        path.length_by_category = dict(zip(categories, lengths))
+        path.length_by_category = dict(zip(cat, len))
         tot = path.total_length
         l_by_cat = path.length_by_category.items()
         # Calculate percentages
-        path.length_by_category_percent = {k: (v / tot) * 100 if tot > 0 else 0 for k, v in l_by_cat}
+        path.length_by_category_percent = {k: (v / tot) * 100 if tot > 0 else 0
+                                           for k, v in l_by_cat}
 
         # Calculate total cost
         path.total_cost = sum(cat * length for cat, length in l_by_cat)
@@ -564,7 +592,8 @@ class PathFinder:
         records = self.paths.to_geodataframe_records()
 
         # Create GeoDataFrame directly from records
-        self.path_gdf = gpd.GeoDataFrame(records, geometry="geometry", crs=self.dataset.crs)
+        self.path_gdf = gpd.GeoDataFrame(records, geometry="geometry",
+                                         crs=self.dataset.crs)
         return self.path_gdf
 
     def save_paths(self, save_path: Optional[str] = None) -> None:
@@ -589,8 +618,10 @@ class PathFinder:
 
         Notes:
             - The saved file includes all path attributes (ID, length, cost data)
-            - The geometries are saved as LineString features with the CRS from the source dataset
-            - If no paths have been calculated, an empty GeoDataFrame will be created first
+            - The geometries are saved as LineString features with the CRS from the
+            source dataset
+            - If no paths have been calculated, an empty GeoDataFrame will be created
+            first
         """
         if self.path_gdf is None:
             self.create_path_geodataframe()
@@ -615,7 +646,8 @@ class PathFinder:
 
         Notes:
             - The saved raster includes all cost modifications from additional datasets
-            - The file is saved in GeoTIFF format which preserves georeferencing information
+            - The file is saved in GeoTIFF format which preserves georeferencing
+            information
             - If the PathFinder uses a GeoRasterizer, the complete raster is saved
             - Otherwise, only the section loaded in the RasterHandler is saved
             - For large areas, the resulting file size may be substantial
@@ -646,24 +678,30 @@ class PathFinder:
         """
         Plot paths with customizable styling and layout options.
 
-        This method visualizes the calculated paths, allowing for detailed customization of the
-        plot appearance. It delegates to the PathPlotter class to handle the actual visualization.
+        This method visualizes the calculated paths, allowing for detailed customization
+        of theplot appearance. It delegates to the PathPlotter class to handle the
+        actual visualization.
 
         Args:
-            paths: Specific path(s) to plot. If None, uses all paths in this PathFinder instance.
-                Can be a single Path object, a list of Path objects, or a PathCollection.
-            plot_all: If True, plots all paths. If False, plots only the path with path_id.
-            subplots: If True and multiple paths are plotted, creates separate subplots for each path.
+            paths: Specific path(s) to plot. If None, uses all paths in this PathFinder
+            instance.
+                Can be a single Path object, a list of Path objects, or a
+                PathCollection.
+            plot_all: If True, plots all paths. If False, plots only the path with
+                path_id.
+            subplots: If True and multiple paths are plotted, creates separate subplots
+                for each path.
             subplotsize: Size of each individual subplot in inches (width, height).
             source_color: Color for source markers.
             target_color: Color for target markers.
-            path_colors: Colors for path lines. Can be a single color or a list of colors.
-                If None, default color scheme is used.
+            path_colors: Colors for path lines. Can be a single color or a list of
+                colors. If None, default color scheme is used.
             source_marker: Marker style for source points.
             target_marker: Marker style for target points.
             path_linewidth: Line width for the paths.
             show_raster: Whether to display the raster data as background.
-            title: Title for the plot or individual subplot titles if a list is provided.
+            title: Title for the plot or individual subplot titles if a list is
+                provided.
             suptitle: Overall title for the figure (when using multiple subplots).
             path_id: ID of specific path to plot when plot_all is False.
                 Can be a single ID or a list of IDs.
@@ -671,8 +709,8 @@ class PathFinder:
                 (dark=low cost, bright=high cost).
 
         Returns:
-            The matplotlib axes object(s) for the plot. Returns a list of axes if multiple
-            subplots are created, otherwise returns a single axes object.
+            The matplotlib axes object(s) for the plot. Returns a list of axes if
+            multiple subplots are created, otherwise returns a single axes object.
 
         Runtime Notes:
             - The plotting operation itself is generally quick (0.1-0.5 seconds)
