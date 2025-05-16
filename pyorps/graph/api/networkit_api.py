@@ -17,7 +17,9 @@ class NetworkitAPI(GraphLibraryAPI):
                      cost: Optional[np.ndarray[int]] = None,
                      **kwargs) -> Any:
         """
-        Creates a graph object with the graph library specified in the selected interface.
+        Creates a graph object with the graph library specified in the selected
+        interface.
+
         :param from_nodes: The starting node indices from the edge data.
         :param to_nodes: The ending node indices from the edge data.
         :param cost: The weight of the edge data.
@@ -30,7 +32,8 @@ class NetworkitAPI(GraphLibraryAPI):
             n = max([max(from_nodes), max(to_nodes)]) + 1
             self.graph = Graph(n=n, weighted=True, directed=False)
         if cost is not None:
-            self.graph.addEdges((cost.astype(np.float64, copy=False), (from_nodes, to_nodes)), addMissing=False)
+            self.graph.addEdges((cost.astype(np.float64, copy=False),
+                                 (from_nodes, to_nodes)), addMissing=False)
         else:
             self.graph.addEdges((from_nodes, to_nodes), addMissing=False)
         if kwargs.get('remove_isolated_nodes', False):
@@ -50,7 +53,8 @@ class NetworkitAPI(GraphLibraryAPI):
 
     def get_nodes(self) -> Union[list[int], np.ndarray[int]]:
         """
-        This method returns the nodes in the graph as a list or numpy array of node indices.
+        This method returns the nodes in the graph as a list or numpy array of node
+        indices.
 
         :return: list[int]
             The list of node indices of the nodes in the graph
@@ -71,8 +75,8 @@ class NetworkitAPI(GraphLibraryAPI):
 
     def _compute_all_pairs_shortest_paths(self, sources, targets, algorithm, **kwargs):
         """
-        Computes paths individually for each source-target pair using the specified algorithm.
-        Returns empty paths for unreachable targets.
+        Computes paths individually for each source-target pair using the specified
+        algorithm. Returns empty paths for unreachable targets.
         """
         paths = []
         for source in sources:
@@ -84,9 +88,11 @@ class NetworkitAPI(GraphLibraryAPI):
                     paths.append([])
         return paths
 
-    def shortest_path(self, source_indices, target_indices, algorithm="dijkstra", **kwargs):
+    def shortest_path(self, source_indices, target_indices, algorithm="dijkstra",
+                      **kwargs):
         """
-        This method applies the specified shortest path algorithm on the created graph object and finds the shortest
+        This method applies the specified shortest path algorithm on the created graph
+        object and finds the shortest
         path between source and target(s) as a list of node indices.
 
         Parameters:
@@ -100,10 +106,12 @@ class NetworkitAPI(GraphLibraryAPI):
             Options: "dijkstra", "bidirectional_dijkstra", "astar"
         **kwargs:
             pairwise : bool
-                If True, compute pairwise shortest paths between source_indices and target_indices.
+                If True, compute pairwise shortest paths between source_indices and
+                target_indices.
                 Only allowed if len(source_indices) == len(target_indices)
             heuristic : callable, optional
-                A function that takes two node indices (u, target) and returns an estimate of the distance
+                A function that takes two node indices (u, target) and returns an
+                estimate of the distance
                 between them. Only used when algorithm="astar".
 
         Returns:
@@ -121,7 +129,8 @@ class NetworkitAPI(GraphLibraryAPI):
         pairwise = kwargs.get('pairwise', False)
         if pairwise:
             if len(source_indices) != len(target_indices):
-                raise ValueError("Source and target lists must have the same length for pairwise computation")
+                msg = "Source and target lists must have the same length for pairwise computation"
+                raise ValueError(msg)
             return self._pairwise_shortest_path(source_indices, target_indices, algorithm)
 
         # Single source, single target
@@ -133,15 +142,18 @@ class NetworkitAPI(GraphLibraryAPI):
         # Single source, multiple targets
         elif len(source_indices) == 1:
             source = source_indices[0]
-            return self._compute_single_source_multiple_targets(source, target_indices, algorithm, **kwargs)
+            return self._compute_single_source_multiple_targets(source, target_indices,
+                                                                algorithm, **kwargs)
 
         # Multiple sources, multiple targets (all pairs)
         else:
-            return self._all_pairs_shortest_path(source_indices, target_indices, algorithm, **kwargs)
+            return self._all_pairs_shortest_path(source_indices, target_indices,
+                                                 algorithm, **kwargs)
 
     def _compute_single_path(self, source, target, algorithm, **kwargs):
         """
-        Computes shortest path between a single source and target using the specified algorithm.
+        Computes shortest path between a single source and target using the specified
+        algorithm.
         """
         if algorithm == "dijkstra":
             dijkstra = Dijkstra(self.graph, source, storePaths=True, target=target)
@@ -173,7 +185,8 @@ class NetworkitAPI(GraphLibraryAPI):
         path = self._ensure_path_endpoints(path, source, target)
         return path
 
-    def _compute_single_source_multiple_targets(self, source, targets, algorithm, **kwargs):
+    def _compute_single_source_multiple_targets(self, source, targets, algorithm,
+                                                **kwargs):
         """
         Computes shortest paths from a single source to multiple targets.
         """
@@ -181,13 +194,14 @@ class NetworkitAPI(GraphLibraryAPI):
             return self._compute_multi_target_dijkstra(source, targets)
 
         elif algorithm == "astar":
-            # If using A* with multiple targets, run individual A* or fall back to Dijkstra
-            # depending on whether a heuristic is provided
+            # If using A* with multiple targets, run individual A* or fall back to
+            # Dijkstra depending on whether a heuristic is provided
             if 'heuristic' in kwargs:
                 paths = []
                 for target in targets:
                     try:
-                        path = self._compute_single_path(source, target, algorithm, **kwargs)
+                        path = self._compute_single_path(source, target, algorithm,
+                                                         **kwargs)
                         paths.append(path)
                     except NoPathFoundError:
                         paths.append([])
@@ -256,6 +270,7 @@ class NetworkitAPI(GraphLibraryAPI):
 
             return paths
         else:
-            # For other algorithms, use the helper function to compute paths individually
-            return self._compute_all_pairs_shortest_paths(sources, targets, algorithm, **kwargs)
+            # For other algorithms, use helper function to compute paths individually
+            return self._compute_all_pairs_shortest_paths(sources, targets, algorithm,
+                                                          **kwargs)
 

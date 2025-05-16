@@ -59,7 +59,8 @@ class Path:
             if self.length_by_category:
                 for category, length in self.length_by_category.items():
                     result[f"length_cost_{category}"] = length
-                    result[f"percent_cost_{category}"] = self.length_by_category_percent[category]
+                    lbc = self.length_by_category_percent[category]
+                    result[f"percent_cost_{category}"] = lbc
 
         return result
 
@@ -79,7 +80,8 @@ class Path:
         """
         Return a detailed string representation of the path.
         """
-        result = f"Path(path_id={self.path_id}, source={repr(self.source)}, target={repr(self.target)}"
+        result = (f"Path(path_id={self.path_id}, source={repr(self.source)}, "
+                  f"target={repr(self.target)}")
         if self.total_length is not None:
             result += f", total_length={self.total_length:.2f}"
         if self.total_cost is not None:
@@ -110,7 +112,8 @@ class PathCollection:
 
         self._paths[path.path_id] = path
 
-    def get(self, path_id: int = None, source: Any = None, target: Any = None) -> Optional[Path]:
+    def get(self, path_id: int = None, source: Any = None,
+            target: Any = None) -> Optional[Path]:
         """
         Retrieve a stored path by ID, or by source AND target.
         """
@@ -169,7 +172,8 @@ class PathCollection:
         else:
             # Show first 2 paths and last path for large collections
             paths = list(self._paths.values())
-            paths_repr = f"{repr(paths[0])}, \n{repr(paths[1])}, \n..., \n{repr(paths[-1])}"
+            paths_repr = (f"{repr(paths[0])}, \n{repr(paths[1])}, \n..., "
+                          f"\n{repr(paths[-1])}")
 
         return f"PathCollection(paths=[{paths_repr}], count={len(self._paths)})"
 
