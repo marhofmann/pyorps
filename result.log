@@ -3,30 +3,31 @@ platform win32 -- Python 3.11.9, pytest-8.3.5, pluggy-1.6.0
 rootdir: D:\a\pyorps\pyorps
 configfile: pyproject.toml
 plugins: anyio-4.9.0, cov-6.1.1
-collected 299 items
+collected 331 items
 
-tests\test_core\test_cost_assumptions.py ............................... [ 10%]
-...                                                                      [ 11%]
-tests\test_core\test_exceptions.py ..                                    [ 12%]
-tests\test_core\test_path.py ............                                [ 16%]
-tests\test_core\test_types.py ...                                        [ 17%]
-tests\test_graph\test_graph_api.py .                                     [ 17%]
-tests\test_graph\test_graph_library_api.py ...                           [ 18%]
-tests\test_graph\test_igraph_api.py .......                              [ 20%]
+tests\test_core\test_cost_assumptions.py ............................... [  9%]
+...                                                                      [ 10%]
+tests\test_core\test_exceptions.py ..                                    [ 10%]
+tests\test_core\test_path.py ............                                [ 14%]
+tests\test_core\test_types.py ............                               [ 18%]
+tests\test_graph\test_graph_api.py .                                     [ 18%]
+tests\test_graph\test_graph_library_api.py ...                           [ 19%]
+tests\test_graph\test_igraph_api.py .......                              [ 21%]
 tests\test_graph\test_networkit_api.py ...............                   [ 25%]
-tests\test_graph\test_networkx_api.py ................                   [ 31%]
-tests\test_graph\test_path_finder.py ................                    [ 36%]
-tests\test_graph\test_rustworkx_api.py ...............                   [ 41%]
-tests\test_integration\test_path_finder_integration.py ................. [ 47%]
-...                                                                      [ 48%]
-tests\test_integration\test_rasterizer_integration.py ....               [ 49%]
-tests\test_io\test_geo_dataset.py ........................               [ 57%]
-tests\test_io\test_vector_loader.py .................................... [ 69%]
-................                                                         [ 74%]
-tests\test_raster\test_handler.py ...................                    [ 81%]
-tests\test_raster\test_rasterizer.py .................                   [ 86%]
-tests\test_utils\test_neighborhood.py .............                      [ 91%]
-tests\test_utils\test_plotting.py ..............                         [ 95%]
+tests\test_graph\test_networkx_api.py ................                   [ 30%]
+tests\test_graph\test_path_finder.py ................................... [ 41%]
+....                                                                     [ 42%]
+tests\test_graph\test_rustworkx_api.py ...............                   [ 47%]
+tests\test_integration\test_path_finder_integration.py ................. [ 52%]
+...                                                                      [ 53%]
+tests\test_integration\test_rasterizer_integration.py ....               [ 54%]
+tests\test_io\test_geo_dataset.py ........................               [ 61%]
+tests\test_io\test_vector_loader.py .................................... [ 72%]
+................                                                         [ 77%]
+tests\test_raster\test_handler.py ...................                    [ 83%]
+tests\test_raster\test_rasterizer.py .................                   [ 88%]
+tests\test_utils\test_neighborhood.py .............                      [ 92%]
+tests\test_utils\test_plotting.py ..............                         [ 96%]
 tests\test_utils\test_traversal.py ............                          [100%]
 
 ============================== warnings summary ===============================
@@ -40,20 +41,29 @@ tests/test_core/test_cost_assumptions.py::TestCostAssumptions::test_calculate_co
 
 tests/test_core/test_cost_assumptions.py::TestCostAssumptions::test_column_relationship_detection_complete
 tests/test_core/test_cost_assumptions.py::TestCostAssumptions::test_column_relationship_with_nulls_and_patterns
-  D:\a\pyorps\pyorps\pyorps\core\cost_assumptions.py:664: RuntimeWarning: invalid value encountered in scalar divide
+  D:\a\pyorps\pyorps\pyorps\core\cost_assumptions.py:662: RuntimeWarning: invalid value encountered in scalar divide
     if non_empty_cells / total_cells > 0.05:
 
+tests/test_graph/test_path_finder.py::TestPathFinder::test_path_collection_replace
+tests/test_raster/test_handler.py::TestRasterHandler::test_estimate_optimal_buffer_width
+  D:\a\pyorps\pyorps\pyorps\raster\handler.py:302: DeprecationWarning: Calling np.sum(generator) is deprecated, and in the future will give a different result. Use np.sum(np.fromiter(generator)) or the python sum builtin instead.
+    distance = np.sqrt(np.sum((a - b) ** 2 for a, b in zip(point1, point2)))
+
 tests/test_integration/test_path_finder_integration.py::TestGraphLibraryPathFinding::test_path_finding_with_different_algorithms
-  D:\a\pyorps\pyorps\tests\test_integration\test_path_finder_integration.py:378: UserWarning: Algorithm 'bidirectional_dijkstra' failed with library 'igraph': Algorithm bidirectional_dijkstra for IGraphAPI not supported!
+  D:\a\pyorps\pyorps\tests\test_integration\test_path_finder_integration.py:374: UserWarning: Algorithm 'bidirectional_dijkstra' failed with library 'igraph': Algorithm bidirectional_dijkstra for IGraphAPI not supported!
     warnings.warn(f"Algorithm '{algorithm}' failed with library '{lib_name}': {e}")
 
 tests/test_integration/test_path_finder_integration.py::TestGraphLibraryPathFinding::test_path_finding_with_different_algorithms
-  D:\a\pyorps\pyorps\tests\test_integration\test_path_finder_integration.py:378: UserWarning: Algorithm 'bidirectional_dijkstra' failed with library 'rustworkx': Algorithm bidirectional_dijkstra for RustworkxAPI not supported!
+  D:\a\pyorps\pyorps\tests\test_integration\test_path_finder_integration.py:374: UserWarning: Algorithm 'bidirectional_dijkstra' failed with library 'rustworkx': Algorithm bidirectional_dijkstra for RustworkxAPI not supported!
     warnings.warn(f"Algorithm '{algorithm}' failed with library '{lib_name}': {e}")
 
 tests/test_io/test_vector_loader.py::TestVectorLoaderHelpers::test_clip_data_by_mask_gdf
-  D:\a\pyorps\pyorps\pyorps\io\vector_loader.py:153: UserWarning: The indices of the left and right GeoSeries' are not equal, and therefore they will be aligned (reordering and/or introducing missing values) before executing the operation. If this alignment is the desired behaviour, you can silence this warning by passing 'align=True'. If you don't want alignment and protect yourself of accidentally aligning, you can pass 'align=False'.
+  D:\a\pyorps\pyorps\pyorps\io\vector_loader.py:152: UserWarning: The indices of the left and right GeoSeries' are not equal, and therefore they will be aligned (reordering and/or introducing missing values) before executing the operation. If this alignment is the desired behaviour, you can silence this warning by passing 'align=True'. If you don't want alignment and protect yourself of accidentally aligning, you can pass 'align=False'.
     return gdf[gdf.geometry.intersects(mask)]
+
+tests/test_utils/test_traversal.py::TestTraversalHelpers::test_construct_edges
+  D:\a\pyorps\pyorps\pyorps\utils\traversal.py:128: RuntimeWarning: overflow encountered in scalar add
+    cost += raster[sr, sc] + raster[tr, tc]
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 =============================== tests coverage ================================
@@ -61,25 +71,25 @@ _______________ coverage: platform win32, python 3.11.9-final-0 _______________
 
 Name                                    Stmts   Miss  Cover   Missing
 ---------------------------------------------------------------------
-pyorps\core\cost_assumptions.py           342     24    93%   47, 127, 140, 143, 145, 212, 223, 581, 588, 669-677, 683-690, 694-696, 771, 821
+pyorps\core\cost_assumptions.py           342     24    93%   47, 127, 140, 143, 145, 212, 223, 579, 586, 667-675, 681-688, 692-694, 769, 819
 pyorps\core\exceptions.py                  25      0   100%
-pyorps\core\path.py                        70      0   100%
-pyorps\core\types.py                        9      0   100%
+pyorps\core\path.py                        72      0   100%
+pyorps\core\types.py                       13      0   100%
 pyorps\graph\api\graph_api.py               9      0   100%
 pyorps\graph\api\graph_library_api.py      39      0   100%
 pyorps\graph\api\igraph_api.py            128     15    88%   27, 47, 112-113, 145, 147, 153, 202, 222, 234-235, 239, 251-252, 273
-pyorps\graph\api\networkit_api.py         136     20    85%   28, 35, 37, 84-85, 125, 172, 188-195, 199, 211-212, 252-253
+pyorps\graph\api\networkit_api.py         136     20    85%   28, 35, 37, 83-84, 124, 171, 187-194, 198, 210-211, 251-252
 pyorps\graph\api\networkx_api.py          116     11    91%   33, 78-79, 119, 164, 185, 195-196, 200, 211-212
 pyorps\graph\api\rustworkx_api.py         133     34    74%   29, 42, 45, 59-63, 72-76, 143-144, 150-152, 224, 244-245, 266-267, 283-291, 330, 346-347
-pyorps\graph\path_finder.py               193     12    94%   133, 170-171, 191, 243-245, 324, 326, 361, 367, 397
+pyorps\graph\path_finder.py               233     14    94%   137, 240-241, 261, 313-315, 393, 398, 401, 404, 439, 445, 475
 pyorps\io\geo_dataset.py                  160     16    90%   79, 86, 98, 100, 124-126, 148-150, 243-246, 271-273
-pyorps\io\vector_loader.py                277     43    84%   97, 128, 134, 157-158, 164, 188, 205, 209, 230, 236-239, 328-329, 417-431, 527, 546, 572-574, 582-608, 672, 722
-pyorps\raster\handler.py                  184      8    96%   144-150, 353-354, 423, 428
-pyorps\raster\rasterizer.py               220     37    83%   107, 136, 162, 193, 206, 241, 249, 252, 262, 316, 357, 368-371, 405, 426, 437, 484, 530-555, 566, 592, 602
-pyorps\utils\neighborhood.py              107      2    98%   44, 142
+pyorps\io\vector_loader.py                279     44    84%   96, 127, 133, 156-157, 163, 187, 204, 208, 229, 235-238, 327-328, 416-430, 483, 529, 548, 574-576, 584-610, 674, 724
+pyorps\raster\handler.py                  202     10    95%   144-150, 288, 294, 390-391, 460, 465
+pyorps\raster\rasterizer.py               222     37    83%   107, 136, 162, 193, 206, 241, 249, 252, 262, 316, 357, 368-371, 405, 426, 437, 484, 502-527, 571, 597, 607
+pyorps\utils\neighborhood.py              108      2    98%   45, 143
 pyorps\utils\plotting.py                  187      4    98%   204, 276-278
-pyorps\utils\traversal.py                 264     16    94%   168, 403-409, 433, 460-467, 470
+pyorps\utils\traversal.py                 259     16    94%   167, 398-404, 428, 455-462, 465
 ---------------------------------------------------------------------
-TOTAL                                    2599    242    91%
+TOTAL                                    2663    247    91%
 Coverage XML written to file coverage.xml
-================= 299 passed, 7 warnings in 71.52s (0:01:11) ==================
+================= 331 passed, 10 warnings in 90.11s (0:01:30) =================

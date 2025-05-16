@@ -2,7 +2,6 @@ import unittest
 from unittest.mock import MagicMock, patch
 import numpy as np
 import matplotlib.pyplot as plt
-import geopandas as gpd
 from shapely.geometry import LineString
 
 from pyorps.utils.plotting import RasterVizData, PathPlotter

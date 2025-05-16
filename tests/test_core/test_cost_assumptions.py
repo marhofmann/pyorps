@@ -316,10 +316,7 @@ class TestCostAssumptions(unittest.TestCase):
         """Test saving to and loading from Excel files."""
         # Skip test if pandas doesn't have Excel support
         try:
-            try:
-                import openpyxl
-            except ImportError:
-                import xlrd
+            import openpyxl
         except ImportError:
             self.skipTest("Excel libraries not available")
 
@@ -621,10 +618,7 @@ class TestCostAssumptions(unittest.TestCase):
         """Test Excel file loading including error handling."""
         # Skip test if pandas doesn't have Excel support
         try:
-            try:
-                import openpyxl
-            except ImportError:
-                import xlrd
+            import openpyxl
         except ImportError:
             self.skipTest("Excel libraries not available")
 
@@ -1118,7 +1112,7 @@ class TestCostAssumptions(unittest.TestCase):
         try:
             with self.assertRaises(FileLoadError):
                 CostAssumptions(tmp_path)
-        except Exception as e:
+        except Exception:
             # Fall back to checking for FormatError if the empty dict passes JSON loading
             pass
         finally:

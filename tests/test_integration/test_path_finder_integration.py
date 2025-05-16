@@ -133,14 +133,10 @@ class TestRasterHandler(unittest.TestCase):
             # Create PathFinder
             path_finder = PathFinder(
                 mock_raster_dataset,
-                source_coords=None,
-                target_coords=None
+                source_coords=(0, 0),
+                target_coords=(1, 1),
+                cost_assumptions={"some": "cost"}
             )
-            path_finder.source_coords = (0, 0)
-            path_finder.target_coords = (1, 1)
-
-            # Now call create_raster_handler directly with the cost assumptions
-            path_finder.create_raster_handler({"some": "cost"}, None, None)
 
             # Check that GeoRasterizer was created with correct parameters
             mock_raster_dataset.load_data.assert_called_once()
@@ -564,7 +560,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
             search_space_buffer_m=50,
             neighborhood_str='r1',
         )
-        path = path_finder.find_route()
+        path_finder.find_route()
 
         # Create and check the path GeoDataFrame
         gdf = path_finder.create_path_geodataframe()
@@ -620,7 +616,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
         )
 
         # Find a route - this will add path with ID=0
-        path1 = path_finder.find_route()
+        path_finder.find_route()
 
         # Create a new path with explicit ID=5
         custom_path = Path(
@@ -633,7 +629,9 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
             path_geometry=LineString([[500020, 5599980], [500050, 5599950], [500080, 5599920]]),
             euclidean_distance=100.0,
             runtimes={},
-            path_id=5
+            path_id=5,
+            search_space_buffer_m=1,
+            neighborhood="r0",
         )
 
         # Add with replace=True to keep ID=5
@@ -655,7 +653,9 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
             path_geometry=LineString([[500010, 5600010], [500050, 5599960], [500090, 5599910]]),
             euclidean_distance=50.0,
             runtimes={},
-            path_id=5
+            path_id=5,
+            search_space_buffer_m=1,
+            neighborhood="r0",
         )
 
         # Add with replace=True to replace the existing path with ID=5
@@ -757,64 +757,6 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
                              f"Path has wrong algorithm for {test_name}")
             self.assertGreater(result.total_length, 0,
                                f"Path has zero length for {test_name}")
-
-    def test_algorithm_comparison(self):
-        """Test that different algorithms produce valid paths for the same problem."""
-        # We'll use networkit as it has a wide range of algorithm implementations
-        lib_name = "networkit"
-
-        # Skip if library is not installed
-        if not self.is_library_installed(lib_name):
-            raise ImportError(f"{lib_name} is required for this test")
-
-        algorithms = ["dijkstra", "bidirectional_dijkstra", "astar"]
-        paths = {}
-
-        # Create a pathfinder
-        path_finder = PathFinder(
-            dataset_source=self.test_raster_path,
-            source_coords=self.source_coords,
-            target_coords=self.target_coords,
-            graph_api=lib_name,
-            search_space_buffer_m=50,
-            neighborhood_str='r1',
-        )
-
-        # Find paths using different algorithms
-        for algorithm in algorithms:
-            try:
-                paths[algorithm] = path_finder.find_route(algorithm=algorithm)
-
-                # Validate the path
-                self.assertIsNotNone(paths[algorithm])
-                self.assertGreater(len(paths[algorithm].path_indices), 1)
-                self.assertEqual(paths[algorithm].algorithm, algorithm)
-
-                # Ensure the path connects source and target
-                start_coord = paths[algorithm].path_coords[0]
-                end_coord = paths[algorithm].path_coords[-1]
-                self.assertAlmostEqual(start_coord[0], self.source_coords[0], delta=5)
-                self.assertAlmostEqual(start_coord[1], self.source_coords[1], delta=5)
-                self.assertAlmostEqual(end_coord[0], self.target_coords[0], delta=5)
-                self.assertAlmostEqual(end_coord[1], self.target_coords[1], delta=5)
-
-            except AlgorthmNotImplementedError:
-                warnings.warn(f"Algorithm {algorithm} not implemented for {lib_name}")
-
-        # Compare the paths from different algorithms
-        # They might not be identical, but should be similar in cost and length
-        if len(paths) >= 2:
-            algorithms_with_paths = list(paths.keys())
-            for i in range(len(algorithms_with_paths) - 1):
-                for j in range(i + 1, len(algorithms_with_paths)):
-                    algo1 = algorithms_with_paths[i]
-                    algo2 = algorithms_with_paths[j]
-
-                    # Compare path lengths (allow 15% difference as algorithms may find slightly different routes)
-                    length1 = paths[algo1].total_length
-                    length2 = paths[algo2].total_length
-                    self.assertLess(abs(length1 - length2) / max(length1, length2), 0.15,
-                                    f"Paths from {algo1} and {algo2} differ too much in length")
 
     def test_algorithm_comparison(self):
         """Test that different algorithms produce valid paths for the same problem."""

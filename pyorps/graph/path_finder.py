@@ -5,13 +5,13 @@ from importlib import import_module
 
 import numpy as np
 import geopandas as gpd
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Point, MultiPoint
 from rasterio.transform import Affine
 
 
 # Project imports
 from ..core.path import Path, PathCollection
-from ..core.types import BboxType, GeometryMaskType
+from ..core.types import BboxType, GeometryMaskType, InputDataType, CoordinateInput, CoordinateOutput
 from ..raster.rasterizer import GeoRasterizer
 from ..raster.handler import RasterHandler
 from ..utils.neighborhood import get_neighborhood_steps
@@ -80,12 +80,13 @@ class PathFinder:
     """
 
     def __init__(self,
-                 dataset_source,
-                 source_coords,
-                 target_coords,
+                 dataset_source: InputDataType,
+                 source_coords: Optional[CoordinateInput],
+                 target_coords: Optional[CoordinateInput],
                  search_space_buffer_m: Optional[float] = None,
                  neighborhood_str: Optional[Union[str, int]] = "r2",
                  steps=None,
+                 ignore_max_cost=True,
                  graph_api="networkit",
                  cost_assumptions=None,
                  datasets_to_modify=None,
@@ -104,27 +105,30 @@ class PathFinder:
                           - Tuple of (data_array, crs, transform)
                           - GeoDataset object
                           - Dictionary with url/layer for WFS
-            source_coords (tuple or list): Either:
-                - A single coordinate pair (x, y)
-                - A list of coordinate pairs [(x1, y1), (x2, y2), ...]
-            target_coords (tuple or list): Either:
-                - A single coordinate pair (x, y)
-                - A list of coordinate pairs [(x1, y1), (x2, y2), ...]
+            source_coords: CoordinateInput
+                Can be: tuple, list of tuples, array of arrays, shapely Point,
+                shapely MultiPoint, GeoSeries of points, or GeoDataFrame of points.
+            target_coords (tuple or list): CoordinateInput
+                Can be: tuple, list of tuples, array of arrays, shapely Point,
+                shapely MultiPoint, GeoSeries of points, or GeoDataFrame of points.
             search_space_buffer_m (float): Buffer around the source and target coordinates in meters.
             neighborhood_str (str, optional): Neighborhood type. Defaults to "r2".
             steps (ndarray, optional): Steps which define the neighborhood. If None, will be created from
             neighborhood_str.
+            ignore_max_cost (bool, True): Whether to ignore all cells in the raster which have the maximum cost
+            value or not
             graph_api (str, optional): Graph API to use. Defaults to "networkit".
             cost_assumptions (optional): Cost assumptions to use for rasterization. Required if dataset_source is
             vector data.
             datasets_to_modify (list, optional): List of datasets to use to modify the raster using
             GeoRasterizer.modify_raster_from_dataset
         """
-        self.source_coords = source_coords
-        self.target_coords = target_coords
+        self.source_coords = PathFinder.normalize_coordinates(source_coords)
+        self.target_coords = PathFinder.normalize_coordinates(target_coords)
         self.search_space_buffer_m = search_space_buffer_m
         self.neighborhood_str = neighborhood_str
         self.graph_api_name = graph_api
+        self.ignore_max_cost = ignore_max_cost
 
         if steps is None and neighborhood_str:
             directed = True if self.graph_api_name == "cython" else False
@@ -145,6 +149,72 @@ class PathFinder:
         self.dataset = initialize_geo_dataset(dataset_source, crs, bbox, mask, transform)
         if self.source_coords is not None and self.target_coords is not None:
             self.create_raster_handler(cost_assumptions, datasets_to_modify, raster_save_path, **kwargs)
+
+    @staticmethod
+    def normalize_coordinates(input_data: Optional[CoordinateInput]) -> Optional[CoordinateOutput]:
+        """
+        Normalize different coordinate formats into tuples or lists of tuples.
+
+        Parameters:
+        -----------
+        input_data : CoordinateInput
+            Can be: tuple, list of tuples, array of arrays, shapely Point,
+            shapely MultiPoint, GeoSeries of points, or GeoDataFrame of points.
+
+        Returns:
+        --------
+        CoordinateOutput
+            A single coordinate tuple (x, y) or list of coordinate tuples [(x1, y1), (x2, y2), ...]
+        """
+        if input_data is None:
+            coordinate_output = None
+        # Case: Input is a tuple with two elements
+        elif isinstance(input_data, tuple) and len(input_data) == 2:
+            coordinate_output = input_data
+        # Case: Input is a shapely Point
+        elif isinstance(input_data, Point):
+            coordinate_output = input_data.x, input_data.y
+        # Case: Input is a shapely MultiPoint
+        elif isinstance(input_data, MultiPoint):
+            coordinate_output = [(p.x, p.y) for p in input_data.geoms]
+        # Case: Input is a GeoSeries
+        elif isinstance(input_data, gpd.GeoSeries):
+            coordinate_output = PathFinder._point_or_multipoints(input_data)
+        # Case: Input is a GeoDataFrame
+        elif isinstance(input_data, gpd.GeoDataFrame):
+            coordinate_output = PathFinder._point_or_multipoints(input_data.geometry)
+        # Case: Input is a list of tuples
+        elif isinstance(input_data, list):
+            if all(isinstance(item, tuple) and len(item) == 2 for item in input_data):
+                coordinate_output = input_data
+            elif all(isinstance(item, list) and len(item) == 2 for item in input_data):
+                coordinate_output = [(float(item[0]), float(item[1])) for item in input_data]
+            else:
+                coordinate_output = PathFinder._point_or_multipoints(input_data)
+        # Case: Input is a numpy array
+        elif isinstance(input_data, np.ndarray):
+            if len(input_data.shape) == 2 and input_data.shape[1] == 2:
+                coordinate_output = [(float(coord[0]), float(coord[1])) for coord in input_data]
+            else:
+                coordinate_output = PathFinder._point_or_multipoints(input_data)
+        else:
+            # If input doesn't match any expected format
+            raise ValueError("Input data cannot be interpreted as coordinates")
+        if isinstance(coordinate_output, list) and len(coordinate_output) == 1:
+            return coordinate_output[0]
+        else:
+            return coordinate_output
+
+    @staticmethod
+    def _point_or_multipoints(input_data: CoordinateInput) -> CoordinateOutput:
+        if len(input_data) == 0:
+            return []
+        elif all(isinstance(item, Point) for item in input_data):
+            return [(point.x, point.y) for point in input_data]
+        elif all(isinstance(item, MultiPoint) for item in input_data):
+            return [(p.x, p.y) for item in input_data for p in item.geoms]
+        else:
+            raise ValueError("Input data cannot be interpreted as coordinates")
 
     def create_raster_handler(self, cost_assumptions, datasets_to_modify, raster_save_path, **kwargs):
         """
@@ -233,7 +303,7 @@ class PathFinder:
         raster_data = self.raster_handler.data[band_index]
 
         # Create graph using the graph API
-        self._graph_api = graph_api_class_constructor(raster_data, self.steps)
+        self._graph_api = graph_api_class_constructor(raster_data, self.steps, ignore_max=self.ignore_max_cost)
         # Save edge construction and graph creation times
         if hasattr(self._graph_api, 'edge_construction_time') and hasattr(self._graph_api, 'graph_creation_time'):
             self.runtimes["edge_construction"] = self._graph_api.edge_construction_time
@@ -298,14 +368,15 @@ class PathFinder:
         coords = self.raster_handler.indices_to_coords(indices_2d)
         return coords
 
-    def find_route(self, source=None, target=None, algorithm="dijkstra", calculate_metrics=True, pairwise=False,
-                   **kwargs):
+    def find_route(self, source: Optional[CoordinateInput] = None, target: Optional[CoordinateInput] = None, algorithm:
+                   str = "dijkstra", calculate_metrics: bool = True, pairwise: bool = False, **kwargs):
         """
         Find the shortest path between source and target coordinates.
 
         Args:
-            source: Source coordinates. If None, uses the source_coords provided at initialization.
-                Can be a single pair (x, y) or a list of pairs [(x1, y1), (x2, y2), ...].
+            source: CoordinateInput - Source coordinates. If None, uses the source_coords provided at initialization.
+                Can be: tuple, list of tuples, array of arrays, shapely Point,
+                shapely MultiPoint, GeoSeries of points, or GeoDataFrame of points.
             target: Target coordinates. If None, uses the target_coords provided at initialization.
                 Can be a single pair (x, y) or a list of pairs [(x1, y1), (x2, y2), ...].
             algorithm: Algorithm to use for shortest path. Defaults to "dijkstra".
@@ -318,10 +389,17 @@ class PathFinder:
         # Get source and target coords
         if source is None:
             source = self.source_coords
+        else:
+            source = PathFinder.normalize_coordinates(source)
+
         if target is None:
             target = self.target_coords
+        else:
+            target = PathFinder.normalize_coordinates(target)
+
         if source is None or target is None:
             raise ValueError(f"Source and target coordinates must not be None!")
+
         if self.raster_handler is None:
             self.create_raster_handler(**kwargs)
 
@@ -356,7 +434,7 @@ class PathFinder:
         # If path_indices is a list of paths (multiple source-target pairs)
         if isinstance(path_indices, list) and all(
                 isinstance(p, list) or isinstance(p, np.ndarray) for p in path_indices):
-            for i, path in enumerate(path_indices):
+            for path in path_indices:
                 if not path:
                     continue
                 source = self.get_coords_from_node_indices(path[0])[0]
@@ -415,7 +493,9 @@ class PathFinder:
             path_geometry=path_geometry,
             euclidean_distance=euclidean_distance,
             runtimes=self.runtimes.copy(),
-            path_id=path_id
+            path_id=path_id,
+            search_space_buffer_m=self.search_space_buffer_m,
+            neighborhood=self.neighborhood_str
         )
 
         # Calculate path metrics if requested
@@ -562,7 +642,7 @@ class PathFinder:
                    title: Optional[Union[str, list[str]]] = None,
                    suptitle: Optional[str] = None,
                    path_id: Optional[Union[int, list[int]]] = None,
-                   reverse_colors: bool = True) -> Union[Any, list[Any]]:
+                   reverse_colors: bool = False) -> Union[Any, list[Any]]:
         """
         Plot paths with customizable styling and layout options.
 

@@ -18,6 +18,8 @@ class Path:
     euclidean_distance: float
     runtimes: Dict[str, float]
     path_id: int
+    search_space_buffer_m: float
+    neighborhood: str
 
     # Optional metrics that may be calculated
     total_length: Optional[float] = None
@@ -42,7 +44,10 @@ class Path:
             "target": str(self.target),
             "algorithm": self.algorithm,
             "graph_api": self.graph_api,
-            "geometry": self.path_geometry
+            "geometry": self.path_geometry,
+            "search_space_buffer_m": self.search_space_buffer_m,
+            "euclidean_distance": self.euclidean_distance,
+            "neighborhood": self.neighborhood,
         })
 
         # Add metrics if they exist

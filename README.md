@@ -4,9 +4,9 @@
 [![Python Versions](https://img.shields.io/pypi/pyversions/pyorps.svg)](https://pypi.org/project/pyorps/)
 [![Documentation Status](https://readthedocs.org/projects/pyorps/badge/?version=latest)](https://pyorps.readthedocs.io/en/latest/?badge=latest)
 [![codecov](https://codecov.io/gh/marhofmann/pyorps/branch/master/graph/badge.svg)](https://codecov.io/gh/marhofmann/pyorps)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/YOUR_PROJECT_ID)](https://www.codacy.com/gh/marhofmann/pyorps/dashboard)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/446710b16d7c4fd3890252c0cd52e052)](https://app.codacy.com/gh/marhofmann/pyorps/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/marhofmann/pyorps/master?filepath=examples/minimal_example.ipynb)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/marhofmann/pyorps/master?filepath=examples)
 
 
 PYORPS is an open-source tool designed to automate route planning for underground cables in power systems. It uses high-resolution raster geodata to perform least-cost path analyses, optimizing routes based on economic and environmental factors.
@@ -81,18 +81,6 @@ path_finder.save_paths(r"<PATH>\<TO>\<YOUR>\<RESULTS>.geojson" )
 
 Please check out the [example](https://github.com/marhofmann/pyorps/blob/master/examples/create_rasterized_geodata.ipynb) 
 for creating and setting up a dedicated raster dataset for your planning task.
-
-## Binder - Run Examples
-
-You can quickly start testing the functionalities of PYORPS using Binder. Click the badge below to launch an interactive
-environment where you can run the example notebooks directly in your browser.
-
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/marhofmann/pyorps/master?filepath=examples/minimal_example.ipynb)
-
-This Binder connection allows you to explore the examples provided in the `examples` directory without needing to 
-install anything on your local machine. It's a great way to get a hands-on experience with PYORPS and see how it can 
-optimize route planning for power systems.
-
 
 ## Installation
 

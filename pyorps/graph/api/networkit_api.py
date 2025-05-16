@@ -2,7 +2,7 @@ from typing import Union
 
 # Third party
 from networkit import Graph
-from networkit.distance import Dijkstra, BidirectionalDijkstra, AStar, SPSP
+from networkit.distance import Dijkstra, BidirectionalDijkstra, AStar
 
 # Project files
 from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError
@@ -56,7 +56,6 @@ class NetworkitAPI(GraphLibraryAPI):
             The list of node indices of the nodes in the graph
         """
         return [i for i in self.graph.iterNodes()]
-
 
     @staticmethod
     def _ensure_path_endpoints(path, source, target):

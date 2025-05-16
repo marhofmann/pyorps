@@ -347,7 +347,6 @@ class CostAssumptions:
         return gdf
 
     def _apply_tuple_costs(self, gdf, main_feature, side_features):
-        """Apply costs from tuple-based cost structure."""
         # Create wildcard dictionary for default values
         wild_cards = {keys[0]: value for keys, value in self.cost_assumptions.items() if '' in keys}
 
@@ -366,7 +365,6 @@ class CostAssumptions:
             gdf.loc[mask, 'cost'] = wild_card_value
 
     def _apply_nested_costs(self, gdf, main_feature, side_features):
-        """Apply costs from nested dictionary structure."""
         if len(side_features) != 1:
             raise FormatError("Multiple side features not supported for nested dictionary structure")
 

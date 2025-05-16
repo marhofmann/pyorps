@@ -1,9 +1,9 @@
-import os
 import unittest
 from unittest.mock import patch, MagicMock
 import numpy as np
 from rasterio.transform import from_origin
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Point, MultiPoint
+from geopandas import GeoDataFrame, GeoSeries
 
 from pyorps.graph.path_finder import PathFinder
 from pyorps.core.path import Path, PathCollection
@@ -478,7 +478,9 @@ class TestPathFinder(unittest.TestCase):
             path_geometry=LineString([[500000, 5600000], [500001, 5600001], [500002, 5600002]]),
             euclidean_distance=100.0,
             runtimes={},
-            path_id=0
+            path_id=0,
+            search_space_buffer_m=2,
+            neighborhood='R3'
         )
 
         # Call the method under test
@@ -531,7 +533,9 @@ class TestPathFinder(unittest.TestCase):
             path_geometry=LineString([[500000, 5600000], [500050, 5600050], [500100, 5600100]]),
             euclidean_distance=141.42,
             runtimes={},
-            path_id=0
+            path_id=0,
+            search_space_buffer_m=2,
+            neighborhood='R3'
         )
 
         path2 = Path(
@@ -544,7 +548,9 @@ class TestPathFinder(unittest.TestCase):
             path_geometry=LineString([[500000, 5600000], [500100, 5600100], [500200, 5600200]]),
             euclidean_distance=282.84,
             runtimes={},
-            path_id=1
+            path_id=1,
+            search_space_buffer_m=2,
+            neighborhood='R3'
         )
 
         # Add paths to PathFinder
@@ -604,6 +610,8 @@ class TestPathFinder(unittest.TestCase):
             euclidean_distance=141.42,
             runtimes={"total": 0.1},
             path_id=0,
+            search_space_buffer_m=2,
+            neighborhood='R3',
             total_length=150.0,
             total_cost=300.0,
             length_by_category={1: 100.0, 2: 50.0},
@@ -672,7 +680,9 @@ class TestPathFinder(unittest.TestCase):
             path_geometry=LineString([[500000, 5600000], [500001, 5600001], [500002, 5600002]]),
             euclidean_distance=100.0,
             runtimes={},
-            path_id=0
+            path_id=0,
+            search_space_buffer_m=2,
+            neighborhood='R3'
         )
         path_finder.paths.add(test_path)
 
@@ -764,7 +774,9 @@ class TestPathFinder(unittest.TestCase):
             path_geometry=LineString([[500000, 5600000], [500050, 5600050], [500100, 5600100]]),
             euclidean_distance=141.42,
             runtimes={},
-            path_id=0
+            path_id=0,
+            search_space_buffer_m=2,
+            neighborhood='R3'
         )
 
         path_finder.paths.add(path1)
@@ -799,7 +811,7 @@ class TestPathFinder(unittest.TestCase):
                 title=None,
                 suptitle=None,
                 path_id=None,
-                reverse_colors=True
+                reverse_colors=False
             )
 
             # Check the return value
@@ -855,7 +867,9 @@ class TestPathFinder(unittest.TestCase):
                 path_geometry=LineString([[500100, 5600100], [500150, 5600150], [500200, 5600200]]),
                 euclidean_distance=141.42,
                 runtimes={},
-                path_id=1
+                path_id=1,
+                search_space_buffer_m=2,
+                neighborhood='R3'
             )
 
             # Mock used to verify PathCollection.add was called
@@ -881,7 +895,9 @@ class TestPathFinder(unittest.TestCase):
                 path_geometry=LineString([[500100, 5600100], [500150, 5600150], [500200, 5600200]]),
                 euclidean_distance=141.42,
                 runtimes={},
-                path_id=2
+                path_id=2,
+                search_space_buffer_m=2,
+                neighborhood='R3'
             )
 
             with patch("pyorps.graph.path_finder.PathCollection", return_value=mock_path_collection):
@@ -927,7 +943,9 @@ class TestPathFinder(unittest.TestCase):
                 path_geometry=LineString([[500000, 5600000], [500001, 5600001], [500002, 5600002]]),
                 euclidean_distance=100.0,
                 runtimes={},
-                path_id=5
+                path_id=5,
+                search_space_buffer_m=2,
+                neighborhood='R3'
             )
 
             # Add path with replace=False (should assign a new ID)
@@ -946,7 +964,9 @@ class TestPathFinder(unittest.TestCase):
                 path_geometry=LineString([[500010, 5600010], [500015, 5600015], [500020, 5600020]]),
                 euclidean_distance=50.0,
                 runtimes={},
-                path_id=5
+                path_id=5,
+                search_space_buffer_m=2,
+                neighborhood='R3'
             )
 
             # Add path with replace=True (should keep ID=5)
@@ -965,7 +985,9 @@ class TestPathFinder(unittest.TestCase):
                 path_geometry=LineString([[500030, 5600030], [500035, 5600035], [500040, 5600040]]),
                 euclidean_distance=40.0,
                 runtimes={},
-                path_id=3
+                path_id=3,
+                search_space_buffer_m=2,
+                neighborhood='R3'
             )
 
             # Add path with replace=True (should keep ID=3)
@@ -984,7 +1006,9 @@ class TestPathFinder(unittest.TestCase):
                 path_geometry=LineString([[500050, 5600050], [500055, 5600055], [500060, 5600060]]),
                 euclidean_distance=30.0,
                 runtimes={},
-                path_id=5  # Same as path2
+                path_id=5,  # Same as path2
+                search_space_buffer_m=2,
+                neighborhood='R3'
             )
 
             # Add path with replace=False (should assign a new ID, not replace path2)
@@ -1000,3 +1024,551 @@ class TestPathFinder(unittest.TestCase):
 
             # Check total number of paths
             self.assertEqual(len(path_finder.paths), 4)
+
+    def test_tuple_coordinates(self):
+        """Test normalizing tuple coordinates."""
+        # Simple test with float coordinates
+        coord = (10.5, 20.3)
+        result = PathFinder.normalize_coordinates(coord)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, coord)
+
+        # Test with integer coordinates
+        coord = (1, 2)
+        result = PathFinder.normalize_coordinates(coord)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, coord)
+
+        # Test with mixed types
+        coord = (1, 2.5)
+        result = PathFinder.normalize_coordinates(coord)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, coord)
+
+    def test_list_of_tuples_coordinates(self):
+        """Test normalizing lists of tuple coordinates."""
+        # List of float coordinates
+        coords = [(1.0, 2.0), (3.0, 4.0)]
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, coords)
+
+        # List with integer coordinates
+        coords = [(1, 2), (3, 4)]
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, coords)
+
+        # List with mixed types
+        coords = [(1, 2.5), (3.5, 4)]
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, coords)
+
+        # Empty list
+        coords = []
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [])
+
+    def test_list_of_lists_coordinates(self):
+        """Test normalizing lists of list coordinates."""
+        # List of float lists
+        coords = [[5.0, 6.0], [7.0, 8.0]]
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(5.0, 6.0), (7.0, 8.0)])
+
+        # List of integer lists
+        coords = [[1, 2], [3, 4]]
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # List of mixed type lists
+        coords = [[1, 2.5], [3.5, 4]]
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.5), (3.5, 4.0)])
+
+        # Single-element list
+        coords = [[1.0, 2.0]]
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (1.0, 2.0))
+
+    def test_numpy_array_coordinates(self):
+        """Test normalizing numpy array coordinates."""
+        # Array of floats
+        coords = np.array([[5.0, 6.0], [7.0, 8.0]])
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(5.0, 6.0), (7.0, 8.0)])
+
+        # Array of integers
+        coords = np.array([[1, 2], [3, 4]])
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Array with mixed types
+        coords = np.array([[1, 2.5], [3.5, 4]])
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.5), (3.5, 4.0)])
+
+        # Single-row array
+        coords = np.array([[1.0, 2.0]])
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (1.0, 2.0))
+
+    def test_shapely_point_coordinates(self):
+        """Test normalizing shapely Point coordinates."""
+        # Float coordinates
+        point = Point(15.0, 25.0)
+        result = PathFinder.normalize_coordinates(point)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (15.0, 25.0))
+
+        # Integer coordinates
+        point = Point(1, 2)
+        result = PathFinder.normalize_coordinates(point)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (1.0, 2.0))
+
+        # Mixed coordinates
+        point = Point(1, 2.5)
+        result = PathFinder.normalize_coordinates(point)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (1.0, 2.5))
+
+    def test_shapely_multipoint_coordinates(self):
+        """Test normalizing shapely MultiPoint coordinates."""
+        # Float coordinates
+        multipoint = MultiPoint([(10.0, 20.0), (30.0, 40.0)])
+        result = PathFinder.normalize_coordinates(multipoint)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(10.0, 20.0), (30.0, 40.0)])
+
+        # Integer coordinates
+        multipoint = MultiPoint([(1, 2), (3, 4)])
+        result = PathFinder.normalize_coordinates(multipoint)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Mixed coordinates
+        multipoint = MultiPoint([(1, 2.5), (3.5, 4)])
+        result = PathFinder.normalize_coordinates(multipoint)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.5), (3.5, 4.0)])
+
+        # Single point
+        multipoint = MultiPoint([(1.0, 2.0)])
+        result = PathFinder.normalize_coordinates(multipoint)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (1.0, 2.0))
+
+    def test_geoseries_coordinates(self):
+        """Test normalizing GeoSeries coordinates."""
+        # Float coordinates
+        points = [Point(1.0, 2.0), Point(3.0, 4.0)]
+        gs = GeoSeries(points)
+        result = PathFinder.normalize_coordinates(gs)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Integer coordinates
+        points = [Point(1, 2), Point(3, 4)]
+        gs = GeoSeries(points)
+        result = PathFinder.normalize_coordinates(gs)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Mixed coordinates
+        points = [Point(1, 2.5), Point(3.5, 4)]
+        gs = GeoSeries(points)
+        result = PathFinder.normalize_coordinates(gs)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.5), (3.5, 4.0)])
+
+        # Single point
+        points = [Point(1.0, 2.0)]
+        gs = GeoSeries(points)
+        result = PathFinder.normalize_coordinates(gs)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (1.0, 2.0))
+
+        # Empty GeoSeries
+        gs = GeoSeries()
+        result = PathFinder.normalize_coordinates(gs)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [])
+
+    def test_geodataframe_coordinates(self):
+        """Test normalizing GeoDataFrame coordinates."""
+        # Float coordinates
+        points = [Point(5.0, 6.0), Point(7.0, 8.0)]
+        gdf = GeoDataFrame(geometry=points)
+        result = PathFinder.normalize_coordinates(gdf)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(5.0, 6.0), (7.0, 8.0)])
+
+        # Integer coordinates
+        points = [Point(1, 2), Point(3, 4)]
+        gdf = GeoDataFrame(geometry=points)
+        result = PathFinder.normalize_coordinates(gdf)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Mixed coordinates
+        points = [Point(1, 2.5), Point(3.5, 4)]
+        gdf = GeoDataFrame(geometry=points)
+        result = PathFinder.normalize_coordinates(gdf)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.5), (3.5, 4.0)])
+
+        # Single point
+        points = [Point(1.0, 2.0)]
+        gdf = GeoDataFrame(geometry=points)
+        result = PathFinder.normalize_coordinates(gdf)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (1.0, 2.0))
+
+        # GeoDataFrame with additional columns
+        points = [Point(1.0, 2.0), Point(3.0, 4.0)]
+        gdf = GeoDataFrame(
+            {'id': [1, 2], 'name': ['A', 'B']},
+            geometry=points
+        )
+        result = PathFinder.normalize_coordinates(gdf)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+    def test_invalid_coordinates(self):
+        """Test that invalid coordinates raise ValueError."""
+        invalid_inputs = [
+            "not a coordinate",
+            123,
+            (1, 2, 3),  # tuple with wrong length
+            [(1, 2), (3, 4, 5)],  # list with invalid tuple
+            [[1, 2], [3, 4, 5]],  # list with invalid sublist
+            np.array([1, 2, 3]),  # 1D array
+            np.array([[[1, 2]]]),  # 3D array
+        ]
+
+        for invalid_input in invalid_inputs:
+            with self.assertRaises(ValueError):
+                PathFinder.normalize_coordinates(invalid_input)
+
+    def test_normalize_tuple_coordinates(self):
+        """Test normalizing tuple coordinates."""
+        # Test with float coordinates
+        coord = (10.5, 20.3)
+        result = PathFinder.normalize_coordinates(coord)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, coord)
+
+        # Test with integer coordinates
+        coord = (1, 2)
+        result = PathFinder.normalize_coordinates(coord)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, coord)
+
+        # Test with mixed types
+        coord = (1, 2.5)
+        result = PathFinder.normalize_coordinates(coord)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, coord)
+
+    def test_normalize_list_of_tuples(self):
+        """Test normalizing list of tuples."""
+        # Test with float coordinates
+        coords = [(1.0, 2.0), (3.0, 4.0)]
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, coords)
+
+        # Test with integer coordinates
+        coords = [(1, 2), (3, 4)]
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, coords)
+
+        # Test with mixed types
+        coords = [(1, 2.5), (3.5, 4)]
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, coords)
+
+    def test_normalize_list_of_lists(self):
+        """Test normalizing list of lists."""
+        # Test with float coordinates
+        coords = [[1.0, 2.0], [3.0, 4.0]]
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Test with integer coordinates
+        coords = [[1, 2], [3, 4]]
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Test with mixed types
+        coords = [[1, 2.5], [3.5, 4]]
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.5), (3.5, 4.0)])
+
+    def test_normalize_numpy_array(self):
+        """Test normalizing numpy array."""
+        # Test with float coordinates
+        coords = np.array([[1.0, 2.0], [3.0, 4.0]])
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Test with integer coordinates
+        coords = np.array([[1, 2], [3, 4]])
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Test with mixed types
+        coords = np.array([[1, 2.5], [3.5, 4]])
+        result = PathFinder.normalize_coordinates(coords)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.5), (3.5, 4.0)])
+
+    def test_normalize_shapely_point(self):
+        """Test normalizing shapely Point."""
+        # Test with float coordinates
+        point = Point(1.0, 2.0)
+        result = PathFinder.normalize_coordinates(point)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (1.0, 2.0))
+
+        # Test with integer coordinates
+        point = Point(1, 2)
+        result = PathFinder.normalize_coordinates(point)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (1.0, 2.0))
+
+        # Test with mixed types
+        point = Point(1, 2.5)
+        result = PathFinder.normalize_coordinates(point)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (1.0, 2.5))
+
+    def test_normalize_shapely_multipoint(self):
+        """Test normalizing shapely MultiPoint."""
+        # Test with float coordinates
+        multipoint = MultiPoint([(1.0, 2.0), (3.0, 4.0)])
+        result = PathFinder.normalize_coordinates(multipoint)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Test with integer coordinates
+        multipoint = MultiPoint([(1, 2), (3, 4)])
+        result = PathFinder.normalize_coordinates(multipoint)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Test with mixed types
+        multipoint = MultiPoint([(1, 2.5), (3.5, 4)])
+        result = PathFinder.normalize_coordinates(multipoint)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.5), (3.5, 4.0)])
+
+    def test_normalize_geoseries(self):
+        """Test normalizing GeoSeries."""
+        # Test with Point objects
+        points = [Point(1.0, 2.0), Point(3.0, 4.0)]
+        gs = GeoSeries(points)
+        result = PathFinder.normalize_coordinates(gs)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Test with MultiPoint objects
+        multipoints = [MultiPoint([(1.0, 2.0), (3.0, 4.0)]), MultiPoint([(5.0, 6.0), (7.0, 8.0)])]
+        gs = GeoSeries(multipoints)
+        result = PathFinder.normalize_coordinates(gs)
+        self.assertIsInstance(result, list)
+        expected = [(1.0, 2.0), (3.0, 4.0), (5.0, 6.0), (7.0, 8.0)]
+        self.assertEqual(result, expected)
+
+        # Test with mixed Point and MultiPoint
+        mixed = [Point(1.0, 2.0), MultiPoint([(3.0, 4.0), (5.0, 6.0)])]
+        gs = GeoSeries(mixed)
+        with self.assertRaises(ValueError):
+            PathFinder.normalize_coordinates(gs)
+
+    def test_normalize_geodataframe(self):
+        """Test normalizing GeoDataFrame."""
+        # Test with Point geometries
+        points = [Point(1.0, 2.0), Point(3.0, 4.0)]
+        gdf = GeoDataFrame(geometry=points)
+        result = PathFinder.normalize_coordinates(gdf)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Test with MultiPoint geometries
+        multipoints = [MultiPoint([(1.0, 2.0), (3.0, 4.0)]), MultiPoint([(5.0, 6.0), (7.0, 8.0)])]
+        gdf = GeoDataFrame(geometry=multipoints)
+        result = PathFinder.normalize_coordinates(gdf)
+        self.assertIsInstance(result, list)
+        expected = [(1.0, 2.0), (3.0, 4.0), (5.0, 6.0), (7.0, 8.0)]
+        self.assertEqual(result, expected)
+
+        # Test with mixed Point and MultiPoint
+        mixed = [Point(1.0, 2.0), MultiPoint([(3.0, 4.0), (5.0, 6.0)])]
+        gdf = GeoDataFrame(geometry=mixed)
+        with self.assertRaises(ValueError):
+            PathFinder.normalize_coordinates(gdf)
+
+    def test_normalize_list_of_points(self):
+        """Test normalizing list of shapely Points."""
+        # Test with float coordinates
+        points = [Point(1.0, 2.0), Point(3.0, 4.0)]
+        result = PathFinder.normalize_coordinates(points)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Test with integer coordinates
+        points = [Point(1, 2), Point(3, 4)]
+        result = PathFinder.normalize_coordinates(points)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Test with mixed types
+        points = [Point(1, 2.5), Point(3.5, 4)]
+        result = PathFinder.normalize_coordinates(points)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.5), (3.5, 4.0)])
+
+    def test_normalize_list_of_multipoints(self):
+        """Test normalizing list of shapely MultiPoints."""
+        # Test with float coordinates
+        multipoints = [
+            MultiPoint([(1.0, 2.0), (3.0, 4.0)]),
+            MultiPoint([(5.0, 6.0), (7.0, 8.0)])
+        ]
+        result = PathFinder.normalize_coordinates(multipoints)
+        self.assertIsInstance(result, list)
+        expected = [(1.0, 2.0), (3.0, 4.0), (5.0, 6.0), (7.0, 8.0)]
+        self.assertEqual(result, expected)
+
+        # Test with integer coordinates
+        multipoints = [
+            MultiPoint([(1, 2), (3, 4)]),
+            MultiPoint([(5, 6), (7, 8)])
+        ]
+        result = PathFinder.normalize_coordinates(multipoints)
+        self.assertIsInstance(result, list)
+        expected = [(1.0, 2.0), (3.0, 4.0), (5.0, 6.0), (7.0, 8.0)]
+        self.assertEqual(result, expected)
+
+        # Test with mixed types
+        multipoints = [
+            MultiPoint([(1, 2.5), (3.5, 4)]),
+            MultiPoint([(5.0, 6), (7, 8.5)])
+        ]
+        result = PathFinder.normalize_coordinates(multipoints)
+        self.assertIsInstance(result, list)
+        expected = [(1.0, 2.5), (3.5, 4.0), (5.0, 6.0), (7.0, 8.5)]
+        self.assertEqual(result, expected)
+
+    def test_point_or_multipoints_helper(self):
+        """Test _point_or_multipoints helper method."""
+        # Test with a list of Points
+        points = [Point(1.0, 2.0), Point(3.0, 4.0)]
+        result = PathFinder._point_or_multipoints(points)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [(1.0, 2.0), (3.0, 4.0)])
+
+        # Test with a list of MultiPoints
+        multipoints = [
+            MultiPoint([(1.0, 2.0), (3.0, 4.0)]),
+            MultiPoint([(5.0, 6.0), (7.0, 8.0)])
+        ]
+        result = PathFinder._point_or_multipoints(multipoints)
+        self.assertIsInstance(result, list)
+        expected = [(1.0, 2.0), (3.0, 4.0), (5.0, 6.0), (7.0, 8.0)]
+        self.assertEqual(result, expected)
+
+        # Test with non-supported input
+        invalid_input = ["string1", "string2"]
+        with self.assertRaises(ValueError):
+            PathFinder._point_or_multipoints(invalid_input)
+
+        # Test with mixed Point and MultiPoint (should raise ValueError)
+        mixed = [Point(1.0, 2.0), MultiPoint([(3.0, 4.0), (5.0, 6.0)])]
+        with self.assertRaises(ValueError):
+            PathFinder._point_or_multipoints(mixed)
+
+    def test_invalid_coordinate_inputs(self):
+        """Test that invalid inputs raise ValueError."""
+        invalid_inputs = [
+            "not a coordinate",
+            123,
+            (1, 2, 3),  # tuple with wrong length
+            [(1, 2), (3, 4, 5)],  # list with invalid tuple
+            [[1, 2], [3, 4, 5]],  # list with invalid sublist
+            np.array([1, 2, 3]),  # 1D array
+            np.array([[[1, 2]]]),  # 3D array
+            [Point(1, 2), "not a point"],  # mixed valid/invalid types
+            {"x": 1, "y": 2}  # dictionary
+        ]
+
+        for input_data in invalid_inputs:
+            with self.assertRaises(ValueError):
+                PathFinder.normalize_coordinates(input_data)
+
+    def test_edge_cases(self):
+        """Test edge cases for coordinate normalization."""
+        # Empty list
+        result = PathFinder.normalize_coordinates([])
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [])
+
+        # Empty GeoSeries
+        gs = GeoSeries()
+        result = PathFinder.normalize_coordinates(gs)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [])
+
+        # Empty GeoDataFrame
+        gdf = GeoDataFrame(geometry=[])
+        result = PathFinder.normalize_coordinates(gdf)
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, [])
+
+        # Single-element lists
+        result = PathFinder.normalize_coordinates([(1.0, 2.0)])
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (1.0, 2.0))
+
+        result = PathFinder.normalize_coordinates([[1.0, 2.0]])
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (1.0, 2.0))
+
+        result = PathFinder.normalize_coordinates([Point(1.0, 2.0)])
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(result, (1.0, 2.0))
+
+        # Extreme values
+        result = PathFinder.normalize_coordinates((1e20, 1e-20))
+        self.assertEqual(result, (1e20, 1e-20))
+
+    def test_consistent_output_types(self):
+        """Test that output is consistent in type."""
+        # Single point inputs should always return a tuple
+        self.assertIsInstance(PathFinder.normalize_coordinates((1.0, 2.0)), tuple)
+        self.assertIsInstance(PathFinder.normalize_coordinates(Point(1.0, 2.0)), tuple)
+
+        # Multi-point inputs should always return a list
+        self.assertIsInstance(PathFinder.normalize_coordinates([(1.0, 2.0), (3.0, 4.0)]), list)
+        self.assertIsInstance(PathFinder.normalize_coordinates([[1.0, 2.0], [3.0, 4.0]]), list)
+        self.assertIsInstance(PathFinder.normalize_coordinates(MultiPoint([(1.0, 2.0), (3.0, 4.0)])), list)
+        self.assertIsInstance(PathFinder.normalize_coordinates([Point(1.0, 2.0), Point(3.0, 4.0)]), list)

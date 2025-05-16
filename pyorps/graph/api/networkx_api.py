@@ -174,7 +174,7 @@ class NetworkxAPI(GraphLibraryAPI):
 
         if algorithm == "dijkstra":
             # Use single-source Dijkstra for efficiency
-            lengths, paths_dict = nx.single_source_dijkstra(self.graph, source, weight='weight')
+            _, paths_dict = nx.single_source_dijkstra(self.graph, source, weight='weight')
 
             for target in targets:
                 if target in paths_dict:

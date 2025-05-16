@@ -455,7 +455,7 @@ class TestGeoRasterizer(unittest.TestCase):
                     mock_modify.return_value = rasterizer.raster
 
                     # Test with zoning parameters
-                    result = rasterizer.modify_raster_from_dataset(
+                    rasterizer.modify_raster_from_dataset(
                         'test_file.shp',
                         cost_assumptions=5,
                         zone_field='zone',

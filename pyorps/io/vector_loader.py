@@ -1,4 +1,4 @@
-from typing import Optional, Any, Union
+from typing import Optional
 from pathlib import Path
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
@@ -12,14 +12,15 @@ import pandas as pd
 from shapely.geometry import box
 from shapely.ops import unary_union
 
+from ..core.types import BboxType, GeometryMaskType
 from ..core.exceptions import WFSLayerNotFoundError, WFSConnectionError, WFSResponseParsingError, WFSError
 
 
 def load_from_wfs(
         url: str,
         layer: str,
-        bbox: Optional[tuple[float, float, float, float]] = None,
-        mask: Optional[Union[gpd.GeoDataFrame, gpd.GeoSeries, Any]] = None,
+        bbox: Optional[BboxType] = None,
+        mask: Optional[GeometryMaskType] = None,
         filter_params: Optional[dict] = None,
         auto_match: bool = True,
         max_workers: int = 4
@@ -42,8 +43,6 @@ def load_from_wfs(
     Raises:
         WFSLayerNotFoundError: If the layer cannot be found and auto_match is False
     """
-    import requests
-
     # Find the correct layer name
     if auto_match:
         layer = _resolve_layer(url, layer)
@@ -185,7 +184,7 @@ def _try_direct_load(
     # Extract namespace if present
     namespace = None
     if ':' in layer:
-        namespace, local_name = layer.split(':', 1)
+        namespace, _ = layer.split(':', 1)
 
     # Try different WFS versions
     for version in ["2.0.0", "1.1.0", "1.0.0"]:
@@ -463,7 +462,7 @@ def _add_buffer_to_bbox(
 
 
 def _create_grid(
-        bbox: tuple[float, float, float, float],
+        bbox: BboxType,
         x_divisions: int,
         y_divisions: int
 ) -> list[tuple[float, float, float, float]]:
@@ -478,7 +477,10 @@ def _create_grid(
     Returns:
         list of bounding boxes representing grid cells
     """
-    minx, miny, maxx, maxy = bbox
+    if isinstance(bbox, tuple):
+        minx, miny, maxx, maxy = bbox
+    else:
+        minx, miny, maxx, maxy = bbox.total_bounds
     width = (maxx - minx) / x_divisions
     height = (maxy - miny) / y_divisions
 
@@ -594,7 +596,7 @@ def _load_data_in_parallel(
                             [(sub_chunk, new_x_div, new_y_div) for sub_chunk in sub_chunks]
                         )
 
-                except (WFSError, requests.RequestException) as e:
+                except (WFSError, requests.RequestException):
                     # If a chunk fails, try to subdivide it
                     sub_chunks = _create_grid(chunk, 2, 2)
 
@@ -701,7 +703,7 @@ def _parse_geojson_response(response: requests.Response) -> Optional[gpd.GeoData
         geojson_data = response.json()
         if 'features' in geojson_data and geojson_data['features']:
             return gpd.GeoDataFrame.from_features(geojson_data['features'])
-    except ValueError as e:
+    except ValueError:
         return None
 
 

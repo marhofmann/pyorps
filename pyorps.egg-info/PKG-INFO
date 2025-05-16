@@ -1,53 +1,47 @@
 Metadata-Version: 2.4
 Name: pyorps
-Version: 0.1.7
+Version: 0.1.10
 Summary: PYORPS (Python for Optimal Routes in Power Systems)
-Home-page: https://github.com/marhofmann/pyorps
-Author: Martin Hofmann
 Author-email: Martin Hofmann <martin.hofmann-3@ei.thm.de>
-License: MIT
 Project-URL: Homepage, https://github.com/marhofmann/pyorps
 Project-URL: Bug Tracker, https://github.com/marhofmann/pyorps/issues
 Keywords: power line routing,distribution grid,power systems planning,path finding,rasterized GIS data
 Classifier: Development Status :: 3 - Alpha
 Classifier: Programming Language :: Python :: 3
 Classifier: Programming Language :: Python :: 3.11
-Classifier: License :: OSI Approved :: MIT License
 Classifier: Topic :: Scientific/Engineering :: GIS
 Classifier: Topic :: Scientific/Engineering :: Physics
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
 License-File: LICENSE
-Requires-Dist: numpy>=2.2.5
-Requires-Dist: pandas>=2.2.3
-Requires-Dist: geopandas>=1.0.1
-Requires-Dist: numba>=0.61.2
-Requires-Dist: rasterio>=1.4.3
+Requires-Dist: numpy==2.2.5
+Requires-Dist: pandas==2.2.3
+Requires-Dist: geopandas==1.0.1
+Requires-Dist: numba==0.61.2
+Requires-Dist: rasterio==1.4.3
 Requires-Dist: networkit>=11.1
-Requires-Dist: matplotlib>=3.10.1
-Requires-Dist: requests>=2.32.3
+Requires-Dist: matplotlib==3.10.1
+Requires-Dist: requests==2.32.3
 Provides-Extra: graph
-Requires-Dist: rustworkx>=0.16.0; extra == "graph"
-Requires-Dist: igraph>=0.11.8; extra == "graph"
-Requires-Dist: networkx>=3.4.2; extra == "graph"
+Requires-Dist: rustworkx==0.16.0; extra == "graph"
+Requires-Dist: igraph==0.11.8; extra == "graph"
+Requires-Dist: networkx==3.4.2; extra == "graph"
 Provides-Extra: dev
-Requires-Dist: coverage[toml]>=7.8.0; extra == "dev"
-Requires-Dist: pytest>=8.3.5; extra == "dev"
+Requires-Dist: coverage[toml]==7.8.0; extra == "dev"
+Requires-Dist: pytest==8.3.5; extra == "dev"
 Provides-Extra: examples
-Requires-Dist: notebook>=7.4.0; extra == "examples"
-Requires-Dist: fiona>=1.10.1; extra == "examples"
+Requires-Dist: notebook==7.4.0; extra == "examples"
+Requires-Dist: fiona==1.10.1; extra == "examples"
 Provides-Extra: case-studies
-Requires-Dist: notebook>=7.4.0; extra == "case-studies"
-Requires-Dist: fiona>=1.10.1; extra == "case-studies"
-Requires-Dist: pandapower>=3.0.0; extra == "case-studies"
+Requires-Dist: notebook==7.4.0; extra == "case-studies"
+Requires-Dist: fiona==1.10.1; extra == "case-studies"
+Requires-Dist: pandapower==3.0.0; extra == "case-studies"
+Requires-Dist: contextily==1.6.2; extra == "case-studies"
 Provides-Extra: addttionals
-Requires-Dist: openpyxl>=3.1.5; extra == "addttionals"
+Requires-Dist: openpyxl==3.1.5; extra == "addttionals"
 Provides-Extra: full
 Requires-Dist: pyorps[addttionals,case_studies,dev,examples,graph]; extra == "full"
-Dynamic: author
-Dynamic: home-page
 Dynamic: license-file
-Dynamic: requires-python
 
 # PYORPS - Python for Optimal Routes in Power Systems
 
@@ -55,9 +49,9 @@ Dynamic: requires-python
 [![Python Versions](https://img.shields.io/pypi/pyversions/pyorps.svg)](https://pypi.org/project/pyorps/)
 [![Documentation Status](https://readthedocs.org/projects/pyorps/badge/?version=latest)](https://pyorps.readthedocs.io/en/latest/?badge=latest)
 [![codecov](https://codecov.io/gh/marhofmann/pyorps/branch/master/graph/badge.svg)](https://codecov.io/gh/marhofmann/pyorps)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/YOUR_PROJECT_ID)](https://www.codacy.com/gh/marhofmann/pyorps/dashboard)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/446710b16d7c4fd3890252c0cd52e052)](https://app.codacy.com/gh/marhofmann/pyorps/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/marhofmann/pyorps/master?filepath=examples/minimal_example.ipynb)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/marhofmann/pyorps/master?filepath=examples)
 
 
 PYORPS is an open-source tool designed to automate route planning for underground cables in power systems. It uses high-resolution raster geodata to perform least-cost path analyses, optimizing routes based on economic and environmental factors.
@@ -132,18 +126,6 @@ path_finder.save_paths(r"<PATH>\<TO>\<YOUR>\<RESULTS>.geojson" )
 
 Please check out the [example](https://github.com/marhofmann/pyorps/blob/master/examples/create_rasterized_geodata.ipynb) 
 for creating and setting up a dedicated raster dataset for your planning task.
-
-## Binder - Run Examples
-
-You can quickly start testing the functionalities of PYORPS using Binder. Click the badge below to launch an interactive
-environment where you can run the example notebooks directly in your browser.
-
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/marhofmann/pyorps/master?filepath=examples/minimal_example.ipynb)
-
-This Binder connection allows you to explore the examples provided in the `examples` directory without needing to 
-install anything on your local machine. It's a great way to get a hands-on experience with PYORPS and see how it can 
-optimize route planning for power systems.
-
 
 ## Installation
 

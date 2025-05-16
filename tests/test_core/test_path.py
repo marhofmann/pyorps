@@ -1,7 +1,6 @@
 import unittest
 import numpy as np
 from shapely.geometry import LineString
-import geopandas as gpd
 
 from pyorps.core.path import Path, PathCollection
 
@@ -20,6 +19,8 @@ class TestPath(unittest.TestCase):
             euclidean_distance=4.24,
             runtimes={"preprocessing": 0.1, "pathfinding": 0.2},
             path_id=42,
+            search_space_buffer_m=1,
+            neighborhood="r0",
             total_length=5.0,
             total_cost=10.0,
             length_by_category={1.0: 2.5, 2.0: 2.5},
@@ -84,14 +85,14 @@ class TestPathCollection(unittest.TestCase):
             source=1, target=2, algorithm="dijkstra", graph_api="networkx",
             path_indices=np.array([]), path_coords=np.array([]),
             path_geometry=LineString([(0, 0), (1, 1)]),
-            euclidean_distance=1.0, runtimes={}, path_id=None
+            euclidean_distance=1.0, runtimes={}, path_id=None, search_space_buffer_m=3, neighborhood="R0"
         )
 
         self.path2 = Path(
             source=2, target=3, algorithm="astar", graph_api="networkx",
             path_indices=np.array([]), path_coords=np.array([]),
             path_geometry=LineString([(1, 1), (2, 2)]),
-            euclidean_distance=1.0, runtimes={}, path_id=5
+            euclidean_distance=1.0, runtimes={}, path_id=5, search_space_buffer_m=3, neighborhood="R0"
         )
 
         # Create another path with explicit ID for replace tests
@@ -99,7 +100,7 @@ class TestPathCollection(unittest.TestCase):
             source=3, target=4, algorithm="bellman-ford", graph_api="networkx",
             path_indices=np.array([]), path_coords=np.array([]),
             path_geometry=LineString([(2, 2), (3, 3)]),
-            euclidean_distance=1.0, runtimes={}, path_id=10
+            euclidean_distance=1.0, runtimes={}, path_id=10, search_space_buffer_m=3, neighborhood="R0"
         )
 
     def test_add_path_default(self):
@@ -151,7 +152,7 @@ class TestPathCollection(unittest.TestCase):
             source=99, target=100, algorithm="modified", graph_api="networkx",
             path_indices=np.array([]), path_coords=np.array([]),
             path_geometry=LineString([(5, 5), (6, 6)]),
-            euclidean_distance=2.0, runtimes={}, path_id=0
+            euclidean_distance=2.0, runtimes={}, path_id=0, search_space_buffer_m=2, neighborhood="R0"
         )
 
         # Add the replacement path with replace=True

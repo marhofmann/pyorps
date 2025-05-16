@@ -1,6 +1,5 @@
 import numpy as np
 import numba as nb
-from numba.typed import Dict
 
 # Define Numba types for clarity
 int8_type = nb.types.int8
@@ -203,19 +202,15 @@ def construct_edges(raster, steps, ignore_max=True):
 
     # Find max cost if needed
     if ignore_max:
-        max_cost = 0
-        for i in range(rows):
-            for j in range(cols):
-                if raster[i, j] > max_cost:
-                    max_cost = raster[i, j]
-    else:
         max_cost = np.iinfo(np.uint16).max  # Max uint16 value
 
-    # Create exclusion mask using unsigned char (uint8) - more efficient than boolean
-    exclude_mask = np.zeros((rows, cols), dtype=np.uint8)
-    for i in range(rows):
-        for j in range(cols):
-            exclude_mask[i, j] = 1 if raster[i, j] != max_cost else 0
+        # Create exclusion mask using unsigned char (uint8) - more efficient than boolean
+        exclude_mask = np.zeros((rows, cols), dtype=np.uint8)
+        for i in range(rows):
+            for j in range(cols):
+                exclude_mask[i, j] = 1 if raster[i, j] != max_cost else 0
+    else:
+        exclude_mask = np.ones((rows, cols), dtype=np.uint8)
 
     # Process each step direction
     for step_idx in range(steps.shape[0]):

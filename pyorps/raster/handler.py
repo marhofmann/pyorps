@@ -204,15 +204,13 @@ class RasterHandler:
             Estimated optimal buffer width in meters
         """
         forbidden_value = np.iinfo(self.raster_dataset.dtype).max
-        # Calculate Euclidean distance between source and target
-        dx = target_coords[0] - source_coords[0]
-        dy = target_coords[1] - source_coords[1]
-        euclidean_dist = np.sqrt(dx * dx + dy * dy)
+        points, euclidean_dist = RasterHandler.max_distance_pair(source_coords, target_coords)
+        s, t = points
 
         # Sample points along the straight line path
         num_samples = min(int(euclidean_dist), 1000)  # Cap at 1000 samples
-        x_samples = np.linspace(source_coords[0], target_coords[0], num_samples).astype(int)
-        y_samples = np.linspace(source_coords[1], target_coords[1], num_samples).astype(int)
+        x_samples = np.linspace(s[0], t[0], num_samples).astype(int)
+        y_samples = np.linspace(s[1], t[1], num_samples).astype(int)
 
         rows, cols = rowcol(self.raster_dataset.transform, list(x_samples), list(y_samples))
 
@@ -269,6 +267,45 @@ class RasterHandler:
         buffer_width = min(max(buffer_width, min_buffer), max_buffer)
 
         return int(buffer_width)
+
+    @staticmethod
+    def max_distance_pair(coords1, coords2):
+        """
+        Find the pair of coordinates (one from coords1, one from coords2) with the highest Euclidean distance.
+
+        Args:
+            coords1: Either a single coordinate tuple (x, y, ...) or a list of coordinate tuples
+            coords2: Either a single coordinate tuple (x, y, ...) or a list of coordinate tuples
+
+        Returns:
+            A tuple containing the two points with the maximum distance (point1, point2)
+        """
+
+        # Normalize inputs to lists of tuples
+        def normalize_coords(coords):
+            if isinstance(coords, tuple) and (len(coords) == 0 or not isinstance(coords[0], tuple)):
+                return [coords]
+            return coords
+
+        coords1_list = normalize_coords(coords1)
+        coords2_list = normalize_coords(coords2)
+
+        if not coords1_list or not coords2_list:
+            return None  # Handle empty inputs
+
+        max_distance = -1
+        max_pair = None
+
+        for point1 in coords1_list:
+            for point2 in coords2_list:
+                # Calculate Euclidean distance
+                distance = np.sqrt(np.sum((a - b) ** 2 for a, b in zip(point1, point2)))
+
+                if distance > max_distance:
+                    max_distance = distance
+                    max_pair = (point1, point2)
+
+        return max_pair, max_distance
 
     def apply_geometry_mask(self, geometry, outside_value=None, bands=None):
         """
