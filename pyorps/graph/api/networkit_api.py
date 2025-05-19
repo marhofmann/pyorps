@@ -1,12 +1,13 @@
-from typing import Union
+from typing import Union, Any, Optional
 
 # Third party
+import numpy as np
 from networkit import Graph
 from networkit.distance import Dijkstra, BidirectionalDijkstra, AStar
 
 # Project files
 from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError
-from .graph_library_api import *
+from .graph_library_api import GraphLibraryAPI
 
 
 class NetworkitAPI(GraphLibraryAPI):
@@ -60,95 +61,6 @@ class NetworkitAPI(GraphLibraryAPI):
             The list of node indices of the nodes in the graph
         """
         return [i for i in self.graph.iterNodes()]
-
-    @staticmethod
-    def _ensure_path_endpoints(path, source, target):
-        """
-        Ensures the path starts with the source node and ends with the target node.
-        """
-        if len(path) > 0:
-            if path[0] != source:
-                path.insert(0, source)
-            if path[-1] != target:
-                path.append(target)
-        return path
-
-    def _compute_all_pairs_shortest_paths(self, sources, targets, algorithm, **kwargs):
-        """
-        Computes paths individually for each source-target pair using the specified
-        algorithm. Returns empty paths for unreachable targets.
-        """
-        paths = []
-        for source in sources:
-            for target in targets:
-                try:
-                    path = self._compute_single_path(source, target, algorithm, **kwargs)
-                    paths.append(path)
-                except NoPathFoundError:
-                    paths.append([])
-        return paths
-
-    def shortest_path(self, source_indices, target_indices, algorithm="dijkstra",
-                      **kwargs):
-        """
-        This method applies the specified shortest path algorithm on the created graph
-        object and finds the shortest
-        path between source and target(s) as a list of node indices.
-
-        Parameters:
-        -----------
-        source_indices : int or list[int]
-            Index or indices of source node(s)
-        target_indices : int or list[int]
-            Index or indices of target node(s)
-        algorithm : str, default="dijkstra"
-            Algorithm to use for shortest path computation.
-            Options: "dijkstra", "bidirectional_dijkstra", "astar"
-        **kwargs:
-            pairwise : bool
-                If True, compute pairwise shortest paths between source_indices and
-                target_indices.
-                Only allowed if len(source_indices) == len(target_indices)
-            heuristic : callable, optional
-                A function that takes two node indices (u, target) and returns an
-                estimate of the distance
-                between them. Only used when algorithm="astar".
-
-        Returns:
-        --------
-        list[int] or list[list[int]]:
-            List of node indices representing the shortest path(s)
-        """
-        # Convert single indices to lists for uniform handling
-        if not isinstance(source_indices, (list, tuple, np.ndarray)):
-            source_indices = [source_indices]
-        if not isinstance(target_indices, (list, tuple, np.ndarray)):
-            target_indices = [target_indices]
-
-        # Check for pairwise computation
-        pairwise = kwargs.get('pairwise', False)
-        if pairwise:
-            if len(source_indices) != len(target_indices):
-                msg = "Source and target lists must have the same length for pairwise computation"
-                raise ValueError(msg)
-            return self._pairwise_shortest_path(source_indices, target_indices, algorithm)
-
-        # Single source, single target
-        if len(source_indices) == 1 and len(target_indices) == 1:
-            source = source_indices[0]
-            target = target_indices[0]
-            return self._compute_single_path(source, target, algorithm, **kwargs)
-
-        # Single source, multiple targets
-        elif len(source_indices) == 1:
-            source = source_indices[0]
-            return self._compute_single_source_multiple_targets(source, target_indices,
-                                                                algorithm, **kwargs)
-
-        # Multiple sources, multiple targets (all pairs)
-        else:
-            return self._all_pairs_shortest_path(source_indices, target_indices,
-                                                 algorithm, **kwargs)
 
     def _compute_single_path(self, source, target, algorithm, **kwargs):
         """
@@ -228,22 +140,6 @@ class NetworkitAPI(GraphLibraryAPI):
             paths.append(path)
         return paths
 
-    def _pairwise_shortest_path(self, sources, targets, algorithm, **kwargs):
-        """
-        Computes pairwise shortest paths between corresponding sources and targets.
-        Uses SPSP for more efficient computation when appropriate.
-        """
-        # For other algorithms, compute each path individually
-        paths = []
-        for source, target in zip(sources, targets):
-            try:
-                path = self._compute_single_path(source, target, algorithm, **kwargs)
-                paths.append(path)
-            except NoPathFoundError:
-                paths.append([])
-
-        return paths
-
     def _all_pairs_shortest_path(self, sources, targets, algorithm, **kwargs):
         """
         Computes shortest paths between all pairs of sources and targets.
@@ -273,4 +169,3 @@ class NetworkitAPI(GraphLibraryAPI):
             # For other algorithms, use helper function to compute paths individually
             return self._compute_all_pairs_shortest_paths(sources, targets, algorithm,
                                                           **kwargs)
-

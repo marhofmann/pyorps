@@ -14,13 +14,13 @@ list, which leads to a much higher (more than double) memory usage!
 
 Please see the specific interfaces to the specific graph libraries for more details!
 """
-from typing import Optional, Any
+from typing import Optional, Any, Union, List
 from abc import abstractmethod
 import numpy as np
 from time import time
 
 from .graph_api import GraphAPI
-
+from pyorps.core.exceptions import NoPathFoundError
 from pyorps.utils.traversal import construct_edges
 
 
@@ -67,6 +67,18 @@ class GraphLibraryAPI(GraphAPI):
         self.graph = self.create_graph(from_nodes, to_nodes, cost, **kwargs)
         self.graph_creation_time = time() - before_graph_creation
 
+    @staticmethod
+    def _ensure_path_endpoints(path, source, target):
+        """
+        Ensures the path starts with the source node and ends with the target node.
+        """
+        if len(path) > 0:
+            if path[0] != source:
+                path.insert(0, source)
+            if path[-1] != target:
+                path.append(target)
+        return path
+
     @abstractmethod
     def create_graph(self, from_nodes: np.ndarray[int], to_nodes: np.ndarray[int],
                      cost: Optional[np.ndarray[int]] = None, **kwargs) -> Any:
@@ -111,19 +123,7 @@ class GraphLibraryAPI(GraphAPI):
         """
 
     @abstractmethod
-    def shortest_path(self, source_indices, target_indices, algorithm="dijkstra",
-                      **kwargs) -> list[int]:
-        """
-        This method applies the specified shortest path algorithm on the created graph
-        object and finds the shortest path between source and target(s) as a list of
-        node indices.
-
-        :return: list[int]
-            The list of node indices of the shortest path between source and target
-        """
-
-    @abstractmethod
-    def get_nodes(self) -> list[int] | np.ndarray[int]:
+    def get_nodes(self) -> Union[List[int], np.ndarray]:
         """
         This method returns the nodes in the graph as a list or numpy array of node
         indices.
@@ -132,8 +132,118 @@ class GraphLibraryAPI(GraphAPI):
             The list of node indices of the nodes in the graph
         """
 
+    def shortest_path(self, source_indices, target_indices, algorithm="dijkstra",
+                      **kwargs):
+        """
+        This method applies the specified shortest path algorithm on the created graph
+        object and finds the shortest path between source and target(s) as a list of
+        node indices.
+
+        Parameters:
+        -----------
+        source_indices : int or list[int]
+            Index or indices of source node(s)
+        target_indices : int or list[int]
+            Index or indices of target node(s)
+        algorithm : str, default="dijkstra"
+            Algorithm to use for shortest path computation.
+            Options depend on the specific library implementation.
+        **kwargs:
+            pairwise : bool
+                If True, compute pairwise shortest paths between source_indices and
+                target_indices.
+                Only allowed if len(source_indices) == len(target_indices)
+            Additional parameters for specific algorithms
+
+        Returns:
+        --------
+        list[int] or list[list[int]]:
+            List of node indices representing the shortest path(s)
+        """
+        # Convert single indices to lists for uniform handling
+        if not isinstance(source_indices, (list, tuple, np.ndarray)):
+            source_indices = [source_indices]
+        if not isinstance(target_indices, (list, tuple, np.ndarray)):
+            target_indices = [target_indices]
+
+        # Check for pairwise computation
+        pairwise = kwargs.get('pairwise', False)
+        if pairwise:
+            if len(source_indices) != len(target_indices):
+                msg = ("Source and target lists must have the same length for "
+                       "pairwise computation")
+                raise ValueError(msg)
+            return self._pairwise_shortest_path(source_indices, target_indices,
+                                                algorithm, **kwargs)
+
+        # Single source, single target
+        if len(source_indices) == 1 and len(target_indices) == 1:
+            source = source_indices[0]
+            target = target_indices[0]
+            return self._compute_single_path(source, target, algorithm, **kwargs)
+
+        # Single source, multiple targets
+        elif len(source_indices) == 1:
+            source = source_indices[0]
+            return self._compute_single_source_multiple_targets(source, target_indices,
+                                                                algorithm, **kwargs)
+
+        # Multiple sources, multiple targets (all pairs)
+        else:
+            return self._all_pairs_shortest_path(source_indices, target_indices,
+                                                 algorithm, **kwargs)
+
+    @abstractmethod
+    def _compute_single_path(self, source, target, algorithm, **kwargs):
+        """
+        Computes shortest path between a single source and target.
+        """
+
+    @abstractmethod
+    def _compute_single_source_multiple_targets(self, source, targets, algorithm,
+                                                **kwargs):
+        """
+        Computes shortest paths from a single source to multiple targets.
+        """
+
+    def _pairwise_shortest_path(self, sources, targets, algorithm, **kwargs):
+        """
+        Default implementation for pairwise shortest path computation.
+        Subclasses can override this for library-specific optimizations.
+        """
+        paths = []
+        for source, target in zip(sources, targets):
+            try:
+                path = self._compute_single_path(source, target, algorithm, **kwargs)
+                paths.append(path)
+            except NoPathFoundError:
+                paths.append([])
+        return paths
+
+    def _compute_all_pairs_shortest_paths(self, sources, targets, algorithm, **kwargs):
+        """
+        Computes paths individually for each source-target pair using the specified
+        algorithm. Returns empty paths for unreachable targets.
+        """
+        paths = []
+        for source in sources:
+            for target in targets:
+                try:
+                    path = self._compute_single_path(source, target, algorithm,
+                                                     **kwargs)
+                    paths.append(path)
+                except NoPathFoundError:
+                    paths.append([])
+        return paths
+
+    @abstractmethod
+    def _all_pairs_shortest_path(self, sources, targets, algorithm, **kwargs):
+        """
+        Computes shortest paths between all pairs of sources and targets.
+        """
+
     def get_a_star_heuristic(self, target: int,
-                             **kwargs) -> tuple[np.ndarray[int], np.ndarray[float]]:
+                             **kwargs) -> tuple[np.ndarray, np.ndarray]:
         """
         Calculate the A* heuristic based on the Euclidean distance from the target node.
 
@@ -170,4 +280,3 @@ class GraphLibraryAPI(GraphAPI):
         if 'heu_weight' in kwargs:
             heuristic *= kwargs['heu_weight']
         return nodes, heuristic
-

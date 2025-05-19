@@ -84,7 +84,8 @@ class RasterShapeError(Exception):
     Custom exception if the raster shape is not supported
     """
     def __init__(self, raster_shape: tuple[int, ...]) -> None:
-        message = f"Raster shape of {raster_shape} not supported! Only 2D (n, m) or 3D (n, m, 2) supported!"
+        message = (f"Raster shape of {raster_shape} not supported! "
+                   f"Only 2D (n, m) or 3D (n, m, 2) supported!")
         super().__init__(message)
 
 
@@ -93,13 +94,15 @@ class NoPathFoundError(Exception):
     Custom exception if no path can be found in the graph for source and target
     """
     def __init__(self, source: int, target: int) -> None:
-        message = f"No path found from {source} to {target}! Choose different source and target or increase buffer!"
+        message = (f"No path found from {source} to {target}! Choose different "
+                   f"source and target or increase buffer!")
         super().__init__(message)
 
 
 class AlgorthmNotImplementedError(Exception):
     """
-    Custom exception if a specific algorithm is not implemented in the API or the graph library
+    Custom exception if a specific algorithm is not implemented in the API or the graph
+    library
     """
     def __init__(self, algorithm: str, graph_library: str) -> None:
         message = f"Algorithm {algorithm} for {graph_library} not supported!"
