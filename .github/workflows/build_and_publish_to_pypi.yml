@@ -11,10 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]  # Removed 3.13 as it might not be fully supported
+        python-version: ["3.11", "3.12"]  # Specify the Python versions to use
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -24,22 +25,16 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build wheel twine cibuildwheel
+          pip install build twine  # Install build and twine for packaging and publishing
 
-      - name: Build wheels
-        run: python -m cibuildwheel --output-dir dist/
-        env:
-          CIBW_BUILD: cp311-* cp312-*
-          CIBW_SKIP: "*-win32 *-manylinux_i686"
-
-      - name: Build source distribution
-        run: python -m build
+      - name: Build distributions
+        run: python -m build  # Build the package (both wheel and sdist)
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: dist/  # Upload the built distributions
 
   publish:
     name: Publish to PyPI
@@ -54,7 +49,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: dist/  # Download the built distributions
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          username: marhofmann  # Use your PyPI username
+          password: ${{ secrets.PYPI_TOKEN }}  # Reference the secret for your PyPI token
