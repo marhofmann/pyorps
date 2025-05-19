@@ -41,7 +41,7 @@ tests/test_core/test_cost_assumptions.py::TestCostAssumptions::test_calculate_co
 
 tests/test_core/test_cost_assumptions.py::TestCostAssumptions::test_column_relationship_detection_complete
 tests/test_core/test_cost_assumptions.py::TestCostAssumptions::test_column_relationship_with_nulls_and_patterns
-  D:\a\pyorps\pyorps\pyorps\core\cost_assumptions.py:678: RuntimeWarning: invalid value encountered in scalar divide
+  D:\a\pyorps\pyorps\pyorps\core\cost_assumptions.py:679: RuntimeWarning: invalid value encountered in scalar divide
     if non_empty_cells / total_cells > 0.05:
 
 tests/test_graph/test_path_finder.py::TestPathFinder::test_path_collection_replace
@@ -71,7 +71,7 @@ _______________ coverage: platform win32, python 3.11.9-final-0 _______________
 
 Name                                    Stmts   Miss  Cover   Missing
 ---------------------------------------------------------------------
-pyorps\core\cost_assumptions.py           346     25    93%   50, 132, 145, 148, 150, 220, 232-234, 595, 602, 683-691, 697-704, 708-710, 785, 835
+pyorps\core\cost_assumptions.py           346     25    93%   50, 132, 145, 148, 150, 220, 232-234, 595, 602, 684-692, 698-705, 709-711, 786, 836
 pyorps\core\exceptions.py                  25      0   100%
 pyorps\core\path.py                        73      0   100%
 pyorps\core\types.py                       13      0   100%
@@ -92,4 +92,4 @@ pyorps\utils\traversal.py                 259     16    94%   167, 398-404, 428,
 ---------------------------------------------------------------------
 TOTAL                                    2690    259    90%
 Coverage XML written to file coverage.xml
-================= 331 passed, 10 warnings in 83.09s (0:01:23) =================
+================= 331 passed, 10 warnings in 79.22s (0:01:19) =================

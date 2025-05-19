@@ -2,7 +2,7 @@ from typing import Union
 
 # Third party
 import igraph as ig
-from numpy import float64, ndarray, max
+from numpy import float64, ndarray, max as np_max
 
 # Project files
 from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError
@@ -27,7 +27,7 @@ class IGraphAPI(GraphLibraryAPI):
         if (n := kwargs.get('n', None)) is not None:
             n_vertices = n
         else:
-            n_vertices = max([max(from_nodes), max(to_nodes)]) + 1
+            n_vertices = np_max([np_max(from_nodes), np_max(to_nodes)]) + 1
 
         # Create graph
         self.graph = ig.Graph(n=int(n_vertices), directed=False)
@@ -159,7 +159,7 @@ class IGraphAPI(GraphLibraryAPI):
             if len(source_indices) != len(target_indices):
                 msg = ("Source and target lists must have the same length for pairwise "
                        "computation")
-                raise ValueError()
+                raise ValueError(msg)
             return self._pairwise_shortest_path(source_indices, target_indices, algorithm)
 
         # Single source, single target

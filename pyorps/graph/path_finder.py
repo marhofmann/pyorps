@@ -549,11 +549,11 @@ class PathFinder:
         raster_data = self.raster_handler.data[0]
 
         # Calculate metrics using Numba-accelerated function
-        path.total_length, cat, len = calculate_path_metrics_numba(raster_data,
-                                                                   path_indices)
+        path.total_length, cat, length = calculate_path_metrics_numba(raster_data,
+                                                                      path_indices)
 
         # Convert to regular Python dictionary
-        path.length_by_category = dict(zip(cat, len))
+        path.length_by_category = dict(zip(cat, length))
         tot = path.total_length
         l_by_cat = path.length_by_category.items()
         # Calculate percentages

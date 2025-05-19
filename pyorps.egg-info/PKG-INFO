@@ -22,6 +22,7 @@ Requires-Dist: rasterio==1.4.3
 Requires-Dist: networkit>=11.1
 Requires-Dist: matplotlib==3.10.1
 Requires-Dist: requests==2.32.3
+Requires-Dist: defusedxml==0.7.1
 Provides-Extra: graph
 Requires-Dist: rustworkx==0.16.0; extra == "graph"
 Requires-Dist: igraph==0.11.8; extra == "graph"
