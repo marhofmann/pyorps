@@ -217,10 +217,13 @@ class TestRustworkxAPI(unittest.TestCase):
             mock_compute.return_value = [[0, 1, 2], [3, 4, 5], []]
 
             # Call method
-            result = self.api.shortest_path([0, 3, 6], [2, 5, 7], algorithm="dijkstra", pairwise=True)
+            result = self.api.shortest_path([0, 3, 6],
+                                            [2, 5, 7],
+                                            algorithm="dijkstra", pairwise=True)
 
             # Verify _pairwise_shortest_path was called with correct parameters
-            mock_compute.assert_called_once_with([0, 3, 6], [2, 5, 7], "dijkstra")
+            mock_compute.assert_called_once_with([0, 3, 6], [2, 5, 7],
+                                                 "dijkstra", pairwise=True)
             self.assertEqual(result, [[0, 1, 2], [3, 4, 5], []])
 
     def test_shortest_path_all_pairs(self):

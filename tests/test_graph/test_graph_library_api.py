@@ -23,6 +23,16 @@ class TestGraphLibraryAPI(unittest.TestCase):
 
         # Create concrete implementation since GraphLibraryAPI is abstract
         class ConcreteGraphLibraryAPI(GraphLibraryAPI):
+            def _all_pairs_shortest_path(self, sources, targets, algorithm, **kwargs):
+                pass
+
+            def _compute_single_source_multiple_targets(self, source, targets,
+                                                        algorithm, **kwargs):
+                pass
+
+            def _compute_single_path(self, source, target, algorithm, **kwargs):
+                pass
+
             def create_graph(self, from_nodes, to_nodes, cost=None, **kwargs):
                 return "graph_created"
 
@@ -60,6 +70,16 @@ class TestGraphLibraryAPI(unittest.TestCase):
 
         # Create a concrete implementation
         class ConcreteGraphLibraryAPI(GraphLibraryAPI):
+            def _all_pairs_shortest_path(self, sources, targets, algorithm, **kwargs):
+                pass
+
+            def _compute_single_source_multiple_targets(self, source, targets,
+                                                        algorithm, **kwargs):
+                pass
+
+            def _compute_single_path(self, source, target, algorithm, **kwargs):
+                pass
+
             def create_graph(self, from_nodes, to_nodes, cost=None, **kwargs):
                 return "graph_created"
 
@@ -100,6 +120,16 @@ class TestGraphLibraryAPI(unittest.TestCase):
 
         # Create a concrete implementation
         class ConcreteGraphLibraryAPI(GraphLibraryAPI):
+            def _all_pairs_shortest_path(self, sources, targets, algorithm, **kwargs):
+                pass
+
+            def _compute_single_source_multiple_targets(self, source, targets,
+                                                        algorithm, **kwargs):
+                pass
+
+            def _compute_single_path(self, source, target, algorithm, **kwargs):
+                pass
+
             def create_graph(self, from_nodes, to_nodes, cost=None, **kwargs):
                 return "graph_created"
 

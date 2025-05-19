@@ -20,7 +20,7 @@ import numpy as np
 from time import time
 
 from .graph_api import GraphAPI
-from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError
+from pyorps.core.exceptions import NoPathFoundError
 from pyorps.utils.traversal import construct_edges
 
 
@@ -170,9 +170,11 @@ class GraphLibraryAPI(GraphAPI):
         pairwise = kwargs.get('pairwise', False)
         if pairwise:
             if len(source_indices) != len(target_indices):
-                msg = "Source and target lists must have the same length for pairwise computation"
+                msg = ("Source and target lists must have the same length for "
+                       "pairwise computation")
                 raise ValueError(msg)
-            return self._pairwise_shortest_path(source_indices, target_indices, algorithm, **kwargs)
+            return self._pairwise_shortest_path(source_indices, target_indices,
+                                                algorithm, **kwargs)
 
         # Single source, single target
         if len(source_indices) == 1 and len(target_indices) == 1:
@@ -183,11 +185,13 @@ class GraphLibraryAPI(GraphAPI):
         # Single source, multiple targets
         elif len(source_indices) == 1:
             source = source_indices[0]
-            return self._compute_single_source_multiple_targets(source, target_indices, algorithm, **kwargs)
+            return self._compute_single_source_multiple_targets(source, target_indices,
+                                                                algorithm, **kwargs)
 
         # Multiple sources, multiple targets (all pairs)
         else:
-            return self._all_pairs_shortest_path(source_indices, target_indices, algorithm, **kwargs)
+            return self._all_pairs_shortest_path(source_indices, target_indices,
+                                                 algorithm, **kwargs)
 
     @abstractmethod
     def _compute_single_path(self, source, target, algorithm, **kwargs):
@@ -196,11 +200,11 @@ class GraphLibraryAPI(GraphAPI):
         """
 
     @abstractmethod
-    def _compute_single_source_multiple_targets(self, source, targets, algorithm, **kwargs):
+    def _compute_single_source_multiple_targets(self, source, targets, algorithm,
+                                                **kwargs):
         """
         Computes shortest paths from a single source to multiple targets.
         """
-
 
     def _pairwise_shortest_path(self, sources, targets, algorithm, **kwargs):
         """
@@ -225,7 +229,8 @@ class GraphLibraryAPI(GraphAPI):
         for source in sources:
             for target in targets:
                 try:
-                    path = self._compute_single_path(source, target, algorithm, **kwargs)
+                    path = self._compute_single_path(source, target, algorithm,
+                                                     **kwargs)
                     paths.append(path)
                 except NoPathFoundError:
                     paths.append([])
