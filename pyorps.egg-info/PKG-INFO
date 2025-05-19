@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: pyorps
-Version: 0.1.1
+Version: 0.1.0
 Summary: PYORPS (Python for Optimal Routes in Power Systems)
 Author-email: Martin Hofmann <martin.hofmann-3@ei.thm.de>
 Project-URL: Homepage, https://github.com/marhofmann/pyorps
@@ -11,7 +11,7 @@ Classifier: Programming Language :: Python :: 3
 Classifier: Programming Language :: Python :: 3.11
 Classifier: Topic :: Scientific/Engineering :: GIS
 Classifier: Topic :: Scientific/Engineering :: Physics
-Requires-Python: >=3.10
+Requires-Python: >=3.11
 Description-Content-Type: text/markdown
 License-File: LICENSE
 Requires-Dist: numpy==2.2.5
