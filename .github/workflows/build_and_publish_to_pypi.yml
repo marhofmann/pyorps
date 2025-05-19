@@ -14,37 +14,37 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v5
-      with:
-        enable-cache: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Install build dependencies
-      run: |
-        uv pip install build wheel cibuildwheel
+      - name: Install build dependencies
+        run: |
+          uv pip install build wheel cibuildwheel
 
-    - name: Build wheels
-      run: |
-        python -m cibuildwheel --output-dir dist/
-      env:
-        CIBW_BUILD: cp310-* cp311-* cp312-* cp313-*
-        CIBW_SKIP: *-win32 *-manylinux_i686
+      - name: Build wheels
+        run: |
+          python -m cibuildwheel --output-dir dist/
+        env:
+          CIBW_BUILD: cp310-* cp311-* cp312-* cp313-*
+          CIBW_SKIP: *-win32 *-manylinux_i686
 
-    - name: Build SDist
-      run: python -m build --sdist --outdir dist/
+      - name: Build SDist
+        run: python -m build --sdist --outdir dist/
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: python-package-distributions
-        path: dist/
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
 
   publish:
     name: Publish to PyPI
@@ -55,11 +55,11 @@ jobs:
       id-token: write
 
     steps:
-    - name: Download artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: python-package-distributions
-        path: dist/
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
 
-    - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
