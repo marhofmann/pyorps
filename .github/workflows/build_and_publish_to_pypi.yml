@@ -11,40 +11,34 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12"]  # Removed 3.13 as it might not be fully supported
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
+      - uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
-          uv pip install build wheel cibuildwheel
+          python -m pip install --upgrade pip
+          pip install build wheel twine cibuildwheel
 
       - name: Build wheels
-        run: |
-          python -m cibuildwheel --output-dir dist/
+        run: python -m cibuildwheel --output-dir dist/
         env:
-          CIBW_BUILD: cp310-* cp311-* cp312-* cp313-*
-          CIBW_SKIP: *-win32 *-manylinux_i686
+          CIBW_BUILD: cp311-* cp312-*
+          CIBW_SKIP: "*-win32 *-manylinux_i686"
 
-      - name: Build SDist
-        run: python -m build --sdist --outdir dist/
+      - name: Build source distribution
+        run: python -m build
 
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: python-package-distributions
+          name: dist
           path: dist/
 
   publish:
@@ -59,11 +53,8 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: python-package-distributions
+          name: dist
           path: dist/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          username: marhofmann  # Use your PyPI username
-          password: ${{ secrets.PYPI_TOKEN }}  # Use a secret for your PyPI token
