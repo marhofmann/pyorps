@@ -33,7 +33,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: dist-${{ matrix.python-version }}  # Unique artifact name for each Python version
           path: dist/  # Upload the built distributions
 
   publish:
@@ -48,7 +48,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: dist
+          name: dist-${{ needs.build.outputs.python-version }}  # Adjust to match the artifact name
           path: dist/  # Download the built distributions
 
       - name: Publish to PyPI
