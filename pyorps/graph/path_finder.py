@@ -756,4 +756,3 @@ class PathFinder:
             path_id=path_id,
             reverse_colors=reverse_colors
         )
-
