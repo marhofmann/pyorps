@@ -24,7 +24,7 @@ class GraphAPI(ABC):
                       source_indices: Union[int, list[int], ndarray[int]],
                       target_indices: Union[int, list[int], ndarray[int]],
                       algorithm: str = "dijkstra",
-                      pairwise: bool = False) -> list[list[int]]:
+                      **kwargs) -> list[list[int]]:
         """
         Find shortest path(s) between source and target indices.
 
@@ -32,10 +32,17 @@ class GraphAPI(ABC):
             source_indices: Source node indices
             target_indices: Target node indices
             algorithm: Algorithm name (e.g., "dijkstra", "astar")
-            pairwise: Whether to compute paths pairwise (for multiple sources/targets)
+            **kwargs:
+                pairwise : bool
+                    If True, compute pairwise shortest paths between source_indices and
+                    target_indices.
+                    Only allowed if len(source_indices) == len(target_indices)
+                heuristic : callable, optional
+                    A function that takes two node indices (u, target) and returns an
+                    estimate of the distance between them. Only used when
+                    algorithm="astar".
+
 
         Returns:
             list of path indices for each source-target pair
         """
-        pass
-

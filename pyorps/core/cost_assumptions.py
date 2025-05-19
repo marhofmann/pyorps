@@ -650,7 +650,8 @@ def _find_side_features(gdf: GeoDataFrame,
     return side_features if side_features else None
 
 
-def _column_shows_relationship_to_main_feature(gdf: GeoDataFrame, main_feature: str, side_feature: str) -> bool:
+def _column_shows_relationship_to_main_feature(gdf: GeoDataFrame, main_feature: str,
+                                               side_feature: str) -> bool:
     """
     Determine if a column adds meaningful information in relation to the main feature.
 
@@ -679,7 +680,7 @@ def _column_shows_relationship_to_main_feature(gdf: GeoDataFrame, main_feature: 
             return True
 
         # Even with many nulls, check if there's a pattern to the non-nulls
-        for main_val, row in crosstab.iterrows():
+        for _, row in crosstab.iterrows():
             non_zero_vals = row[row > 0]
 
             # Skip rows with only one value

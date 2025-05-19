@@ -83,7 +83,6 @@ class GraphLibraryAPI(GraphAPI):
         Returns:
             The graph object
         """
-        pass
 
     @abstractmethod
     def get_number_of_nodes(self) -> int:
@@ -92,7 +91,6 @@ class GraphLibraryAPI(GraphAPI):
 
         :return: The number of Nodes
         """
-        pass
 
     @abstractmethod
     def get_number_of_edges(self) -> int:
@@ -101,7 +99,6 @@ class GraphLibraryAPI(GraphAPI):
 
         :return: The number of Edges
         """
-        pass
 
     @abstractmethod
     def remove_isolates(self) -> None:
@@ -112,7 +109,6 @@ class GraphLibraryAPI(GraphAPI):
 
         :return: None
         """
-        pass
 
     @abstractmethod
     def shortest_path(self, source_indices, target_indices, algorithm="dijkstra",
@@ -125,7 +121,6 @@ class GraphLibraryAPI(GraphAPI):
         :return: list[int]
             The list of node indices of the shortest path between source and target
         """
-        pass
 
     @abstractmethod
     def get_nodes(self) -> list[int] | np.ndarray[int]:
@@ -136,10 +131,9 @@ class GraphLibraryAPI(GraphAPI):
         :return:  list[int] | ndarray[int]
             The list of node indices of the nodes in the graph
         """
-        pass
 
-    def get_a_star_heuristic(self, target: int, **kwargs) -> tuple[np.ndarray[int],
-    np.ndarray[float]]:
+    def get_a_star_heuristic(self, target: int,
+                             **kwargs) -> tuple[np.ndarray[int], np.ndarray[float]]:
         """
         Calculate the A* heuristic based on the Euclidean distance from the target node.
 

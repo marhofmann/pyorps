@@ -1,6 +1,6 @@
 # Third party
 import rustworkx as rx
-from numpy import where, ndarray, ravel_multi_index, max
+from numpy import where, ndarray, ravel_multi_index, max as np_max
 from typing import Union, Optional
 
 # Project files
@@ -29,7 +29,7 @@ class RustworkxAPI(GraphLibraryAPI):
         if (n := kwargs.get('n', None)) is not None:
             max_node = n - 1
         else:
-            max_node = max([max(from_nodes), max(to_nodes)])
+            max_node = np_max([np_max(from_nodes), np_max(to_nodes)])
 
         # Initialize graph
         self.graph = rx.PyGraph()

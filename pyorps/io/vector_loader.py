@@ -3,7 +3,7 @@ from pathlib import Path
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
-from xml.etree import ElementTree as et
+from defusedxml import ElementTree as et
 import tempfile
 
 import requests
@@ -672,7 +672,7 @@ def _fetch_wfs_data(
     # Extract namespace if present
     namespace = None
     if ':' in layer:
-        namespace, local_name = layer.split(':', 1)
+        namespace, _ = layer.split(':', 1)
 
     # Try different WFS versions
     for version in ["2.0.0", "1.1.0", "1.0.0"]:
