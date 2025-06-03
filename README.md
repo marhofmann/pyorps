@@ -3,9 +3,9 @@
 [![PyPI version](https://img.shields.io/pypi/v/pyorps.svg)](https://pypi.org/project/pyorps/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/pyorps.svg)](https://pypi.org/project/pyorps/)
 [![Documentation Status](https://readthedocs.org/projects/pyorps/badge/?version=latest)](https://pyorps.readthedocs.io/en/latest/?badge=latest)
-[![codecov](https://codecov.io/gh/marhofmann/pyorps/branch/master/graph/badge.svg)](https://codecov.io/gh/marhofmann/pyorps)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/446710b16d7c4fd3890252c0cd52e052)](https://app.codacy.com/gh/marhofmann/pyorps/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+[![codecov](https://codecov.io/gh/marhofmann/pyorps/branch/main/graph/badge.svg)](https://codecov.io/gh/marhofmann/pyorps)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/1403393e905b419b8b3a5865cebe85a7)](https://app.codacy.com/gh/marhofmann/pyorps/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)]
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/marhofmann/pyorps/master?filepath=examples)
 
 
