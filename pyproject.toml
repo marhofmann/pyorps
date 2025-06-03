@@ -32,7 +32,7 @@ dependencies = [
     "geopandas==1.0.1",
     "numba==0.61.2",
     "rasterio==1.4.3",
-    "networkit==11.1",
+    "networkit>=11.1",
     "matplotlib==3.10.1",
     "requests==2.32.3",
     "defusedxml==0.7.1",
