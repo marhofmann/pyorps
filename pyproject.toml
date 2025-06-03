@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pyorps"
 version = "0.1.0"
-description = "PYORPS (Python for Optimal Routes in Power Systems)"
+description = "PYORPS - (Python for Optimal Routes in Power Systems)"
 readme = "README.md"
 requires-python = ">=3.11"
 license-files = ["LICENSE"]
