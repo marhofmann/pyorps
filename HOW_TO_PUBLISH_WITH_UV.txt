@@ -1,3 +1,0 @@
-uv publish --index testpypi --token <your_testpypi_token>
-
-uv pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple pyorps
