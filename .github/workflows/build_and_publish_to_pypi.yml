@@ -1,0 +1,58 @@
+name: Build and Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags
+
+jobs:
+  build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]  # Specify the Python versions to use
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine  # Install build and twine for packaging and publishing
+
+      - name: Build distributions
+        run: python -m build  # Build the package (both wheel and sdist)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.python-version }}
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.build.outputs.python-version }}  # Adjust to match the artifact name
+          path: dist/  # Download the built distributions
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          username: marhofmann  # Use your PyPI username
+          password: ${{ secrets.PYPI_TOKEN }}  # Reference the secret for your PyPI token

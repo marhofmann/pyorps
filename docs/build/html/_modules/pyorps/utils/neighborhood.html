@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pyorps.utils.neighborhood &#8212; PYORPS 09.05.2025 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../_static/documentation_options.js?v=d2164c19"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for pyorps.utils.neighborhood</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+
+<div class="viewcode-block" id="get_neighborhood_steps">
+<a class="viewcode-back" href="../../../pyorps.utils.html#pyorps.utils.neighborhood.get_neighborhood_steps">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_neighborhood_steps</span><span class="p">(</span><span class="n">k</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">directed</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate the steps for a k-neighborhood.</span>
+
+<span class="sd">    Parameters:</span>
+<span class="sd">        k (int): The neighborhood parameter (k &gt;= 0)</span>
+<span class="sd">        directed (bool): If True, includes all possible step directions;</span>
+<span class="sd">                         if False, includes a minimal set of steps that ensures</span>
+<span class="sd">                         bidirectional connectivity in the graph</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        numpy.ndarray: A numpy array with dtype int8 containing all steps</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">numbers</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;^\D*(\d+)&#39;</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">numbers</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;k must be an integer or neighbourhood string!&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">_k</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">numbers</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">_k</span> <span class="o">=</span> <span class="n">k</span>
+
+    <span class="k">if</span> <span class="n">_k</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;k must be non-negative&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">_k</span> <span class="o">&gt;</span> <span class="mi">127</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;k is too large for int8 dtype (max value is 127)&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Generate all steps with full directionality</span>
+    <span class="n">steps</span> <span class="o">=</span> <span class="n">_generate_full_steps</span><span class="p">(</span><span class="n">_k</span><span class="p">,</span> <span class="p">{},</span> <span class="n">directed</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">steps</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_generate_full_steps</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">memo</span><span class="p">,</span> <span class="n">directed</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate the complete set of steps for neighborhood k. Recursive function as described in</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">memo</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">memo</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+
+    <span class="n">k</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">k</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="c1"># R_0: cardinal directions</span>
+        <span class="n">steps</span> <span class="o">=</span> <span class="p">{(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)}</span>
+        <span class="n">steps</span> <span class="o">|=</span> <span class="p">{(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)}</span> <span class="k">if</span> <span class="n">directed</span> <span class="k">else</span> <span class="nb">set</span><span class="p">()</span>
+
+    <span class="k">elif</span> <span class="n">k</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="c1"># R_1: R_0 plus diagonal directions</span>
+        <span class="n">steps</span> <span class="o">=</span> <span class="n">_generate_full_steps</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">memo</span><span class="p">,</span> <span class="n">directed</span><span class="p">)</span>
+        <span class="n">steps</span> <span class="o">|=</span> <span class="p">{(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)}</span>
+        <span class="n">steps</span> <span class="o">|=</span> <span class="p">{(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)}</span> <span class="k">if</span> <span class="n">directed</span> <span class="k">else</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># For k &gt; 1: R_k = R_{k-1} ∪ N_k</span>
+        <span class="n">prev_steps</span> <span class="o">=</span> <span class="n">_generate_full_steps</span><span class="p">(</span><span class="n">k</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">memo</span><span class="p">,</span> <span class="n">directed</span><span class="p">)</span>
+        <span class="n">new_steps</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+        <span class="c1"># Check boundary points</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="o">-</span><span class="n">k</span><span class="p">,</span> <span class="n">k</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="ow">in</span> <span class="p">[(</span><span class="n">i</span><span class="p">,</span> <span class="n">k</span><span class="p">),</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="o">-</span><span class="n">k</span><span class="p">),</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">i</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="n">k</span><span class="p">,</span> <span class="n">i</span><span class="p">)]:</span>
+                <span class="c1"># Skip (0,0) and points already in prev_steps</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="ow">in</span> <span class="n">prev_steps</span> <span class="ow">or</span> <span class="n">x</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">y</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="k">continue</span>
+
+                <span class="c1"># Check if point is a multiple of a previous step</span>
+                <span class="n">gcd</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">gcd</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">if</span> <span class="n">x</span> <span class="o">!=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">abs</span><span class="p">(</span><span class="n">y</span><span class="p">)</span> <span class="k">if</span> <span class="n">y</span> <span class="o">!=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">gcd</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span> <span class="p">((</span><span class="n">x</span> <span class="o">//</span> <span class="n">gcd</span><span class="p">,</span> <span class="n">y</span> <span class="o">//</span> <span class="n">gcd</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">prev_steps</span> <span class="ow">and</span> <span class="p">(</span><span class="n">x</span> <span class="o">//</span> <span class="o">-</span><span class="n">gcd</span><span class="p">,</span> <span class="n">y</span> <span class="o">//</span> <span class="o">-</span><span class="n">gcd</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">prev_steps</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">directed</span> <span class="ow">or</span> <span class="p">((</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">new_steps</span> <span class="ow">and</span> <span class="p">(</span><span class="o">-</span><span class="n">x</span><span class="p">,</span> <span class="o">-</span><span class="n">y</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">new_steps</span><span class="p">):</span>
+                        <span class="n">new_steps</span><span class="o">.</span><span class="n">add</span><span class="p">((</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">))</span>
+
+        <span class="n">steps</span> <span class="o">=</span> <span class="n">prev_steps</span> <span class="o">|</span> <span class="n">new_steps</span>
+
+    <span class="c1"># Cache result</span>
+    <span class="n">memo</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">steps</span>
+    <span class="k">return</span> <span class="n">steps</span>
+
+
+<div class="viewcode-block" id="normalize_angle">
+<a class="viewcode-back" href="../../../pyorps.utils.html#pyorps.utils.neighborhood.normalize_angle">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">normalize_angle</span><span class="p">(</span><span class="n">angle</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Normalize an angle to the range [0, 2π).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">angle</span> <span class="o">%</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="get_move_directions">
+<a class="viewcode-back" href="../../../pyorps.utils.html#pyorps.utils.neighborhood.get_move_directions">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_move_directions</span><span class="p">(</span><span class="n">moves</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get all possible move directions in radians for a given move set.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        moves: List of move vectors</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A sorted list of angles in radians [0, 2π)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">directions</span> <span class="o">=</span> <span class="p">[</span><span class="n">normalize_angle</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">atan2</span><span class="p">(</span><span class="n">move</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">move</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span> <span class="k">for</span> <span class="n">move</span> <span class="ow">in</span> <span class="n">moves</span><span class="p">]</span>
+
+    <span class="c1"># Remove duplicates and sort</span>
+    <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">directions</span><span class="p">)))</span></div>
+
+
+
+<div class="viewcode-block" id="find_adjacent_directions">
+<a class="viewcode-back" href="../../../pyorps.utils.html#pyorps.utils.neighborhood.find_adjacent_directions">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_adjacent_directions</span><span class="p">(</span><span class="n">phi</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">directions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Find the adjacent directions θ_j and θ_{j+1} such that θ_j &lt; φ &lt; θ_{j+1}.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        phi: The path direction in radians</span>
+<span class="sd">        directions: Sorted list of all possible move directions in radians</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A tuple (θ_j, θ_{j+1})</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Normalize phi to [0, 2π)</span>
+    <span class="n">phi</span> <span class="o">=</span> <span class="n">normalize_angle</span><span class="p">(</span><span class="n">phi</span><span class="p">)</span>
+
+    <span class="c1"># Handle the case where phi exactly matches a direction</span>
+    <span class="k">if</span> <span class="n">phi</span> <span class="ow">in</span> <span class="n">directions</span><span class="p">:</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">directions</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">phi</span><span class="p">)</span>
+        <span class="c1"># Use adjacent directions</span>
+        <span class="k">return</span> <span class="n">directions</span><span class="p">[</span><span class="n">idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">],</span> <span class="n">directions</span><span class="p">[(</span><span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">directions</span><span class="p">)]</span>
+
+    <span class="c1"># Find the adjacent directions</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">directions</span><span class="p">)):</span>
+        <span class="c1"># Handle the wrap-around case</span>
+        <span class="n">next_i</span> <span class="o">=</span> <span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">directions</span><span class="p">)</span>
+
+        <span class="n">curr_dir</span> <span class="o">=</span> <span class="n">directions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">next_dir</span> <span class="o">=</span> <span class="n">directions</span><span class="p">[</span><span class="n">next_i</span><span class="p">]</span>
+
+        <span class="c1"># Handle the wrap-around for angles</span>
+        <span class="k">if</span> <span class="n">next_i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1"># If next_dir is at the beginning</span>
+            <span class="n">next_dir</span> <span class="o">+=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+
+        <span class="k">if</span> <span class="n">curr_dir</span> <span class="o">&lt;=</span> <span class="n">phi</span> <span class="o">&lt;</span> <span class="n">next_dir</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">curr_dir</span><span class="p">,</span> <span class="n">next_dir</span>
+
+    <span class="c1"># This should not happen if directions list is properly sorted and normalized</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Could not find adjacent directions for phi=</span><span class="si">{</span><span class="n">phi</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="elongation_error">
+<a class="viewcode-back" href="../../../pyorps.utils.html#pyorps.utils.neighborhood.elongation_error">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">elongation_error</span><span class="p">(</span><span class="n">theta_j</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">theta_j_plus_1</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">phi</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate the elongation error for a lattice path.</span>
+
+<span class="sd">    The elongation error is given by:</span>
+<span class="sd">    e(φ) = (sin(θ_{j+1} - φ) + sin(φ - θ_j)) / sin(θ_{j+1} - θ_j)</span>
+
+<span class="sd">    References:</span>
+<span class="sd">        Goodchild, M. F.: ‘An evaluation of lattice solutions to the problem of corridor location’,</span>
+<span class="sd">        Environment and Planning A: Economy and Space, 1977, 9, (7), pp 727-738</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">numerator</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">theta_j_plus_1</span> <span class="o">-</span> <span class="n">phi</span><span class="p">)</span> <span class="o">+</span> <span class="n">math</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">phi</span> <span class="o">-</span> <span class="n">theta_j</span><span class="p">)</span>
+    <span class="n">denominator</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">theta_j_plus_1</span> <span class="o">-</span> <span class="n">theta_j</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">denominator</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-10</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Denominator is zero, directions may be identical&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">numerator</span> <span class="o">/</span> <span class="n">denominator</span></div>
+
+
+
+<div class="viewcode-block" id="max_deviation">
+<a class="viewcode-back" href="../../../pyorps.utils.html#pyorps.utils.neighborhood.max_deviation">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">max_deviation</span><span class="p">(</span><span class="n">theta_j</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">theta_j_plus_1</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">phi</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate the maximum deviation for a lattice path.</span>
+
+<span class="sd">    The maximum deviation is given by:</span>
+<span class="sd">    δ(φ) = (sin(θ_{j+1} - φ) * sin(φ - θ_j)) / sin(θ_{j+1} - θ_j)</span>
+
+<span class="sd">    References:</span>
+<span class="sd">        Goodchild, M. F.: ‘An evaluation of lattice solutions to the problem of corridor location’,</span>
+<span class="sd">        Environment and Planning A: Economy and Space, 1977, 9, (7), pp 727-738</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">numerator</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">theta_j_plus_1</span> <span class="o">-</span> <span class="n">phi</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">phi</span> <span class="o">-</span> <span class="n">theta_j</span><span class="p">)</span>
+    <span class="n">denominator</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">theta_j_plus_1</span> <span class="o">-</span> <span class="n">theta_j</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">denominator</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-10</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Denominator is zero, directions may be identical&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">numerator</span> <span class="o">/</span> <span class="n">denominator</span></div>
+
+
+
+<div class="viewcode-block" id="calculate_errors">
+<a class="viewcode-back" href="../../../pyorps.utils.html#pyorps.utils.neighborhood.calculate_errors">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">calculate_errors</span><span class="p">(</span><span class="n">directions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">phi</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate elongation error and maximum deviation for a given set of directions and path angle.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        directions: Sorted list of all possible move directions in radians</span>
+<span class="sd">        phi: The path direction in radians</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A dictionary with the calculated errors</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">theta_j</span><span class="p">,</span> <span class="n">theta_j_plus_1</span> <span class="o">=</span> <span class="n">find_adjacent_directions</span><span class="p">(</span><span class="n">phi</span><span class="p">,</span> <span class="n">directions</span><span class="p">)</span>
+
+    <span class="n">e</span> <span class="o">=</span> <span class="n">elongation_error</span><span class="p">(</span><span class="n">theta_j</span><span class="p">,</span> <span class="n">theta_j_plus_1</span><span class="p">,</span> <span class="n">phi</span><span class="p">)</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">max_deviation</span><span class="p">(</span><span class="n">theta_j</span><span class="p">,</span> <span class="n">theta_j_plus_1</span><span class="p">,</span> <span class="n">phi</span><span class="p">)</span>
+
+    <span class="c1"># Convert to degrees for better readability</span>
+    <span class="n">phi_deg</span> <span class="o">=</span> <span class="n">phi</span> <span class="o">*</span> <span class="mi">180</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+    <span class="n">theta_j_deg</span> <span class="o">=</span> <span class="n">theta_j</span> <span class="o">*</span> <span class="mi">180</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+    <span class="n">theta_j_plus_1_deg</span> <span class="o">=</span> <span class="n">theta_j_plus_1</span> <span class="o">*</span> <span class="mi">180</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s1">&#39;elongation_error&#39;</span><span class="p">:</span> <span class="n">e</span><span class="p">,</span>
+        <span class="s1">&#39;max_deviation&#39;</span><span class="p">:</span> <span class="n">d</span><span class="p">,</span>
+        <span class="s1">&#39;phi_degrees&#39;</span><span class="p">:</span> <span class="n">phi_deg</span><span class="p">,</span>
+        <span class="s1">&#39;theta_j_degrees&#39;</span><span class="p">:</span> <span class="n">theta_j_deg</span><span class="p">,</span>
+        <span class="s1">&#39;theta_j_plus_1_degrees&#39;</span><span class="p">:</span> <span class="n">theta_j_plus_1_deg</span>
+    <span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="find_max_errors">
+<a class="viewcode-back" href="../../../pyorps.utils.html#pyorps.utils.neighborhood.find_max_errors">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_max_errors</span><span class="p">(</span><span class="n">directions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Find the maximum elongation error and maximum deviation for a given set of directions.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        directions: Sorted list of all possible move directions in radians</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A dictionary with the maximum calculated errors</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">max_e</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">max_d</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">max_e_phi</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">max_d_phi</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">max_e_theta_j</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">max_e_theta_j_plus_1</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">max_d_theta_j</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">max_d_theta_j_plus_1</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="c1"># Check at the midpoint between each adjacent pair of directions</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">directions</span><span class="p">)):</span>
+        <span class="n">theta_j</span> <span class="o">=</span> <span class="n">directions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">theta_j_plus_1</span> <span class="o">=</span> <span class="n">directions</span><span class="p">[(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">directions</span><span class="p">)]</span>
+
+        <span class="c1"># Ensure theta_j &lt; theta_j_plus_1</span>
+        <span class="k">if</span> <span class="n">theta_j_plus_1</span> <span class="o">&lt;=</span> <span class="n">theta_j</span><span class="p">:</span>
+            <span class="n">theta_j_plus_1</span> <span class="o">+=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+
+        <span class="c1"># Midpoint angle (where both errors are maximized)</span>
+        <span class="n">phi</span> <span class="o">=</span> <span class="p">(</span><span class="n">theta_j</span> <span class="o">+</span> <span class="n">theta_j_plus_1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+
+        <span class="n">e</span> <span class="o">=</span> <span class="n">elongation_error</span><span class="p">(</span><span class="n">theta_j</span><span class="p">,</span> <span class="n">theta_j_plus_1</span><span class="p">,</span> <span class="n">phi</span><span class="p">)</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">max_deviation</span><span class="p">(</span><span class="n">theta_j</span><span class="p">,</span> <span class="n">theta_j_plus_1</span><span class="p">,</span> <span class="n">phi</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">e</span> <span class="o">&gt;</span> <span class="n">max_e</span><span class="p">:</span>
+            <span class="n">max_e</span> <span class="o">=</span> <span class="n">e</span>
+            <span class="n">max_e_phi</span> <span class="o">=</span> <span class="n">phi</span>
+            <span class="n">max_e_theta_j</span> <span class="o">=</span> <span class="n">theta_j</span>
+            <span class="n">max_e_theta_j_plus_1</span> <span class="o">=</span> <span class="n">theta_j_plus_1</span>
+
+        <span class="k">if</span> <span class="n">d</span> <span class="o">&gt;</span> <span class="n">max_d</span><span class="p">:</span>
+            <span class="n">max_d</span> <span class="o">=</span> <span class="n">d</span>
+            <span class="n">max_d_phi</span> <span class="o">=</span> <span class="n">phi</span>
+            <span class="n">max_d_theta_j</span> <span class="o">=</span> <span class="n">theta_j</span>
+            <span class="n">max_d_theta_j_plus_1</span> <span class="o">=</span> <span class="n">theta_j_plus_1</span>
+
+    <span class="c1"># Convert angles to degrees for better readability</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s1">&#39;max_elongation&#39;</span><span class="p">:</span> <span class="n">max_e</span><span class="p">,</span>
+        <span class="s1">&#39;max_elongation_phi_degrees&#39;</span><span class="p">:</span> <span class="n">max_e_phi</span> <span class="o">*</span> <span class="mi">180</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span>
+        <span class="s1">&#39;max_elongation_theta_j_degrees&#39;</span><span class="p">:</span> <span class="n">max_e_theta_j</span> <span class="o">*</span> <span class="mi">180</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span>
+        <span class="s1">&#39;max_elongation_theta_j_plus_1_degrees&#39;</span><span class="p">:</span> <span class="n">max_e_theta_j_plus_1</span> <span class="o">*</span> <span class="mi">180</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span>
+        <span class="s1">&#39;max_deviation&#39;</span><span class="p">:</span> <span class="n">max_d</span><span class="p">,</span>
+        <span class="s1">&#39;max_deviation_phi_degrees&#39;</span><span class="p">:</span> <span class="n">max_d_phi</span> <span class="o">*</span> <span class="mi">180</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span>
+        <span class="s1">&#39;max_deviation_theta_j_degrees&#39;</span><span class="p">:</span> <span class="n">max_d_theta_j</span> <span class="o">*</span> <span class="mi">180</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span>
+        <span class="s1">&#39;max_deviation_theta_j_plus_1_degrees&#39;</span><span class="p">:</span> <span class="n">max_d_theta_j_plus_1</span> <span class="o">*</span> <span class="mi">180</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">pi</span>
+    <span class="p">}</span></div>
+
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../index.html">PYORPS</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Martin Hofmann.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

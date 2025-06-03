@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pyorps.graph.api.networkit_api &#8212; PYORPS 09.05.2025 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../../_static/documentation_options.js?v=d2164c19"></script>
+    <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for pyorps.graph.api.networkit_api</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span>
+
+<span class="c1"># Third party</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">networkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Graph</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">networkit.distance</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dijkstra</span><span class="p">,</span> <span class="n">BidirectionalDijkstra</span><span class="p">,</span> <span class="n">AStar</span><span class="p">,</span> <span class="n">SPSP</span>
+
+<span class="c1"># Project files</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyorps.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">NoPathFoundError</span><span class="p">,</span> <span class="n">AlgorthmNotImplementedError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.graph_library_api</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+
+
+<div class="viewcode-block" id="NetworkitAPI">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NetworkitAPI</span><span class="p">(</span><span class="n">GraphLibraryAPI</span><span class="p">):</span>
+
+<div class="viewcode-block" id="NetworkitAPI.create_graph">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI.create_graph">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_graph</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                     <span class="n">from_nodes</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+                     <span class="n">to_nodes</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+                     <span class="n">cost</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Creates a graph object with the graph library specified in the selected interface.</span>
+<span class="sd">        :param from_nodes: The starting node indices from the edge data.</span>
+<span class="sd">        :param to_nodes: The ending node indices from the edge data.</span>
+<span class="sd">        :param cost: The weight of the edge data.</span>
+<span class="sd">        :param kwargs: Additional parameters for the underlying graph library.</span>
+<span class="sd">        :return: The graph object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">n</span> <span class="o">:=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;n&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">graph</span> <span class="o">=</span> <span class="n">Graph</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">weighted</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">directed</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="nb">max</span><span class="p">(</span><span class="n">from_nodes</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">to_nodes</span><span class="p">)])</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">graph</span> <span class="o">=</span> <span class="n">Graph</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">weighted</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">directed</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">cost</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">addEdges</span><span class="p">((</span><span class="n">cost</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span> <span class="p">(</span><span class="n">from_nodes</span><span class="p">,</span> <span class="n">to_nodes</span><span class="p">)),</span> <span class="n">addMissing</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">addEdges</span><span class="p">((</span><span class="n">from_nodes</span><span class="p">,</span> <span class="n">to_nodes</span><span class="p">),</span> <span class="n">addMissing</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;remove_isolated_nodes&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">remove_isolates</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span></div>
+
+
+<div class="viewcode-block" id="NetworkitAPI.get_number_of_nodes">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI.get_number_of_nodes">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_number_of_nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">numberOfNodes</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="NetworkitAPI.get_number_of_edges">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI.get_number_of_edges">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_number_of_edges</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">numberOfEdges</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="NetworkitAPI.remove_isolates">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI.remove_isolates">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove_isolates</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">iterNodes</span><span class="p">():</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">isIsolated</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">removeNode</span><span class="p">(</span><span class="n">n</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NetworkitAPI.get_nodes">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI.get_nodes">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        This method returns the nodes in the graph as a list or numpy array of node indices.</span>
+
+<span class="sd">        :return: list[int]</span>
+<span class="sd">            The list of node indices of the nodes in the graph</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">iterNodes</span><span class="p">()]</span></div>
+
+
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_path_endpoints</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Ensures the path starts with the source node and ends with the target node.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">path</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">source</span><span class="p">:</span>
+                <span class="n">path</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">source</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">path</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">target</span><span class="p">:</span>
+                <span class="n">path</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">path</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_all_pairs_shortest_paths</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sources</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes paths individually for each source-target pair using the specified algorithm.</span>
+<span class="sd">        Returns empty paths for unreachable targets.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">source</span> <span class="ow">in</span> <span class="n">sources</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">target</span> <span class="ow">in</span> <span class="n">targets</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_path</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                    <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+                <span class="k">except</span> <span class="n">NoPathFoundError</span><span class="p">:</span>
+                    <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+        <span class="k">return</span> <span class="n">paths</span>
+
+<div class="viewcode-block" id="NetworkitAPI.shortest_path">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI.shortest_path">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">shortest_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source_indices</span><span class="p">,</span> <span class="n">target_indices</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="s2">&quot;dijkstra&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        This method applies the specified shortest path algorithm on the created graph object and finds the shortest</span>
+<span class="sd">        path between source and target(s) as a list of node indices.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        -----------</span>
+<span class="sd">        source_indices : int or list[int]</span>
+<span class="sd">            Index or indices of source node(s)</span>
+<span class="sd">        target_indices : int or list[int]</span>
+<span class="sd">            Index or indices of target node(s)</span>
+<span class="sd">        algorithm : str, default=&quot;dijkstra&quot;</span>
+<span class="sd">            Algorithm to use for shortest path computation.</span>
+<span class="sd">            Options: &quot;dijkstra&quot;, &quot;bidirectional_dijkstra&quot;, &quot;astar&quot;</span>
+<span class="sd">        **kwargs:</span>
+<span class="sd">            pairwise : bool</span>
+<span class="sd">                If True, compute pairwise shortest paths between source_indices and target_indices.</span>
+<span class="sd">                Only allowed if len(source_indices) == len(target_indices)</span>
+<span class="sd">            heuristic : callable, optional</span>
+<span class="sd">                A function that takes two node indices (u, target) and returns an estimate of the distance</span>
+<span class="sd">                between them. Only used when algorithm=&quot;astar&quot;.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        --------</span>
+<span class="sd">        list[int] or list[list[int]]:</span>
+<span class="sd">            List of node indices representing the shortest path(s)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Convert single indices to lists for uniform handling</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source_indices</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)):</span>
+            <span class="n">source_indices</span> <span class="o">=</span> <span class="p">[</span><span class="n">source_indices</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">target_indices</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)):</span>
+            <span class="n">target_indices</span> <span class="o">=</span> <span class="p">[</span><span class="n">target_indices</span><span class="p">]</span>
+
+        <span class="c1"># Check for pairwise computation</span>
+        <span class="n">pairwise</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;pairwise&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">pairwise</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">source_indices</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">target_indices</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Source and target lists must have the same length for pairwise computation&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pairwise_shortest_path</span><span class="p">(</span><span class="n">source_indices</span><span class="p">,</span> <span class="n">target_indices</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">)</span>
+
+        <span class="c1"># Single source, single target</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">source_indices</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">target_indices</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">source</span> <span class="o">=</span> <span class="n">source_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">target</span> <span class="o">=</span> <span class="n">target_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_path</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># Single source, multiple targets</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">source_indices</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">source</span> <span class="o">=</span> <span class="n">source_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_source_multiple_targets</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target_indices</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># Multiple sources, multiple targets (all pairs)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_all_pairs_shortest_path</span><span class="p">(</span><span class="n">source_indices</span><span class="p">,</span> <span class="n">target_indices</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_single_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes shortest path between a single source and target using the specified algorithm.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">algorithm</span> <span class="o">==</span> <span class="s2">&quot;dijkstra&quot;</span><span class="p">:</span>
+            <span class="n">dijkstra</span> <span class="o">=</span> <span class="n">Dijkstra</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">storePaths</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">target</span><span class="o">=</span><span class="n">target</span><span class="p">)</span>
+            <span class="n">dijkstra</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">dijkstra</span><span class="o">.</span><span class="n">getPath</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">algorithm</span> <span class="o">==</span> <span class="s2">&quot;bidirectional_dijkstra&quot;</span><span class="p">:</span>
+            <span class="n">bidir_dijkstra</span> <span class="o">=</span> <span class="n">BidirectionalDijkstra</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span>
+            <span class="n">bidir_dijkstra</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">bidir_dijkstra</span><span class="o">.</span><span class="n">getPath</span><span class="p">()</span>
+
+        <span class="k">elif</span> <span class="n">algorithm</span> <span class="o">==</span> <span class="s2">&quot;astar&quot;</span><span class="p">:</span>
+            <span class="c1"># Use provided heuristic function or default to zero heuristic</span>
+            <span class="n">heuristic_function</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;heu&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">heuristic_function</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">_</span><span class="p">,</span> <span class="n">heuristic</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_a_star_heuristic</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                <span class="n">heuristic_function</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">heuristic</span><span class="p">)</span>
+
+            <span class="n">astar</span> <span class="o">=</span> <span class="n">AStar</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="p">,</span> <span class="n">heuristic_function</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span>
+            <span class="n">astar</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">astar</span><span class="o">.</span><span class="n">getPath</span><span class="p">()</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">AlgorthmNotImplementedError</span><span class="p">(</span><span class="n">algorithm</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NoPathFoundError</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="o">=</span><span class="n">target</span><span class="p">)</span>
+
+        <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_path_endpoints</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">path</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_single_source_multiple_targets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes shortest paths from a single source to multiple targets.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">algorithm</span> <span class="o">==</span> <span class="s2">&quot;dijkstra&quot;</span> <span class="ow">or</span> <span class="n">algorithm</span> <span class="o">==</span> <span class="s2">&quot;bidirectional_dijkstra&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_multi_target_dijkstra</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">targets</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">algorithm</span> <span class="o">==</span> <span class="s2">&quot;astar&quot;</span><span class="p">:</span>
+            <span class="c1"># If using A* with multiple targets, run individual A* or fall back to Dijkstra</span>
+            <span class="c1"># depending on whether a heuristic is provided</span>
+            <span class="k">if</span> <span class="s1">&#39;heuristic&#39;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+                <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">for</span> <span class="n">target</span> <span class="ow">in</span> <span class="n">targets</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_path</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                        <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="n">NoPathFoundError</span><span class="p">:</span>
+                        <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+                <span class="k">return</span> <span class="n">paths</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_multi_target_dijkstra</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">targets</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">AlgorthmNotImplementedError</span><span class="p">(</span><span class="n">algorithm</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_multi_target_dijkstra</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">targets</span><span class="p">):</span>
+        <span class="c1"># Use MultiTargetDijkstra for efficient computation</span>
+        <span class="n">dijkstra</span> <span class="o">=</span> <span class="n">Dijkstra</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">storePaths</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">dijkstra</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+        <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">target</span> <span class="ow">in</span> <span class="n">targets</span><span class="p">:</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">dijkstra</span><span class="o">.</span><span class="n">getPath</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+
+            <span class="c1"># For multi-target we add empty paths for unreachable targets</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+                <span class="k">continue</span>
+
+            <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_path_endpoints</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span>
+            <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">paths</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_pairwise_shortest_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sources</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes pairwise shortest paths between corresponding sources and targets.</span>
+<span class="sd">        Uses SPSP for more efficient computation when appropriate.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># For other algorithms, compute each path individually</span>
+        <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">sources</span><span class="p">,</span> <span class="n">targets</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_path</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">NoPathFoundError</span><span class="p">:</span>
+                <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+
+        <span class="k">return</span> <span class="n">paths</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_all_pairs_shortest_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sources</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes shortest paths between all pairs of sources and targets.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">algorithm</span> <span class="o">==</span> <span class="s2">&quot;dijkstra&quot;</span><span class="p">:</span>
+            <span class="c1"># Use APSP for efficient all-pairs computation</span>
+            <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
+
+            <span class="c1"># Run Dijkstra once for each source</span>
+            <span class="k">for</span> <span class="n">source</span> <span class="ow">in</span> <span class="n">sources</span><span class="p">:</span>
+                <span class="n">dijkstra</span> <span class="o">=</span> <span class="n">Dijkstra</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">storePaths</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <span class="n">dijkstra</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+
+                <span class="k">for</span> <span class="n">target</span> <span class="ow">in</span> <span class="n">targets</span><span class="p">:</span>
+                    <span class="n">path</span> <span class="o">=</span> <span class="n">dijkstra</span><span class="o">.</span><span class="n">getPath</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+
+                    <span class="c1"># For all-pairs we add empty paths for unreachable targets</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+                        <span class="k">continue</span>
+
+                    <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_path_endpoints</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span>
+                    <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+
+            <span class="k">return</span> <span class="n">paths</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># For other algorithms, use the helper function to compute paths individually</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_all_pairs_shortest_paths</span><span class="p">(</span><span class="n">sources</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../../index.html">PYORPS</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Martin Hofmann.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

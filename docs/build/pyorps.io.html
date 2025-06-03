@@ -1,0 +1,675 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pyorps.io package &mdash; PYORPS 09.05.2025 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=d2164c19"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            PYORPS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="README.html">PYORPS - Python for Optimal Routes in Power Systems</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="README.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#features">Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#how-it-works">How It Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#use-cases">Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#technical-details">Technical Details</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#documentation">Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#contributing">Contributing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#citation">Citation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#contact">Contact</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="CONTRIBUTING.html">Contributing to PYORPS</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#get-in-touch">Get in Touch!</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#setting-up-your-development-environment">Setting Up Your Development Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#making-changes">Making Changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#keeping-your-fork-up-to-date">Keeping Your Fork Up-to-Date</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#writing-tests">Writing Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#code-style">Code Style</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#contributing-examples-or-case-studies">Contributing Examples or Case Studies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#thank-you">Thank You!</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">PYORPS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">pyorps.io package</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/pyorps.io.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="pyorps-io-package">
+<h1>pyorps.io package<a class="headerlink" href="#pyorps-io-package" title="Link to this heading"></a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
+</section>
+<section id="module-pyorps.io.geo_dataset">
+<span id="pyorps-io-geo-dataset-module"></span><h2>pyorps.io.geo_dataset module<a class="headerlink" href="#module-pyorps.io.geo_dataset" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.GeoDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.geo_dataset.</span></span><span class="sig-name descname"><span class="pre">GeoDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#GeoDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.GeoDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.GeoDataset.crs">
+<span class="sig-name descname"><span class="pre">crs</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.io.geo_dataset.GeoDataset.crs" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.GeoDataset.data">
+<span class="sig-name descname"><span class="pre">data</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code><span class="pre">,</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.io.geo_dataset.GeoDataset.data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.GeoDataset.file_source">
+<span class="sig-name descname"><span class="pre">file_source</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></em><a class="headerlink" href="#pyorps.io.geo_dataset.GeoDataset.file_source" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.GeoDataset.load_data">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">load_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#GeoDataset.load_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.GeoDataset.load_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.InMemoryRasterDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.geo_dataset.</span></span><span class="sig-name descname"><span class="pre">InMemoryRasterDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transform</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryRasterDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.InMemoryRasterDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.RasterDataset" title="pyorps.io.geo_dataset.RasterDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">RasterDataset</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.InMemoryRasterDataset.load_data">
+<span class="sig-name descname"><span class="pre">load_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryRasterDataset.load_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.InMemoryRasterDataset.load_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.InMemoryVectorDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.geo_dataset.</span></span><span class="sig-name descname"><span class="pre">InMemoryVectorDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryVectorDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.InMemoryVectorDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.VectorDataset" title="pyorps.io.geo_dataset.VectorDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">VectorDataset</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.InMemoryVectorDataset.apply_bbox">
+<span class="sig-name descname"><span class="pre">apply_bbox</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryVectorDataset.apply_bbox"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.InMemoryVectorDataset.apply_bbox" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.InMemoryVectorDataset.apply_mask">
+<span class="sig-name descname"><span class="pre">apply_mask</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryVectorDataset.apply_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.InMemoryVectorDataset.apply_mask" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.InMemoryVectorDataset.correct_crs">
+<span class="sig-name descname"><span class="pre">correct_crs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryVectorDataset.correct_crs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.InMemoryVectorDataset.correct_crs" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.InMemoryVectorDataset.load_data">
+<span class="sig-name descname"><span class="pre">load_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryVectorDataset.load_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.InMemoryVectorDataset.load_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.InMemoryVectorDataset.post_loading">
+<span class="sig-name descname"><span class="pre">post_loading</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryVectorDataset.post_loading"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.InMemoryVectorDataset.post_loading" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.LocalRasterDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.geo_dataset.</span></span><span class="sig-name descname"><span class="pre">LocalRasterDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#LocalRasterDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.LocalRasterDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.RasterDataset" title="pyorps.io.geo_dataset.RasterDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">RasterDataset</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.LocalRasterDataset.load_data">
+<span class="sig-name descname"><span class="pre">load_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#LocalRasterDataset.load_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.LocalRasterDataset.load_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.LocalVectorDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.geo_dataset.</span></span><span class="sig-name descname"><span class="pre">LocalVectorDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#LocalVectorDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.LocalVectorDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.InMemoryVectorDataset" title="pyorps.io.geo_dataset.InMemoryVectorDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">InMemoryVectorDataset</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.LocalVectorDataset.apply_bbox">
+<span class="sig-name descname"><span class="pre">apply_bbox</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#LocalVectorDataset.apply_bbox"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.LocalVectorDataset.apply_bbox" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.LocalVectorDataset.apply_mask">
+<span class="sig-name descname"><span class="pre">apply_mask</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#LocalVectorDataset.apply_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.LocalVectorDataset.apply_mask" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.LocalVectorDataset.load_data">
+<span class="sig-name descname"><span class="pre">load_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#LocalVectorDataset.load_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.LocalVectorDataset.load_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.RasterDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.geo_dataset.</span></span><span class="sig-name descname"><span class="pre">RasterDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#RasterDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.RasterDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.GeoDataset" title="pyorps.io.geo_dataset.GeoDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataset</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.RasterDataset.count">
+<span class="sig-name descname"><span class="pre">count</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#pyorps.io.geo_dataset.RasterDataset.count" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.RasterDataset.dtype">
+<span class="sig-name descname"><span class="pre">dtype</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">dtype</span></code></em><a class="headerlink" href="#pyorps.io.geo_dataset.RasterDataset.dtype" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.RasterDataset.file_source">
+<span class="sig-name descname"><span class="pre">file_source</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></em><a class="headerlink" href="#pyorps.io.geo_dataset.RasterDataset.file_source" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.RasterDataset.shape">
+<span class="sig-name descname"><span class="pre">shape</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><a class="headerlink" href="#pyorps.io.geo_dataset.RasterDataset.shape" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.RasterDataset.transform">
+<span class="sig-name descname"><span class="pre">transform</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">Affine</span></code></em><a class="headerlink" href="#pyorps.io.geo_dataset.RasterDataset.transform" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.VectorDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.geo_dataset.</span></span><span class="sig-name descname"><span class="pre">VectorDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#VectorDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.VectorDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.GeoDataset" title="pyorps.io.geo_dataset.GeoDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataset</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.VectorDataset.apply_bbox">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">apply_bbox</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#VectorDataset.apply_bbox"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.VectorDataset.apply_bbox" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.VectorDataset.apply_mask">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">apply_mask</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#VectorDataset.apply_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.VectorDataset.apply_mask" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.VectorDataset.bbox">
+<span class="sig-name descname"><span class="pre">bbox</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">Polygon</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoSeries</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">],</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">(None,)</span></em><a class="headerlink" href="#pyorps.io.geo_dataset.VectorDataset.bbox" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.VectorDataset.correct_crs">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">correct_crs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#VectorDataset.correct_crs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.VectorDataset.correct_crs" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.VectorDataset.file_source">
+<span class="sig-name descname"><span class="pre">file_source</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></em><a class="headerlink" href="#pyorps.io.geo_dataset.VectorDataset.file_source" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.VectorDataset.mask">
+<span class="sig-name descname"><span class="pre">mask</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">Polygon</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code><span class="pre">,</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">(None,)</span></em><a class="headerlink" href="#pyorps.io.geo_dataset.VectorDataset.mask" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.VectorDataset.post_loading">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">post_loading</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#VectorDataset.post_loading"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.VectorDataset.post_loading" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.WFSVectorDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.geo_dataset.</span></span><span class="sig-name descname"><span class="pre">WFSVectorDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#WFSVectorDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.WFSVectorDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.LocalVectorDataset" title="pyorps.io.geo_dataset.LocalVectorDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">LocalVectorDataset</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.WFSVectorDataset.apply_mask">
+<span class="sig-name descname"><span class="pre">apply_mask</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#WFSVectorDataset.apply_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.WFSVectorDataset.apply_mask" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.WFSVectorDataset.load_data">
+<span class="sig-name descname"><span class="pre">load_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#WFSVectorDataset.load_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.WFSVectorDataset.load_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.io.geo_dataset.initialize_geo_dataset">
+<span class="sig-prename descclassname"><span class="pre">pyorps.io.geo_dataset.</span></span><span class="sig-name descname"><span class="pre">initialize_geo_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transform</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#initialize_geo_dataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.geo_dataset.initialize_geo_dataset" title="Link to this definition"></a></dt>
+<dd><p>Factory function to create the appropriate GeoDataset instance based on the provided input.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>file_source</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoSeries</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>]</span>) – Source data (file path, GeoDataFrame, URL dict, numpy array, etc.)</p></li>
+<li><p><strong>crs</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Coordinate reference system</p></li>
+<li><p><strong>bbox</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Polygon</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoSeries</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Bounding box for vector datasets</p></li>
+<li><p><strong>mask</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Polygon</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Mask for vector datasets</p></li>
+<li><p><strong>transform</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Affine</span></code>]</span>) – Affine transform for in-memory raster datasets</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#pyorps.io.geo_dataset.GeoDataset" title="pyorps.io.geo_dataset.GeoDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataset</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>An appropriate GeoDataset subclass instance</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p># From local vector file
+vector_dataset = create_geo_dataset(“path/to/shapefile.shp”, crs=”EPSG:4326”)</p>
+<p># From GeoDataFrame
+vector_dataset = create_geo_dataset(gdf, bbox=(x1, y1, x2, y2))</p>
+<p># From WFS source
+wfs_dataset = create_geo_dataset({“url”: “<a class="reference external" href="https://example.com/wfs">https://example.com/wfs</a>”, “layer”: “layer1”})</p>
+<p># From local raster file
+raster_dataset = create_geo_dataset(“path/to/dem.tif”)</p>
+<p># From numpy array
+raster_dataset = create_geo_dataset(array_data, transform=transform, crs=”EPSG:4326”)</p>
+</dd></dl>
+
+</section>
+<section id="module-pyorps.io.vector_loader">
+<span id="pyorps-io-vector-loader-module"></span><h2>pyorps.io.vector_loader module<a class="headerlink" href="#module-pyorps.io.vector_loader" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.io.vector_loader.load_from_wfs">
+<span class="sig-prename descclassname"><span class="pre">pyorps.io.vector_loader.</span></span><span class="sig-name descname"><span class="pre">load_from_wfs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auto_match</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_workers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/vector_loader.html#load_from_wfs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.vector_loader.load_from_wfs" title="Link to this definition"></a></dt>
+<dd><p>Load data from a Web Feature Service (WFS) using chunked loading.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>url</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The base URL of the WFS service</p></li>
+<li><p><strong>layer</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Name of the layer to retrieve</p></li>
+<li><p><strong>bbox</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]</span>) – Optional bounding box to limit the query extent (minx, miny, maxx, maxy)</p></li>
+<li><p><strong>mask</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoSeries</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Optional geometry mask to limit the query (Shapely Polygon, GeoDataFrame, or GeoSeries)</p></li>
+<li><p><strong>filter_params</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>]</span>) – Additional WFS parameters to filter results</p></li>
+<li><p><strong>auto_match</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – Whether to attempt finding similar layer names if exact match not found</p></li>
+<li><p><strong>max_workers</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – Maximum number of parallel threads to use</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code>]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Loaded GeoDataFrame or None if no data could be loaded</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="pyorps.core.html#pyorps.core.exceptions.WFSLayerNotFoundError" title="pyorps.core.exceptions.WFSLayerNotFoundError"><strong>WFSLayerNotFoundError</strong></a> – If the layer cannot be found and auto_match is False</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-pyorps.io">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-pyorps.io" title="Link to this heading"></a></h2>
+<p>Input/output operations for geospatial data.</p>
+<p>This module provides:
+1. Base classes for working with vector and raster geospatial data
+2. Dataset implementations for local and in-memory data sources
+3. Web Feature Service (WFS) data loading capabilities
+4. Factory functions to create appropriate dataset instances</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.GeoDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">GeoDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#GeoDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.GeoDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.GeoDataset.crs">
+<span class="sig-name descname"><span class="pre">crs</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.io.GeoDataset.crs" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.GeoDataset.data">
+<span class="sig-name descname"><span class="pre">data</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code><span class="pre">,</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.io.GeoDataset.data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.GeoDataset.file_source">
+<span class="sig-name descname"><span class="pre">file_source</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></em><a class="headerlink" href="#pyorps.io.GeoDataset.file_source" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.GeoDataset.load_data">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">load_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#GeoDataset.load_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.GeoDataset.load_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.InMemoryRasterDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">InMemoryRasterDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transform</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryRasterDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.InMemoryRasterDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.RasterDataset" title="pyorps.io.geo_dataset.RasterDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">RasterDataset</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.InMemoryRasterDataset.load_data">
+<span class="sig-name descname"><span class="pre">load_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryRasterDataset.load_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.InMemoryRasterDataset.load_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.InMemoryVectorDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">InMemoryVectorDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryVectorDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.InMemoryVectorDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.VectorDataset" title="pyorps.io.geo_dataset.VectorDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">VectorDataset</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.InMemoryVectorDataset.apply_bbox">
+<span class="sig-name descname"><span class="pre">apply_bbox</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryVectorDataset.apply_bbox"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.InMemoryVectorDataset.apply_bbox" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.InMemoryVectorDataset.apply_mask">
+<span class="sig-name descname"><span class="pre">apply_mask</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryVectorDataset.apply_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.InMemoryVectorDataset.apply_mask" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.InMemoryVectorDataset.correct_crs">
+<span class="sig-name descname"><span class="pre">correct_crs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryVectorDataset.correct_crs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.InMemoryVectorDataset.correct_crs" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.InMemoryVectorDataset.load_data">
+<span class="sig-name descname"><span class="pre">load_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryVectorDataset.load_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.InMemoryVectorDataset.load_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.InMemoryVectorDataset.post_loading">
+<span class="sig-name descname"><span class="pre">post_loading</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#InMemoryVectorDataset.post_loading"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.InMemoryVectorDataset.post_loading" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.LocalRasterDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">LocalRasterDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#LocalRasterDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.LocalRasterDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.RasterDataset" title="pyorps.io.geo_dataset.RasterDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">RasterDataset</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.LocalRasterDataset.load_data">
+<span class="sig-name descname"><span class="pre">load_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#LocalRasterDataset.load_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.LocalRasterDataset.load_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.LocalVectorDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">LocalVectorDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#LocalVectorDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.LocalVectorDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.InMemoryVectorDataset" title="pyorps.io.geo_dataset.InMemoryVectorDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">InMemoryVectorDataset</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.LocalVectorDataset.apply_bbox">
+<span class="sig-name descname"><span class="pre">apply_bbox</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#LocalVectorDataset.apply_bbox"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.LocalVectorDataset.apply_bbox" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.LocalVectorDataset.apply_mask">
+<span class="sig-name descname"><span class="pre">apply_mask</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#LocalVectorDataset.apply_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.LocalVectorDataset.apply_mask" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.LocalVectorDataset.load_data">
+<span class="sig-name descname"><span class="pre">load_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#LocalVectorDataset.load_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.LocalVectorDataset.load_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.RasterDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">RasterDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#RasterDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.RasterDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.GeoDataset" title="pyorps.io.geo_dataset.GeoDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataset</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.RasterDataset.count">
+<span class="sig-name descname"><span class="pre">count</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#pyorps.io.RasterDataset.count" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.RasterDataset.dtype">
+<span class="sig-name descname"><span class="pre">dtype</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">dtype</span></code></em><a class="headerlink" href="#pyorps.io.RasterDataset.dtype" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.RasterDataset.file_source">
+<span class="sig-name descname"><span class="pre">file_source</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></em><a class="headerlink" href="#pyorps.io.RasterDataset.file_source" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.RasterDataset.shape">
+<span class="sig-name descname"><span class="pre">shape</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><a class="headerlink" href="#pyorps.io.RasterDataset.shape" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.RasterDataset.transform">
+<span class="sig-name descname"><span class="pre">transform</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">Affine</span></code></em><a class="headerlink" href="#pyorps.io.RasterDataset.transform" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.VectorDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">VectorDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#VectorDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.VectorDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.GeoDataset" title="pyorps.io.geo_dataset.GeoDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataset</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.VectorDataset.apply_bbox">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">apply_bbox</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#VectorDataset.apply_bbox"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.VectorDataset.apply_bbox" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.VectorDataset.apply_mask">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">apply_mask</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#VectorDataset.apply_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.VectorDataset.apply_mask" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.VectorDataset.bbox">
+<span class="sig-name descname"><span class="pre">bbox</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">Polygon</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoSeries</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">],</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">(None,)</span></em><a class="headerlink" href="#pyorps.io.VectorDataset.bbox" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.VectorDataset.correct_crs">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">correct_crs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#VectorDataset.correct_crs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.VectorDataset.correct_crs" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.VectorDataset.file_source">
+<span class="sig-name descname"><span class="pre">file_source</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></em><a class="headerlink" href="#pyorps.io.VectorDataset.file_source" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.io.VectorDataset.mask">
+<span class="sig-name descname"><span class="pre">mask</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">Polygon</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code><span class="pre">,</span> <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">(None,)</span></em><a class="headerlink" href="#pyorps.io.VectorDataset.mask" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.VectorDataset.post_loading">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">post_loading</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#VectorDataset.post_loading"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.VectorDataset.post_loading" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.io.WFSConnectionError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">WFSConnectionError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#WFSConnectionError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.WFSConnectionError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="pyorps.core.html#pyorps.core.exceptions.WFSError" title="pyorps.core.exceptions.WFSError"><code class="xref py py-class docutils literal notranslate"><span class="pre">WFSError</span></code></a></p>
+<p>Exception raised for connection issues with WFS services.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.io.WFSError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">WFSError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#WFSError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.WFSError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Base exception for WFS-related errors.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.io.WFSLayerNotFoundError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">WFSLayerNotFoundError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#WFSLayerNotFoundError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.WFSLayerNotFoundError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="pyorps.core.html#pyorps.core.exceptions.WFSError" title="pyorps.core.exceptions.WFSError"><code class="xref py py-class docutils literal notranslate"><span class="pre">WFSError</span></code></a></p>
+<p>Exception raised when a requested layer cannot be found.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.io.WFSResponseParsingError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">WFSResponseParsingError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#WFSResponseParsingError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.WFSResponseParsingError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="pyorps.core.html#pyorps.core.exceptions.WFSError" title="pyorps.core.exceptions.WFSError"><code class="xref py py-class docutils literal notranslate"><span class="pre">WFSError</span></code></a></p>
+<p>Exception raised when parsing WFS responses fails.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.io.WFSVectorDataset">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">WFSVectorDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#WFSVectorDataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.WFSVectorDataset" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.io.geo_dataset.LocalVectorDataset" title="pyorps.io.geo_dataset.LocalVectorDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">LocalVectorDataset</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.WFSVectorDataset.apply_mask">
+<span class="sig-name descname"><span class="pre">apply_mask</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#WFSVectorDataset.apply_mask"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.WFSVectorDataset.apply_mask" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.io.WFSVectorDataset.load_data">
+<span class="sig-name descname"><span class="pre">load_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#WFSVectorDataset.load_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.WFSVectorDataset.load_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.io.initialize_geo_dataset">
+<span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">initialize_geo_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transform</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/geo_dataset.html#initialize_geo_dataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.initialize_geo_dataset" title="Link to this definition"></a></dt>
+<dd><p>Factory function to create the appropriate GeoDataset instance based on the provided input.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>file_source</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoSeries</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>]</span>) – Source data (file path, GeoDataFrame, URL dict, numpy array, etc.)</p></li>
+<li><p><strong>crs</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Coordinate reference system</p></li>
+<li><p><strong>bbox</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Polygon</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoSeries</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Bounding box for vector datasets</p></li>
+<li><p><strong>mask</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Polygon</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Mask for vector datasets</p></li>
+<li><p><strong>transform</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Affine</span></code>]</span>) – Affine transform for in-memory raster datasets</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#pyorps.io.geo_dataset.GeoDataset" title="pyorps.io.geo_dataset.GeoDataset"><code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataset</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>An appropriate GeoDataset subclass instance</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p># From local vector file
+vector_dataset = create_geo_dataset(“path/to/shapefile.shp”, crs=”EPSG:4326”)</p>
+<p># From GeoDataFrame
+vector_dataset = create_geo_dataset(gdf, bbox=(x1, y1, x2, y2))</p>
+<p># From WFS source
+wfs_dataset = create_geo_dataset({“url”: “<a class="reference external" href="https://example.com/wfs">https://example.com/wfs</a>”, “layer”: “layer1”})</p>
+<p># From local raster file
+raster_dataset = create_geo_dataset(“path/to/dem.tif”)</p>
+<p># From numpy array
+raster_dataset = create_geo_dataset(array_data, transform=transform, crs=”EPSG:4326”)</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.io.load_from_wfs">
+<span class="sig-prename descclassname"><span class="pre">pyorps.io.</span></span><span class="sig-name descname"><span class="pre">load_from_wfs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auto_match</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_workers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/io/vector_loader.html#load_from_wfs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.load_from_wfs" title="Link to this definition"></a></dt>
+<dd><p>Load data from a Web Feature Service (WFS) using chunked loading.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>url</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The base URL of the WFS service</p></li>
+<li><p><strong>layer</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Name of the layer to retrieve</p></li>
+<li><p><strong>bbox</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]</span>) – Optional bounding box to limit the query extent (minx, miny, maxx, maxy)</p></li>
+<li><p><strong>mask</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">GeoSeries</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Optional geometry mask to limit the query (Shapely Polygon, GeoDataFrame, or GeoSeries)</p></li>
+<li><p><strong>filter_params</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>]</span>) – Additional WFS parameters to filter results</p></li>
+<li><p><strong>auto_match</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – Whether to attempt finding similar layer names if exact match not found</p></li>
+<li><p><strong>max_workers</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – Maximum number of parallel threads to use</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code>]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Loaded GeoDataFrame or None if no data could be loaded</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#pyorps.io.WFSLayerNotFoundError" title="pyorps.io.WFSLayerNotFoundError"><strong>WFSLayerNotFoundError</strong></a> – If the layer cannot be found and auto_match is False</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Martin Hofmann.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

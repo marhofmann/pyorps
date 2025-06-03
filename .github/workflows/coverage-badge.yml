@@ -1,0 +1,61 @@
+name: Coverage Badge
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  coverage:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+          pip install pytest pytest-cov requests coverage[toml]
+          pip install -e .[full]
+
+      - name: Run tests with coverage
+        env:
+          NUMBA_DISABLE_JIT: 1
+        run: |
+          python -m pytest --cov=pyorps tests/ --cov-config=pyproject.toml --cov-report=xml --cov-report=term-missing > result.log 
+          type result.log | Select-Object -Last 10
+
+      - name: Generate coverage badge
+        shell: pwsh
+        env:
+          NUMBA_DISABLE_JIT: 1
+        run: |
+          $coverage = (python -m pytest --cov=pyorps tests/ --cov-report=term | Select-String -Pattern '\d+%$' | Select-Object -Last 1).Matches.Value -replace '%',''
+          $color = if ($coverage -lt 70) { 'red' } elseif ($coverage -lt 90) { 'orange' } else { 'green' }
+          Invoke-WebRequest -Uri "https://img.shields.io/badge/coverage-${coverage}%25-${color}.svg" -OutFile coverage.svg
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: marhofmann/pyorps
+
+      - name: Deploy badge
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          publish_branch: gh-pages

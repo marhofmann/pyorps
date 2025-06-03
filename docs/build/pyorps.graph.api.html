@@ -1,0 +1,1018 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pyorps.graph.api package &mdash; PYORPS 09.05.2025 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=d2164c19"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            PYORPS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="README.html">PYORPS - Python for Optimal Routes in Power Systems</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="README.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#features">Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#how-it-works">How It Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#use-cases">Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#technical-details">Technical Details</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#documentation">Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#contributing">Contributing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#citation">Citation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#contact">Contact</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="CONTRIBUTING.html">Contributing to PYORPS</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#get-in-touch">Get in Touch!</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#setting-up-your-development-environment">Setting Up Your Development Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#making-changes">Making Changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#keeping-your-fork-up-to-date">Keeping Your Fork Up-to-Date</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#writing-tests">Writing Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#code-style">Code Style</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#contributing-examples-or-case-studies">Contributing Examples or Case Studies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#thank-you">Thank You!</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">PYORPS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">pyorps.graph.api package</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/pyorps.graph.api.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="pyorps-graph-api-package">
+<h1>pyorps.graph.api package<a class="headerlink" href="#pyorps-graph-api-package" title="Link to this heading"></a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
+</section>
+<section id="module-pyorps.graph.api.graph_api">
+<span id="pyorps-graph-api-graph-api-module"></span><h2>pyorps.graph.api.graph_api module<a class="headerlink" href="#module-pyorps.graph.api.graph_api" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.api.graph_api.GraphAPI">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.api.graph_api.</span></span><span class="sig-name descname"><span class="pre">GraphAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_api.html#GraphAPI"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.graph_api.GraphAPI" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></p>
+<p>Base class for all graph APIs defining the minimal required interface.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.graph_api.GraphAPI.shortest_path">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">shortest_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dijkstra'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pairwise</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_api.html#GraphAPI.shortest_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.graph_api.GraphAPI.shortest_path" title="Link to this definition"></a></dt>
+<dd><p>Find shortest path(s) between source and target indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source_indices</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – Source node indices</p></li>
+<li><p><strong>target_indices</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – Target node indices</p></li>
+<li><p><strong>algorithm</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Algorithm name (e.g., “dijkstra”, “astar”)</p></li>
+<li><p><strong>pairwise</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – Whether to compute paths pairwise (for multiple sources/targets)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list of path indices for each source-target pair</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-pyorps.graph.api.graph_library_api">
+<span id="pyorps-graph-api-graph-library-api-module"></span><h2>pyorps.graph.api.graph_library_api module<a class="headerlink" href="#module-pyorps.graph.api.graph_library_api" title="Link to this heading"></a></h2>
+<p>This file contains the abstract base class for the interface to the graph libraries. All specific graph library
+interfaces should inherit from this class. The workflow of the specific interfaces are determined by the respective
+graph library. The workflow of the graph libraries can vary!</p>
+<ul class="simple">
+<li><p>For rustworkx and igraph the nodes need to be created before the edges can be added</p></li>
+<li><p>For networkit and networkx the edges can be added on the fly when adding the nodes</p></li>
+<li><p>For rustworkx and igraph the edges can only be added as a list of tuples. This means that the edge information as</p></li>
+</ul>
+<p>retrieved by numpy arrays, need to be converted into a list, which leads to a much higher (more than double) memory
+usage!
+- For networkit and networkx edges can be added as a sparse matrix or as numpy arrays</p>
+<p>Please see the specific interfaces to the specific graph libraries for more details!</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.api.graph_library_api.GraphLibraryAPI">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.api.graph_library_api.</span></span><span class="sig-name descname"><span class="pre">GraphLibraryAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.graph_library_api.GraphLibraryAPI" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.graph.api.graph_api.GraphAPI" title="pyorps.graph.api.graph_api.GraphAPI"><code class="xref py py-class docutils literal notranslate"><span class="pre">GraphAPI</span></code></a></p>
+<p>Base class for all graph library-based APIs.</p>
+<p>This class extends GraphAPI with common functionality needed by standard graph libraries
+that require edge data to be explicitly provided and a graph to be constructed.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.graph_library_api.GraphLibraryAPI.create_graph">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">create_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.create_graph"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.graph_library_api.GraphLibraryAPI.create_graph" title="Link to this definition"></a></dt>
+<dd><p>Creates a graph object with the graph library specified in the selected interface.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>from_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – The starting node indices from the edge data</p></li>
+<li><p><strong>to_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – The ending node indices from the edge data</p></li>
+<li><p><strong>cost</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – The weight of the edge data</p></li>
+<li><p><strong>kwargs</strong> – Additional parameters for the underlying graph library</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The graph object</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.graph_library_api.GraphLibraryAPI.get_a_star_heuristic">
+<span class="sig-name descname"><span class="pre">get_a_star_heuristic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">target</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.get_a_star_heuristic"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.graph_library_api.GraphLibraryAPI.get_a_star_heuristic" title="Link to this definition"></a></dt>
+<dd><p>Calculate the A* heuristic based on the Euclidean distance from the target node.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>target</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – int
+The index of the target node in the raster data.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><p>tuple[np.ndarray[int], np.ndarray[float]]
+A tuple containing:
+- An array of node indices (nodes) in the graph.
+- An array of heuristic values corresponding to each node, calculated as the</p>
+<blockquote>
+<div><p>Euclidean distance to the target node multiplied by the minimum value in the raster data.</p>
+</div></blockquote>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.graph_library_api.GraphLibraryAPI.get_nodes">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.get_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.graph_library_api.GraphLibraryAPI.get_nodes" title="Link to this definition"></a></dt>
+<dd><p>This method returns the nodes in the graph as a list or numpy array of node indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>] | <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>list[int] | ndarray[int]
+The list of node indices of the nodes in the graph</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.graph_library_api.GraphLibraryAPI.get_number_of_edges">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_number_of_edges</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.get_number_of_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.graph_library_api.GraphLibraryAPI.get_number_of_edges" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of edges in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The number of Edges</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.graph_library_api.GraphLibraryAPI.get_number_of_nodes">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_number_of_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.get_number_of_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.graph_library_api.GraphLibraryAPI.get_number_of_nodes" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of nodes in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The number of Nodes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.graph_library_api.GraphLibraryAPI.remove_isolates">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">remove_isolates</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.remove_isolates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.graph_library_api.GraphLibraryAPI.remove_isolates" title="Link to this definition"></a></dt>
+<dd><p>If the graph object was initialized with the maximum number of nodes, this function helps to reduce the occupied
+memory by removing nodes without any edge (degree == 0).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.graph_library_api.GraphLibraryAPI.shortest_path">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">shortest_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dijkstra'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.shortest_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.graph_library_api.GraphLibraryAPI.shortest_path" title="Link to this definition"></a></dt>
+<dd><p>This method applies the specified shortest path algorithm on the created graph object and finds the shortest
+path between source and target(s) as a list of node indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>list[int]
+The list of node indices of the shortest path between source and target</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-pyorps.graph.api.igraph_api">
+<span id="pyorps-graph-api-igraph-api-module"></span><h2>pyorps.graph.api.igraph_api module<a class="headerlink" href="#module-pyorps.graph.api.igraph_api" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.api.igraph_api.IGraphAPI">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.api.igraph_api.</span></span><span class="sig-name descname"><span class="pre">IGraphAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/igraph_api.html#IGraphAPI"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.igraph_api.IGraphAPI" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.graph.api.graph_library_api.GraphLibraryAPI" title="pyorps.graph.api.graph_library_api.GraphLibraryAPI"><code class="xref py py-class docutils literal notranslate"><span class="pre">GraphLibraryAPI</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.igraph_api.IGraphAPI.create_graph">
+<span class="sig-name descname"><span class="pre">create_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/igraph_api.html#IGraphAPI.create_graph"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.igraph_api.IGraphAPI.create_graph" title="Link to this definition"></a></dt>
+<dd><p>Creates a graph object with the igraph library.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>from_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – The starting node indices from the edge data.</p></li>
+<li><p><strong>to_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – The ending node indices from the edge data.</p></li>
+<li><p><strong>cost</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – The weight of the edge data.</p></li>
+<li><p><strong>kwargs</strong> – Additional parameters for the underlying graph library.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The graph object.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.igraph_api.IGraphAPI.get_nodes">
+<span class="sig-name descname"><span class="pre">get_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/igraph_api.html#IGraphAPI.get_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.igraph_api.IGraphAPI.get_nodes" title="Link to this definition"></a></dt>
+<dd><p>This method returns the nodes in the graph as a list or numpy array of node indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>list[int]
+The list of node indices of the nodes in the graph</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.igraph_api.IGraphAPI.get_number_of_edges">
+<span class="sig-name descname"><span class="pre">get_number_of_edges</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/igraph_api.html#IGraphAPI.get_number_of_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.igraph_api.IGraphAPI.get_number_of_edges" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of edges in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The number of Edges</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.igraph_api.IGraphAPI.get_number_of_nodes">
+<span class="sig-name descname"><span class="pre">get_number_of_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/igraph_api.html#IGraphAPI.get_number_of_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.igraph_api.IGraphAPI.get_number_of_nodes" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of nodes in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The number of Nodes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.igraph_api.IGraphAPI.remove_isolates">
+<span class="sig-name descname"><span class="pre">remove_isolates</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/igraph_api.html#IGraphAPI.remove_isolates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.igraph_api.IGraphAPI.remove_isolates" title="Link to this definition"></a></dt>
+<dd><p>Removes nodes without any edge (degree == 0).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.igraph_api.IGraphAPI.shortest_path">
+<span class="sig-name descname"><span class="pre">shortest_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dijkstra'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/igraph_api.html#IGraphAPI.shortest_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.igraph_api.IGraphAPI.shortest_path" title="Link to this definition"></a></dt>
+<dd><p>This method applies the specified shortest path algorithm on the created graph object and finds the shortest
+path between source and target(s) as a list of node indices.</p>
+<section id="parameters">
+<h3>Parameters:<a class="headerlink" href="#parameters" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>source_indices<span class="classifier">int or list[int]</span></dt><dd><p>Index or indices of source node(s)</p>
+</dd>
+<dt>target_indices<span class="classifier">int or list[int]</span></dt><dd><p>Index or indices of target node(s)</p>
+</dd>
+<dt>algorithm<span class="classifier">str, default=”dijkstra”</span></dt><dd><p>Algorithm to use for shortest path computation.
+Options: “dijkstra”, “bellman_ford”, “astar”</p>
+</dd>
+<dt><a href="#id1"><span class="problematic" id="id2">**</span></a>kwargs:</dt><dd><dl class="simple">
+<dt>pairwise<span class="classifier">bool</span></dt><dd><p>If True, compute pairwise shortest paths between source_indices and target_indices.
+Only allowed if len(source_indices) == len(target_indices)</p>
+</dd>
+<dt>heuristic<span class="classifier">callable, optional</span></dt><dd><p>A function that takes two node indices (u, target) and returns an estimate of the distance
+between them. Only used when algorithm=”astar”.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+<section id="returns">
+<h3>Returns:<a class="headerlink" href="#returns" title="Link to this heading"></a></h3>
+<p>:
+list[int] or list[list[int]]:</p>
+<blockquote>
+<div><p>List of node indices representing the shortest path(s)</p>
+</div></blockquote>
+</section>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-pyorps.graph.api.networkit_api">
+<span id="pyorps-graph-api-networkit-api-module"></span><h2>pyorps.graph.api.networkit_api module<a class="headerlink" href="#module-pyorps.graph.api.networkit_api" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkit_api.NetworkitAPI">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.api.networkit_api.</span></span><span class="sig-name descname"><span class="pre">NetworkitAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkit_api.html#NetworkitAPI"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkit_api.NetworkitAPI" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.graph.api.graph_library_api.GraphLibraryAPI" title="pyorps.graph.api.graph_library_api.GraphLibraryAPI"><code class="xref py py-class docutils literal notranslate"><span class="pre">GraphLibraryAPI</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkit_api.NetworkitAPI.create_graph">
+<span class="sig-name descname"><span class="pre">create_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkit_api.html#NetworkitAPI.create_graph"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkit_api.NetworkitAPI.create_graph" title="Link to this definition"></a></dt>
+<dd><p>Creates a graph object with the graph library specified in the selected interface.
+:type from_nodes: <span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>
+:param from_nodes: The starting node indices from the edge data.
+:type to_nodes: <span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>
+:param to_nodes: The ending node indices from the edge data.
+:type cost: <span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>
+:param cost: The weight of the edge data.
+:type kwargs: 
+:param kwargs: Additional parameters for the underlying graph library.
+:rtype: <span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span>
+:return: The graph object.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkit_api.NetworkitAPI.get_nodes">
+<span class="sig-name descname"><span class="pre">get_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkit_api.html#NetworkitAPI.get_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkit_api.NetworkitAPI.get_nodes" title="Link to this definition"></a></dt>
+<dd><p>This method returns the nodes in the graph as a list or numpy array of node indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>list[int]
+The list of node indices of the nodes in the graph</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkit_api.NetworkitAPI.get_number_of_edges">
+<span class="sig-name descname"><span class="pre">get_number_of_edges</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkit_api.html#NetworkitAPI.get_number_of_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkit_api.NetworkitAPI.get_number_of_edges" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of edges in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The number of Edges</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkit_api.NetworkitAPI.get_number_of_nodes">
+<span class="sig-name descname"><span class="pre">get_number_of_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkit_api.html#NetworkitAPI.get_number_of_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkit_api.NetworkitAPI.get_number_of_nodes" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of nodes in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The number of Nodes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkit_api.NetworkitAPI.remove_isolates">
+<span class="sig-name descname"><span class="pre">remove_isolates</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkit_api.html#NetworkitAPI.remove_isolates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkit_api.NetworkitAPI.remove_isolates" title="Link to this definition"></a></dt>
+<dd><p>If the graph object was initialized with the maximum number of nodes, this function helps to reduce the occupied
+memory by removing nodes without any edge (degree == 0).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkit_api.NetworkitAPI.shortest_path">
+<span class="sig-name descname"><span class="pre">shortest_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dijkstra'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkit_api.html#NetworkitAPI.shortest_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkit_api.NetworkitAPI.shortest_path" title="Link to this definition"></a></dt>
+<dd><p>This method applies the specified shortest path algorithm on the created graph object and finds the shortest
+path between source and target(s) as a list of node indices.</p>
+<section id="id3">
+<h3>Parameters:<a class="headerlink" href="#id3" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>source_indices<span class="classifier">int or list[int]</span></dt><dd><p>Index or indices of source node(s)</p>
+</dd>
+<dt>target_indices<span class="classifier">int or list[int]</span></dt><dd><p>Index or indices of target node(s)</p>
+</dd>
+<dt>algorithm<span class="classifier">str, default=”dijkstra”</span></dt><dd><p>Algorithm to use for shortest path computation.
+Options: “dijkstra”, “bidirectional_dijkstra”, “astar”</p>
+</dd>
+<dt><a href="#id4"><span class="problematic" id="id5">**</span></a>kwargs:</dt><dd><dl class="simple">
+<dt>pairwise<span class="classifier">bool</span></dt><dd><p>If True, compute pairwise shortest paths between source_indices and target_indices.
+Only allowed if len(source_indices) == len(target_indices)</p>
+</dd>
+<dt>heuristic<span class="classifier">callable, optional</span></dt><dd><p>A function that takes two node indices (u, target) and returns an estimate of the distance
+between them. Only used when algorithm=”astar”.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+<section id="id6">
+<h3>Returns:<a class="headerlink" href="#id6" title="Link to this heading"></a></h3>
+<p>:
+list[int] or list[list[int]]:</p>
+<blockquote>
+<div><p>List of node indices representing the shortest path(s)</p>
+</div></blockquote>
+</section>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-pyorps.graph.api.networkx_api">
+<span id="pyorps-graph-api-networkx-api-module"></span><h2>pyorps.graph.api.networkx_api module<a class="headerlink" href="#module-pyorps.graph.api.networkx_api" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkx_api.NetworkxAPI">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.api.networkx_api.</span></span><span class="sig-name descname"><span class="pre">NetworkxAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkx_api.html#NetworkxAPI"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkx_api.NetworkxAPI" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.graph.api.graph_library_api.GraphLibraryAPI" title="pyorps.graph.api.graph_library_api.GraphLibraryAPI"><code class="xref py py-class docutils literal notranslate"><span class="pre">GraphLibraryAPI</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkx_api.NetworkxAPI.create_graph">
+<span class="sig-name descname"><span class="pre">create_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkx_api.html#NetworkxAPI.create_graph"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkx_api.NetworkxAPI.create_graph" title="Link to this definition"></a></dt>
+<dd><p>Creates a graph object with the graph library specified in the selected interface.
+:type from_nodes: <span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>
+:param from_nodes: The starting node indices from the edge data.
+:type to_nodes: <span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>
+:param to_nodes: The ending node indices from the edge data.
+:type cost: <span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>
+:param cost: The weight of the edge data.
+:type kwargs: 
+:param kwargs: Additional parameters for the underlying graph library.
+:rtype: <span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span>
+:return: The graph object.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkx_api.NetworkxAPI.get_nodes">
+<span class="sig-name descname"><span class="pre">get_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkx_api.html#NetworkxAPI.get_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkx_api.NetworkxAPI.get_nodes" title="Link to this definition"></a></dt>
+<dd><p>This method returns the nodes in the graph as a list or numpy array of node indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>list[int]
+The list of node indices of the nodes in the graph</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkx_api.NetworkxAPI.get_number_of_edges">
+<span class="sig-name descname"><span class="pre">get_number_of_edges</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkx_api.html#NetworkxAPI.get_number_of_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkx_api.NetworkxAPI.get_number_of_edges" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of edges in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The number of Edges</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkx_api.NetworkxAPI.get_number_of_nodes">
+<span class="sig-name descname"><span class="pre">get_number_of_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkx_api.html#NetworkxAPI.get_number_of_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkx_api.NetworkxAPI.get_number_of_nodes" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of nodes in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The number of Nodes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkx_api.NetworkxAPI.remove_isolates">
+<span class="sig-name descname"><span class="pre">remove_isolates</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkx_api.html#NetworkxAPI.remove_isolates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkx_api.NetworkxAPI.remove_isolates" title="Link to this definition"></a></dt>
+<dd><p>If the graph object was initialized with the maximum number of nodes, this function helps to reduce the occupied
+memory by removing nodes without any edge (degree == 0).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.networkx_api.NetworkxAPI.shortest_path">
+<span class="sig-name descname"><span class="pre">shortest_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dijkstra'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/networkx_api.html#NetworkxAPI.shortest_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.networkx_api.NetworkxAPI.shortest_path" title="Link to this definition"></a></dt>
+<dd><p>This method applies the specified shortest path algorithm on the created graph object and finds the shortest
+path between source and target(s) as a list of node indices.</p>
+<section id="id7">
+<h3>Parameters:<a class="headerlink" href="#id7" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>source_indices<span class="classifier">int or list[int]</span></dt><dd><p>Index or indices of source node(s)</p>
+</dd>
+<dt>target_indices<span class="classifier">int or list[int]</span></dt><dd><p>Index or indices of target node(s)</p>
+</dd>
+<dt>algorithm<span class="classifier">str, default=”dijkstra”</span></dt><dd><p>Algorithm to use for shortest path computation.
+Options: “dijkstra”, “bidirectional_dijkstra”, “astar”</p>
+</dd>
+<dt><a href="#id8"><span class="problematic" id="id9">**</span></a>kwargs:</dt><dd><dl class="simple">
+<dt>pairwise<span class="classifier">bool</span></dt><dd><p>If True, compute pairwise shortest paths between source_indices and target_indices.
+Only allowed if len(source_indices) == len(target_indices)</p>
+</dd>
+<dt>heuristic<span class="classifier">callable, optional</span></dt><dd><p>A function that takes two node indices (u, target) and returns an estimate of the distance
+between them. Only used when algorithm=”astar”.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+<section id="id10">
+<h3>Returns:<a class="headerlink" href="#id10" title="Link to this heading"></a></h3>
+<p>:
+list[int] or list[list[int]]:</p>
+<blockquote>
+<div><p>List of node indices representing the shortest path(s)</p>
+</div></blockquote>
+</section>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-pyorps.graph.api.rustworkx_api">
+<span id="pyorps-graph-api-rustworkx-api-module"></span><h2>pyorps.graph.api.rustworkx_api module<a class="headerlink" href="#module-pyorps.graph.api.rustworkx_api" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.api.rustworkx_api.RustworkxAPI">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.api.rustworkx_api.</span></span><span class="sig-name descname"><span class="pre">RustworkxAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/rustworkx_api.html#RustworkxAPI"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.rustworkx_api.RustworkxAPI" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.graph.api.graph_library_api.GraphLibraryAPI" title="pyorps.graph.api.graph_library_api.GraphLibraryAPI"><code class="xref py py-class docutils literal notranslate"><span class="pre">GraphLibraryAPI</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.rustworkx_api.RustworkxAPI.add_edge">
+<span class="sig-name descname"><span class="pre">add_edge</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">from_node</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_node</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/rustworkx_api.html#RustworkxAPI.add_edge"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.rustworkx_api.RustworkxAPI.add_edge" title="Link to this definition"></a></dt>
+<dd><p>Adds a single edge to the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>from_node</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – The source node.</p></li>
+<li><p><strong>to_node</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – The target node.</p></li>
+<li><p><strong>cost</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span>) – The edge weight.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.rustworkx_api.RustworkxAPI.add_edges">
+<span class="sig-name descname"><span class="pre">add_edges</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/rustworkx_api.html#RustworkxAPI.add_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.rustworkx_api.RustworkxAPI.add_edges" title="Link to this definition"></a></dt>
+<dd><p>Adds multiple edges to the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>from_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – Source node indices.</p></li>
+<li><p><strong>to_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – Target node indices.</p></li>
+<li><p><strong>cost</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]</span>) – Edge weights.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.rustworkx_api.RustworkxAPI.create_graph">
+<span class="sig-name descname"><span class="pre">create_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/rustworkx_api.html#RustworkxAPI.create_graph"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.rustworkx_api.RustworkxAPI.create_graph" title="Link to this definition"></a></dt>
+<dd><p>Creates a graph object using rustworkx.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>from_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – The starting node indices from the edge data.</p></li>
+<li><p><strong>to_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – The ending node indices from the edge data.</p></li>
+<li><p><strong>cost</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – The weight of the edge data.</p></li>
+<li><p><strong>kwargs</strong> – Additional parameters for the underlying graph library.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">PyGraph</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The rustworkx graph object.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.rustworkx_api.RustworkxAPI.get_graph">
+<span class="sig-name descname"><span class="pre">get_graph</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/rustworkx_api.html#RustworkxAPI.get_graph"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.rustworkx_api.RustworkxAPI.get_graph" title="Link to this definition"></a></dt>
+<dd><p>Creates a graph with nodes based on the raster dimensions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">PyGraph</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A rustworkx graph with nodes but no edges.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.rustworkx_api.RustworkxAPI.get_graph_from_sparse_matrix">
+<span class="sig-name descname"><span class="pre">get_graph_from_sparse_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/rustworkx_api.html#RustworkxAPI.get_graph_from_sparse_matrix"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.rustworkx_api.RustworkxAPI.get_graph_from_sparse_matrix" title="Link to this definition"></a></dt>
+<dd><p>Creates a graph from edge data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>from_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – Source node indices.</p></li>
+<li><p><strong>to_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – Target node indices.</p></li>
+<li><p><strong>cost</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]</span>) – Edge weights.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">PyGraph</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The rustworkx graph.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.rustworkx_api.RustworkxAPI.get_nodes">
+<span class="sig-name descname"><span class="pre">get_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/rustworkx_api.html#RustworkxAPI.get_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.rustworkx_api.RustworkxAPI.get_nodes" title="Link to this definition"></a></dt>
+<dd><p>This method returns the nodes in the graph as a list or numpy array of node indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>list[int]
+The list of node indices of the nodes in the graph</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.rustworkx_api.RustworkxAPI.get_number_of_edges">
+<span class="sig-name descname"><span class="pre">get_number_of_edges</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/rustworkx_api.html#RustworkxAPI.get_number_of_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.rustworkx_api.RustworkxAPI.get_number_of_edges" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of edges in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The number of edges.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.rustworkx_api.RustworkxAPI.get_number_of_nodes">
+<span class="sig-name descname"><span class="pre">get_number_of_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/rustworkx_api.html#RustworkxAPI.get_number_of_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.rustworkx_api.RustworkxAPI.get_number_of_nodes" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of nodes in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The number of nodes.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.rustworkx_api.RustworkxAPI.init_chunk_size">
+<span class="sig-name descname"><span class="pre">init_chunk_size</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">chunk_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/rustworkx_api.html#RustworkxAPI.init_chunk_size"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.rustworkx_api.RustworkxAPI.init_chunk_size" title="Link to this definition"></a></dt>
+<dd><p>Initializes the chunk size for batch operations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>chunk_size</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – The size of chunks to use. Defaults to 1 if None.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The initialized chunk size.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.rustworkx_api.RustworkxAPI.remove_isolates">
+<span class="sig-name descname"><span class="pre">remove_isolates</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/rustworkx_api.html#RustworkxAPI.remove_isolates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.rustworkx_api.RustworkxAPI.remove_isolates" title="Link to this definition"></a></dt>
+<dd><p>Removes isolated nodes (nodes with no edges) from the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.rustworkx_api.RustworkxAPI.shortest_path">
+<span class="sig-name descname"><span class="pre">shortest_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dijkstra'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/rustworkx_api.html#RustworkxAPI.shortest_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.rustworkx_api.RustworkxAPI.shortest_path" title="Link to this definition"></a></dt>
+<dd><p>This method applies the specified shortest path algorithm on the created graph object and finds the shortest
+path between source and target(s) as a list of node indices.</p>
+<section id="id11">
+<h3>Parameters:<a class="headerlink" href="#id11" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>source_indices<span class="classifier">int or list[int]</span></dt><dd><p>Index or indices of source node(s)</p>
+</dd>
+<dt>target_indices<span class="classifier">int or list[int]</span></dt><dd><p>Index or indices of target node(s)</p>
+</dd>
+<dt>algorithm<span class="classifier">str, default=”dijkstra”</span></dt><dd><p>Algorithm to use for shortest path computation.
+Options: “dijkstra”, “bidirectional_dijkstra”, “astar”</p>
+</dd>
+<dt><a href="#id12"><span class="problematic" id="id13">**</span></a>kwargs:</dt><dd><dl class="simple">
+<dt>pairwise<span class="classifier">bool</span></dt><dd><p>If True, compute pairwise shortest paths between source_indices and target_indices.
+Only allowed if len(source_indices) == len(target_indices)</p>
+</dd>
+<dt>heuristic<span class="classifier">callable, optional</span></dt><dd><p>A function that takes a node index and returns an estimate of the distance
+to the target. Only used when algorithm=”astar”.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+<section id="id14">
+<h3>Returns:<a class="headerlink" href="#id14" title="Link to this heading"></a></h3>
+<p>:
+list[int] or list[list[int]]:</p>
+<blockquote>
+<div><p>List of node indices representing the shortest path(s)</p>
+</div></blockquote>
+</section>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-pyorps.graph.api">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-pyorps.graph.api" title="Link to this heading"></a></h2>
+<p>Graph API abstractions for different graph libraries and routing algorithms.</p>
+<p>This module provides base classes for graph APIs that are implemented
+by various backend libraries.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.api.GraphAPI">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.api.</span></span><span class="sig-name descname"><span class="pre">GraphAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_api.html#GraphAPI"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.GraphAPI" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></p>
+<p>Base class for all graph APIs defining the minimal required interface.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.GraphAPI.shortest_path">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">shortest_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dijkstra'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pairwise</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_api.html#GraphAPI.shortest_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.GraphAPI.shortest_path" title="Link to this definition"></a></dt>
+<dd><p>Find shortest path(s) between source and target indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source_indices</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – Source node indices</p></li>
+<li><p><strong>target_indices</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – Target node indices</p></li>
+<li><p><strong>algorithm</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Algorithm name (e.g., “dijkstra”, “astar”)</p></li>
+<li><p><strong>pairwise</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – Whether to compute paths pairwise (for multiple sources/targets)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list of path indices for each source-target pair</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.api.GraphLibraryAPI">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.api.</span></span><span class="sig-name descname"><span class="pre">GraphLibraryAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.GraphLibraryAPI" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.graph.api.graph_api.GraphAPI" title="pyorps.graph.api.graph_api.GraphAPI"><code class="xref py py-class docutils literal notranslate"><span class="pre">GraphAPI</span></code></a></p>
+<p>Base class for all graph library-based APIs.</p>
+<p>This class extends GraphAPI with common functionality needed by standard graph libraries
+that require edge data to be explicitly provided and a graph to be constructed.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.GraphLibraryAPI.create_graph">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">create_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.create_graph"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.GraphLibraryAPI.create_graph" title="Link to this definition"></a></dt>
+<dd><p>Creates a graph object with the graph library specified in the selected interface.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>from_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – The starting node indices from the edge data</p></li>
+<li><p><strong>to_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – The ending node indices from the edge data</p></li>
+<li><p><strong>cost</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – The weight of the edge data</p></li>
+<li><p><strong>kwargs</strong> – Additional parameters for the underlying graph library</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The graph object</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.GraphLibraryAPI.get_a_star_heuristic">
+<span class="sig-name descname"><span class="pre">get_a_star_heuristic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">target</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.get_a_star_heuristic"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.GraphLibraryAPI.get_a_star_heuristic" title="Link to this definition"></a></dt>
+<dd><p>Calculate the A* heuristic based on the Euclidean distance from the target node.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>target</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – int
+The index of the target node in the raster data.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><p>tuple[np.ndarray[int], np.ndarray[float]]
+A tuple containing:
+- An array of node indices (nodes) in the graph.
+- An array of heuristic values corresponding to each node, calculated as the</p>
+<blockquote>
+<div><p>Euclidean distance to the target node multiplied by the minimum value in the raster data.</p>
+</div></blockquote>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.GraphLibraryAPI.get_nodes">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.get_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.GraphLibraryAPI.get_nodes" title="Link to this definition"></a></dt>
+<dd><p>This method returns the nodes in the graph as a list or numpy array of node indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>] | <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>list[int] | ndarray[int]
+The list of node indices of the nodes in the graph</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.GraphLibraryAPI.get_number_of_edges">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_number_of_edges</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.get_number_of_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.GraphLibraryAPI.get_number_of_edges" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of edges in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The number of Edges</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.GraphLibraryAPI.get_number_of_nodes">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_number_of_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.get_number_of_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.GraphLibraryAPI.get_number_of_nodes" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of nodes in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The number of Nodes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.GraphLibraryAPI.remove_isolates">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">remove_isolates</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.remove_isolates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.GraphLibraryAPI.remove_isolates" title="Link to this definition"></a></dt>
+<dd><p>If the graph object was initialized with the maximum number of nodes, this function helps to reduce the occupied
+memory by removing nodes without any edge (degree == 0).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.GraphLibraryAPI.shortest_path">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">shortest_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dijkstra'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.shortest_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.GraphLibraryAPI.shortest_path" title="Link to this definition"></a></dt>
+<dd><p>This method applies the specified shortest path algorithm on the created graph object and finds the shortest
+path between source and target(s) as a list of node indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>list[int]
+The list of node indices of the shortest path between source and target</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Martin Hofmann.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

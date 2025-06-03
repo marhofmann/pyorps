@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pyorps.raster.rasterizer &#8212; PYORPS 09.05.2025 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../_static/documentation_options.js?v=d2164c19"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for pyorps.raster.rasterizer</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">geopandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">gpd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">rasterio</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">rio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rasterio.features</span><span class="w"> </span><span class="kn">import</span> <span class="n">rasterize</span><span class="p">,</span> <span class="n">geometry_mask</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">Polygon</span><span class="p">,</span> <span class="n">box</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">copy</span><span class="w"> </span><span class="kn">import</span> <span class="n">deepcopy</span>
+
+<span class="c1"># Changed to relative imports from other modules</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..io.geo_dataset</span><span class="w"> </span><span class="kn">import</span> <span class="n">initialize_geo_dataset</span><span class="p">,</span> <span class="n">VectorDataset</span><span class="p">,</span> <span class="n">RasterDataset</span><span class="p">,</span> <span class="n">InMemoryRasterDataset</span><span class="p">,</span> <span class="n">GeoDataset</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..core.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">InputDataType</span><span class="p">,</span> <span class="n">CostAssumptionsType</span><span class="p">,</span> <span class="n">BboxType</span><span class="p">,</span> <span class="n">GeometryMaskType</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..core.cost_assumptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">CostAssumptions</span>
+
+
+<div class="viewcode-block" id="GeoRasterizer">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.GeoRasterizer">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GeoRasterizer</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A class for preparing and rasterizing geospatial data with cost assumptions.</span>
+
+<span class="sd">    This class integrates:</span>
+<span class="sd">    - GeoDataset for representing datasets with metadata</span>
+<span class="sd">    - CostAssumptions for handling cost mappings</span>
+<span class="sd">    - Rasterization functionality for converting vector data to rasters</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">input_data</span><span class="p">:</span> <span class="n">GeoDataset</span><span class="p">,</span>
+                 <span class="n">cost_assumptions</span><span class="p">:</span> <span class="n">CostAssumptionsType</span><span class="p">,</span>
+                 <span class="n">bbox</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BboxType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">mask</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">GeometryMaskType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">default_crs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the GeoRasterizer with a base dataset and optional parameters.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - input_data: The base dataset to rasterize (file path, GeoDataFrame, dict with web params, or GeoDataset)</span>
+<span class="sd">        - mask_geometry: Window or polygon mask to limit data reading</span>
+<span class="sd">        - cost_assumptions: Cost values for rasterization (dict, file path, or CostAssumptions object)</span>
+<span class="sd">        - default_crs: Default coordinate reference system to use</span>
+<span class="sd">        - **kwargs: Additional parameters passed to GeoDataset if base_dataset is not a GeoDataset</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span> <span class="o">=</span> <span class="n">input_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">additional_datasets</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">default_crs</span> <span class="o">=</span> <span class="n">default_crs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bbox</span> <span class="o">=</span> <span class="n">bbox</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cost_assumptions</span><span class="p">,</span> <span class="n">CostAssumptions</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cost_manager</span> <span class="o">=</span> <span class="n">cost_assumptions</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cost_manager</span> <span class="o">=</span> <span class="n">CostAssumptions</span><span class="p">(</span><span class="n">cost_assumptions</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span><span class="o">.</span><span class="n">data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span><span class="o">.</span><span class="n">load_data</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span><span class="p">,</span> <span class="n">RasterDataset</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span><span class="o">.</span><span class="n">data</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transform</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span><span class="o">.</span><span class="n">transform</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transform</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">base_data</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Property to directly access the data attribute of the base_dataset.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - The base dataset (GeoDataFrame</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span><span class="o">.</span><span class="n">data</span>
+
+<div class="viewcode-block" id="GeoRasterizer.modify_raster_values">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.GeoRasterizer.modify_raster_values">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">modify_raster_values</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">replace_values</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">old_value</span><span class="p">,</span> <span class="n">new_value</span> <span class="ow">in</span> <span class="n">replace_values</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">raster</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="o">==</span> <span class="n">old_value</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_value</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span></div>
+
+
+<div class="viewcode-block" id="GeoRasterizer.add_dataset">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.GeoRasterizer.add_dataset">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_dataset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                    <span class="n">file_source</span><span class="p">:</span> <span class="n">InputDataType</span><span class="p">,</span>
+                    <span class="n">crs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="n">bbox</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BboxType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="n">mask</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">GeometryMaskType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="n">transform</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">rio</span><span class="o">.</span><span class="n">Affine</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VectorDataset</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Add an additional dataset to use for raster modifications.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - dataset: Source data (file path, GeoDataFrame, dict with web params, or GeoDataset)</span>
+<span class="sd">        - mask_geometry: Window or polygon mask to limit data reading</span>
+<span class="sd">        - **kwargs: Additional parameters passed to GeoDataset if dataset is not a GeoDataset</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - The added GeoDataset</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">mask</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span>
+
+        <span class="k">if</span> <span class="n">bbox</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">bbox</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bbox</span>
+
+        <span class="k">if</span> <span class="n">crs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">crs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">default_crs</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">VectorDataset</span><span class="p">):</span>
+            <span class="n">new_dataset</span> <span class="o">=</span> <span class="n">file_source</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Create a new GeoDataset</span>
+            <span class="n">new_dataset</span> <span class="o">=</span> <span class="n">initialize_geo_dataset</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">crs</span><span class="p">,</span> <span class="n">bbox</span><span class="p">,</span> <span class="n">mask</span><span class="p">,</span> <span class="n">transform</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># Add to the list of additional datasets</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">additional_datasets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_dataset</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">new_dataset</span></div>
+
+
+<div class="viewcode-block" id="GeoRasterizer.add_datasets">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.GeoRasterizer.add_datasets">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_datasets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                     <span class="n">datasets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span>
+                     <span class="n">crs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="o">**</span><span class="n">kwargs</span>
+                     <span class="p">):</span>
+        <span class="k">for</span> <span class="n">dataset</span> <span class="ow">in</span> <span class="n">datasets</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">add_dataset</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="n">crs</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="GeoRasterizer.clip_to_area">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.GeoRasterizer.clip_to_area">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clip_to_area</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">clip_geometry</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">,</span> <span class="n">Polygon</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">GeoDataset</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Clip the base dataset to a specific area.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - clip_geometry: The geometry to clip by</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - The clipped base dataset</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No base data loaded to clip&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_data</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">clip_geometry</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span></div>
+
+
+<div class="viewcode-block" id="GeoRasterizer.create_buffer">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.GeoRasterizer.create_buffer">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_buffer</span><span class="p">(</span><span class="n">dataset</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">VectorDataset</span><span class="p">,</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">],</span>
+                      <span class="n">geometry_buffer_m</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                      <span class="n">inplace</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">VectorDataset</span><span class="p">,</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Add a buffer to geometries in a dataset.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - dataset: The dataset to buffer (GeoDataset or GeoDataFrame)</span>
+<span class="sd">        - geometry_buffer_m: Distance to buffer in dataset&#39;s CRS units</span>
+<span class="sd">        - inplace: If True, modify the dataset in place</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - The buffered dataset</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">VectorDataset</span><span class="p">):</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">dataset</span>
+
+        <span class="k">if</span> <span class="n">data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Dataset has no data to buffer&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">geometry_buffer_m</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">dataset</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">VectorDataset</span><span class="p">)</span> <span class="k">else</span> <span class="n">data</span>
+
+        <span class="k">if</span> <span class="n">inplace</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="n">geometry_buffer_m</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">dataset</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">VectorDataset</span><span class="p">)</span> <span class="k">else</span> <span class="n">data</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">buffered_data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">buffered_data</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">buffered_data</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="n">geometry_buffer_m</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">VectorDataset</span><span class="p">):</span>
+                <span class="c1"># Create a new GeoDataset with the buffered data</span>
+                <span class="n">buffered_dataset</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+                <span class="n">buffered_dataset</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">buffered_data</span>
+                <span class="k">return</span> <span class="n">buffered_dataset</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">buffered_data</span></div>
+
+
+<div class="viewcode-block" id="GeoRasterizer.create_bounds_geodataframe">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.GeoRasterizer.create_bounds_geodataframe">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_bounds_geodataframe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">target_crs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Creates a GeoDataFrame from the bounds of the base data in a specified CRS.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - target_crs: The desired CRS for the new GeoDataFrame</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - A new GeoDataFrame containing the bounds of the base data</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span><span class="o">.</span><span class="n">data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No base data loaded to create bounds from&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Calculate the bounds of the source GeoDataFrame</span>
+        <span class="n">minx</span><span class="p">,</span> <span class="n">miny</span><span class="p">,</span> <span class="n">maxx</span><span class="p">,</span> <span class="n">maxy</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">total_bounds</span>
+
+        <span class="c1"># Create a bounding box geometry</span>
+        <span class="n">bounding_box</span> <span class="o">=</span> <span class="n">box</span><span class="p">(</span><span class="n">minx</span><span class="p">,</span> <span class="n">miny</span><span class="p">,</span> <span class="n">maxx</span><span class="p">,</span> <span class="n">maxy</span><span class="p">)</span>
+
+        <span class="c1"># Create a new GeoDataFrame with the bounding box</span>
+        <span class="n">bounds_gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">geometry</span><span class="o">=</span><span class="p">[</span><span class="n">bounding_box</span><span class="p">],</span> <span class="n">crs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+
+        <span class="c1"># Set the CRS of the new GeoDataFrame to the target CRS if specified</span>
+        <span class="k">if</span> <span class="n">target_crs</span><span class="p">:</span>
+            <span class="n">bounds_gdf</span> <span class="o">=</span> <span class="n">bounds_gdf</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">target_crs</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">bounds_gdf</span></div>
+
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">crs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span><span class="o">.</span><span class="n">crs</span>
+
+<div class="viewcode-block" id="GeoRasterizer.rasterize">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.GeoRasterizer.rasterize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">rasterize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                  <span class="n">field_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;cost&#39;</span><span class="p">,</span>
+                  <span class="n">resolution_in_m</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+                  <span class="n">fill_value</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">65535</span><span class="p">,</span>
+                  <span class="n">save_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                  <span class="n">dtype</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;uint16&quot;</span><span class="p">,</span>
+                  <span class="n">geometry_buffer_m</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+                  <span class="n">bounding_box</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Polygon</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RasterDataset</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Rasterize the base dataset based on a specified field.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - field_name: The field to use for rasterization values</span>
+<span class="sd">        - resolution_in_m: The resolution of the output raster in meters</span>
+<span class="sd">        - fill_value: Value to use for areas with no data</span>
+<span class="sd">        - save_path: Path to save the rasterized output</span>
+<span class="sd">        - dtype: Data type for the output raster</span>
+<span class="sd">        - geometry_buffer_m: Buffer to apply to the dataset geometries</span>
+<span class="sd">        - bounding_box: Bounding box to define the rasterization extent</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - tuple of (raster_data, transform)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Base data is empty - nothing to rasterize!&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_dataset</span><span class="o">.</span><span class="n">data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No base dataset loaded to rasterize&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Add cost field</span>
+        <span class="k">if</span> <span class="n">field_name</span> <span class="o">==</span> <span class="s1">&#39;cost&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cost_manager</span><span class="o">.</span><span class="n">apply_to_geodataframe</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">base_data</span><span class="p">)</span>
+
+        <span class="c1"># Fill NA values in the field</span>
+        <span class="k">if</span> <span class="n">field_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_data</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Field &#39;</span><span class="si">{</span><span class="n">field_name</span><span class="si">}</span><span class="s2">&#39; not found in the dataset&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_data</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">base_data</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_data</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">fill_value</span><span class="p">)</span>
+
+        <span class="c1"># Round the values in the specified field and convert to the desired data type</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_data</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_data</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">()</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+
+        <span class="c1"># Sort values by field to ensure higher cost values have higher priority</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_data</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="n">by</span><span class="o">=</span><span class="n">field_name</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="c1"># Apply buffer if needed</span>
+        <span class="k">if</span> <span class="n">geometry_buffer_m</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">buffered</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_buffer</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">geometry_buffer_m</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">buffered</span> <span class="o">=</span> <span class="n">data</span>
+
+        <span class="k">if</span> <span class="n">bounding_box</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Calculate the output shape based on the GeoDataFrame&#39;s bounds and the specified resolution</span>
+            <span class="n">out_shape</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_calculate_out_shape_from_geodataframe</span><span class="p">(</span><span class="n">buffered</span><span class="p">,</span> <span class="n">resolution_in_m</span><span class="p">)</span>
+
+            <span class="c1"># Create a transformation object to convert between coordinate systems</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transform</span> <span class="o">=</span> <span class="n">rio</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">from_bounds</span><span class="p">(</span><span class="o">*</span><span class="n">buffered</span><span class="o">.</span><span class="n">total_bounds</span><span class="p">,</span> <span class="o">*</span><span class="n">out_shape</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+
+            <span class="c1"># Create a generator of shapes (geometry, value) pairs for rasterization</span>
+            <span class="n">shapes</span> <span class="o">=</span> <span class="p">((</span><span class="n">geom</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span> <span class="k">for</span> <span class="n">geom</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">buffered</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">],</span> <span class="n">buffered</span><span class="p">[</span><span class="n">field_name</span><span class="p">]))</span>
+
+            <span class="c1"># Rasterize the shapes into a 2D array</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="o">=</span> <span class="n">rasterize</span><span class="p">(</span>
+                <span class="n">shapes</span><span class="p">,</span>
+                <span class="n">out_shape</span><span class="o">=</span><span class="n">out_shape</span><span class="p">,</span>
+                <span class="n">fill</span><span class="o">=</span><span class="n">fill_value</span><span class="p">,</span>
+                <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">,</span>
+                <span class="n">transform</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">transform</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Calculate the output shape based on the bounding box</span>
+            <span class="n">out_shape</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_calculate_out_shape_from_bounding_box</span><span class="p">(</span><span class="n">bounding_box</span><span class="p">,</span> <span class="n">resolution_in_m</span><span class="p">)</span>
+
+            <span class="c1"># Create a transformation object</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transform</span> <span class="o">=</span> <span class="n">rio</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">from_bounds</span><span class="p">(</span><span class="o">*</span><span class="n">bounding_box</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span> <span class="o">*</span><span class="n">out_shape</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+
+            <span class="c1"># Create initial raster with fill value</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="o">=</span> <span class="n">rasterize</span><span class="p">(</span>
+                <span class="p">[(</span><span class="n">bounding_box</span><span class="p">,</span> <span class="n">fill_value</span><span class="p">)],</span>
+                <span class="n">out_shape</span><span class="o">=</span><span class="n">out_shape</span><span class="p">,</span>
+                <span class="n">fill</span><span class="o">=</span><span class="n">fill_value</span><span class="p">,</span>
+                <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">,</span>
+                <span class="n">transform</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">transform</span>
+            <span class="p">)</span>
+
+            <span class="c1"># Override with dataset values</span>
+            <span class="k">for</span> <span class="n">unique_value</span> <span class="ow">in</span> <span class="n">buffered</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">():</span>
+                <span class="n">value_geoms</span> <span class="o">=</span> <span class="n">buffered</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">buffered</span><span class="p">[</span><span class="n">field_name</span><span class="p">]</span> <span class="o">==</span> <span class="n">unique_value</span><span class="p">]</span>
+                <span class="n">shapes</span> <span class="o">=</span> <span class="p">((</span><span class="n">geom</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span> <span class="k">for</span> <span class="n">geom</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">value_geoms</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">],</span> <span class="n">value_geoms</span><span class="p">[</span><span class="n">field_name</span><span class="p">]))</span>
+                <span class="n">rasterize</span><span class="p">(</span>
+                    <span class="n">shapes</span><span class="p">,</span>
+                    <span class="n">out_shape</span><span class="o">=</span><span class="n">out_shape</span><span class="p">,</span>
+                    <span class="n">fill</span><span class="o">=</span><span class="n">fill_value</span><span class="p">,</span>
+                    <span class="n">out</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">raster</span><span class="p">,</span>
+                    <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">,</span>
+                    <span class="n">transform</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">transform</span>
+                <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span> <span class="o">=</span> <span class="n">InMemoryRasterDataset</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">crs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="p">)</span>
+        <span class="c1"># Write the rasterized data to a new raster file if a save path is provided</span>
+        <span class="k">if</span> <span class="n">save_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">save_raster</span><span class="p">(</span><span class="n">save_path</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_calculate_out_shape_from_bounding_box</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bounding_box</span><span class="p">:</span> <span class="n">Polygon</span><span class="p">,</span>
+                                               <span class="n">resolution_m2</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the output shape (rows, columns) based on a bounding box and resolution.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - bounding_box: The bounding box defining the output shape in a planar CRS</span>
+<span class="sd">        - resolution_m2: The resolution in square meters</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - tuple of (rows, columns) representing the output shape</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Calculate the bounding box dimensions</span>
+        <span class="n">bounds</span> <span class="o">=</span> <span class="n">bounding_box</span><span class="o">.</span><span class="n">bounds</span>  <span class="c1"># (minx, miny, maxx, maxy)</span>
+        <span class="n">width</span> <span class="o">=</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># maxx - minx</span>
+        <span class="n">height</span> <span class="o">=</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">-</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># maxy - miny</span>
+
+        <span class="c1"># Calculate the total area of the bounding box in square meters</span>
+        <span class="n">total_area_m2</span> <span class="o">=</span> <span class="n">width</span> <span class="o">*</span> <span class="n">height</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_rows_and_columns</span><span class="p">(</span><span class="n">width</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">resolution_m2</span><span class="p">,</span> <span class="n">total_area_m2</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_calculate_out_shape_from_geodataframe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">:</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">,</span>
+                                               <span class="n">resolution_m2</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+                                               <span class="n">bounding_box</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Polygon</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the output shape (rows, columns) based on a GeoDataFrame and resolution.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - gdf: The GeoDataFrame containing the geometries to cover</span>
+<span class="sd">        - resolution_m2: The resolution in square meters</span>
+<span class="sd">        - bounding_box: Optional bounding box defining the output shape</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - tuple of (rows, columns) representing the output shape</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Ensure the GeoDataFrame is in a projected CRS that uses meters</span>
+        <span class="k">if</span> <span class="n">gdf</span><span class="o">.</span><span class="n">crs</span><span class="o">.</span><span class="n">is_geographic</span><span class="p">:</span>
+            <span class="n">gdf</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="n">epsg</span><span class="o">=</span><span class="mi">3857</span><span class="p">)</span>  <span class="c1"># Transform to a planar CRS (e.g., Web Mercator)</span>
+
+        <span class="c1"># Calculate the bounding box of the GeoDataFrame</span>
+        <span class="n">bounds</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">total_bounds</span>  <span class="c1"># (minx, miny, maxx, maxy)</span>
+        <span class="n">width</span> <span class="o">=</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># maxx - minx</span>
+        <span class="n">height</span> <span class="o">=</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">-</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># maxy - miny</span>
+
+        <span class="c1"># Calculate the total area of the GeoDataFrame in square meters</span>
+        <span class="k">if</span> <span class="n">bounding_box</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">total_area_m2</span> <span class="o">=</span> <span class="n">width</span> <span class="o">*</span> <span class="n">height</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">bounds_bbox</span> <span class="o">=</span> <span class="n">bounding_box</span><span class="o">.</span><span class="n">bounds</span>
+            <span class="n">bbox_width</span> <span class="o">=</span> <span class="n">bounds_bbox</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="n">bounds_bbox</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">bbox_height</span> <span class="o">=</span> <span class="n">bounds_bbox</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">-</span> <span class="n">bounds_bbox</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">total_area_m2</span> <span class="o">=</span> <span class="n">bbox_width</span> <span class="o">*</span> <span class="n">bbox_height</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_rows_and_columns</span><span class="p">(</span><span class="n">width</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">resolution_m2</span><span class="p">,</span> <span class="n">total_area_m2</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_rows_and_columns</span><span class="p">(</span><span class="n">width</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">resolution_m2</span><span class="p">,</span> <span class="n">total_area_m2</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate rows and columns based on width, height, and resolution.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - width: Width of the area</span>
+<span class="sd">        - height: Height of the area</span>
+<span class="sd">        - resolution_m2: Resolution in square meters</span>
+<span class="sd">        - total_area_m2: Total area in square meters</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - tuple of (rows, columns)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Calculate the aspect ratio</span>
+        <span class="n">aspect_ratio</span> <span class="o">=</span> <span class="n">width</span> <span class="o">/</span> <span class="n">height</span> <span class="k">if</span> <span class="n">height</span> <span class="o">!=</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">1.0</span>
+        <span class="c1"># Calculate the area of each pixel</span>
+        <span class="n">pixel_area</span> <span class="o">=</span> <span class="n">resolution_m2</span>
+        <span class="c1"># Calculate the total number of pixels needed</span>
+        <span class="n">total_pixels</span> <span class="o">=</span> <span class="n">total_area_m2</span> <span class="o">/</span> <span class="n">pixel_area</span>
+        <span class="c1"># Calculate the height and width based on the aspect ratio</span>
+        <span class="n">calculated_height</span> <span class="o">=</span> <span class="p">(</span><span class="n">total_pixels</span> <span class="o">/</span> <span class="n">aspect_ratio</span><span class="p">)</span> <span class="o">**</span> <span class="mf">0.5</span>
+        <span class="n">calculated_width</span> <span class="o">=</span> <span class="n">calculated_height</span> <span class="o">*</span> <span class="n">aspect_ratio</span>
+        <span class="c1"># Convert to integers for output shape</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">calculated_height</span><span class="p">)</span>
+        <span class="n">columns</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">calculated_width</span><span class="p">)</span>
+        <span class="c1"># Adjusting to ensure the total area is covered</span>
+        <span class="k">if</span> <span class="n">rows</span> <span class="o">*</span> <span class="n">columns</span> <span class="o">&lt;</span> <span class="n">total_pixels</span><span class="p">:</span>
+            <span class="c1"># Increase columns if needed</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">calculated_width</span> <span class="o">-</span> <span class="n">columns</span><span class="p">)</span> <span class="o">&gt;</span> <span class="p">(</span><span class="n">calculated_height</span> <span class="o">-</span> <span class="n">rows</span><span class="p">):</span>
+                <span class="n">columns</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">rows</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">rows</span><span class="p">,</span> <span class="n">columns</span>
+
+<div class="viewcode-block" id="GeoRasterizer.modify_raster_with_geodataframe">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.GeoRasterizer.modify_raster_with_geodataframe">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">modify_raster_with_geodataframe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">:</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">,</span>
+                                        <span class="n">value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">ignore_value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="mi">65535</span><span class="p">,</span>
+                                        <span class="n">multiply</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Modifies the raster cells inside the polygons of a GeoDataFrame.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - gdf: The GeoDataFrame containing polygons to use for masking</span>
+<span class="sd">        - value: The value to set for the raster cells inside the polygons</span>
+<span class="sd">        - ignore_value: Value in the raster to ignore during modification</span>
+<span class="sd">        - multiply: If True, multiply the raster values by the given value</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - The modified raster</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No raster data available to modify&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Create a mask from the geometries in the GeoDataFrame</span>
+        <span class="n">mask_array</span> <span class="o">=</span> <span class="n">geometry_mask</span><span class="p">(</span>
+            <span class="n">gdf</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="n">transform</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="p">,</span>
+            <span class="n">invert</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>  <span class="c1"># Invert the mask to keep the area inside the polygons</span>
+            <span class="n">out_shape</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">raster</span><span class="o">.</span><span class="n">shape</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">ignore_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">ignore_value_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ignore_value_mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="o">!=</span> <span class="n">ignore_value</span>
+
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">mask_array</span> <span class="o">&amp;</span> <span class="n">ignore_value_mask</span>
+
+        <span class="c1"># Modify the raster values based on the specified parameters</span>
+        <span class="k">if</span> <span class="n">multiply</span><span class="p">:</span>
+            <span class="c1"># Set the raster cells to a multiple of the existing values</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">raster</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">*</span> <span class="n">value</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Set the raster cells to the new value</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">raster</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span></div>
+
+
+<div class="viewcode-block" id="GeoRasterizer.modify_raster_from_dataset">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.GeoRasterizer.modify_raster_from_dataset">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">modify_raster_from_dataset</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                                   <span class="n">input_data</span><span class="p">:</span> <span class="n">InputDataType</span><span class="p">,</span>
+                                   <span class="n">cost_assumptions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">CostAssumptionsType</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                   <span class="n">bbox</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BboxType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                   <span class="n">mask</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">GeometryMaskType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                   <span class="n">transform</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">rio</span><span class="o">.</span><span class="n">Affine</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                   <span class="n">geometry_buffer_m</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+                                   <span class="n">ignore_value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="mi">65535</span><span class="p">,</span>
+                                   <span class="n">multiply</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                                   <span class="n">zone_field</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                   <span class="n">forbidden_zone</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                   <span class="n">forbidden_value</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">65535</span><span class="p">,</span>
+                                   <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Modify the raster with an additional dataset.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - input_data: Path to the additional dataset file</span>
+<span class="sd">        - value: The value to apply to the raster</span>
+<span class="sd">        - crs: CRS of the additional dataset</span>
+<span class="sd">        - geometry_buffer_m: Buffer to apply to the dataset geometries</span>
+<span class="sd">        - ignore_value: Value in the raster to ignore during modification</span>
+<span class="sd">        - multiply: If True, multiply the raster values by the given value</span>
+<span class="sd">        - zone_field: Field name for zones in the dataset</span>
+<span class="sd">        - forbidden_zone: Zone value that should be treated as forbidden</span>
+<span class="sd">        - forbidden_value: Value to use for forbidden areas</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - The modified raster</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No raster data available to modify. Call rasterize() first.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Create bounds for data reading</span>
+        <span class="k">if</span> <span class="n">bbox</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">bbox</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_bounds_geodataframe</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">mask</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span>
+
+        <span class="n">dataset</span> <span class="o">=</span> <span class="n">initialize_geo_dataset</span><span class="p">(</span><span class="n">input_data</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">crs</span><span class="p">,</span> <span class="n">bbox</span><span class="o">=</span><span class="n">bbox</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">,</span> <span class="n">transform</span><span class="o">=</span><span class="n">transform</span><span class="p">)</span>
+        <span class="n">dataset</span><span class="o">.</span><span class="n">load_data</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">gdf</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">data</span>
+
+        <span class="c1"># Apply buffer if needed</span>
+        <span class="n">gdf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_buffer</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">geometry_buffer_m</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cost_assumptions</span><span class="p">,</span> <span class="nb">float</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cost_assumptions</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="c1"># Handle zoning if specified</span>
+            <span class="k">if</span> <span class="n">zone_field</span> <span class="ow">and</span> <span class="n">forbidden_zone</span><span class="p">:</span>
+                <span class="n">forbidden_areas</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">gdf</span><span class="p">[</span><span class="n">zone_field</span><span class="p">]</span> <span class="o">==</span> <span class="n">forbidden_zone</span><span class="p">]</span>
+                <span class="n">other_areas</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">gdf</span><span class="p">[</span><span class="n">zone_field</span><span class="p">]</span> <span class="o">!=</span> <span class="n">forbidden_zone</span><span class="p">]</span>
+
+                <span class="c1"># Apply multiplication factor to non-forbidden zones</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">other_areas</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">modify_raster_with_geodataframe</span><span class="p">(</span>
+                        <span class="n">gdf</span><span class="o">=</span><span class="n">other_areas</span><span class="p">,</span>
+                        <span class="n">value</span><span class="o">=</span><span class="n">cost_assumptions</span><span class="p">,</span>
+                        <span class="n">ignore_value</span><span class="o">=</span><span class="n">ignore_value</span><span class="p">,</span>
+                        <span class="n">multiply</span><span class="o">=</span><span class="n">multiply</span>
+                    <span class="p">)</span>
+
+                <span class="c1"># Set forbidden zones to forbidden value</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">forbidden_areas</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">modify_raster_with_geodataframe</span><span class="p">(</span>
+                        <span class="n">gdf</span><span class="o">=</span><span class="n">forbidden_areas</span><span class="p">,</span>
+                        <span class="n">value</span><span class="o">=</span><span class="n">forbidden_value</span><span class="p">,</span>
+                        <span class="n">ignore_value</span><span class="o">=</span><span class="n">ignore_value</span><span class="p">,</span>
+                        <span class="n">multiply</span><span class="o">=</span><span class="kc">False</span>
+                    <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Standard modification for the entire dataset</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">modify_raster_with_geodataframe</span><span class="p">(</span>
+                    <span class="n">gdf</span><span class="o">=</span><span class="n">gdf</span><span class="p">,</span>
+                    <span class="n">value</span><span class="o">=</span><span class="n">cost_assumptions</span><span class="p">,</span>
+                    <span class="n">ignore_value</span><span class="o">=</span><span class="n">ignore_value</span><span class="p">,</span>
+                    <span class="n">multiply</span><span class="o">=</span><span class="n">multiply</span>
+                <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cost_assumptions</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cost_assumptions</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="n">ca</span> <span class="o">=</span> <span class="n">CostAssumptions</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="n">cost_assumptions</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">ca</span> <span class="o">=</span> <span class="n">cost_assumptions</span>
+
+            <span class="n">ca</span><span class="o">.</span><span class="n">apply_to_geodataframe</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">unique_value</span> <span class="ow">in</span> <span class="n">gdf</span><span class="p">[</span><span class="s1">&#39;cost&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">():</span>
+                <span class="n">value_geoms</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">gdf</span><span class="p">[</span><span class="s1">&#39;cost&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">unique_value</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">value_geoms</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">shapes</span> <span class="o">=</span> <span class="p">((</span><span class="n">geom</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span> <span class="k">for</span> <span class="n">geom</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">value_geoms</span><span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">],</span> <span class="n">value_geoms</span><span class="p">[</span><span class="s1">&#39;cost&#39;</span><span class="p">]))</span>
+
+                <span class="c1"># Create a mask from the geometries in the GeoDataFrame</span>
+                <span class="n">mask_array</span> <span class="o">=</span> <span class="n">geometry_mask</span><span class="p">(</span>
+                    <span class="n">shapes</span><span class="p">,</span>
+                    <span class="n">transform</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="p">,</span>
+                    <span class="n">invert</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>  <span class="c1"># Invert the mask to keep the area inside the polygons</span>
+                    <span class="n">out_shape</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">raster</span><span class="o">.</span><span class="n">shape</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="n">ignore_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">ignore_value_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">ignore_value_mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="o">!=</span> <span class="n">ignore_value</span>
+
+                <span class="n">mask</span> <span class="o">=</span> <span class="n">mask_array</span> <span class="o">&amp;</span> <span class="n">ignore_value_mask</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">raster</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">unique_value</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span></div>
+
+
+<div class="viewcode-block" id="GeoRasterizer.save_raster">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.GeoRasterizer.save_raster">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save_raster</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">save_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Save the rasterized data to a file.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - save_path: Path to save the raster file</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No raster data available to save. Call rasterize() first.&quot;</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="n">rio</span><span class="o">.</span><span class="n">open</span><span class="p">(</span>
+                <span class="n">save_path</span><span class="p">,</span>
+                <span class="s1">&#39;w&#39;</span><span class="p">,</span>
+                <span class="n">driver</span><span class="o">=</span><span class="s1">&#39;GTiff&#39;</span><span class="p">,</span>  <span class="c1"># Specify the output format as GeoTIFF</span>
+                <span class="n">height</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>  <span class="c1"># Height of the raster</span>
+                <span class="n">width</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>  <span class="c1"># Width of the raster</span>
+                <span class="n">count</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>  <span class="c1"># Number of bands in the output raster</span>
+                <span class="n">dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>  <span class="c1"># Data type of the raster</span>
+                <span class="n">crs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">crs</span><span class="p">,</span>  <span class="c1"># Coordinate reference system of the raster</span>
+                <span class="n">transform</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">transform</span>  <span class="c1"># Transformation for the raster</span>
+        <span class="p">)</span> <span class="k">as</span> <span class="n">dst</span><span class="p">:</span>
+            <span class="n">dst</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># Write the raster data to the first band</span></div>
+
+
+<div class="viewcode-block" id="GeoRasterizer.shrink_raster">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.GeoRasterizer.shrink_raster">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">shrink_raster</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exclude_value</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Shrink the raster by removing outer bounds with a specific value.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - exclude_value: Value to exclude from the outer bounds</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - The shrunk raster</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No raster data available to shrink. Call rasterize() first.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Create a mask where the raster does not equal the exclude_value</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="o">!=</span> <span class="n">exclude_value</span>
+
+        <span class="c1"># Find the first and last rows and columns that contain non-excluded values</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">cols</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">cols</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span>  <span class="c1"># Return original if no non-excluded values</span>
+
+        <span class="c1"># Determine the indices for the outer bounds to be excluded</span>
+        <span class="n">first_row</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>  <span class="c1"># First row with a non-excluded value</span>
+        <span class="n">last_row</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">rows</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>  <span class="c1"># Last row with a non-excluded value</span>
+        <span class="n">first_col</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">cols</span><span class="p">)</span>  <span class="c1"># First column with a non-excluded value</span>
+        <span class="n">last_col</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">cols</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">cols</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>  <span class="c1"># Last column with a non-excluded value</span>
+
+        <span class="c1"># Use the indices to slice the array and return the shrunk raster</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">raster</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span><span class="p">[</span><span class="n">first_row</span><span class="p">:</span><span class="n">last_row</span><span class="p">,</span> <span class="n">first_col</span><span class="p">:</span><span class="n">last_col</span><span class="p">]</span>
+
+        <span class="c1"># Update the transform to account for the change in origin</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transform</span> <span class="o">=</span> <span class="n">rio</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">Affine</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">a</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">b</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">c</span> <span class="o">+</span> <span class="n">first_col</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">a</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">d</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">e</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">f</span> <span class="o">+</span> <span class="n">first_row</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">e</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster</span></div>
+</div>
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../index.html">PYORPS</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Martin Hofmann.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

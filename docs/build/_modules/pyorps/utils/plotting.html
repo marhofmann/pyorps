@@ -1,0 +1,699 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pyorps.utils.plotting &mdash; PYORPS 09.05.2025 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=d2164c19"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            PYORPS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../README.html">PYORPS - Python for Optimal Routes in Power Systems</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#features">Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#how-it-works">How It Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#use-cases">Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#technical-details">Technical Details</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#documentation">Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#contributing">Contributing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#citation">Citation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#contact">Contact</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../CONTRIBUTING.html">Contributing to PYORPS</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#get-in-touch">Get in Touch!</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#setting-up-your-development-environment">Setting Up Your Development Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#making-changes">Making Changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#keeping-your-fork-up-to-date">Keeping Your Fork Up-to-Date</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#writing-tests">Writing Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#code-style">Code Style</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#contributing-examples-or-case-studies">Contributing Examples or Case Studies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#thank-you">Thank You!</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">PYORPS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">pyorps.utils.plotting</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for pyorps.utils.plotting</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.colors</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">colors</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">gridspec</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rasterio.windows</span><span class="w"> </span><span class="kn">import</span> <span class="n">bounds</span> <span class="k">as</span> <span class="n">window_bounds</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.axes</span><span class="w"> </span><span class="kn">import</span> <span class="n">Axes</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.figure</span><span class="w"> </span><span class="kn">import</span> <span class="n">Figure</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.patches</span><span class="w"> </span><span class="kn">import</span> <span class="n">Rectangle</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.lines</span><span class="w"> </span><span class="kn">import</span> <span class="n">Line2D</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span>
+
+<span class="c1"># Project imports</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..raster.handler</span><span class="w"> </span><span class="kn">import</span> <span class="n">RasterHandler</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..core.path</span><span class="w"> </span><span class="kn">import</span> <span class="n">PathCollection</span><span class="p">,</span> <span class="n">Path</span>
+
+
+<span class="c1"># Separate class instead of nested class for raster visualization data</span>
+<div class="viewcode-block" id="RasterVizData">
+<a class="viewcode-back" href="../../../pyorps.utils.html#pyorps.utils.plotting.RasterVizData">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RasterVizData</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Container for raster visualization data used for plotting.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize empty visualization data containers.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">unique_values</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gray_colors</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">value_to_index</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span></div>
+
+
+
+<div class="viewcode-block" id="PathPlotter">
+<a class="viewcode-back" href="../../../pyorps.utils.html#pyorps.utils.plotting.PathPlotter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PathPlotter</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A class for visualizing paths from a PathCollection.</span>
+
+<span class="sd">    This class provides functionality to plot paths with options to:</span>
+<span class="sd">    - Display all paths or individual paths</span>
+<span class="sd">    - Show or hide the raster data as background</span>
+<span class="sd">    - Customize markers, colors, and other visual elements</span>
+<span class="sd">    - Create individual subplots for each path or combine them</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">paths</span><span class="p">:</span> <span class="n">PathCollection</span><span class="p">,</span> <span class="n">raster_handler</span><span class="p">:</span> <span class="n">RasterHandler</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the PathPlotter with a path collection and raster handler.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            paths: Collection of Path objects to plot</span>
+<span class="sd">            raster_handler: RasterHandler object containing the raster data</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">paths</span> <span class="o">=</span> <span class="n">paths</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span> <span class="o">=</span> <span class="n">raster_handler</span>
+
+<div class="viewcode-block" id="PathPlotter.plot_paths">
+<a class="viewcode-back" href="../../../pyorps.utils.html#pyorps.utils.plotting.PathPlotter.plot_paths">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">plot_paths</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                   <span class="n">plot_all</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                   <span class="n">subplots</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                   <span class="n">subplotsize</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span>
+                   <span class="n">source_color</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;green&#39;</span><span class="p">,</span>
+                   <span class="n">target_color</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;red&#39;</span><span class="p">,</span>
+                   <span class="n">path_colors</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">source_marker</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;o&#39;</span><span class="p">,</span>
+                   <span class="n">target_marker</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;x&#39;</span><span class="p">,</span>
+                   <span class="n">path_linewidth</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+                   <span class="n">show_raster</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                   <span class="n">title</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">suptitle</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">path_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">reverse_colors</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">Axes</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Axes</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Plot paths with options to display all paths or individual paths.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            plot_all: If True, plot all paths. If False, plot only the path with path_id.</span>
+<span class="sd">            subplots: If True and plot_all is True, create subplots for each path.</span>
+<span class="sd">            subplotsize: Size of each individual subplot in inches. Defaults to (10, 8).</span>
+<span class="sd">            source_color: Color for source marker. Defaults to &#39;green&#39;.</span>
+<span class="sd">            target_color: Color for target marker. Defaults to &#39;red&#39;.</span>
+<span class="sd">            path_colors: Colors for paths. If None, uses default colors.</span>
+<span class="sd">            source_marker: Marker style for source. Defaults to &#39;o&#39;.</span>
+<span class="sd">            target_marker: Marker style for target. Defaults to &#39;x&#39;.</span>
+<span class="sd">            path_linewidth: Line width for paths. Defaults to 2.</span>
+<span class="sd">            show_raster: Whether to show raster data as background. Defaults to True.</span>
+<span class="sd">            title: Subplot title(s). If None, default titles are created.</span>
+<span class="sd">            suptitle: The subtitle of the entire figure. Defaults to None.</span>
+<span class="sd">            path_id: ID of specific path to plot when plot_all is False.</span>
+<span class="sd">            reverse_colors: Whether to reverse the color scheme (low=dark, high=bright)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The axes object(s) with the plot. If multiple subplots are created, returns a list.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Check if we have any paths</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No paths found in PathCollection.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Setup path colors and determine which paths to plot</span>
+        <span class="n">path_colors</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_setup_path_colors</span><span class="p">(</span><span class="n">path_colors</span><span class="p">,</span> <span class="n">plot_all</span><span class="p">)</span>
+        <span class="n">paths_to_plot</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_determine_paths_to_plot</span><span class="p">(</span><span class="n">plot_all</span><span class="p">,</span> <span class="n">path_id</span><span class="p">)</span>
+
+        <span class="c1"># Create figure, axes, and legend area</span>
+        <span class="n">fig</span><span class="p">,</span> <span class="n">axes</span><span class="p">,</span> <span class="n">legend_ax</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_create_figure_and_axes</span><span class="p">(</span>
+            <span class="n">paths_to_plot</span><span class="p">,</span> <span class="n">plot_all</span><span class="p">,</span> <span class="n">subplots</span><span class="p">,</span> <span class="n">subplotsize</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">suptitle</span><span class="p">:</span>
+            <span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span><span class="n">suptitle</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="mi">16</span><span class="p">)</span>
+
+        <span class="c1"># Initialize data for legend</span>
+        <span class="n">legend_handles</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">legend_labels</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">raster_viz_data</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="c1"># Plot each path</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">ax</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">paths_to_plot</span><span class="p">,</span> <span class="n">axes</span><span class="p">)):</span>
+            <span class="c1"># Get the title for this plot</span>
+            <span class="n">plot_title</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_plot_title</span><span class="p">(</span><span class="n">title</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+
+            <span class="c1"># Plot raster background if requested</span>
+            <span class="k">if</span> <span class="n">show_raster</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">raster_viz_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_plot_raster_background</span><span class="p">(</span><span class="n">ax</span><span class="p">,</span> <span class="n">raster_viz_data</span><span class="p">,</span> <span class="n">reverse_colors</span><span class="o">=</span><span class="n">reverse_colors</span><span class="p">)</span>
+
+            <span class="c1"># Plot the path and add to legend</span>
+            <span class="n">path_color</span> <span class="o">=</span> <span class="n">path_colors</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">path_colors</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="k">else</span> <span class="n">path_colors</span>
+            <span class="n">new_handles</span><span class="p">,</span> <span class="n">new_labels</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_plot_path</span><span class="p">(</span>
+                <span class="n">ax</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">path_color</span><span class="p">,</span> <span class="n">path_linewidth</span><span class="p">,</span>
+                <span class="n">source_color</span><span class="p">,</span> <span class="n">target_color</span><span class="p">,</span> <span class="n">source_marker</span><span class="p">,</span> <span class="n">target_marker</span><span class="p">)</span>
+
+            <span class="c1"># Update legend data</span>
+            <span class="k">for</span> <span class="n">handle</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">new_handles</span><span class="p">,</span> <span class="n">new_labels</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">legend_labels</span><span class="p">:</span>
+                    <span class="n">legend_handles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">handle</span><span class="p">)</span>
+                    <span class="n">legend_labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+
+            <span class="c1"># Format axes</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_format_axes</span><span class="p">(</span><span class="n">ax</span><span class="p">,</span> <span class="n">plot_title</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">axes</span><span class="p">))</span>
+
+        <span class="c1"># Setup the legend</span>
+        <span class="k">if</span> <span class="n">show_raster</span> <span class="ow">and</span> <span class="n">raster_viz_data</span> <span class="ow">and</span> <span class="n">raster_viz_data</span><span class="o">.</span><span class="n">unique_values</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_add_raster_legend</span><span class="p">(</span>
+                <span class="n">legend_handles</span><span class="p">,</span> <span class="n">legend_labels</span><span class="p">,</span>
+                <span class="n">raster_viz_data</span><span class="o">.</span><span class="n">unique_values</span><span class="p">,</span>
+                <span class="n">raster_viz_data</span><span class="o">.</span><span class="n">value_to_index</span><span class="p">,</span>
+                <span class="n">raster_viz_data</span><span class="o">.</span><span class="n">gray_colors</span><span class="p">)</span>
+
+        <span class="c1"># Create the legend and finalize the plot</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_create_legend</span><span class="p">(</span><span class="n">legend_ax</span><span class="p">,</span> <span class="n">legend_handles</span><span class="p">,</span> <span class="n">legend_labels</span><span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+        <span class="c1"># Return the axes objects</span>
+        <span class="k">return</span> <span class="n">axes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">axes</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">axes</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_setup_path_colors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                           <span class="n">path_colors</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]],</span>
+                           <span class="n">plot_all</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set up colors for paths based on input parameters.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            path_colors: Colors specified by the user, can be a single color or list of colors</span>
+<span class="sd">            plot_all: Whether all paths will be plotted</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Either a single color string or a list of color values for each path</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Default path colors</span>
+        <span class="k">if</span> <span class="n">path_colors</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Use colormap for multiple paths</span>
+            <span class="k">if</span> <span class="n">plot_all</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="c1"># Create colors from the viridis colormap based on number of paths</span>
+                <span class="n">cmap</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">get_cmap</span><span class="p">(</span><span class="s1">&#39;hsv&#39;</span><span class="p">)</span>
+                <span class="n">path_colors</span> <span class="o">=</span> <span class="p">[</span><span class="n">cmap</span><span class="p">(</span><span class="n">i</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">))</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">))]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">path_colors</span> <span class="o">=</span> <span class="s1">&#39;blue&#39;</span>  <span class="c1"># Default color for single path</span>
+
+        <span class="c1"># If a single color is given but we need multiple, repeat it</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">path_colors</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">plot_all</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">path_colors</span> <span class="o">=</span> <span class="p">[</span><span class="n">path_colors</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">path_colors</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_determine_paths_to_plot</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                                 <span class="n">plot_all</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+                                 <span class="n">path_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Path</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Determine which paths to plot based on user inputs.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            plot_all: Whether to plot all paths</span>
+<span class="sd">            path_id: ID of specific path to plot when plot_all is False</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            List of Path objects to be plotted</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If path_id is specified but no matching path is found</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">plot_all</span><span class="p">:</span>
+            <span class="c1"># Return all paths in the collection</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="o">.</span><span class="n">all</span>
+        <span class="k">elif</span> <span class="n">path_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">path_id</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+                <span class="c1"># Find specific path by ID</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">path_id</span><span class="o">=</span><span class="n">path_id</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No path found with ID </span><span class="si">{</span><span class="n">path_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="p">[</span><span class="n">path</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">path_id</span><span class="o">=</span><span class="n">pid</span><span class="p">)</span> <span class="k">for</span> <span class="n">pid</span> <span class="ow">in</span> <span class="n">path_id</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Default to the last path if no specific path is requested</span>
+            <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="o">.</span><span class="n">all</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_create_figure_and_axes</span><span class="p">(</span><span class="n">paths_to_plot</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Path</span><span class="p">],</span>
+                                <span class="n">plot_all</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+                                <span class="n">subplots</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+                                <span class="n">subplotsize</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Figure</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Axes</span><span class="p">],</span> <span class="n">Axes</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create the figure, grid, and axes for plotting.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            paths_to_plot: List of Path objects to be plotted</span>
+<span class="sd">            plot_all: Whether all paths will be plotted</span>
+<span class="sd">            subplots: Whether to create individual subplots for each path</span>
+<span class="sd">            subplotsize: Size of each individual subplot in inches</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Tuple containing:</span>
+<span class="sd">            - Figure object</span>
+<span class="sd">            - List of axes for each path</span>
+<span class="sd">            - Legend axis</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Calculate grid dimensions</span>
+        <span class="n">n_paths</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">paths_to_plot</span><span class="p">)</span>
+        <span class="c1"># Use max 3 columns, only if we&#39;re plotting multiple paths with subplots</span>
+        <span class="n">n_cols</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">n_paths</span><span class="p">)</span> <span class="k">if</span> <span class="p">(</span><span class="n">plot_all</span> <span class="ow">or</span> <span class="n">subplots</span><span class="p">)</span> <span class="ow">and</span> <span class="n">n_paths</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="mi">1</span>
+        <span class="c1"># Calculate required number of rows</span>
+        <span class="n">n_rows</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">n_paths</span> <span class="o">/</span> <span class="n">n_cols</span><span class="p">))</span> <span class="k">if</span> <span class="n">plot_all</span> <span class="ow">and</span> <span class="n">subplots</span> <span class="ow">and</span> <span class="n">n_paths</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="mi">1</span>
+
+        <span class="c1"># Calculate figure size based on subplot size and layout with extra space for legend</span>
+        <span class="n">figsize</span> <span class="o">=</span> <span class="p">(</span><span class="n">subplotsize</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">n_cols</span> <span class="o">+</span> <span class="mf">1.5</span><span class="p">,</span> <span class="n">subplotsize</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">n_rows</span><span class="p">)</span>
+
+        <span class="c1"># Create figure</span>
+        <span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="n">figsize</span><span class="p">)</span>
+
+        <span class="c1"># Create main grid with plots and legend area (9:1 ratio)</span>
+        <span class="n">outer_gs</span> <span class="o">=</span> <span class="n">gridspec</span><span class="o">.</span><span class="n">GridSpec</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">width_ratios</span><span class="o">=</span><span class="p">[</span><span class="mi">9</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">figure</span><span class="o">=</span><span class="n">fig</span><span class="p">)</span>
+
+        <span class="c1"># Create grid for plots</span>
+        <span class="n">plot_gs</span> <span class="o">=</span> <span class="n">gridspec</span><span class="o">.</span><span class="n">GridSpecFromSubplotSpec</span><span class="p">(</span>
+            <span class="n">n_rows</span><span class="p">,</span> <span class="n">n_cols</span><span class="p">,</span> <span class="n">subplot_spec</span><span class="o">=</span><span class="n">outer_gs</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="n">wspace</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">hspace</span><span class="o">=</span><span class="mf">0.15</span><span class="p">)</span>  <span class="c1"># Minimal spacing between plots</span>
+
+        <span class="c1"># Create legend area</span>
+        <span class="n">legend_gs</span> <span class="o">=</span> <span class="n">gridspec</span><span class="o">.</span><span class="n">GridSpecFromSubplotSpec</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">subplot_spec</span><span class="o">=</span><span class="n">outer_gs</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">legend_rect</span> <span class="o">=</span> <span class="n">legend_gs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get_position</span><span class="p">(</span><span class="n">fig</span><span class="p">)</span>
+        <span class="n">legend_ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_axes</span><span class="p">((</span><span class="n">legend_rect</span><span class="o">.</span><span class="n">x0</span><span class="p">,</span> <span class="n">legend_rect</span><span class="o">.</span><span class="n">y0</span><span class="p">,</span> <span class="n">legend_rect</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="n">legend_rect</span><span class="o">.</span><span class="n">height</span><span class="p">))</span>
+        <span class="n">legend_ax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s1">&#39;off&#39;</span><span class="p">)</span>  <span class="c1"># Hide axis for the legend</span>
+
+        <span class="c1"># Create axes for plots</span>
+        <span class="n">axes</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Axes</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_paths</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">plot_all</span> <span class="ow">and</span> <span class="n">subplots</span> <span class="ow">and</span> <span class="n">n_paths</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="c1"># Multiple subplots case</span>
+                <span class="n">row</span><span class="p">,</span> <span class="n">col</span> <span class="o">=</span> <span class="nb">divmod</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">n_cols</span><span class="p">)</span>
+
+                <span class="c1"># Share y axis for plots in the same row for consistency</span>
+                <span class="k">if</span> <span class="n">col</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">share_y_with</span> <span class="o">=</span> <span class="n">axes</span><span class="p">[</span><span class="n">row</span> <span class="o">*</span> <span class="n">n_cols</span><span class="p">]</span>
+                    <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="n">plot_gs</span><span class="p">[</span><span class="n">row</span><span class="p">,</span> <span class="n">col</span><span class="p">],</span> <span class="n">sharey</span><span class="o">=</span><span class="n">share_y_with</span><span class="p">)</span>
+                    <span class="n">plt</span><span class="o">.</span><span class="n">setp</span><span class="p">(</span><span class="n">ax</span><span class="o">.</span><span class="n">get_yticklabels</span><span class="p">(),</span> <span class="n">visible</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>  <span class="c1"># Hide y-ticks for shared axes</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="n">plot_gs</span><span class="p">[</span><span class="n">row</span><span class="p">,</span> <span class="n">col</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Single plot case</span>
+                <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="n">plot_gs</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+
+            <span class="n">axes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+
+        <span class="c1"># Hide unused subplots (when n_paths doesn&#39;t fill the grid)</span>
+        <span class="k">if</span> <span class="n">plot_all</span> <span class="ow">and</span> <span class="n">subplots</span> <span class="ow">and</span> <span class="n">n_paths</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_paths</span><span class="p">,</span> <span class="n">n_rows</span> <span class="o">*</span> <span class="n">n_cols</span><span class="p">):</span>
+                <span class="n">row</span><span class="p">,</span> <span class="n">col</span> <span class="o">=</span> <span class="nb">divmod</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">n_cols</span><span class="p">)</span>
+                <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="n">plot_gs</span><span class="p">[</span><span class="n">row</span><span class="p">,</span> <span class="n">col</span><span class="p">])</span>
+                <span class="n">ax</span><span class="o">.</span><span class="n">axis</span><span class="p">(</span><span class="s1">&#39;off&#39;</span><span class="p">)</span>  <span class="c1"># Turn off unused axes</span>
+
+        <span class="k">return</span> <span class="n">fig</span><span class="p">,</span> <span class="n">axes</span><span class="p">,</span> <span class="n">legend_ax</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_plot_title</span><span class="p">(</span><span class="n">title</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]],</span>
+                        <span class="n">index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+                        <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get the title for a specific plot.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            title: User-provided title or list of titles</span>
+<span class="sd">            index: Index of the current path in the list of paths to plot</span>
+<span class="sd">            path: Current Path object being plotted</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Title string for the current plot</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># If title is a list and we have enough elements, use the corresponding title</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">title</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="n">index</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">title</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">title</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+        <span class="c1"># If a single title is provided, use it for all plots</span>
+        <span class="k">elif</span> <span class="n">title</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">title</span>
+        <span class="c1"># Otherwise create a default title using path information</span>
+        <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">&#39;total_length&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">path</span><span class="o">.</span><span class="n">total_length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;Path </span><span class="si">{</span><span class="n">path</span><span class="o">.</span><span class="n">path_id</span><span class="si">}</span><span class="s2"> (length: </span><span class="si">{</span><span class="n">path</span><span class="o">.</span><span class="n">total_length</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> units)&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;Path </span><span class="si">{</span><span class="n">path</span><span class="o">.</span><span class="n">path_id</span><span class="si">}</span><span class="s2"> from Source to Target&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_plot_raster_background</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                                <span class="n">ax</span><span class="p">:</span> <span class="n">Axes</span><span class="p">,</span>
+                                <span class="n">viz_data</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">RasterVizData</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                <span class="n">reverse_colors</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RasterVizData</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Plot the raster data as background for a path.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            ax: Matplotlib axes to plot on</span>
+<span class="sd">            viz_data: Optional visualization data from previous plots</span>
+<span class="sd">            reverse_colors: Whether to reverse the color scheme (low=dark, high=bright)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Object containing visualization data for raster legend</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Create or use existing visualization data</span>
+        <span class="k">if</span> <span class="n">viz_data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">viz_data</span> <span class="o">=</span> <span class="n">RasterVizData</span><span class="p">()</span>
+
+        <span class="c1"># Get raster data and create mask for NaN values</span>
+        <span class="n">raster_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">raster_data</span><span class="p">)</span>
+
+        <span class="c1"># Get bounds for plotting from the raster window</span>
+        <span class="n">bounds</span> <span class="o">=</span> <span class="n">window_bounds</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">window</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">transform</span><span class="p">)</span>
+
+        <span class="c1"># Apply coordinate correction used in indices_to_coords</span>
+        <span class="c1"># This ensures the raster is properly aligned with vector data</span>
+        <span class="n">pixel_width</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">a</span><span class="p">)</span>
+        <span class="n">pixel_height</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">e</span><span class="p">)</span>
+
+        <span class="c1"># Define the extent of the raster plot (left, right, bottom, top)</span>
+        <span class="n">extent</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">bounds</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">pixel_width</span><span class="p">,</span>  <span class="c1"># left</span>
+            <span class="n">bounds</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="n">pixel_width</span><span class="p">,</span>  <span class="c1"># right</span>
+            <span class="n">bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">pixel_height</span><span class="p">,</span>  <span class="c1"># bottom</span>
+            <span class="n">bounds</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">+</span> <span class="n">pixel_height</span>  <span class="c1"># top</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Identify unique values in the raster (ignoring NaNs)</span>
+        <span class="n">valid_data</span> <span class="o">=</span> <span class="n">raster_data</span><span class="p">[</span><span class="o">~</span><span class="n">mask</span><span class="p">]</span>
+
+        <span class="c1"># Only compute unique values and colormap once for efficiency</span>
+        <span class="k">if</span> <span class="n">viz_data</span><span class="o">.</span><span class="n">unique_values</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># Get and sort the unique values</span>
+            <span class="n">viz_data</span><span class="o">.</span><span class="n">unique_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">valid_data</span><span class="p">)</span>
+            <span class="n">viz_data</span><span class="o">.</span><span class="n">unique_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">viz_data</span><span class="o">.</span><span class="n">unique_values</span><span class="p">)</span>  <span class="c1"># Sort values</span>
+            <span class="n">n_values</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">viz_data</span><span class="o">.</span><span class="n">unique_values</span><span class="p">)</span>
+
+            <span class="c1"># Create visualization data array</span>
+            <span class="n">visualization_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">raster_data</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+
+            <span class="c1"># Create mapping from raster values to colormap indices</span>
+            <span class="n">viz_data</span><span class="o">.</span><span class="n">value_to_index</span> <span class="o">=</span> <span class="p">{</span><span class="n">val</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">viz_data</span><span class="o">.</span><span class="n">unique_values</span><span class="p">)}</span>
+
+            <span class="c1"># Create grayscale colormap with sorted values</span>
+            <span class="k">if</span> <span class="n">reverse_colors</span><span class="p">:</span>
+                <span class="c1"># Reversed: low values (dark/black) to high values (bright/white)</span>
+                <span class="n">gray_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">,</span> <span class="n">n_values</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Original: low values (bright/white) to high values (dark/black)</span>
+                <span class="n">gray_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.95</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">,</span> <span class="n">n_values</span><span class="p">)</span>
+
+            <span class="n">viz_data</span><span class="o">.</span><span class="n">gray_colors</span> <span class="o">=</span> <span class="p">[(</span><span class="n">v</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">gray_values</span><span class="p">]</span>
+            <span class="n">custom_cmap</span> <span class="o">=</span> <span class="n">colors</span><span class="o">.</span><span class="n">ListedColormap</span><span class="p">(</span><span class="n">viz_data</span><span class="o">.</span><span class="n">gray_colors</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Reuse previously computed data</span>
+            <span class="n">visualization_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">raster_data</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+            <span class="n">custom_cmap</span> <span class="o">=</span> <span class="n">colors</span><span class="o">.</span><span class="n">ListedColormap</span><span class="p">(</span><span class="n">viz_data</span><span class="o">.</span><span class="n">gray_colors</span><span class="p">)</span>
+
+        <span class="c1"># Fill in the visualization data with indices based on the mapping</span>
+        <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">viz_data</span><span class="o">.</span><span class="n">unique_values</span><span class="p">:</span>
+            <span class="n">visualization_data</span><span class="p">[</span><span class="n">raster_data</span> <span class="o">==</span> <span class="n">val</span><span class="p">]</span> <span class="o">=</span> <span class="n">viz_data</span><span class="o">.</span><span class="n">value_to_index</span><span class="p">[</span><span class="n">val</span><span class="p">]</span>
+
+        <span class="c1"># Set NaN values in visualization data</span>
+        <span class="n">visualization_data</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+        <span class="c1"># Plot the raster with proper extent and colormap</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span>
+            <span class="n">visualization_data</span><span class="p">,</span>
+            <span class="n">extent</span><span class="o">=</span><span class="n">extent</span><span class="p">,</span>
+            <span class="n">cmap</span><span class="o">=</span><span class="n">custom_cmap</span><span class="p">,</span>
+            <span class="n">interpolation</span><span class="o">=</span><span class="s1">&#39;nearest&#39;</span><span class="p">,</span>  <span class="c1"># No interpolation for accurate representation</span>
+            <span class="n">alpha</span><span class="o">=</span><span class="mf">0.7</span><span class="p">,</span>  <span class="c1"># Partial transparency to see path on top</span>
+            <span class="n">vmin</span><span class="o">=-</span><span class="mf">0.5</span><span class="p">,</span>  <span class="c1"># Offset for proper color mapping</span>
+            <span class="n">vmax</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">viz_data</span><span class="o">.</span><span class="n">unique_values</span><span class="p">)</span> <span class="o">-</span> <span class="mf">0.5</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">viz_data</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_plot_path</span><span class="p">(</span><span class="n">ax</span><span class="p">:</span> <span class="n">Axes</span><span class="p">,</span>
+                   <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+                   <span class="n">path_color</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]],</span>
+                   <span class="n">path_linewidth</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+                   <span class="n">source_color</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                   <span class="n">target_color</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                   <span class="n">source_marker</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                   <span class="n">target_marker</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Plot a single path with its source and target markers.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            ax: Matplotlib axes to plot on</span>
+<span class="sd">            path: Path object to plot</span>
+<span class="sd">            path_color: Color to use for this path</span>
+<span class="sd">            path_linewidth: Width of the path line</span>
+<span class="sd">            source_color: Color for source marker</span>
+<span class="sd">            target_color: Color for target marker</span>
+<span class="sd">            source_marker: Marker style for source</span>
+<span class="sd">            target_marker: Marker style for target</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Tuple containing:</span>
+<span class="sd">            - List of plot handles for the legend</span>
+<span class="sd">            - List of labels for the legend</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Initialize legend items for this path</span>
+        <span class="n">legend_handles</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">legend_labels</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="c1"># Get path coordinates</span>
+        <span class="n">path_coords</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">path_coords</span>
+        <span class="n">path_x</span> <span class="o">=</span> <span class="p">[</span><span class="n">coord</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">path_coords</span><span class="p">]</span>
+        <span class="n">path_y</span> <span class="o">=</span> <span class="p">[</span><span class="n">coord</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">path_coords</span><span class="p">]</span>
+
+        <span class="c1"># Plot the path line</span>
+        <span class="n">path_line</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">path_x</span><span class="p">,</span> <span class="n">path_y</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="n">path_color</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="n">path_linewidth</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Add path to legend handles</span>
+        <span class="n">path_label</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Path </span><span class="si">{</span><span class="n">path</span><span class="o">.</span><span class="n">path_id</span><span class="si">}</span><span class="s1">&#39;</span>
+        <span class="n">legend_handles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path_line</span><span class="p">)</span>
+        <span class="n">legend_labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path_label</span><span class="p">)</span>
+
+        <span class="c1"># Get source and target coordinates</span>
+        <span class="n">source_coords</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">source</span>
+        <span class="n">target_coords</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">target</span>
+
+        <span class="c1"># Handle both single coordinates and lists of coordinates</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source_coords</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">source_coords</span> <span class="o">=</span> <span class="p">[</span><span class="n">source_coords</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">target_coords</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">target_coords</span> <span class="o">=</span> <span class="p">[</span><span class="n">target_coords</span><span class="p">]</span>
+
+        <span class="c1"># Plot each source point</span>
+        <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">source_coords</span><span class="p">:</span>
+            <span class="n">source_point</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">coord</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">coord</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">marker</span><span class="o">=</span><span class="n">source_marker</span><span class="p">,</span>
+                                   <span class="n">color</span><span class="o">=</span><span class="n">source_color</span><span class="p">,</span> <span class="n">markersize</span><span class="o">=</span><span class="mi">10</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">legend_handles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">source_point</span><span class="p">)</span>
+            <span class="n">legend_labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;Source&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Plot each target point</span>
+        <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">target_coords</span><span class="p">:</span>
+            <span class="n">target_point</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">coord</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">coord</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">marker</span><span class="o">=</span><span class="n">target_marker</span><span class="p">,</span>
+                                   <span class="n">color</span><span class="o">=</span><span class="n">target_color</span><span class="p">,</span> <span class="n">markersize</span><span class="o">=</span><span class="mi">10</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">legend_handles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">target_point</span><span class="p">)</span>
+            <span class="n">legend_labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;Target&#39;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">legend_handles</span><span class="p">,</span> <span class="n">legend_labels</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_format_axes</span><span class="p">(</span><span class="n">ax</span><span class="p">:</span> <span class="n">Axes</span><span class="p">,</span>
+                     <span class="n">title</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                     <span class="n">index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+                     <span class="n">n_cols</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Format axis with title, labels and proper aspect ratio.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            ax: Matplotlib axes to format</span>
+<span class="sd">            title: Title for the plot</span>
+<span class="sd">            index: Index of the current plot</span>
+<span class="sd">            n_cols: Number of columns in the plot grid</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Set title</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+
+        <span class="c1"># Always add x-axis label</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s1">&#39;X Coordinate&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Only set Y label for leftmost subplot in each row to avoid redundancy</span>
+        <span class="k">if</span> <span class="n">index</span> <span class="o">%</span> <span class="n">n_cols</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s1">&#39;Y Coordinate&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Set aspect ratio to equal for proper spatial representation</span>
+        <span class="c1"># This ensures that distances in x and y directions are scaled equally</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_aspect</span><span class="p">(</span><span class="s1">&#39;equal&#39;</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_add_raster_legend</span><span class="p">(</span><span class="n">legend_handles</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span>
+                           <span class="n">legend_labels</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+                           <span class="n">unique_values</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+                           <span class="n">value_to_index</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+                           <span class="n">gray_colors</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Add raster color value information to the legend.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            legend_handles: List of plot handles for the legend</span>
+<span class="sd">            legend_labels: List of labels for the legend</span>
+<span class="sd">            unique_values: Array of unique values in the raster</span>
+<span class="sd">            value_to_index: Dictionary mapping values to colormap indices</span>
+<span class="sd">            gray_colors: List of grayscale colors for the colormap</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Add title/separator for the cost section</span>
+        <span class="n">legend_handles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Line2D</span><span class="p">([</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;none&#39;</span><span class="p">))</span>
+        <span class="n">legend_labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;Raster Value (Cost)&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Limit the number of color entries for readability</span>
+        <span class="n">max_colors_to_show</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">unique_values</span><span class="p">))</span>
+
+        <span class="c1"># Choose which values to show in the legend</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">unique_values</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_colors_to_show</span><span class="p">:</span>
+            <span class="c1"># Choose a subset of values evenly spaced across the range</span>
+            <span class="n">indices_to_show</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">unique_values</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">max_colors_to_show</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+            <span class="n">values_to_show</span> <span class="o">=</span> <span class="n">unique_values</span><span class="p">[</span><span class="n">indices_to_show</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Show all values if there aren&#39;t too many</span>
+            <span class="n">values_to_show</span> <span class="o">=</span> <span class="n">unique_values</span>
+
+        <span class="c1"># Create color patches for the legend</span>
+        <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">values_to_show</span><span class="p">:</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">value_to_index</span><span class="p">[</span><span class="n">val</span><span class="p">]</span>
+            <span class="n">color</span> <span class="o">=</span> <span class="n">gray_colors</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+            <span class="c1"># Create a rectangle patch with the appropriate color</span>
+            <span class="n">patch</span> <span class="o">=</span> <span class="n">Rectangle</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">facecolor</span><span class="o">=</span><span class="n">color</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.7</span><span class="p">)</span>
+            <span class="n">legend_handles</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">patch</span><span class="p">)</span>
+            <span class="c1"># Format as integer if the value is a whole number</span>
+            <span class="n">legend_labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">val</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span> <span class="k">if</span> <span class="n">val</span> <span class="o">==</span> <span class="nb">int</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="k">else</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">val</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_create_legend</span><span class="p">(</span><span class="n">legend_ax</span><span class="p">:</span> <span class="n">Axes</span><span class="p">,</span>
+                       <span class="n">legend_handles</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span>
+                       <span class="n">legend_labels</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create the legend in the designated legend area.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            legend_ax: Matplotlib axes for the legend</span>
+<span class="sd">            legend_handles: List of plot handles for the legend</span>
+<span class="sd">            legend_labels: List of labels for the legend</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Only create legend if we have items to show</span>
+        <span class="k">if</span> <span class="n">legend_handles</span><span class="p">:</span>
+            <span class="n">legend_ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span>
+                <span class="n">legend_handles</span><span class="p">,</span>
+                <span class="n">legend_labels</span><span class="p">,</span>
+                <span class="n">loc</span><span class="o">=</span><span class="s1">&#39;center left&#39;</span><span class="p">,</span>  <span class="c1"># Position legend on left side</span>
+                <span class="n">fontsize</span><span class="o">=</span><span class="s1">&#39;small&#39;</span><span class="p">,</span>  <span class="c1"># Use small font to fit more items</span>
+                <span class="n">title</span><span class="o">=</span><span class="s2">&quot;Legend&quot;</span><span class="p">,</span>  <span class="c1"># Add title to the legend</span>
+                <span class="n">frameon</span><span class="o">=</span><span class="kc">True</span>  <span class="c1"># Show a frame around the legend</span>
+            <span class="p">)</span></div>
+
+
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Martin Hofmann.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

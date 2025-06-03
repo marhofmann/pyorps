@@ -1,0 +1,985 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pyorps.core package &mdash; PYORPS 09.05.2025 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=d2164c19"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            PYORPS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="README.html">PYORPS - Python for Optimal Routes in Power Systems</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="README.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#features">Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#how-it-works">How It Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#use-cases">Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#technical-details">Technical Details</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#documentation">Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#contributing">Contributing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#citation">Citation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#contact">Contact</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="CONTRIBUTING.html">Contributing to PYORPS</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#get-in-touch">Get in Touch!</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#setting-up-your-development-environment">Setting Up Your Development Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#making-changes">Making Changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#keeping-your-fork-up-to-date">Keeping Your Fork Up-to-Date</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#writing-tests">Writing Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#code-style">Code Style</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#contributing-examples-or-case-studies">Contributing Examples or Case Studies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#thank-you">Thank You!</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">PYORPS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">pyorps.core package</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/pyorps.core.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="pyorps-core-package">
+<h1>pyorps.core package<a class="headerlink" href="#pyorps-core-package" title="Link to this heading"></a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
+</section>
+<section id="module-pyorps.core.cost_assumptions">
+<span id="pyorps-core-cost-assumptions-module"></span><h2>pyorps.core.cost_assumptions module<a class="headerlink" href="#module-pyorps.core.cost_assumptions" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.core.cost_assumptions.CostAssumptions">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.cost_assumptions.</span></span><span class="sig-name descname"><span class="pre">CostAssumptions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#CostAssumptions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.cost_assumptions.CostAssumptions" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A class for handling cost assumptions for rasterization.</p>
+<p>This class handles:
+- Loading cost assumptions from files (CSV, Excel, JSON) or generating of cost assumptions from a GeoDataFrame.
+- Mapping costs to features in a GeoDataFrame
+- Managing hierarchical cost structures</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.cost_assumptions.CostAssumptions.apply_to_geodataframe">
+<span class="sig-name descname"><span class="pre">apply_to_geodataframe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">main_feature</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">side_features</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#CostAssumptions.apply_to_geodataframe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.cost_assumptions.CostAssumptions.apply_to_geodataframe" title="Link to this definition"></a></dt>
+<dd><p>Apply cost assumptions to a GeoDataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gdf</strong> – GeoDataFrame to apply costs to</p></li>
+<li><p><strong>main_feature</strong> – Main feature column name</p></li>
+<li><p><strong>side_features</strong> – list of side feature column names or single side feature name</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>GeoDataFrame with ‘cost’ column added</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.cost_assumptions.CostAssumptions.load">
+<span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#CostAssumptions.load"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.cost_assumptions.CostAssumptions.load" title="Link to this definition"></a></dt>
+<dd><p>Load cost assumptions from a file or dictionary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>source</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>]</span>) – Path to a file or a dictionary containing cost assumptions</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dictionary of cost assumptions</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.cost_assumptions.CostAssumptions.to_csv">
+<span class="sig-name descname"><span class="pre">to_csv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filepath</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">separator</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">';'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decimal</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'.'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">encoding</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'ISO-8859-1'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#CostAssumptions.to_csv"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.cost_assumptions.CostAssumptions.to_csv" title="Link to this definition"></a></dt>
+<dd><p>Save the cost assumptions to a CSV file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filepath</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Path where to save the CSV file</p></li>
+<li><p><strong>separator</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Column separator character (default is ‘;’)</p></li>
+<li><p><strong>decimal</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Decimal separator character (default is ‘.’)</p></li>
+<li><p><strong>encoding</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The encoding of the file (default is ‘ISO-8859-1’)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.cost_assumptions.CostAssumptions.to_excel">
+<span class="sig-name descname"><span class="pre">to_excel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filepath</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sheet_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'CostAssumptions'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#CostAssumptions.to_excel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.cost_assumptions.CostAssumptions.to_excel" title="Link to this definition"></a></dt>
+<dd><p>Save the cost assumptions to an Excel file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filepath</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Path where to save the Excel file</p></li>
+<li><p><strong>sheet_name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Name of the worksheet (default is ‘CostAssumptions’)</p></li>
+<li><p><strong>index</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – Whether to write row indices (default is False)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.cost_assumptions.CostAssumptions.to_json">
+<span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filepath</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">indent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">encoding</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'ISO-8859-1'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#CostAssumptions.to_json"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.cost_assumptions.CostAssumptions.to_json" title="Link to this definition"></a></dt>
+<dd><p>Save the cost assumptions to a JSON file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filepath</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Path where to save the JSON file</p></li>
+<li><p><strong>indent</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – Number of spaces for indentation (default is 2)</p></li>
+<li><p><strong>encoding</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The encoding of the file (default is ‘ISO-8859-1’)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.core.cost_assumptions.detect_feature_columns">
+<span class="sig-prename descclassname"><span class="pre">pyorps.core.cost_assumptions.</span></span><span class="sig-name descname"><span class="pre">detect_feature_columns</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_features_per_column</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#detect_feature_columns"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.cost_assumptions.detect_feature_columns" title="Link to this definition"></a></dt>
+<dd><p>Analyze columns in a geodataframe to identify the best candidates for
+main_feature and side_features based on statistical metrics.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gdf</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code></span>) – GeoDataFrame to analyze</p></li>
+<li><p><strong>max_features_per_column</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – Maximum number of unique values allowed in a categorical column</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple of (main_feature, side_features)</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#pyorps.core.exceptions.NoSuitableColumnsError" title="pyorps.core.exceptions.NoSuitableColumnsError"><strong>NoSuitableColumnsError</strong></a> – When no suitable columns are found for feature selection</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.core.cost_assumptions.get_zero_cost_assumptions">
+<span class="sig-prename descclassname"><span class="pre">pyorps.core.cost_assumptions.</span></span><span class="sig-name descname"><span class="pre">get_zero_cost_assumptions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">main_feature</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">side_features</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#get_zero_cost_assumptions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.cost_assumptions.get_zero_cost_assumptions" title="Link to this definition"></a></dt>
+<dd><p>Generate cost assumptions with zero values for all feature combinations.</p>
+<p>Creates structures matching format for CostAssumptions:
+- Without side features: {main_feature: {val1: 0, val2: 0, …}}
+- With side features: {(main_feature, side_feature1, …): {(val1, val2, …): 0, …}}</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gdf</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code></span>) – GeoDataFrame with feature columns</p></li>
+<li><p><strong>main_feature</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Primary feature column name</p></li>
+<li><p><strong>side_features</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – List of secondary feature column names</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Instacne of zero-cost assumptions</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#pyorps.core.cost_assumptions.CostAssumptions" title="pyorps.core.cost_assumptions.CostAssumptions">CostAssumptions</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.core.cost_assumptions.save_empty_cost_assumptions">
+<span class="sig-prename descclassname"><span class="pre">pyorps.core.cost_assumptions.</span></span><span class="sig-name descname"><span class="pre">save_empty_cost_assumptions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geo_dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">main_feature</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">side_features</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'csv'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#save_empty_cost_assumptions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.cost_assumptions.save_empty_cost_assumptions" title="Link to this definition"></a></dt>
+<dd><p>Generate and save empty cost assumptions with zero values for a geo dataset.</p>
+<p>This function analyzes the given dataset to detect appropriate feature columns,
+creates a CostAssumptions object with zero costs for all feature combinations,
+and saves it to the specified path in the requested format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>geo_dataset</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span>) – GeoDataset object with a ‘data’ attribute containing a GeoDataFrame</p></li>
+<li><p><strong>save_path</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code>]</span>) – File path where the cost assumptions should be saved</p></li>
+<li><p><strong>file_type</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Output file format - one of ‘json’, ‘csv’, or ‘excel’
+(default is ‘json’)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>TypeError</strong> – If file_type is not one of the supported formats</p></li>
+<li><p><a class="reference internal" href="#pyorps.core.exceptions.NoSuitableColumnsError" title="pyorps.core.exceptions.NoSuitableColumnsError"><strong>NoSuitableColumnsError</strong></a> – If no suitable columns can be detected in the dataset</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>This function saves to a file and doesn’t return a value</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-pyorps.core.exceptions">
+<span id="pyorps-core-exceptions-module"></span><h2>pyorps.core.exceptions module<a class="headerlink" href="#module-pyorps.core.exceptions" title="Link to this heading"></a></h2>
+<p>Exceptions for CostAssumptions</p>
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.AlgorthmNotImplementedError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">AlgorthmNotImplementedError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">algorithm</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">graph_library</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#AlgorthmNotImplementedError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.AlgorthmNotImplementedError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Custom exception if a specific algorithm is not implemented in the API or the graph library</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.ColumnAnalysisError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">ColumnAnalysisError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#ColumnAnalysisError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.ColumnAnalysisError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.FeatureColumnError" title="pyorps.core.exceptions.FeatureColumnError"><code class="xref py py-class docutils literal notranslate"><span class="pre">FeatureColumnError</span></code></a></p>
+<p>Exception raised when column analysis fails</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.CostAssumptionsError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">CostAssumptionsError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#CostAssumptionsError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.CostAssumptionsError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Base exception for CostAssumptions class.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.FeatureColumnError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">FeatureColumnError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#FeatureColumnError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.FeatureColumnError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Base exception for feature column detection errors</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.FileLoadError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">FileLoadError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#FileLoadError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.FileLoadError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.CostAssumptionsError" title="pyorps.core.exceptions.CostAssumptionsError"><code class="xref py py-class docutils literal notranslate"><span class="pre">CostAssumptionsError</span></code></a></p>
+<p>Exception raised when loading files fails.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.FormatError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">FormatError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#FormatError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.FormatError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.CostAssumptionsError" title="pyorps.core.exceptions.CostAssumptionsError"><code class="xref py py-class docutils literal notranslate"><span class="pre">CostAssumptionsError</span></code></a></p>
+<p>Exception raised when data format is invalid.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.InvalidSourceError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">InvalidSourceError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#InvalidSourceError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.InvalidSourceError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.CostAssumptionsError" title="pyorps.core.exceptions.CostAssumptionsError"><code class="xref py py-class docutils literal notranslate"><span class="pre">CostAssumptionsError</span></code></a></p>
+<p>Exception raised when the provided source is invalid.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.NoPathFoundError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">NoPathFoundError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#NoPathFoundError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.NoPathFoundError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Custom exception if no path can be found in the graph for source and target</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.NoSuitableColumnsError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">NoSuitableColumnsError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#NoSuitableColumnsError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.NoSuitableColumnsError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.FeatureColumnError" title="pyorps.core.exceptions.FeatureColumnError"><code class="xref py py-class docutils literal notranslate"><span class="pre">FeatureColumnError</span></code></a></p>
+<p>Exception raised when no suitable columns are found</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.RasterShapeError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">RasterShapeError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_shape</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#RasterShapeError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.RasterShapeError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Custom exception if the raster shape is not supported</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.WFSConnectionError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">WFSConnectionError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#WFSConnectionError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.WFSConnectionError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.WFSError" title="pyorps.core.exceptions.WFSError"><code class="xref py py-class docutils literal notranslate"><span class="pre">WFSError</span></code></a></p>
+<p>Exception raised for connection issues with WFS services.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.WFSError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">WFSError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#WFSError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.WFSError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Base exception for WFS-related errors.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.WFSLayerNotFoundError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">WFSLayerNotFoundError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#WFSLayerNotFoundError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.WFSLayerNotFoundError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.WFSError" title="pyorps.core.exceptions.WFSError"><code class="xref py py-class docutils literal notranslate"><span class="pre">WFSError</span></code></a></p>
+<p>Exception raised when a requested layer cannot be found.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.exceptions.WFSResponseParsingError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.exceptions.</span></span><span class="sig-name descname"><span class="pre">WFSResponseParsingError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#WFSResponseParsingError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.exceptions.WFSResponseParsingError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.WFSError" title="pyorps.core.exceptions.WFSError"><code class="xref py py-class docutils literal notranslate"><span class="pre">WFSError</span></code></a></p>
+<p>Exception raised when parsing WFS responses fails.</p>
+</dd></dl>
+
+</section>
+<section id="module-pyorps.core.path">
+<span id="pyorps-core-path-module"></span><h2>pyorps.core.path module<a class="headerlink" href="#module-pyorps.core.path" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.core.path.Path">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.path.</span></span><span class="sig-name descname"><span class="pre">Path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">graph_api</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_geometry</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">euclidean_distance</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">runtimes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">total_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">total_cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">length_by_category</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">length_by_category_percent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#Path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.path.Path" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Dataclass representing a path in a raster graph.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.algorithm">
+<span class="sig-name descname"><span class="pre">algorithm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#pyorps.core.path.Path.algorithm" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.euclidean_distance">
+<span class="sig-name descname"><span class="pre">euclidean_distance</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></em><a class="headerlink" href="#pyorps.core.path.Path.euclidean_distance" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.graph_api">
+<span class="sig-name descname"><span class="pre">graph_api</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#pyorps.core.path.Path.graph_api" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.length_by_category">
+<span class="sig-name descname"><span class="pre">length_by_category</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.core.path.Path.length_by_category" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.length_by_category_percent">
+<span class="sig-name descname"><span class="pre">length_by_category_percent</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.core.path.Path.length_by_category_percent" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.path_coords">
+<span class="sig-name descname"><span class="pre">path_coords</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></em><a class="headerlink" href="#pyorps.core.path.Path.path_coords" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.path_geometry">
+<span class="sig-name descname"><span class="pre">path_geometry</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">LineString</span></code></em><a class="headerlink" href="#pyorps.core.path.Path.path_geometry" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.path_id">
+<span class="sig-name descname"><span class="pre">path_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#pyorps.core.path.Path.path_id" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.path_indices">
+<span class="sig-name descname"><span class="pre">path_indices</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></em><a class="headerlink" href="#pyorps.core.path.Path.path_indices" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.runtimes">
+<span class="sig-name descname"><span class="pre">runtimes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><a class="headerlink" href="#pyorps.core.path.Path.runtimes" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.source">
+<span class="sig-name descname"><span class="pre">source</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></em><a class="headerlink" href="#pyorps.core.path.Path.source" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.target">
+<span class="sig-name descname"><span class="pre">target</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></em><a class="headerlink" href="#pyorps.core.path.Path.target" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.to_geodataframe_dict">
+<span class="sig-name descname"><span class="pre">to_geodataframe_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#Path.to_geodataframe_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.path.Path.to_geodataframe_dict" title="Link to this definition"></a></dt>
+<dd><p>Convert Path object to a dictionary suitable for GeoDataFrame creation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dictionary with path data formatted for GeoDataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.total_cost">
+<span class="sig-name descname"><span class="pre">total_cost</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.core.path.Path.total_cost" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.path.Path.total_length">
+<span class="sig-name descname"><span class="pre">total_length</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.core.path.Path.total_length" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.core.path.PathCollection">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.path.</span></span><span class="sig-name descname"><span class="pre">PathCollection</span></span><a class="reference internal" href="_modules/pyorps/core/path.html#PathCollection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.path.PathCollection" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Container for Path objects with O(1) retrieval by path ID.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.path.PathCollection.add">
+<span class="sig-name descname"><span class="pre">add</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#PathCollection.add"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.path.PathCollection.add" title="Link to this definition"></a></dt>
+<dd><p>Add a path to the collection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="pyorps.core.path.PathCollection.all">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">all</span></span><a class="headerlink" href="#pyorps.core.path.PathCollection.all" title="Link to this definition"></a></dt>
+<dd><p>Return all paths as a list.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.path.PathCollection.get">
+<span class="sig-name descname"><span class="pre">get</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#PathCollection.get"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.path.PathCollection.get" title="Link to this definition"></a></dt>
+<dd><p>Retrieve a stored path by ID, or by source AND target.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference internal" href="#pyorps.core.path.Path" title="pyorps.core.path.Path"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.path.PathCollection.to_geodataframe_records">
+<span class="sig-name descname"><span class="pre">to_geodataframe_records</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#PathCollection.to_geodataframe_records"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.path.PathCollection.to_geodataframe_records" title="Link to this definition"></a></dt>
+<dd><p>Convert all paths to a list of dictionaries suitable for a GeoDataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of dictionaries with path data formatted for a GeoDataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-pyorps.core.types">
+<span id="pyorps-core-types-module"></span><h2>pyorps.core.types module<a class="headerlink" href="#module-pyorps.core.types" title="Link to this heading"></a></h2>
+</section>
+<section id="module-pyorps.core">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-pyorps.core" title="Link to this heading"></a></h2>
+<p>Core types and base classes for geospatial data processing.</p>
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.AlgorthmNotImplementedError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">AlgorthmNotImplementedError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">algorithm</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">graph_library</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#AlgorthmNotImplementedError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.AlgorthmNotImplementedError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Custom exception if a specific algorithm is not implemented in the API or the graph library</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.ColumnAnalysisError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">ColumnAnalysisError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#ColumnAnalysisError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.ColumnAnalysisError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.FeatureColumnError" title="pyorps.core.exceptions.FeatureColumnError"><code class="xref py py-class docutils literal notranslate"><span class="pre">FeatureColumnError</span></code></a></p>
+<p>Exception raised when column analysis fails</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.core.CostAssumptions">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">CostAssumptions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#CostAssumptions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.CostAssumptions" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A class for handling cost assumptions for rasterization.</p>
+<p>This class handles:
+- Loading cost assumptions from files (CSV, Excel, JSON) or generating of cost assumptions from a GeoDataFrame.
+- Mapping costs to features in a GeoDataFrame
+- Managing hierarchical cost structures</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.CostAssumptions.apply_to_geodataframe">
+<span class="sig-name descname"><span class="pre">apply_to_geodataframe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">main_feature</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">side_features</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#CostAssumptions.apply_to_geodataframe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.CostAssumptions.apply_to_geodataframe" title="Link to this definition"></a></dt>
+<dd><p>Apply cost assumptions to a GeoDataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gdf</strong> – GeoDataFrame to apply costs to</p></li>
+<li><p><strong>main_feature</strong> – Main feature column name</p></li>
+<li><p><strong>side_features</strong> – list of side feature column names or single side feature name</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>GeoDataFrame with ‘cost’ column added</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.CostAssumptions.load">
+<span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#CostAssumptions.load"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.CostAssumptions.load" title="Link to this definition"></a></dt>
+<dd><p>Load cost assumptions from a file or dictionary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>source</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>]</span>) – Path to a file or a dictionary containing cost assumptions</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dictionary of cost assumptions</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.CostAssumptions.to_csv">
+<span class="sig-name descname"><span class="pre">to_csv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filepath</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">separator</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">';'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decimal</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'.'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">encoding</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'ISO-8859-1'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#CostAssumptions.to_csv"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.CostAssumptions.to_csv" title="Link to this definition"></a></dt>
+<dd><p>Save the cost assumptions to a CSV file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filepath</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Path where to save the CSV file</p></li>
+<li><p><strong>separator</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Column separator character (default is ‘;’)</p></li>
+<li><p><strong>decimal</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Decimal separator character (default is ‘.’)</p></li>
+<li><p><strong>encoding</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The encoding of the file (default is ‘ISO-8859-1’)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.CostAssumptions.to_excel">
+<span class="sig-name descname"><span class="pre">to_excel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filepath</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sheet_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'CostAssumptions'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#CostAssumptions.to_excel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.CostAssumptions.to_excel" title="Link to this definition"></a></dt>
+<dd><p>Save the cost assumptions to an Excel file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filepath</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Path where to save the Excel file</p></li>
+<li><p><strong>sheet_name</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Name of the worksheet (default is ‘CostAssumptions’)</p></li>
+<li><p><strong>index</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – Whether to write row indices (default is False)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.CostAssumptions.to_json">
+<span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filepath</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">indent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">encoding</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'ISO-8859-1'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#CostAssumptions.to_json"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.CostAssumptions.to_json" title="Link to this definition"></a></dt>
+<dd><p>Save the cost assumptions to a JSON file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filepath</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Path where to save the JSON file</p></li>
+<li><p><strong>indent</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – Number of spaces for indentation (default is 2)</p></li>
+<li><p><strong>encoding</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – The encoding of the file (default is ‘ISO-8859-1’)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.CostAssumptionsError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">CostAssumptionsError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#CostAssumptionsError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.CostAssumptionsError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Base exception for CostAssumptions class.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.FeatureColumnError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">FeatureColumnError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#FeatureColumnError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.FeatureColumnError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Base exception for feature column detection errors</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.FileLoadError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">FileLoadError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#FileLoadError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.FileLoadError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.CostAssumptionsError" title="pyorps.core.exceptions.CostAssumptionsError"><code class="xref py py-class docutils literal notranslate"><span class="pre">CostAssumptionsError</span></code></a></p>
+<p>Exception raised when loading files fails.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.FormatError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">FormatError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#FormatError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.FormatError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.CostAssumptionsError" title="pyorps.core.exceptions.CostAssumptionsError"><code class="xref py py-class docutils literal notranslate"><span class="pre">CostAssumptionsError</span></code></a></p>
+<p>Exception raised when data format is invalid.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.InvalidSourceError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">InvalidSourceError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#InvalidSourceError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.InvalidSourceError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.CostAssumptionsError" title="pyorps.core.exceptions.CostAssumptionsError"><code class="xref py py-class docutils literal notranslate"><span class="pre">CostAssumptionsError</span></code></a></p>
+<p>Exception raised when the provided source is invalid.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.NoPathFoundError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">NoPathFoundError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#NoPathFoundError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.NoPathFoundError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Custom exception if no path can be found in the graph for source and target</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.NoSuitableColumnsError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">NoSuitableColumnsError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#NoSuitableColumnsError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.NoSuitableColumnsError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.FeatureColumnError" title="pyorps.core.exceptions.FeatureColumnError"><code class="xref py py-class docutils literal notranslate"><span class="pre">FeatureColumnError</span></code></a></p>
+<p>Exception raised when no suitable columns are found</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.core.Path">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">Path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">graph_api</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_geometry</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">euclidean_distance</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">runtimes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">total_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">total_cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">length_by_category</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">length_by_category_percent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#Path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.Path" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Dataclass representing a path in a raster graph.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.algorithm">
+<span class="sig-name descname"><span class="pre">algorithm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#pyorps.core.Path.algorithm" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.euclidean_distance">
+<span class="sig-name descname"><span class="pre">euclidean_distance</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></em><a class="headerlink" href="#pyorps.core.Path.euclidean_distance" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.graph_api">
+<span class="sig-name descname"><span class="pre">graph_api</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#pyorps.core.Path.graph_api" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.length_by_category">
+<span class="sig-name descname"><span class="pre">length_by_category</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.core.Path.length_by_category" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.length_by_category_percent">
+<span class="sig-name descname"><span class="pre">length_by_category_percent</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.core.Path.length_by_category_percent" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.path_coords">
+<span class="sig-name descname"><span class="pre">path_coords</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></em><a class="headerlink" href="#pyorps.core.Path.path_coords" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.path_geometry">
+<span class="sig-name descname"><span class="pre">path_geometry</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">LineString</span></code></em><a class="headerlink" href="#pyorps.core.Path.path_geometry" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.path_id">
+<span class="sig-name descname"><span class="pre">path_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#pyorps.core.Path.path_id" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.path_indices">
+<span class="sig-name descname"><span class="pre">path_indices</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></em><a class="headerlink" href="#pyorps.core.Path.path_indices" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.runtimes">
+<span class="sig-name descname"><span class="pre">runtimes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><a class="headerlink" href="#pyorps.core.Path.runtimes" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.source">
+<span class="sig-name descname"><span class="pre">source</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></em><a class="headerlink" href="#pyorps.core.Path.source" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.target">
+<span class="sig-name descname"><span class="pre">target</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></em><a class="headerlink" href="#pyorps.core.Path.target" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.Path.to_geodataframe_dict">
+<span class="sig-name descname"><span class="pre">to_geodataframe_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#Path.to_geodataframe_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.Path.to_geodataframe_dict" title="Link to this definition"></a></dt>
+<dd><p>Convert Path object to a dictionary suitable for GeoDataFrame creation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dictionary with path data formatted for GeoDataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.total_cost">
+<span class="sig-name descname"><span class="pre">total_cost</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.core.Path.total_cost" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.core.Path.total_length">
+<span class="sig-name descname"><span class="pre">total_length</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.core.Path.total_length" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.core.PathCollection">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">PathCollection</span></span><a class="reference internal" href="_modules/pyorps/core/path.html#PathCollection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.PathCollection" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Container for Path objects with O(1) retrieval by path ID.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.PathCollection.add">
+<span class="sig-name descname"><span class="pre">add</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#PathCollection.add"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.PathCollection.add" title="Link to this definition"></a></dt>
+<dd><p>Add a path to the collection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="pyorps.core.PathCollection.all">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">all</span></span><a class="headerlink" href="#pyorps.core.PathCollection.all" title="Link to this definition"></a></dt>
+<dd><p>Return all paths as a list.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.PathCollection.get">
+<span class="sig-name descname"><span class="pre">get</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#PathCollection.get"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.PathCollection.get" title="Link to this definition"></a></dt>
+<dd><p>Retrieve a stored path by ID, or by source AND target.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference internal" href="#pyorps.core.path.Path" title="pyorps.core.path.Path"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.core.PathCollection.to_geodataframe_records">
+<span class="sig-name descname"><span class="pre">to_geodataframe_records</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#PathCollection.to_geodataframe_records"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.PathCollection.to_geodataframe_records" title="Link to this definition"></a></dt>
+<dd><p>Convert all paths to a list of dictionaries suitable for a GeoDataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of dictionaries with path data formatted for a GeoDataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.RasterShapeError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">RasterShapeError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_shape</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#RasterShapeError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.RasterShapeError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Custom exception if the raster shape is not supported</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.WFSConnectionError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">WFSConnectionError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#WFSConnectionError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.WFSConnectionError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.WFSError" title="pyorps.core.exceptions.WFSError"><code class="xref py py-class docutils literal notranslate"><span class="pre">WFSError</span></code></a></p>
+<p>Exception raised for connection issues with WFS services.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.WFSError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">WFSError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#WFSError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.WFSError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Base exception for WFS-related errors.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.WFSLayerNotFoundError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">WFSLayerNotFoundError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#WFSLayerNotFoundError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.WFSLayerNotFoundError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.WFSError" title="pyorps.core.exceptions.WFSError"><code class="xref py py-class docutils literal notranslate"><span class="pre">WFSError</span></code></a></p>
+<p>Exception raised when a requested layer cannot be found.</p>
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.core.WFSResponseParsingError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">WFSResponseParsingError</span></span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#WFSResponseParsingError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.WFSResponseParsingError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#pyorps.core.exceptions.WFSError" title="pyorps.core.exceptions.WFSError"><code class="xref py py-class docutils literal notranslate"><span class="pre">WFSError</span></code></a></p>
+<p>Exception raised when parsing WFS responses fails.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.core.detect_feature_columns">
+<span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">detect_feature_columns</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_features_per_column</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#detect_feature_columns"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.detect_feature_columns" title="Link to this definition"></a></dt>
+<dd><p>Analyze columns in a geodataframe to identify the best candidates for
+main_feature and side_features based on statistical metrics.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gdf</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code></span>) – GeoDataFrame to analyze</p></li>
+<li><p><strong>max_features_per_column</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – Maximum number of unique values allowed in a categorical column</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple of (main_feature, side_features)</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#pyorps.core.NoSuitableColumnsError" title="pyorps.core.NoSuitableColumnsError"><strong>NoSuitableColumnsError</strong></a> – When no suitable columns are found for feature selection</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.core.get_zero_cost_assumptions">
+<span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">get_zero_cost_assumptions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gdf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">main_feature</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">side_features</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#get_zero_cost_assumptions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.get_zero_cost_assumptions" title="Link to this definition"></a></dt>
+<dd><p>Generate cost assumptions with zero values for all feature combinations.</p>
+<p>Creates structures matching format for CostAssumptions:
+- Without side features: {main_feature: {val1: 0, val2: 0, …}}
+- With side features: {(main_feature, side_feature1, …): {(val1, val2, …): 0, …}}</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gdf</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">GeoDataFrame</span></code></span>) – GeoDataFrame with feature columns</p></li>
+<li><p><strong>main_feature</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Primary feature column name</p></li>
+<li><p><strong>side_features</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – List of secondary feature column names</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Instacne of zero-cost assumptions</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#pyorps.core.CostAssumptions" title="pyorps.core.CostAssumptions">CostAssumptions</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.core.save_empty_cost_assumptions">
+<span class="sig-prename descclassname"><span class="pre">pyorps.core.</span></span><span class="sig-name descname"><span class="pre">save_empty_cost_assumptions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geo_dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">main_feature</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">side_features</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'csv'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/cost_assumptions.html#save_empty_cost_assumptions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.core.save_empty_cost_assumptions" title="Link to this definition"></a></dt>
+<dd><p>Generate and save empty cost assumptions with zero values for a geo dataset.</p>
+<p>This function analyzes the given dataset to detect appropriate feature columns,
+creates a CostAssumptions object with zero costs for all feature combinations,
+and saves it to the specified path in the requested format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>geo_dataset</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span>) – GeoDataset object with a ‘data’ attribute containing a GeoDataFrame</p></li>
+<li><p><strong>save_path</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code>]</span>) – File path where the cost assumptions should be saved</p></li>
+<li><p><strong>file_type</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Output file format - one of ‘json’, ‘csv’, or ‘excel’
+(default is ‘json’)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>TypeError</strong> – If file_type is not one of the supported formats</p></li>
+<li><p><a class="reference internal" href="#pyorps.core.NoSuitableColumnsError" title="pyorps.core.NoSuitableColumnsError"><strong>NoSuitableColumnsError</strong></a> – If no suitable columns can be detected in the dataset</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>This function saves to a file and doesn’t return a value</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Martin Hofmann.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

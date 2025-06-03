@@ -1,0 +1,515 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pyorps.io.geo_dataset &mdash; PYORPS 09.05.2025 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=d2164c19"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            PYORPS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../README.html">PYORPS - Python for Optimal Routes in Power Systems</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#features">Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#how-it-works">How It Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#use-cases">Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#technical-details">Technical Details</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#documentation">Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#contributing">Contributing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#citation">Citation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#contact">Contact</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../CONTRIBUTING.html">Contributing to PYORPS</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#get-in-touch">Get in Touch!</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#setting-up-your-development-environment">Setting Up Your Development Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#making-changes">Making Changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#keeping-your-fork-up-to-date">Keeping Your Fork Up-to-Date</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#writing-tests">Writing Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#code-style">Code Style</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#contributing-examples-or-case-studies">Contributing Examples or Case Studies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#thank-you">Thank You!</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">PYORPS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">pyorps.io.geo_dataset</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for pyorps.io.geo_dataset</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">os.path</span><span class="w"> </span><span class="kn">import</span> <span class="n">splitext</span><span class="p">,</span> <span class="n">isfile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">geopandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">gpd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">ndarray</span><span class="p">,</span> <span class="n">dtype</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rasterio.transform</span><span class="w"> </span><span class="kn">import</span> <span class="n">Affine</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rasterio</span><span class="w"> </span><span class="kn">import</span> <span class="nb">open</span> <span class="k">as</span> <span class="n">rio_open</span>
+
+<span class="c1"># Changed from flat import to relative import from the same io module</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.vector_loader</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_from_wfs</span>
+<span class="c1"># Changed to relative import from the core module</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..core.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">BboxType</span><span class="p">,</span> <span class="n">InputDataType</span><span class="p">,</span> <span class="n">GeometryMaskType</span>
+
+
+<div class="viewcode-block" id="GeoDataset">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.GeoDataset">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GeoDataset</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+    <span class="n">file_source</span><span class="p">:</span> <span class="n">Any</span>
+    <span class="n">crs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">data</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">,</span> <span class="n">ndarray</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">file_source</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+                 <span class="n">crs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">file_source</span> <span class="o">=</span> <span class="n">file_source</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">crs</span> <span class="o">=</span> <span class="n">crs</span>
+
+<div class="viewcode-block" id="GeoDataset.load_data">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.GeoDataset.load_data">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">pass</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="VectorDataset">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.VectorDataset">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">VectorDataset</span><span class="p">(</span><span class="n">GeoDataset</span><span class="p">,</span> <span class="n">ABC</span><span class="p">):</span>
+    <span class="n">bbox</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BboxType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">mask</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">GeometryMaskType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">file_source</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+                 <span class="n">crs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">bbox</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BboxType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">mask</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">GeometryMaskType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">crs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bbox</span> <span class="o">=</span> <span class="n">bbox</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mask</span> <span class="o">=</span> <span class="n">mask</span>
+
+<div class="viewcode-block" id="VectorDataset.correct_crs">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.VectorDataset.correct_crs">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">correct_crs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="VectorDataset.apply_mask">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.VectorDataset.apply_mask">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply_mask</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="VectorDataset.apply_bbox">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.VectorDataset.apply_bbox">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply_bbox</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="VectorDataset.post_loading">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.VectorDataset.post_loading">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">post_loading</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="InMemoryVectorDataset">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.InMemoryVectorDataset">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InMemoryVectorDataset</span><span class="p">(</span><span class="n">VectorDataset</span><span class="p">):</span>
+<div class="viewcode-block" id="InMemoryVectorDataset.load_data">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.InMemoryVectorDataset.load_data">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">file_source</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">post_loading</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="InMemoryVectorDataset.correct_crs">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.InMemoryVectorDataset.correct_crs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">correct_crs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">crs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">crs</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">crs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span></div>
+
+
+    <span class="c1"># noinspection PyUnresolvedReferences</span>
+<div class="viewcode-block" id="InMemoryVectorDataset.apply_bbox">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.InMemoryVectorDataset.apply_bbox">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply_bbox</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bbox</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bbox</span><span class="p">,</span> <span class="s1">&#39;crs&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">bbox</span><span class="o">.</span><span class="n">crs</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">bbox</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bbox</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bbox</span><span class="p">,</span> <span class="n">keep_geom_type</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+
+    <span class="c1"># noinspection PyUnresolvedReferences</span>
+<div class="viewcode-block" id="InMemoryVectorDataset.apply_mask">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.InMemoryVectorDataset.apply_mask">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply_mask</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;crs&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="o">.</span><span class="n">crs</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="p">,</span> <span class="n">keep_geom_type</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="InMemoryVectorDataset.post_loading">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.InMemoryVectorDataset.post_loading">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">post_loading</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">correct_crs</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">apply_bbox</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">apply_mask</span><span class="p">()</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="LocalVectorDataset">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.LocalVectorDataset">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LocalVectorDataset</span><span class="p">(</span><span class="n">InMemoryVectorDataset</span><span class="p">):</span>
+<div class="viewcode-block" id="LocalVectorDataset.load_data">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.LocalVectorDataset.load_data">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bbox</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">read_file</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">file_source</span><span class="p">,</span> <span class="n">bbox</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">bbox</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">read_file</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">file_source</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">read_file</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">file_source</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">post_loading</span><span class="p">()</span></div>
+
+
+    <span class="c1"># noinspection PyUnresolvedReferences</span>
+<div class="viewcode-block" id="LocalVectorDataset.apply_bbox">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.LocalVectorDataset.apply_bbox">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply_bbox</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bbox</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bbox</span><span class="p">,</span> <span class="s1">&#39;crs&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">bbox</span><span class="o">.</span><span class="n">crs</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;CRS-Missmatch: The CRS of the vector source and the bbox are different!</span><span class="se">\n</span><span class="s2">&quot;</span>
+                                 <span class="sa">f</span><span class="s2">&quot;CRS of vector source:</span><span class="se">\n</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="si">}</span><span class="se">\n</span><span class="s2">CRS of bbox:</span><span class="se">\n</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">bbox</span><span class="o">.</span><span class="n">crs</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
+                                 <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">When reading a </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> &#39;bbox&#39; needs to have  the same CRS then &quot;</span>
+                                 <span class="sa">f</span><span class="s2">&quot;the Vector file! A CRS-Missmatch may lead to empty datasets!&quot;</span><span class="p">)</span></div>
+
+
+    <span class="c1"># noinspection PyUnresolvedReferences</span>
+<div class="viewcode-block" id="LocalVectorDataset.apply_mask">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.LocalVectorDataset.apply_mask">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply_mask</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bbox</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;crs&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="o">.</span><span class="n">crs</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;CRS-Missmatch: The CRS of the vector source and the mask are different!</span><span class="se">\n</span><span class="s2">&quot;</span>
+                                 <span class="sa">f</span><span class="s2">&quot;CRS of vector source:</span><span class="se">\n</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="si">}</span><span class="se">\n</span><span class="s2">CRS of mask:</span><span class="se">\n</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="o">.</span><span class="n">crs</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
+                                 <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">When reading a </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> &#39;mask&#39; needs to have  the same CRS then &quot;</span>
+                                 <span class="sa">f</span><span class="s2">&quot;the Vector file! A CRS-Missmatch may lead to empty datasets!&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;crs&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="o">.</span><span class="n">crs</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="p">,</span> <span class="n">keep_geom_type</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="WFSVectorDataset">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.WFSVectorDataset">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">WFSVectorDataset</span><span class="p">(</span><span class="n">LocalVectorDataset</span><span class="p">):</span>
+<div class="viewcode-block" id="WFSVectorDataset.load_data">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.WFSVectorDataset.load_data">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="s2">&quot;url&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">file_source</span> <span class="ow">or</span> <span class="s2">&quot;layer&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">file_source</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported dataset source for WFSVectorDataset: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">file_source</span><span class="si">}</span><span class="s2">!&quot;</span>
+                             <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Please provide a dictionary with a valid &#39;url&#39; and &#39;layer&#39; key-value pairs!&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">load_from_wfs</span><span class="p">(</span>
+                <span class="n">url</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">file_source</span><span class="p">[</span><span class="s2">&quot;url&quot;</span><span class="p">],</span>
+                <span class="n">layer</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">file_source</span><span class="p">[</span><span class="s2">&quot;layer&quot;</span><span class="p">],</span>
+                <span class="n">bbox</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">bbox</span><span class="p">,</span>
+                <span class="n">filter_params</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;filter_params&quot;</span><span class="p">),</span>
+                <span class="n">auto_match</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;auto_match&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">post_loading</span><span class="p">()</span></div>
+
+
+    <span class="c1"># noinspection PyUnresolvedReferences</span>
+<div class="viewcode-block" id="WFSVectorDataset.apply_mask">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.WFSVectorDataset.apply_mask">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply_mask</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;crs&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="o">.</span><span class="n">crs</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="o">.</span><span class="n">to_crs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mask</span><span class="p">,</span> <span class="n">keep_geom_type</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="RasterDataset">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.RasterDataset">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RasterDataset</span><span class="p">(</span><span class="n">GeoDataset</span><span class="p">,</span> <span class="n">ABC</span><span class="p">):</span>
+    <span class="n">crs</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">transform</span><span class="p">:</span> <span class="n">Affine</span>
+    <span class="n">shape</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span>
+    <span class="n">count</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">dtype</span><span class="p">:</span> <span class="n">dtype</span></div>
+
+
+
+<div class="viewcode-block" id="LocalRasterDataset">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.LocalRasterDataset">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LocalRasterDataset</span><span class="p">(</span><span class="n">RasterDataset</span><span class="p">):</span>
+<div class="viewcode-block" id="LocalRasterDataset.load_data">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.LocalRasterDataset.load_data">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">with</span> <span class="n">rio_open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">file_source</span><span class="p">)</span> <span class="k">as</span> <span class="n">src</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">src</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">crs</span> <span class="o">=</span> <span class="n">src</span><span class="o">.</span><span class="n">crs</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transform</span> <span class="o">=</span> <span class="n">src</span><span class="o">.</span><span class="n">transform</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span> <span class="k">else</span> <span class="mi">1</span>
+            <span class="n">height</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">width</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">dtype</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="InMemoryRasterDataset">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.InMemoryRasterDataset">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InMemoryRasterDataset</span><span class="p">(</span><span class="n">RasterDataset</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">file_source</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+                 <span class="n">crs</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                 <span class="n">transform</span><span class="p">:</span> <span class="n">Affine</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">crs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transform</span> <span class="o">=</span> <span class="n">transform</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">file_source</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">count</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span> <span class="k">else</span> <span class="mi">1</span>
+        <span class="n">height</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">width</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">dtype</span>
+
+<div class="viewcode-block" id="InMemoryRasterDataset.load_data">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.InMemoryRasterDataset.load_data">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">pass</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="initialize_geo_dataset">
+<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.initialize_geo_dataset">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">initialize_geo_dataset</span><span class="p">(</span><span class="n">file_source</span><span class="p">:</span> <span class="n">InputDataType</span><span class="p">,</span>
+                           <span class="n">crs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                           <span class="n">bbox</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BboxType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                           <span class="n">mask</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">GeometryMaskType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                           <span class="n">transform</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Affine</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">GeoDataset</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Factory function to create the appropriate GeoDataset instance based on the provided input.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        file_source: Source data (file path, GeoDataFrame, URL dict, numpy array, etc.)</span>
+<span class="sd">        crs: Coordinate reference system</span>
+<span class="sd">        bbox: Bounding box for vector datasets</span>
+<span class="sd">        mask: Mask for vector datasets</span>
+<span class="sd">        transform: Affine transform for in-memory raster datasets</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        An appropriate GeoDataset subclass instance</span>
+
+<span class="sd">    Examples:</span>
+<span class="sd">        # From local vector file</span>
+<span class="sd">        vector_dataset = create_geo_dataset(&quot;path/to/shapefile.shp&quot;, crs=&quot;EPSG:4326&quot;)</span>
+
+<span class="sd">        # From GeoDataFrame</span>
+<span class="sd">        vector_dataset = create_geo_dataset(gdf, bbox=(x1, y1, x2, y2))</span>
+
+<span class="sd">        # From WFS source</span>
+<span class="sd">        wfs_dataset = create_geo_dataset({&quot;url&quot;: &quot;https://example.com/wfs&quot;, &quot;layer&quot;: &quot;layer1&quot;})</span>
+
+<span class="sd">        # From local raster file</span>
+<span class="sd">        raster_dataset = create_geo_dataset(&quot;path/to/dem.tif&quot;)</span>
+
+<span class="sd">        # From numpy array</span>
+<span class="sd">        raster_dataset = create_geo_dataset(array_data, transform=transform, crs=&quot;EPSG:4326&quot;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Determine data type (vector or raster)</span>
+    <span class="n">data_type</span> <span class="o">=</span> <span class="n">_determine_data_type</span><span class="p">(</span><span class="n">file_source</span><span class="p">)</span>
+
+    <span class="c1"># Create appropriate dataset based on type</span>
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;vector&quot;</span><span class="p">:</span>
+        <span class="n">geodataset</span> <span class="o">=</span> <span class="n">_create_vector_dataset</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">crs</span><span class="p">,</span> <span class="n">bbox</span><span class="p">,</span> <span class="n">mask</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;raster&quot;</span><span class="p">:</span>
+        <span class="n">geodataset</span> <span class="o">=</span> <span class="n">_create_raster_dataset</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">crs</span><span class="p">,</span> <span class="n">transform</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unable to determine appropriate dataset type for: </span><span class="si">{</span><span class="n">file_source</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">geodataset</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_determine_data_type</span><span class="p">(</span><span class="n">file_source</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Determine whether the input is for a vector or raster dataset.&quot;&quot;&quot;</span>
+    <span class="c1"># Check if it&#39;s already a GeoDataset subclass</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">GeoDataset</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">VectorDataset</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s2">&quot;vector&quot;</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">RasterDataset</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s2">&quot;raster&quot;</span>
+
+    <span class="c1"># Check for in-memory vector data</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="p">(</span><span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">,</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoSeries</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="s2">&quot;vector&quot;</span>
+
+    <span class="c1"># Check for in-memory raster data</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">ndarray</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;raster&quot;</span>
+
+    <span class="c1"># Check for WFS data</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;url&quot;</span> <span class="ow">in</span> <span class="n">file_source</span> <span class="ow">and</span> <span class="s2">&quot;layer&quot;</span> <span class="ow">in</span> <span class="n">file_source</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;vector&quot;</span>
+
+    <span class="c1"># Check file extension for local files</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">isfile</span><span class="p">(</span><span class="n">file_source</span><span class="p">):</span>
+            <span class="n">ext</span> <span class="o">=</span> <span class="n">splitext</span><span class="p">(</span><span class="n">file_source</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+            <span class="c1"># Vector file extensions</span>
+            <span class="k">if</span> <span class="n">ext</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;.shp&quot;</span><span class="p">,</span> <span class="s2">&quot;.geojson&quot;</span><span class="p">,</span> <span class="s2">&quot;.json&quot;</span><span class="p">,</span> <span class="s2">&quot;.gpkg&quot;</span><span class="p">,</span> <span class="s2">&quot;.gml&quot;</span><span class="p">,</span> <span class="s2">&quot;.kml&quot;</span><span class="p">]:</span>
+                <span class="k">return</span> <span class="s2">&quot;vector&quot;</span>
+            <span class="c1"># Raster file extensions</span>
+            <span class="k">elif</span> <span class="n">ext</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;.tif&quot;</span><span class="p">,</span> <span class="s2">&quot;.tiff&quot;</span><span class="p">,</span> <span class="s2">&quot;.jp2&quot;</span><span class="p">,</span> <span class="s2">&quot;.img&quot;</span><span class="p">,</span> <span class="s2">&quot;.bil&quot;</span><span class="p">,</span> <span class="s2">&quot;.dem&quot;</span><span class="p">]:</span>
+                <span class="k">return</span> <span class="s2">&quot;raster&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;File </span><span class="si">{</span><span class="n">file_source</span><span class="si">}</span><span class="s2"> not found.&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="s2">&quot;unknown&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_create_vector_dataset</span><span class="p">(</span><span class="n">file_source</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+                           <span class="n">crs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                           <span class="n">bbox</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BboxType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                           <span class="n">mask</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">GeometryMaskType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VectorDataset</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create the appropriate vector dataset based on the input type.&quot;&quot;&quot;</span>
+    <span class="c1"># In-memory GeoDataFrame or GeoSeries</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="p">(</span><span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">,</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoSeries</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">InMemoryVectorDataset</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">crs</span><span class="p">,</span> <span class="n">bbox</span><span class="o">=</span><span class="n">bbox</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">)</span>
+
+    <span class="c1"># WFS data source</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;url&quot;</span> <span class="ow">in</span> <span class="n">file_source</span> <span class="ow">and</span> <span class="s2">&quot;layer&quot;</span> <span class="ow">in</span> <span class="n">file_source</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">WFSVectorDataset</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">crs</span><span class="p">,</span> <span class="n">bbox</span><span class="o">=</span><span class="n">bbox</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">)</span>
+
+    <span class="c1"># Local file</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">LocalVectorDataset</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">crs</span><span class="p">,</span> <span class="n">bbox</span><span class="o">=</span><span class="n">bbox</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">)</span>
+
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported vector data source: </span><span class="si">{</span><span class="n">file_source</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_create_raster_dataset</span><span class="p">(</span><span class="n">file_source</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+                           <span class="n">crs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                           <span class="n">transform</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Affine</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RasterDataset</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create the appropriate raster dataset based on the input type.&quot;&quot;&quot;</span>
+    <span class="c1"># In-memory numpy array</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">ndarray</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">transform</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">transform</span><span class="p">,</span> <span class="n">Affine</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;A valid &#39;transform&#39; of type Affine is required for InMemoryRasterDataset&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">InMemoryRasterDataset</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">crs</span><span class="p">,</span> <span class="n">transform</span><span class="o">=</span><span class="n">transform</span><span class="p">)</span>
+
+    <span class="c1"># Local file</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">LocalRasterDataset</span><span class="p">(</span><span class="n">file_source</span><span class="p">,</span> <span class="n">crs</span><span class="p">)</span>
+
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported raster data source: </span><span class="si">{</span><span class="n">file_source</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Martin Hofmann.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

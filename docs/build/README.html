@@ -1,0 +1,537 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PYORPS - Python for Optimal Routes in Power Systems &mdash; PYORPS 09.05.2025 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=d2164c19"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="API Reference" href="api_reference.html" />
+    <link rel="prev" title="PYORPS documentation" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            PYORPS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">PYORPS - Python for Optimal Routes in Power Systems</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#features">Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-it-works">How It Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#use-cases">Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#technical-details">Technical Details</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#documentation">Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#contributing">Contributing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#citation">Citation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#contact">Contact</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.CostAssumptions"><code class="docutils literal notranslate"><span class="pre">CostAssumptions</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.GeoDataset"><code class="docutils literal notranslate"><span class="pre">GeoDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.GeoRasterizer"><code class="docutils literal notranslate"><span class="pre">GeoRasterizer</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.InMemoryRasterDataset"><code class="docutils literal notranslate"><span class="pre">InMemoryRasterDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.InMemoryVectorDataset"><code class="docutils literal notranslate"><span class="pre">InMemoryVectorDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.LocalRasterDataset"><code class="docutils literal notranslate"><span class="pre">LocalRasterDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.LocalVectorDataset"><code class="docutils literal notranslate"><span class="pre">LocalVectorDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.Path"><code class="docutils literal notranslate"><span class="pre">Path</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.PathCollection"><code class="docutils literal notranslate"><span class="pre">PathCollection</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.PathFinder"><code class="docutils literal notranslate"><span class="pre">PathFinder</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.RasterDataset"><code class="docutils literal notranslate"><span class="pre">RasterDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.VectorDataset"><code class="docutils literal notranslate"><span class="pre">VectorDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.WFSVectorDataset"><code class="docutils literal notranslate"><span class="pre">WFSVectorDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.detect_feature_columns"><code class="docutils literal notranslate"><span class="pre">detect_feature_columns()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.get_zero_cost_assumptions"><code class="docutils literal notranslate"><span class="pre">get_zero_cost_assumptions()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.initialize_geo_dataset"><code class="docutils literal notranslate"><span class="pre">initialize_geo_dataset()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#pyorps.save_empty_cost_assumptions"><code class="docutils literal notranslate"><span class="pre">save_empty_cost_assumptions()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="CONTRIBUTING.html">Contributing to PYORPS</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#get-in-touch">Get in Touch!</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#setting-up-your-development-environment">Setting Up Your Development Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#making-changes">Making Changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#keeping-your-fork-up-to-date">Keeping Your Fork Up-to-Date</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#writing-tests">Writing Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#code-style">Code Style</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#contributing-examples-or-case-studies">Contributing Examples or Case Studies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#thank-you">Thank You!</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">PYORPS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">PYORPS - Python for Optimal Routes in Power Systems</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/README.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="pyorps-python-for-optimal-routes-in-power-systems">
+<h1>PYORPS - Python for Optimal Routes in Power Systems<a class="headerlink" href="#pyorps-python-for-optimal-routes-in-power-systems" title="Link to this heading"></a></h1>
+<p><a class="reference external" href="https://pypi.org/project/pyorps/"><img alt="PyPI version" src="https://img.shields.io/pypi/v/pyorps.svg" /></a>
+<a class="reference external" href="https://pypi.org/project/pyorps/"><img alt="Python Versions" src="https://img.shields.io/pypi/pyversions/pyorps.svg" /></a>
+<a class="reference external" href="https://pyorps.readthedocs.io/en/latest/?badge=latest"><img alt="Documentation Status" src="https://readthedocs.org/projects/pyorps/badge/?version=latest" /></a>
+<a class="reference external" href="https://codecov.io/gh/marhofmann/pyorps"><img alt="codecov" src="https://codecov.io/gh/marhofmann/pyorps/branch/master/graph/badge.svg" /></a>
+<a class="reference external" href="https://www.codacy.com/gh/marhofmann/pyorps/dashboard"><img alt="Codacy Badge" src="https://app.codacy.com/project/badge/Grade/YOUR_PROJECT_ID" /></a>
+<img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg" />
+<a class="reference external" href="https://mybinder.org/v2/gh/yourusername/your-repo/main?filepath=notebooks%2Fexample.ipynb"><img alt="Binder" src="https://mybinder.org/badge_logo.svg" /></a></p>
+<p>PYORPS is an open-source tool designed to automate route planning for underground cables in power systems. It uses high-resolution raster geodata to perform least-cost path analyses, optimizing routes based on economic and environmental factors.</p>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>Power line route planning is a complex and time-consuming process traditionally neglected in early grid planning. PYORPS addresses this by:</p>
+<ul class="simple">
+<li><p>Finding optimal routes between connection points using least-cost path analysis</p></li>
+<li><p>Supporting high-resolution raster data for precise planning</p></li>
+<li><p>Considering both economic costs and environmental constraints</p></li>
+<li><p>Allowing customization of neighborhood selection and search parameters</p></li>
+<li><p>Enabling easy integration into existing planning workflows</p></li>
+</ul>
+<p>While tailored for distribution grids, it can be adapted for various infrastructures, optimizing routes for cost and environmental impact.</p>
+<table>
+  <tr>
+    <td align="center" width="100%">
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png" alt="ex." width="100%"/><br>
+      <sub>
+        <b>Figure 1:</b> Parallel computation of 21 paths from single source to multiple targets.<br>
+        332 s total runtime on laptop with Intel(R) Core(TM) i7-8850H CPU @ 2.6 GHz and 32 GB memory
+      </sub>
+    </td>
+  </tr>
+</table>
+</section>
+<section id="features">
+<h2>Features<a class="headerlink" href="#features" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Flexible Input Data</strong>: Use local raster files directly or create custom rasterized geodata from  WFS services or
+local vector files</p></li>
+<li><p><strong>Customizable Costs</strong>: Define terrain-specific cost values based on installation expenses or environmental impacts</p></li>
+<li><p><strong>Multiple Path Finding</strong>: Calculate optimal routes between multiple sources and targets in parallel</p></li>
+<li><p><strong>Performance Optimization</strong>: Control search space parameters to balance accuracy and computational efficiency</p></li>
+<li><p><strong>Environmental Consideration</strong>: Add cost modifiers for nature reserves, water protection zones, and other sensitive
+regions</p></li>
+<li><p><strong>GIS Integration</strong>: Export results as GeoJSON for further analysis in GIS applications</p></li>
+</ul>
+</section>
+<section id="quick-start">
+<h2>Quick Start<a class="headerlink" href="#quick-start" title="Link to this heading"></a></h2>
+<p>Here’s a minimal example to get you started:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pyorps</span><span class="w"> </span><span class="kn">import</span> <span class="n">PathFinder</span>
+
+<span class="c1"># Define a file path to a raster file! </span>
+<span class="n">raster_path</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;&lt;PATH&gt;\&lt;TO&gt;\&lt;YOUR&gt;\&lt;RASTER_FILE&gt;.tiff&quot;</span> 
+
+<span class="c1"># Define your source and target coordinates (must be in the same CRS)</span>
+<span class="n">source</span> <span class="o">=</span> <span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+<span class="n">target</span> <span class="o">=</span> <span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+
+<span class="c1"># Create PathFinder instance</span>
+<span class="n">path_finder</span> <span class="o">=</span> <span class="n">PathFinder</span><span class="p">(</span>
+    <span class="n">dataset_source</span><span class="o">=</span><span class="n">raster_path</span><span class="p">,</span>
+    <span class="n">source_coords</span><span class="o">=</span><span class="n">source</span><span class="p">,</span>
+    <span class="n">target_coords</span><span class="o">=</span><span class="n">target</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># Find optimal route</span>
+<span class="n">path_finder</span><span class="o">.</span><span class="n">find_route</span><span class="p">()</span>
+
+<span class="c1"># Visualize results</span>
+<span class="n">path_finder</span><span class="o">.</span><span class="n">plot_paths</span><span class="p">()</span>
+
+<span class="c1"># Export to GeoJSON</span>
+<span class="n">path_finder</span><span class="o">.</span><span class="n">save_paths</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;&lt;PATH&gt;\&lt;TO&gt;\&lt;YOUR&gt;\&lt;RESULTS&gt;.geojson&quot;</span> <span class="p">)</span>
+</pre></div>
+</div>
+<p>Please check out the <a class="reference external" href="https://github.com/marhofmann/pyorps/blob/master/examples/create_rasterized_geodata.ipynb">example</a>
+for creating and setting up a dedicated raster dataset for your planning task.</p>
+</section>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h2>
+<p>To install PYORPS, you can use <code class="docutils literal notranslate"><span class="pre">pip</span></code> or <code class="docutils literal notranslate"><span class="pre">uv</span></code>.</p>
+<section id="using-pip">
+<h3>Using pip<a class="headerlink" href="#using-pip" title="Link to this heading"></a></h3>
+<p>You can install the base package using pip:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>pyorps
+</pre></div>
+</div>
+<p>This command will install the core functionality of PYORPS along with its essential dependencies, including:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/numpy/numpy">NumPy</a></p></li>
+<li><p><a class="reference external" href="https://github.com/pandas-dev/pandas">Pandas</a></p></li>
+<li><p><a class="reference external" href="https://github.com/geopandas/geopandas">GeoPandas</a></p></li>
+<li><p><a class="reference external" href="https://github.com/numba/numba">Numba</a></p></li>
+<li><p><a class="reference external" href="https://github.com/rasterio/rasterio">Rasterio</a></p></li>
+<li><p><a class="reference external" href="https://github.com/networkit/networkit">NetworKit</a></p></li>
+</ul>
+</section>
+<section id="optional-dependencies">
+<h3>Optional Dependencies<a class="headerlink" href="#optional-dependencies" title="Link to this heading"></a></h3>
+<p>PYORPS offers several optional dependencies that enhance its functionality. You can install these extras by specifying them in square brackets:</p>
+<ul>
+<li><p><strong>Examples</strong>: To include example scripts:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>pyorps<span class="o">[</span>examples<span class="o">]</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Case Studies</strong>: To include case study scripts:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>pyorps<span class="o">[</span>case_studies<span class="o">]</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Development and Testing</strong>: To include testing tools and the tests directory:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>pyorps<span class="o">[</span>dev<span class="o">]</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Full Installation</strong>: To install all optional dependencies at once:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>pyorps<span class="o">[</span>full<span class="o">]</span>
+</pre></div>
+</div>
+</li>
+</ul>
+</section>
+</section>
+<section id="how-it-works">
+<h2>How It Works<a class="headerlink" href="#how-it-works" title="Link to this heading"></a></h2>
+<p>PYORPS performs route planning through these key steps:</p>
+<ol class="arabic simple">
+<li><p><strong>Data Preparation</strong>: Categorizes continuous land use data using GeoPandas</p></li>
+<li><p><strong>Rasterization</strong>: Converts categorized geodata to raster format with cost values using Rasterio</p></li>
+<li><p><strong>Graph Creation</strong>: Transforms rasterized dataset into a graph structure using NetworKit</p></li>
+<li><p><strong>Path Analysis</strong>: Performs least-cost path analysis on the graph to find optimal routes</p></li>
+<li><p><strong>Result Export</strong>: Exports results in GeoJSON format for further use in GIS applications</p></li>
+</ol>
+<p>The process can be configured with different neighborhood selections (R0-R3) and search space parameters to balance accuracy and performance.</p>
+</section>
+<section id="use-cases">
+<h2>Use Cases<a class="headerlink" href="#use-cases" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Distribution Grid Planning</strong>: Optimize new underground cable connections to increase grid capacity</p></li>
+<li><p><strong>Grid Integration of Renewable Energies</strong>: Determine optimal point of common coupling (PCC) and find the most
+economical route for grid integration</p></li>
+<li><p><strong>Environmental Impact Reduction</strong>: Route underground cables to minimize impact on protected areas</p></li>
+<li><p><strong>Cost Optimization</strong>: Balance construction costs with environmental considerations and other aspects</p></li>
+<li><p><strong>General Infrastructure Planning</strong>: Adapt for other linear infrastructure planning tasks (e.g. fiber optic cables or
+pipes)</p></li>
+</ul>
+</section>
+<section id="technical-details">
+<h2>Technical Details<a class="headerlink" href="#technical-details" title="Link to this heading"></a></h2>
+<section id="search-space-control-buffering-masking">
+<h3>Search Space Control: Buffering &amp; Masking<a class="headerlink" href="#search-space-control-buffering-masking" title="Link to this heading"></a></h3>
+<p>Efficient path finding in large rasters requires limiting the search space. PYORPS provides:</p>
+<ul class="simple">
+<li><p><strong>Buffering</strong>: Define a buffer (in meters) around the source/target line or polygon, restricting the raster window and graph to relevant areas. Buffer size can be set manually or estimated automatically based on terrain complexity.</p></li>
+<li><p><strong>Masking</strong>: Apply geometric masks (e.g., polygons, convex hulls) to further restrict the area considered for
+routing. Pixels outside the mask are not considered.</p></li>
+</ul>
+<p>This dramatically reduces memory and computation time, especially for high-resolution data.</p>
+<table>
+  <tr>
+    <td align="center" width="100%">
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/buffer_600.png" alt="search spaces" 
+width="100%"/><br>
+      <sub><b>Figure 2:</b> Various optimal paths for different search spaces on rasterised geodata with 1 m² resolution</sub>
+    </td>
+  </tr>
+</table>
+</section>
+<section id="neighborhoods-fine-grained-connectivity">
+<h3>Neighborhoods: Fine-Grained Connectivity<a class="headerlink" href="#neighborhoods-fine-grained-connectivity" title="Link to this heading"></a></h3>
+<p>The raster-to-graph conversion supports customizable neighborhood definitions:</p>
+<ul class="simple">
+<li><p><strong>Predefined and tested neighborhoods</strong>:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">R0</span></code> (4-connectivity), <code class="docutils literal notranslate"><span class="pre">R1</span></code> (8-connectivity), <code class="docutils literal notranslate"><span class="pre">R2</span></code> (16-connectivity), <code class="docutils literal notranslate"><span class="pre">R3</span></code>  (32-connectivity),</p></li>
+</ul>
+</li>
+<li><p><strong>Custom neighborhoods</strong>:</p>
+<ul>
+<li><p>Specify arbitrary step sets for advanced use cases or anisotropic cost surfaces.</p></li>
+</ul>
+</li>
+<li><p><strong>High-order neighborhoods</strong>:</p>
+<ul>
+<li><p>For <code class="docutils literal notranslate"><span class="pre">k</span> <span class="pre">&gt;</span> <span class="pre">3</span></code>, arbitrary neighborhoods are supported, enabling long-range or non-local connections.</p></li>
+</ul>
+</li>
+</ul>
+<p>This allows you to balance accuracy (following real-world paths) and performance (sparser graphs).</p>
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/R3-complete.PNG" 
+alt="R3 complete" width="79%"/><br>
+      <sub><b>Figure 3a:</b> Steps for neighbourhoods R0 (blue), R1 (green), R2 (yellow), and R3 (red)</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/intermediate_steps.
+PNG" alt="intermediates" width="90%"/><br>
+      <sub><b>Figure 3b:</b> Intermediate elements Ik for selected edges of vertex v<sub>5,5</sub>.</sub>
+    </td>
+  </tr>
+</table>
+</section>
+<section id="data-input-raster-vector-local-remote">
+<h3>Data Input: Raster &amp; Vector, Local &amp; Remote<a class="headerlink" href="#data-input-raster-vector-local-remote" title="Link to this heading"></a></h3>
+<p>PYORPS is agnostic to data source and format:</p>
+<ul class="simple">
+<li><p><strong>Raster data</strong>: Directly use high-resolution GeoTIFFs or similar formats (tested up to 0.25 m² per pixel).</p></li>
+<li><p><strong>Vector data</strong>: Shapefiles, GeoJSON, GPKG, or remote WFS layers (e.g., land registry, nature reserves, water protection zones).</p></li>
+<li><p><strong>Hybrid workflows</strong>: Rasterize vector data with custom cost assumptions, overlay multiple datasets, and apply complex modifications.</p></li>
+</ul>
+<p>All data is internally harmonized to a common CRS and resolution.</p>
+</section>
+<section id="cost-assumptions-from-simple-to-complex">
+<h3>Cost Assumptions: From Simple to Complex<a class="headerlink" href="#cost-assumptions-from-simple-to-complex" title="Link to this heading"></a></h3>
+<p>Routing is driven by a <strong>cost raster</strong>. PYORPS supports:</p>
+<ul class="simple">
+<li><p><strong>Simple costs</strong>: Assign a single cost per land use class or feature.</p></li>
+<li><p><strong>Hierarchical/multi-attribute costs</strong>: Use CSV, Excel, or JSON files to define costs based on multiple attributes (e.g., land use + soil type).</p></li>
+<li><p><strong>Dynamic overlays</strong>: Overlay additional datasets (e.g., protected areas) with additive or multiplicative cost modifiers, or set areas as forbidden.</p></li>
+<li><p><strong>Custom logic</strong>: Apply buffers, ignore fields, or use complex rules for cost assignment.</p></li>
+</ul>
+<p><strong>Example: Cost Assumptions Table</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>land_use</p></th>
+<th class="head"><p>category</p></th>
+<th class="head"><p>cost</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Forest</p></td>
+<td><p>Coniferous</p></td>
+<td><p>365</p></td>
+</tr>
+<tr class="row-odd"><td><p>Forest</p></td>
+<td><p>Mixed Deciduous/Coniferous</p></td>
+<td><p>402</p></td>
+</tr>
+<tr class="row-even"><td><p>Forest</p></td>
+<td><p>Deciduous</p></td>
+<td><p>438</p></td>
+</tr>
+<tr class="row-odd"><td><p>Forest</p></td>
+<td><p></p></td>
+<td><p>365</p></td>
+</tr>
+<tr class="row-even"><td><p>Road traffic</p></td>
+<td><p>State road</p></td>
+<td><p>196</p></td>
+</tr>
+<tr class="row-odd"><td><p>Road traffic</p></td>
+<td><p>Federal road</p></td>
+<td><p>231</p></td>
+</tr>
+<tr class="row-even"><td><p>Road traffic</p></td>
+<td><p>Highway</p></td>
+<td><p>267</p></td>
+</tr>
+<tr class="row-odd"><td><p>Path</p></td>
+<td><p>Footpath</p></td>
+<td><p>107</p></td>
+</tr>
+<tr class="row-even"><td><p>Agriculture</p></td>
+<td><p>Arable land</p></td>
+<td><p>107</p></td>
+</tr>
+<tr class="row-odd"><td><p>Agriculture</p></td>
+<td><p>Grassland</p></td>
+<td><p>107</p></td>
+</tr>
+<tr class="row-even"><td><p>Agriculture</p></td>
+<td><p>Orchard meadow</p></td>
+<td><p>139</p></td>
+</tr>
+<tr class="row-odd"><td><p>Flowing water</p></td>
+<td><p></p></td>
+<td><p>186</p></td>
+</tr>
+<tr class="row-even"><td><p>Sports, leisure, recreation area</p></td>
+<td><p></p></td>
+<td><p>65535</p></td>
+</tr>
+<tr class="row-odd"><td><p>Standing water</p></td>
+<td><p></p></td>
+<td><p>155</p></td>
+</tr>
+<tr class="row-even"><td><p>Square</p></td>
+<td><p>Parking lot</p></td>
+<td><p>178</p></td>
+</tr>
+<tr class="row-odd"><td><p>Square</p></td>
+<td><p>Rest area</p></td>
+<td><p>178</p></td>
+</tr>
+<tr class="row-even"><td><p>Rail traffic</p></td>
+<td><p></p></td>
+<td><p>415</p></td>
+</tr>
+<tr class="row-odd"><td><p>Residential building area</p></td>
+<td><p></p></td>
+<td><p>65535</p></td>
+</tr>
+<tr class="row-even"><td><p>Industrial and commercial area</p></td>
+<td><p></p></td>
+<td><p>65535</p></td>
+</tr>
+<tr class="row-odd"><td><p>…</p></td>
+<td><p>…</p></td>
+<td><p>…</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>How to use:</strong></p>
+<ul class="simple">
+<li><p>Use as a CSV file with columns (e.g. <code class="docutils literal notranslate"><span class="pre">land_use</span></code>, <code class="docutils literal notranslate"><span class="pre">category</span></code>, <code class="docutils literal notranslate"><span class="pre">cost</span></code>)</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">cost</span></code> value can be interpreted as €/m or as a relative score.</p></li>
+<li><p>Use uint16 and set 65535 to indicate forbidden areas.</p></li>
+</ul>
+</section>
+<section id="rasterization-high-resolution-multi-layer-and-overlay">
+<h3>Rasterization: High-Resolution, Multi-Layer, and Overlay<a class="headerlink" href="#rasterization-high-resolution-multi-layer-and-overlay" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>High-resolution rasterization</strong>: Rasterize vector data at arbitrary resolutions (tested up to 0.25 m² per pixel) using <a class="reference external" href="https://rasterio.readthedocs.io/">Rasterio</a>.</p></li>
+<li><p><strong>Buffering and overlays</strong>: Apply geometric buffers to features before rasterization.</p>
+<ul>
+<li><p>Overlay multiple datasets, each with its own cost logic.</p></li>
+</ul>
+</li>
+<li><p><strong>Selective masking</strong>: Mask out fields or regions, set forbidden values, or combine multiple masks.</p></li>
+</ul>
+</section>
+<section id="supported-data-types">
+<h3>Supported Data Types<a class="headerlink" href="#supported-data-types" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Vector formats</strong>: Shapefile, GeoJSON, GPKG, GML, KML, WFS (remote)</p></li>
+<li><p><strong>Raster formats</strong>: GeoTIFF, IMG, JP2, BIL, DEM, in-memory numpy arrays</p></li>
+<li><p><strong>Data sources</strong>: Land registry, nature reserves, water protection areas, custom user data</p></li>
+</ul>
+</section>
+<section id="various-graph-backends-path-finding-algorithms">
+<h3>Various Graph Backends &amp; Path-Finding Algorithms<a class="headerlink" href="#various-graph-backends-path-finding-algorithms" title="Link to this heading"></a></h3>
+<p>PYORPS supports multiple high-performance graph libraries as interchangeable backends for path finding:</p>
+<ul class="simple">
+<li><p><strong><a class="reference external" href="https://networkit.github.io/">NetworKit</a></strong> (default): Fast C++/Python library for large-scale network analysis.</p></li>
+<li><p><strong><a class="reference external" href="https://qiskit.org/documentation/rustworkx/">Rustworkx</a></strong>: Pythonic, Rust-powered graph algorithms.</p></li>
+<li><p><strong><a class="reference external" href="https://networkx.org/">NetworkX</a></strong>: Widely-used, pure Python graph library.</p></li>
+<li><p><strong><a class="reference external" href="https://igraph.org/python/">iGraph</a></strong>: Efficient C-based graph library.</p></li>
+<li><p><strong>(Upcoming)</strong>: GPU-accelerated backends (e.g., cuGraph, Dask-cuGraph).</p></li>
+</ul>
+<p>You can select the backend via the <code class="docutils literal notranslate"><span class="pre">graph_api</span></code> parameter in <code class="docutils literal notranslate"><span class="pre">PathFinder</span></code>. Each backend exposes a unified interface for shortest path computation, supporting:</p>
+<ul class="simple">
+<li><p><strong>Dijkstra</strong> (default): Robust and efficient.</p></li>
+<li><p><strong>A</strong>*: Heuristic-based, faster for spatial graphs with good heuristics.</p></li>
+<li><p><strong>Bellman-Ford</strong>: Handles negative weights (where supported).</p></li>
+<li><p><strong>Bidirectional Dijkstra</strong>: Available in some backends for further speedup.</p></li>
+</ul>
+</section>
+</section>
+<section id="documentation">
+<h2>Documentation<a class="headerlink" href="#documentation" title="Link to this heading"></a></h2>
+<p>For comprehensive documentation, examples, and tutorials, visit our <a class="reference external" href="https://github.com/marhofmann/pyorps">GitHub repository</a>.</p>
+</section>
+<section id="contributing">
+<h2>Contributing<a class="headerlink" href="#contributing" title="Link to this heading"></a></h2>
+<p>Contributions are welcome! If you want to contribute, please check out the <a class="reference external" href="https://pyorps.readthedocs.io/en/latest/CONTRIBUTING.html#">PYORPS contribution guidelines</a>.</p>
+</section>
+<section id="license">
+<h2>License<a class="headerlink" href="#license" title="Link to this heading"></a></h2>
+<p>This project is licensed under the <a class="reference external" href="https://github.com/marhofmann/pyorps/blob/master/LICENSE">MIT License</a>.</p>
+</section>
+<section id="citation">
+<h2>Citation<a class="headerlink" href="#citation" title="Link to this heading"></a></h2>
+<p>If you use PYORPS in your research, please cite:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Hofmann</span><span class="p">,</span> <span class="n">M</span><span class="o">.</span><span class="p">,</span> <span class="n">Stetz</span><span class="p">,</span> <span class="n">T</span><span class="o">.</span><span class="p">,</span> <span class="n">Kammer</span><span class="p">,</span> <span class="n">F</span><span class="o">.</span><span class="p">,</span> <span class="n">Repo</span><span class="p">,</span> <span class="n">S</span><span class="o">.</span><span class="p">:</span> <span class="s1">&#39;PYORPS: An Open-Source Tool for Automated Power Line Routing&#39;</span><span class="p">,</span> <span class="n">CIRED</span> 
+<span class="mi">2025</span> <span class="o">-</span> <span class="mi">28</span><span class="n">th</span> <span class="n">Conference</span> <span class="ow">and</span> <span class="n">Exhibition</span> <span class="n">on</span> <span class="n">Electricity</span> <span class="n">Distribution</span><span class="p">,</span> <span class="mi">16</span> <span class="o">-</span> <span class="mi">19</span> <span class="n">June</span> <span class="mi">2025</span><span class="p">,</span> <span class="n">Geneva</span><span class="p">,</span> <span class="n">Switzerland</span>
+</pre></div>
+</div>
+</section>
+<section id="contact">
+<h2>Contact<a class="headerlink" href="#contact" title="Link to this heading"></a></h2>
+<p>For questions and feedback, please open an issue on our GitHub repository.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="PYORPS documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="api_reference.html" class="btn btn-neutral float-right" title="API Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Martin Hofmann.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

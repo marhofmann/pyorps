@@ -1,0 +1,1119 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pyorps.graph package &mdash; PYORPS 09.05.2025 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=d2164c19"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            PYORPS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="README.html">PYORPS - Python for Optimal Routes in Power Systems</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="README.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#features">Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#how-it-works">How It Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#use-cases">Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#technical-details">Technical Details</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#documentation">Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#contributing">Contributing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#citation">Citation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.html#contact">Contact</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="CONTRIBUTING.html">Contributing to PYORPS</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#get-in-touch">Get in Touch!</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#setting-up-your-development-environment">Setting Up Your Development Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#making-changes">Making Changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#keeping-your-fork-up-to-date">Keeping Your Fork Up-to-Date</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#writing-tests">Writing Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#code-style">Code Style</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#contributing-examples-or-case-studies">Contributing Examples or Case Studies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CONTRIBUTING.html#thank-you">Thank You!</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">PYORPS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">pyorps.graph package</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/pyorps.graph.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="pyorps-graph-package">
+<h1>pyorps.graph package<a class="headerlink" href="#pyorps-graph-package" title="Link to this heading"></a></h1>
+<section id="subpackages">
+<h2>Subpackages<a class="headerlink" href="#subpackages" title="Link to this heading"></a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.graph.api.html">pyorps.graph.api package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.api.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.api.html#module-pyorps.graph.api.graph_api">pyorps.graph.api.graph_api module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.graph_api.GraphAPI"><code class="docutils literal notranslate"><span class="pre">GraphAPI</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.graph_api.GraphAPI.shortest_path"><code class="docutils literal notranslate"><span class="pre">GraphAPI.shortest_path()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.api.html#module-pyorps.graph.api.graph_library_api">pyorps.graph.api.graph_library_api module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.graph_library_api.GraphLibraryAPI"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.graph_library_api.GraphLibraryAPI.create_graph"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.create_graph()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.graph_library_api.GraphLibraryAPI.get_a_star_heuristic"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.get_a_star_heuristic()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.graph_library_api.GraphLibraryAPI.get_nodes"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.get_nodes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.graph_library_api.GraphLibraryAPI.get_number_of_edges"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.get_number_of_edges()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.graph_library_api.GraphLibraryAPI.get_number_of_nodes"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.get_number_of_nodes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.graph_library_api.GraphLibraryAPI.remove_isolates"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.remove_isolates()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.graph_library_api.GraphLibraryAPI.shortest_path"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.shortest_path()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.api.html#module-pyorps.graph.api.igraph_api">pyorps.graph.api.igraph_api module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI"><code class="docutils literal notranslate"><span class="pre">IGraphAPI</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI.create_graph"><code class="docutils literal notranslate"><span class="pre">IGraphAPI.create_graph()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI.get_nodes"><code class="docutils literal notranslate"><span class="pre">IGraphAPI.get_nodes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI.get_number_of_edges"><code class="docutils literal notranslate"><span class="pre">IGraphAPI.get_number_of_edges()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI.get_number_of_nodes"><code class="docutils literal notranslate"><span class="pre">IGraphAPI.get_number_of_nodes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI.remove_isolates"><code class="docutils literal notranslate"><span class="pre">IGraphAPI.remove_isolates()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI.shortest_path"><code class="docutils literal notranslate"><span class="pre">IGraphAPI.shortest_path()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.api.html#module-pyorps.graph.api.networkit_api">pyorps.graph.api.networkit_api module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI"><code class="docutils literal notranslate"><span class="pre">NetworkitAPI</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI.create_graph"><code class="docutils literal notranslate"><span class="pre">NetworkitAPI.create_graph()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI.get_nodes"><code class="docutils literal notranslate"><span class="pre">NetworkitAPI.get_nodes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI.get_number_of_edges"><code class="docutils literal notranslate"><span class="pre">NetworkitAPI.get_number_of_edges()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI.get_number_of_nodes"><code class="docutils literal notranslate"><span class="pre">NetworkitAPI.get_number_of_nodes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI.remove_isolates"><code class="docutils literal notranslate"><span class="pre">NetworkitAPI.remove_isolates()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkit_api.NetworkitAPI.shortest_path"><code class="docutils literal notranslate"><span class="pre">NetworkitAPI.shortest_path()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.api.html#module-pyorps.graph.api.networkx_api">pyorps.graph.api.networkx_api module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkx_api.NetworkxAPI"><code class="docutils literal notranslate"><span class="pre">NetworkxAPI</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkx_api.NetworkxAPI.create_graph"><code class="docutils literal notranslate"><span class="pre">NetworkxAPI.create_graph()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkx_api.NetworkxAPI.get_nodes"><code class="docutils literal notranslate"><span class="pre">NetworkxAPI.get_nodes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkx_api.NetworkxAPI.get_number_of_edges"><code class="docutils literal notranslate"><span class="pre">NetworkxAPI.get_number_of_edges()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkx_api.NetworkxAPI.get_number_of_nodes"><code class="docutils literal notranslate"><span class="pre">NetworkxAPI.get_number_of_nodes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkx_api.NetworkxAPI.remove_isolates"><code class="docutils literal notranslate"><span class="pre">NetworkxAPI.remove_isolates()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.networkx_api.NetworkxAPI.shortest_path"><code class="docutils literal notranslate"><span class="pre">NetworkxAPI.shortest_path()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.api.html#module-pyorps.graph.api.rustworkx_api">pyorps.graph.api.rustworkx_api module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.rustworkx_api.RustworkxAPI"><code class="docutils literal notranslate"><span class="pre">RustworkxAPI</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.rustworkx_api.RustworkxAPI.add_edge"><code class="docutils literal notranslate"><span class="pre">RustworkxAPI.add_edge()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.rustworkx_api.RustworkxAPI.add_edges"><code class="docutils literal notranslate"><span class="pre">RustworkxAPI.add_edges()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.rustworkx_api.RustworkxAPI.create_graph"><code class="docutils literal notranslate"><span class="pre">RustworkxAPI.create_graph()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.rustworkx_api.RustworkxAPI.get_graph"><code class="docutils literal notranslate"><span class="pre">RustworkxAPI.get_graph()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.rustworkx_api.RustworkxAPI.get_graph_from_sparse_matrix"><code class="docutils literal notranslate"><span class="pre">RustworkxAPI.get_graph_from_sparse_matrix()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.rustworkx_api.RustworkxAPI.get_nodes"><code class="docutils literal notranslate"><span class="pre">RustworkxAPI.get_nodes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.rustworkx_api.RustworkxAPI.get_number_of_edges"><code class="docutils literal notranslate"><span class="pre">RustworkxAPI.get_number_of_edges()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.rustworkx_api.RustworkxAPI.get_number_of_nodes"><code class="docutils literal notranslate"><span class="pre">RustworkxAPI.get_number_of_nodes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.rustworkx_api.RustworkxAPI.init_chunk_size"><code class="docutils literal notranslate"><span class="pre">RustworkxAPI.init_chunk_size()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.rustworkx_api.RustworkxAPI.remove_isolates"><code class="docutils literal notranslate"><span class="pre">RustworkxAPI.remove_isolates()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.rustworkx_api.RustworkxAPI.shortest_path"><code class="docutils literal notranslate"><span class="pre">RustworkxAPI.shortest_path()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.api.html#module-pyorps.graph.api">Module contents</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.GraphAPI"><code class="docutils literal notranslate"><span class="pre">GraphAPI</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.GraphAPI.shortest_path"><code class="docutils literal notranslate"><span class="pre">GraphAPI.shortest_path()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.GraphLibraryAPI"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.GraphLibraryAPI.create_graph"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.create_graph()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.GraphLibraryAPI.get_a_star_heuristic"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.get_a_star_heuristic()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.GraphLibraryAPI.get_nodes"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.get_nodes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.GraphLibraryAPI.get_number_of_edges"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.get_number_of_edges()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.GraphLibraryAPI.get_number_of_nodes"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.get_number_of_nodes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.GraphLibraryAPI.remove_isolates"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.remove_isolates()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.GraphLibraryAPI.shortest_path"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI.shortest_path()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
+</section>
+<section id="module-pyorps.graph.path_finder">
+<span id="pyorps-graph-path-finder-module"></span><h2>pyorps.graph.path_finder module<a class="headerlink" href="#module-pyorps.graph.path_finder" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.PathFinder">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.path_finder.</span></span><span class="sig-name descname"><span class="pre">PathFinder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">search_space_buffer_m</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">neighborhood_str</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'r2'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">graph_api</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'networkit'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost_assumptions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">datasets_to_modify</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transform</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raster_save_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.PathFinder" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A class that encapsulates RasterReader and graph-based routing capabilities.</p>
+<p>This class provides functionality to:
+1. Read raster data using RasterReader or create
+2. Create a graph representation of the raster
+3. Find shortest paths between coordinates
+4. Convert between coordinates and graph node indices
+5. Create GeoDataFrames of paths</p>
+<p>The class supports various graph APIs including a special “cython” mode that
+performs direct path finding on the raster without creating a graph.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.PathFinder.calculate_path_metrics">
+<span class="sig-name descname"><span class="pre">calculate_path_metrics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.calculate_path_metrics"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.PathFinder.calculate_path_metrics" title="Link to this definition"></a></dt>
+<dd><p>Calculate metrics about the path and add directly to the Path object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path_indices</strong> – List of node indices for the path.</p></li>
+<li><p><strong>path</strong> – Path object to update with metrics.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.PathFinder.create_graph">
+<span class="sig-name descname"><span class="pre">create_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">band_index</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.create_graph"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.PathFinder.create_graph" title="Link to this definition"></a></dt>
+<dd><p>Create a graph from the raster data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>band_index</strong> (<em>int</em><em>, </em><em>optional</em>) – Index of the raster band to use. Defaults to 0.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The created graph object.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.PathFinder.create_path_geodataframe">
+<span class="sig-name descname"><span class="pre">create_path_geodataframe</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.create_path_geodataframe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.PathFinder.create_path_geodataframe" title="Link to this definition"></a></dt>
+<dd><p>Create a GeoDataFrame containing all stored paths.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>GeoDataFrame containing path data, or None if no paths available</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.PathFinder.create_raster_handler">
+<span class="sig-name descname"><span class="pre">create_raster_handler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cost_assumptions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">datasets_to_modify</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raster_save_path</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.create_raster_handler"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.PathFinder.create_raster_handler" title="Link to this definition"></a></dt>
+<dd><p>Create a RasterReader object for the specified file and parameters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The created RasterReader object</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>RasterReader</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.PathFinder.find_route">
+<span class="sig-name descname"><span class="pre">find_route</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dijkstra'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calculate_metrics</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pairwise</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.find_route"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.PathFinder.find_route" title="Link to this definition"></a></dt>
+<dd><p>Find the shortest path between source and target coordinates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source</strong> – Source coordinates. If None, uses the source_coords provided at initialization.
+Can be a single pair (x, y) or a list of pairs [(x1, y1), (x2, y2), …].</p></li>
+<li><p><strong>target</strong> – Target coordinates. If None, uses the target_coords provided at initialization.
+Can be a single pair (x, y) or a list of pairs [(x1, y1), (x2, y2), …].</p></li>
+<li><p><strong>algorithm</strong> – Algorithm to use for shortest path. Defaults to “dijkstra”.</p></li>
+<li><p><strong>calculate_metrics</strong> – Whether to calculate path metrics. Defaults to True.</p></li>
+<li><p><strong>pairwise</strong> – Whether to calculate paths pairwise (requires equal number of sources and targets).
+Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dictionary or list of dictionaries containing path information</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.PathFinder.get_coords_from_node_indices">
+<span class="sig-name descname"><span class="pre">get_coords_from_node_indices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node_indices</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.get_coords_from_node_indices"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.PathFinder.get_coords_from_node_indices" title="Link to this definition"></a></dt>
+<dd><p>Convert node indices to coordinates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>node_indices</strong> – List of node indices.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of coordinates (x, y).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.PathFinder.get_node_indices_from_coords">
+<span class="sig-name descname"><span class="pre">get_node_indices_from_coords</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coords</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.get_node_indices_from_coords"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.PathFinder.get_node_indices_from_coords" title="Link to this definition"></a></dt>
+<dd><p>Convert coordinates to node indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>coords</strong> – Either:
+- A single coordinate pair (x, y)
+- A list of coordinate pairs [(x1, y1), (x2, y2), …]</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of node indices.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.PathFinder.get_path">
+<span class="sig-name descname"><span class="pre">get_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.get_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.PathFinder.get_path" title="Link to this definition"></a></dt>
+<dd><p>Retrieve a stored path by ID, or by source AND target.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path_id</strong> – Numerical ID of the path</p></li>
+<li><p><strong>source</strong> – Source coordinates to search for</p></li>
+<li><p><strong>target</strong> – Target coordinates to search for</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Path object or None if not found</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.PathFinder.graph_api">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">graph_api</span></span><a class="headerlink" href="#pyorps.graph.path_finder.PathFinder.graph_api" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.PathFinder.plot_paths">
+<span class="sig-name descname"><span class="pre">plot_paths</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">paths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_all</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subplots</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subplotsize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(10,</span> <span class="pre">8)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_color</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'green'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_color</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'red'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_colors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_marker</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'o'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_marker</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'x'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_linewidth</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_raster</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">suptitle</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reverse_colors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.plot_paths"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.PathFinder.plot_paths" title="Link to this definition"></a></dt>
+<dd><p>Plot paths with customizable styling and layout options.</p>
+<p>This method visualizes the calculated paths, allowing for detailed customization of the
+plot appearance. It delegates to the PathPlotter class to handle the actual visualization.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>paths</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference internal" href="pyorps.core.html#pyorps.core.path.Path" title="pyorps.core.path.Path"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></a>, <a class="reference internal" href="pyorps.core.html#pyorps.core.path.PathCollection" title="pyorps.core.path.PathCollection"><code class="xref py py-class docutils literal notranslate"><span class="pre">PathCollection</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<a class="reference internal" href="pyorps.core.html#pyorps.core.path.Path" title="pyorps.core.path.Path"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></a>], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Specific path(s) to plot. If None, uses all paths in this PathFinder instance.
+Can be a single Path object, a list of Path objects, or a PathCollection.</p></li>
+<li><p><strong>plot_all</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – If True, plots all paths. If False, plots only the path with path_id.</p></li>
+<li><p><strong>subplots</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – If True and multiple paths are plotted, creates separate subplots for each path.</p></li>
+<li><p><strong>subplotsize</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – Size of each individual subplot in inches (width, height).</p></li>
+<li><p><strong>source_color</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Color for source markers.</p></li>
+<li><p><strong>target_color</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Color for target markers.</p></li>
+<li><p><strong>path_colors</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Colors for path lines. Can be a single color or a list of colors.
+If None, default color scheme is used.</p></li>
+<li><p><strong>source_marker</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Marker style for source points.</p></li>
+<li><p><strong>target_marker</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Marker style for target points.</p></li>
+<li><p><strong>path_linewidth</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – Line width for the paths.</p></li>
+<li><p><strong>show_raster</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – Whether to display the raster data as background.</p></li>
+<li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Title for the plot or individual subplot titles if a list is provided.</p></li>
+<li><p><strong>suptitle</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Overall title for the figure (when using multiple subplots).</p></li>
+<li><p><strong>path_id</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – ID of specific path to plot when plot_all is False.
+Can be a single ID or a list of IDs.</p></li>
+<li><p><strong>reverse_colors</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – Whether to reverse the color scheme for raster data
+(dark=low cost, bright=high cost).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The matplotlib axes object(s) for the plot. Returns a list of axes if multiple
+subplots are created, otherwise returns a single axes object.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Runtime Notes:</dt><dd><ul class="simple">
+<li><p>The plotting operation itself is generally quick (0.1-0.5 seconds)</p></li>
+<li><p>Most time is spent on data preparation in the initial PathFinder setup</p></li>
+<li><p>When plotting many paths, using subplots=True can improve readability</p></li>
+<li><p>Displaying the raster background (show_raster=True) adds minimal overhead
+once the PathFinder is initialized</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.PathFinder.save_paths">
+<span class="sig-name descname"><span class="pre">save_paths</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">save_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.save_paths"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.PathFinder.save_paths" title="Link to this definition"></a></dt>
+<dd><p>Save all calculated paths to a file in a GIS-compatible format.</p>
+<p>This method creates a GeoDataFrame containing all paths from the PathCollection
+and saves it to the specified file. The file format is automatically determined
+from the file extension (e.g., ‘.shp’ for Shapefile, ‘.gpkg’ for GeoPackage).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>save_path</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Path to save the paths file. If None, no file is saved.
+Common formats include:
+- Shapefile (.shp)
+- GeoPackage (.gpkg)
+- GeoJSON (.geojson)
+- CSV (.csv)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>The saved file includes all path attributes (ID, length, cost data)</p></li>
+<li><p>The geometries are saved as LineString features with the CRS from the source dataset</p></li>
+<li><p>If no paths have been calculated, an empty GeoDataFrame will be created first</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.PathFinder.save_raster">
+<span class="sig-name descname"><span class="pre">save_raster</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">save_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.save_raster"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.PathFinder.save_raster" title="Link to this definition"></a></dt>
+<dd><p>Save the raster data used for path calculations to a GeoTIFF file.</p>
+<p>This method exports the current raster data to the specified file location.
+The raster contains the cost values used for path calculations, including
+any modifications from additional datasets. The exported file includes
+complete georeferencing information and preserves the original CRS.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>save_path</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Path where the raster file should be saved. If None, uses
+the default filename “pyorps_raster.tiff” in the current directory.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>The saved raster includes all cost modifications from additional datasets</p></li>
+<li><p>The file is saved in GeoTIFF format which preserves georeferencing information</p></li>
+<li><p>If the PathFinder uses a GeoRasterizer, the complete raster is saved</p></li>
+<li><p>Otherwise, only the section loaded in the RasterHandler is saved</p></li>
+<li><p>For large areas, the resulting file size may be substantial</p></li>
+</ul>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.get_graph_api_class">
+<span class="sig-prename descclassname"><span class="pre">pyorps.graph.path_finder.</span></span><span class="sig-name descname"><span class="pre">get_graph_api_class</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">graph_api</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#get_graph_api_class"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.get_graph_api_class" title="Link to this definition"></a></dt>
+<dd><p>Dynamically import and return the graph API class based on the selected graph API.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>graph_api</strong> (<em>str</em>) – The name of the graph API to use (e.g., “networkit”, “igraph”, “cython”).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The corresponding graph API class.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>class</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ImportError</strong> – If the specified graph API module cannot be imported.</p></li>
+<li><p><strong>ValueError</strong> – If the specified graph API is not supported.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.graph.path_finder.timed">
+<span class="sig-prename descclassname"><span class="pre">pyorps.graph.path_finder.</span></span><span class="sig-name descname"><span class="pre">timed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timings_dict</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#timed"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.path_finder.timed" title="Link to this definition"></a></dt>
+<dd><p>Simple context manager for timing code blocks.</p>
+</dd></dl>
+
+</section>
+<section id="module-pyorps.graph">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-pyorps.graph" title="Link to this heading"></a></h2>
+<p>Graph operations and routing algorithms for optimal path finding.</p>
+<p>This module provides:
+1. The main RasterGraph class for creating paths on cost surfaces
+2. Path and PathCollection classes for storing and analyzing paths
+3. Dynamic loading of graph implementations via get_graph_api_class</p>
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.graph.AlgorthmNotImplementedError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.</span></span><span class="sig-name descname"><span class="pre">AlgorthmNotImplementedError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">algorithm</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">graph_library</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#AlgorthmNotImplementedError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.AlgorthmNotImplementedError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Custom exception if a specific algorithm is not implemented in the API or the graph library</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.GraphAPI">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.</span></span><span class="sig-name descname"><span class="pre">GraphAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_api.html#GraphAPI"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.GraphAPI" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></p>
+<p>Base class for all graph APIs defining the minimal required interface.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.GraphAPI.shortest_path">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">shortest_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dijkstra'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pairwise</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_api.html#GraphAPI.shortest_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.GraphAPI.shortest_path" title="Link to this definition"></a></dt>
+<dd><p>Find shortest path(s) between source and target indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source_indices</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – Source node indices</p></li>
+<li><p><strong>target_indices</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – Target node indices</p></li>
+<li><p><strong>algorithm</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Algorithm name (e.g., “dijkstra”, “astar”)</p></li>
+<li><p><strong>pairwise</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – Whether to compute paths pairwise (for multiple sources/targets)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list of path indices for each source-target pair</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.GraphLibraryAPI">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.</span></span><span class="sig-name descname"><span class="pre">GraphLibraryAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.GraphLibraryAPI" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.graph_api.GraphAPI" title="pyorps.graph.api.graph_api.GraphAPI"><code class="xref py py-class docutils literal notranslate"><span class="pre">GraphAPI</span></code></a></p>
+<p>Base class for all graph library-based APIs.</p>
+<p>This class extends GraphAPI with common functionality needed by standard graph libraries
+that require edge data to be explicitly provided and a graph to be constructed.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.GraphLibraryAPI.create_graph">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">create_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">from_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_nodes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.create_graph"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.GraphLibraryAPI.create_graph" title="Link to this definition"></a></dt>
+<dd><p>Creates a graph object with the graph library specified in the selected interface.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>from_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – The starting node indices from the edge data</p></li>
+<li><p><strong>to_nodes</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – The ending node indices from the edge data</p></li>
+<li><p><strong>cost</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</span>) – The weight of the edge data</p></li>
+<li><p><strong>kwargs</strong> – Additional parameters for the underlying graph library</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The graph object</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.GraphLibraryAPI.get_a_star_heuristic">
+<span class="sig-name descname"><span class="pre">get_a_star_heuristic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">target</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.get_a_star_heuristic"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.GraphLibraryAPI.get_a_star_heuristic" title="Link to this definition"></a></dt>
+<dd><p>Calculate the A* heuristic based on the Euclidean distance from the target node.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>target</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – int
+The index of the target node in the raster data.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><p>tuple[np.ndarray[int], np.ndarray[float]]
+A tuple containing:
+- An array of node indices (nodes) in the graph.
+- An array of heuristic values corresponding to each node, calculated as the</p>
+<blockquote>
+<div><p>Euclidean distance to the target node multiplied by the minimum value in the raster data.</p>
+</div></blockquote>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.GraphLibraryAPI.get_nodes">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.get_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.GraphLibraryAPI.get_nodes" title="Link to this definition"></a></dt>
+<dd><p>This method returns the nodes in the graph as a list or numpy array of node indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>] | <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>list[int] | ndarray[int]
+The list of node indices of the nodes in the graph</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.GraphLibraryAPI.get_number_of_edges">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_number_of_edges</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.get_number_of_edges"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.GraphLibraryAPI.get_number_of_edges" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of edges in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The number of Edges</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.GraphLibraryAPI.get_number_of_nodes">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_number_of_nodes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.get_number_of_nodes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.GraphLibraryAPI.get_number_of_nodes" title="Link to this definition"></a></dt>
+<dd><p>Returns the number of nodes in the graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The number of Nodes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.GraphLibraryAPI.remove_isolates">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">remove_isolates</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.remove_isolates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.GraphLibraryAPI.remove_isolates" title="Link to this definition"></a></dt>
+<dd><p>If the graph object was initialized with the maximum number of nodes, this function helps to reduce the occupied
+memory by removing nodes without any edge (degree == 0).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.GraphLibraryAPI.shortest_path">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">shortest_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dijkstra'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/api/graph_library_api.html#GraphLibraryAPI.shortest_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.GraphLibraryAPI.shortest_path" title="Link to this definition"></a></dt>
+<dd><p>This method applies the specified shortest path algorithm on the created graph object and finds the shortest
+path between source and target(s) as a list of node indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>list[int]
+The list of node indices of the shortest path between source and target</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py exception">
+<dt class="sig sig-object py" id="pyorps.graph.NoPathFoundError">
+<em class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.</span></span><span class="sig-name descname"><span class="pre">NoPathFoundError</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/exceptions.html#NoPathFoundError"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.NoPathFoundError" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Custom exception if no path can be found in the graph for source and target</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.Path">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.</span></span><span class="sig-name descname"><span class="pre">Path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">graph_api</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_geometry</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">euclidean_distance</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">runtimes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">total_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">total_cost</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">length_by_category</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">length_by_category_percent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#Path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.Path" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Dataclass representing a path in a raster graph.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.algorithm">
+<span class="sig-name descname"><span class="pre">algorithm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#pyorps.graph.Path.algorithm" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.euclidean_distance">
+<span class="sig-name descname"><span class="pre">euclidean_distance</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></em><a class="headerlink" href="#pyorps.graph.Path.euclidean_distance" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.graph_api">
+<span class="sig-name descname"><span class="pre">graph_api</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#pyorps.graph.Path.graph_api" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.length_by_category">
+<span class="sig-name descname"><span class="pre">length_by_category</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.graph.Path.length_by_category" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.length_by_category_percent">
+<span class="sig-name descname"><span class="pre">length_by_category_percent</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.graph.Path.length_by_category_percent" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.path_coords">
+<span class="sig-name descname"><span class="pre">path_coords</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></em><a class="headerlink" href="#pyorps.graph.Path.path_coords" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.path_geometry">
+<span class="sig-name descname"><span class="pre">path_geometry</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">LineString</span></code></em><a class="headerlink" href="#pyorps.graph.Path.path_geometry" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.path_id">
+<span class="sig-name descname"><span class="pre">path_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></em><a class="headerlink" href="#pyorps.graph.Path.path_id" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.path_indices">
+<span class="sig-name descname"><span class="pre">path_indices</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></em><a class="headerlink" href="#pyorps.graph.Path.path_indices" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.runtimes">
+<span class="sig-name descname"><span class="pre">runtimes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">,</span> <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><a class="headerlink" href="#pyorps.graph.Path.runtimes" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.source">
+<span class="sig-name descname"><span class="pre">source</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></em><a class="headerlink" href="#pyorps.graph.Path.source" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.target">
+<span class="sig-name descname"><span class="pre">target</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></em><a class="headerlink" href="#pyorps.graph.Path.target" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.Path.to_geodataframe_dict">
+<span class="sig-name descname"><span class="pre">to_geodataframe_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#Path.to_geodataframe_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.Path.to_geodataframe_dict" title="Link to this definition"></a></dt>
+<dd><p>Convert Path object to a dictionary suitable for GeoDataFrame creation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dictionary with path data formatted for GeoDataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.total_cost">
+<span class="sig-name descname"><span class="pre">total_cost</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.graph.Path.total_cost" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="pyorps.graph.Path.total_length">
+<span class="sig-name descname"><span class="pre">total_length</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#pyorps.graph.Path.total_length" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.PathCollection">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.</span></span><span class="sig-name descname"><span class="pre">PathCollection</span></span><a class="reference internal" href="_modules/pyorps/core/path.html#PathCollection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathCollection" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Container for Path objects with O(1) retrieval by path ID.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathCollection.add">
+<span class="sig-name descname"><span class="pre">add</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#PathCollection.add"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathCollection.add" title="Link to this definition"></a></dt>
+<dd><p>Add a path to the collection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="pyorps.graph.PathCollection.all">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">all</span></span><a class="headerlink" href="#pyorps.graph.PathCollection.all" title="Link to this definition"></a></dt>
+<dd><p>Return all paths as a list.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathCollection.get">
+<span class="sig-name descname"><span class="pre">get</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#PathCollection.get"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathCollection.get" title="Link to this definition"></a></dt>
+<dd><p>Retrieve a stored path by ID, or by source AND target.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference internal" href="pyorps.core.html#pyorps.core.path.Path" title="pyorps.core.path.Path"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></a>]</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathCollection.to_geodataframe_records">
+<span class="sig-name descname"><span class="pre">to_geodataframe_records</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/core/path.html#PathCollection.to_geodataframe_records"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathCollection.to_geodataframe_records" title="Link to this definition"></a></dt>
+<dd><p>Convert all paths to a list of dictionaries suitable for a GeoDataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code></span></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of dictionaries with path data formatted for a GeoDataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.PathFinder">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.</span></span><span class="sig-name descname"><span class="pre">PathFinder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset_source</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">search_space_buffer_m</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">neighborhood_str</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'r2'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">graph_api</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'networkit'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cost_assumptions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">datasets_to_modify</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">crs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transform</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raster_save_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathFinder" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A class that encapsulates RasterReader and graph-based routing capabilities.</p>
+<p>This class provides functionality to:
+1. Read raster data using RasterReader or create
+2. Create a graph representation of the raster
+3. Find shortest paths between coordinates
+4. Convert between coordinates and graph node indices
+5. Create GeoDataFrames of paths</p>
+<p>The class supports various graph APIs including a special “cython” mode that
+performs direct path finding on the raster without creating a graph.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathFinder.calculate_path_metrics">
+<span class="sig-name descname"><span class="pre">calculate_path_metrics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.calculate_path_metrics"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathFinder.calculate_path_metrics" title="Link to this definition"></a></dt>
+<dd><p>Calculate metrics about the path and add directly to the Path object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path_indices</strong> – List of node indices for the path.</p></li>
+<li><p><strong>path</strong> – Path object to update with metrics.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathFinder.create_graph">
+<span class="sig-name descname"><span class="pre">create_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">band_index</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.create_graph"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathFinder.create_graph" title="Link to this definition"></a></dt>
+<dd><p>Create a graph from the raster data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>band_index</strong> (<em>int</em><em>, </em><em>optional</em>) – Index of the raster band to use. Defaults to 0.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The created graph object.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathFinder.create_path_geodataframe">
+<span class="sig-name descname"><span class="pre">create_path_geodataframe</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.create_path_geodataframe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathFinder.create_path_geodataframe" title="Link to this definition"></a></dt>
+<dd><p>Create a GeoDataFrame containing all stored paths.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>GeoDataFrame containing path data, or None if no paths available</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathFinder.create_raster_handler">
+<span class="sig-name descname"><span class="pre">create_raster_handler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cost_assumptions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">datasets_to_modify</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raster_save_path</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.create_raster_handler"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathFinder.create_raster_handler" title="Link to this definition"></a></dt>
+<dd><p>Create a RasterReader object for the specified file and parameters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The created RasterReader object</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>RasterReader</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathFinder.find_route">
+<span class="sig-name descname"><span class="pre">find_route</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dijkstra'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calculate_metrics</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pairwise</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.find_route"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathFinder.find_route" title="Link to this definition"></a></dt>
+<dd><p>Find the shortest path between source and target coordinates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source</strong> – Source coordinates. If None, uses the source_coords provided at initialization.
+Can be a single pair (x, y) or a list of pairs [(x1, y1), (x2, y2), …].</p></li>
+<li><p><strong>target</strong> – Target coordinates. If None, uses the target_coords provided at initialization.
+Can be a single pair (x, y) or a list of pairs [(x1, y1), (x2, y2), …].</p></li>
+<li><p><strong>algorithm</strong> – Algorithm to use for shortest path. Defaults to “dijkstra”.</p></li>
+<li><p><strong>calculate_metrics</strong> – Whether to calculate path metrics. Defaults to True.</p></li>
+<li><p><strong>pairwise</strong> – Whether to calculate paths pairwise (requires equal number of sources and targets).
+Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dictionary or list of dictionaries containing path information</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathFinder.get_coords_from_node_indices">
+<span class="sig-name descname"><span class="pre">get_coords_from_node_indices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node_indices</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.get_coords_from_node_indices"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathFinder.get_coords_from_node_indices" title="Link to this definition"></a></dt>
+<dd><p>Convert node indices to coordinates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>node_indices</strong> – List of node indices.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of coordinates (x, y).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathFinder.get_node_indices_from_coords">
+<span class="sig-name descname"><span class="pre">get_node_indices_from_coords</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coords</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.get_node_indices_from_coords"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathFinder.get_node_indices_from_coords" title="Link to this definition"></a></dt>
+<dd><p>Convert coordinates to node indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>coords</strong> – Either:
+- A single coordinate pair (x, y)
+- A list of coordinate pairs [(x1, y1), (x2, y2), …]</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of node indices.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathFinder.get_path">
+<span class="sig-name descname"><span class="pre">get_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.get_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathFinder.get_path" title="Link to this definition"></a></dt>
+<dd><p>Retrieve a stored path by ID, or by source AND target.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path_id</strong> – Numerical ID of the path</p></li>
+<li><p><strong>source</strong> – Source coordinates to search for</p></li>
+<li><p><strong>target</strong> – Target coordinates to search for</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Path object or None if not found</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="pyorps.graph.PathFinder.graph_api">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">graph_api</span></span><a class="headerlink" href="#pyorps.graph.PathFinder.graph_api" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathFinder.plot_paths">
+<span class="sig-name descname"><span class="pre">plot_paths</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">paths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_all</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subplots</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subplotsize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(10,</span> <span class="pre">8)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_color</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'green'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_color</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'red'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_colors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_marker</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'o'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_marker</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'x'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_linewidth</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_raster</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">suptitle</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reverse_colors</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.plot_paths"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathFinder.plot_paths" title="Link to this definition"></a></dt>
+<dd><p>Plot paths with customizable styling and layout options.</p>
+<p>This method visualizes the calculated paths, allowing for detailed customization of the
+plot appearance. It delegates to the PathPlotter class to handle the actual visualization.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>paths</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference internal" href="pyorps.core.html#pyorps.core.path.Path" title="pyorps.core.path.Path"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></a>, <a class="reference internal" href="pyorps.core.html#pyorps.core.path.PathCollection" title="pyorps.core.path.PathCollection"><code class="xref py py-class docutils literal notranslate"><span class="pre">PathCollection</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<a class="reference internal" href="pyorps.core.html#pyorps.core.path.Path" title="pyorps.core.path.Path"><code class="xref py py-class docutils literal notranslate"><span class="pre">Path</span></code></a>], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Specific path(s) to plot. If None, uses all paths in this PathFinder instance.
+Can be a single Path object, a list of Path objects, or a PathCollection.</p></li>
+<li><p><strong>plot_all</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – If True, plots all paths. If False, plots only the path with path_id.</p></li>
+<li><p><strong>subplots</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – If True and multiple paths are plotted, creates separate subplots for each path.</p></li>
+<li><p><strong>subplotsize</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</span>) – Size of each individual subplot in inches (width, height).</p></li>
+<li><p><strong>source_color</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Color for source markers.</p></li>
+<li><p><strong>target_color</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Color for target markers.</p></li>
+<li><p><strong>path_colors</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Colors for path lines. Can be a single color or a list of colors.
+If None, default color scheme is used.</p></li>
+<li><p><strong>source_marker</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Marker style for source points.</p></li>
+<li><p><strong>target_marker</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Marker style for target points.</p></li>
+<li><p><strong>path_linewidth</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></span>) – Line width for the paths.</p></li>
+<li><p><strong>show_raster</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – Whether to display the raster data as background.</p></li>
+<li><p><strong>title</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – Title for the plot or individual subplot titles if a list is provided.</p></li>
+<li><p><strong>suptitle</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Overall title for the figure (when using multiple subplots).</p></li>
+<li><p><strong>path_id</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]</span>) – ID of specific path to plot when plot_all is False.
+Can be a single ID or a list of IDs.</p></li>
+<li><p><strong>reverse_colors</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></span>) – Whether to reverse the color scheme for raster data
+(dark=low cost, bright=high cost).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The matplotlib axes object(s) for the plot. Returns a list of axes if multiple
+subplots are created, otherwise returns a single axes object.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Runtime Notes:</dt><dd><ul class="simple">
+<li><p>The plotting operation itself is generally quick (0.1-0.5 seconds)</p></li>
+<li><p>Most time is spent on data preparation in the initial PathFinder setup</p></li>
+<li><p>When plotting many paths, using subplots=True can improve readability</p></li>
+<li><p>Displaying the raster background (show_raster=True) adds minimal overhead
+once the PathFinder is initialized</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathFinder.save_paths">
+<span class="sig-name descname"><span class="pre">save_paths</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">save_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.save_paths"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathFinder.save_paths" title="Link to this definition"></a></dt>
+<dd><p>Save all calculated paths to a file in a GIS-compatible format.</p>
+<p>This method creates a GeoDataFrame containing all paths from the PathCollection
+and saves it to the specified file. The file format is automatically determined
+from the file extension (e.g., ‘.shp’ for Shapefile, ‘.gpkg’ for GeoPackage).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>save_path</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Path to save the paths file. If None, no file is saved.
+Common formats include:
+- Shapefile (.shp)
+- GeoPackage (.gpkg)
+- GeoJSON (.geojson)
+- CSV (.csv)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>The saved file includes all path attributes (ID, length, cost data)</p></li>
+<li><p>The geometries are saved as LineString features with the CRS from the source dataset</p></li>
+<li><p>If no paths have been calculated, an empty GeoDataFrame will be created first</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.PathFinder.save_raster">
+<span class="sig-name descname"><span class="pre">save_raster</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">save_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#PathFinder.save_raster"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.PathFinder.save_raster" title="Link to this definition"></a></dt>
+<dd><p>Save the raster data used for path calculations to a GeoTIFF file.</p>
+<p>This method exports the current raster data to the specified file location.
+The raster contains the cost values used for path calculations, including
+any modifications from additional datasets. The exported file includes
+complete georeferencing information and preserves the original CRS.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>save_path</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</span>) – Path where the raster file should be saved. If None, uses
+the default filename “pyorps_raster.tiff” in the current directory.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<ul class="simple">
+<li><p>The saved raster includes all cost modifications from additional datasets</p></li>
+<li><p>The file is saved in GeoTIFF format which preserves georeferencing information</p></li>
+<li><p>If the PathFinder uses a GeoRasterizer, the complete raster is saved</p></li>
+<li><p>Otherwise, only the section loaded in the RasterHandler is saved</p></li>
+<li><p>For large areas, the resulting file size may be substantial</p></li>
+</ul>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.graph.get_graph_api_class">
+<span class="sig-prename descclassname"><span class="pre">pyorps.graph.</span></span><span class="sig-name descname"><span class="pre">get_graph_api_class</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">graph_api</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pyorps/graph/path_finder.html#get_graph_api_class"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.get_graph_api_class" title="Link to this definition"></a></dt>
+<dd><p>Dynamically import and return the graph API class based on the selected graph API.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>graph_api</strong> (<em>str</em>) – The name of the graph API to use (e.g., “networkit”, “igraph”, “cython”).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The corresponding graph API class.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>class</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ImportError</strong> – If the specified graph API module cannot be imported.</p></li>
+<li><p><strong>ValueError</strong> – If the specified graph API is not supported.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Martin Hofmann.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,668 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pyorps.raster.handler &mdash; PYORPS 09.05.2025 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=d2164c19"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            PYORPS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../README.html">PYORPS - Python for Optimal Routes in Power Systems</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#features">Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#how-it-works">How It Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#use-cases">Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#technical-details">Technical Details</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#documentation">Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#contributing">Contributing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#citation">Citation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#contact">Contact</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../CONTRIBUTING.html">Contributing to PYORPS</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#get-in-touch">Get in Touch!</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#setting-up-your-development-environment">Setting Up Your Development Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#making-changes">Making Changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#keeping-your-fork-up-to-date">Keeping Your Fork Up-to-Date</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#writing-tests">Writing Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#code-style">Code Style</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#contributing-examples-or-case-studies">Contributing Examples or Case Studies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#thank-you">Thank You!</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">PYORPS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">pyorps.raster.handler</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for pyorps.raster.handler</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">rasterio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rasterio.windows</span><span class="w"> </span><span class="kn">import</span> <span class="n">Window</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">LineString</span><span class="p">,</span> <span class="n">MultiPoint</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">rasterio.features</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rasterio.transform</span><span class="w"> </span><span class="kn">import</span> <span class="n">from_origin</span><span class="p">,</span> <span class="n">rowcol</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyproj</span><span class="w"> </span><span class="kn">import</span> <span class="n">Transformer</span>
+
+<span class="c1"># Changed to a relative import from the io module</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..io.geo_dataset</span><span class="w"> </span><span class="kn">import</span> <span class="n">RasterDataset</span>
+
+
+<div class="viewcode-block" id="RasterHandler">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.raster.handler.RasterHandler">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RasterHandler</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Class for efficiently working with raster data while preserving</span>
+<span class="sd">    geographic transformation information. Can be initialized with either a file path</span>
+<span class="sd">    or directly with raster data, CRS, and transform.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">raster_source</span><span class="p">:</span> <span class="n">RasterDataset</span><span class="p">,</span>
+                 <span class="n">source_coords</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]],</span>
+                 <span class="n">target_coords</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]],</span>
+                 <span class="n">search_space_buffer_m</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">input_crs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">apply_mask</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                 <span class="n">outside_value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">bands</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize a RasterHandler for working with raster data and coordinate transformations.</span>
+
+<span class="sd">        Creates a window and buffer geometry based on source and target coordinates:</span>
+<span class="sd">        - If source and target are single coordinates: creates a line buffer</span>
+<span class="sd">        - If source and/or target are lists of coordinates: creates a polygon buffer</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            raster_source: Either:</span>
+<span class="sd">                          - Path to the raster file (str), or</span>
+<span class="sd">                          - Tuple of (data_array, crs, transform)</span>
+<span class="sd">            source_coords: Source point(s) as (x, y) tuple or list of tuples</span>
+<span class="sd">            target_coords: Target point(s) as (x, y) tuple or list of tuples</span>
+<span class="sd">            search_space_buffer_m: Buffer distance in map units (typically meters)</span>
+<span class="sd">            input_crs: CRS of the input coordinates (e.g., &#39;EPSG:4326&#39;). If None, assumes same as raster</span>
+<span class="sd">            apply_mask: If True, apply the buffer mask after loading data</span>
+<span class="sd">            outside_value: Value to set for pixels outside the buffer (defaults to max value of the data type)</span>
+<span class="sd">            bands: List of bands to modify if apply_mask is True (1-based). If None, all bands are modified</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Determine the type of input we&#39;re working with</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span> <span class="o">=</span> <span class="n">raster_source</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_init_from_metadata</span><span class="p">(</span>
+                <span class="n">source_coords</span><span class="p">,</span>
+                <span class="n">target_coords</span><span class="p">,</span>
+                <span class="n">search_space_buffer_m</span><span class="p">,</span>
+                <span class="n">input_crs</span><span class="p">,</span>
+                <span class="n">apply_mask</span><span class="p">,</span>
+                <span class="n">outside_value</span><span class="p">,</span>
+                <span class="n">bands</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_init_from_metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                            <span class="n">source_coords</span><span class="p">,</span> <span class="n">target_coords</span><span class="p">,</span> <span class="n">search_space_buffer_m</span><span class="p">,</span>
+                            <span class="n">input_crs</span><span class="p">,</span> <span class="n">apply_mask</span><span class="p">,</span> <span class="n">outside_value</span><span class="p">,</span> <span class="n">bands</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize using metadata and raster data.</span>
+
+<span class="sd">        This method contains the common initialization code used regardless of</span>
+<span class="sd">        whether the input is a path or direct data components.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># Transform coordinates if needed</span>
+        <span class="n">raster_crs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">crs</span>
+        <span class="n">transformed_source_coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transform_coords</span><span class="p">(</span><span class="n">source_coords</span><span class="p">,</span> <span class="n">input_crs</span><span class="p">,</span> <span class="n">raster_crs</span><span class="p">)</span>
+        <span class="n">transformed_target_coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transform_coords</span><span class="p">(</span><span class="n">target_coords</span><span class="p">,</span> <span class="n">input_crs</span><span class="p">,</span> <span class="n">raster_crs</span><span class="p">)</span>
+
+        <span class="c1"># Determine if we&#39;re working with single coordinates or multiple coordinates</span>
+        <span class="n">is_single_source</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">transformed_source_coords</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span>
+                <span class="nb">isinstance</span><span class="p">(</span><span class="n">transformed_source_coords</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span>
+                <span class="nb">len</span><span class="p">(</span><span class="n">transformed_source_coords</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span>
+                <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">transformed_source_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span>
+        <span class="p">)</span>
+
+        <span class="n">is_single_target</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">transformed_target_coords</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span>
+                <span class="nb">isinstance</span><span class="p">(</span><span class="n">transformed_target_coords</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span>
+                <span class="nb">len</span><span class="p">(</span><span class="n">transformed_target_coords</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span>
+                <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">transformed_target_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Create appropriate geometry and buffer it</span>
+        <span class="k">if</span> <span class="n">is_single_source</span> <span class="ow">and</span> <span class="n">is_single_target</span><span class="p">:</span>
+            <span class="c1"># Single pair of coordinates - create a line buffer</span>
+            <span class="n">buffer_geom</span> <span class="o">=</span> <span class="n">LineString</span><span class="p">([</span><span class="n">transformed_source_coords</span><span class="p">,</span> <span class="n">transformed_target_coords</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Multiple coordinates - create a polygon buffer</span>
+            <span class="n">all_points</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">if</span> <span class="n">is_single_source</span><span class="p">:</span>
+                <span class="n">all_points</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">transformed_source_coords</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">all_points</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">transformed_source_coords</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">is_single_target</span><span class="p">:</span>
+                <span class="n">all_points</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">transformed_target_coords</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">all_points</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">transformed_target_coords</span><span class="p">)</span>
+
+            <span class="c1"># Create a convex hull from all points and buffer it</span>
+            <span class="n">multi_point</span> <span class="o">=</span> <span class="n">MultiPoint</span><span class="p">(</span><span class="n">all_points</span><span class="p">)</span>
+            <span class="n">buffer_geom</span> <span class="o">=</span> <span class="n">multi_point</span><span class="o">.</span><span class="n">convex_hull</span>
+        <span class="k">if</span> <span class="n">search_space_buffer_m</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">search_space_buffer_m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">estimate_optimal_buffer_width</span><span class="p">(</span><span class="n">source_coords</span><span class="p">,</span> <span class="n">target_coords</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">search_space_buffer_m</span> <span class="o">=</span> <span class="n">search_space_buffer_m</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">buffer_geometry</span> <span class="o">=</span> <span class="n">buffer_geom</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="n">distance</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">search_space_buffer_m</span><span class="p">,</span> <span class="n">quad_segs</span><span class="o">=</span><span class="mi">32</span><span class="p">)</span>
+
+        <span class="c1"># Calculate pixel bounds for the buffered geometry</span>
+        <span class="n">bounds</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">buffer_geometry</span><span class="o">.</span><span class="n">bounds</span>  <span class="c1"># (minx, miny, maxx, maxy)</span>
+
+        <span class="c1"># Convert bounds to pixel coordinates</span>
+        <span class="n">min_row</span><span class="p">,</span> <span class="n">min_col</span> <span class="o">=</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">rowcol</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">transform</span><span class="p">,</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>  <span class="c1"># top-left</span>
+        <span class="n">max_row</span><span class="p">,</span> <span class="n">max_col</span> <span class="o">=</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">rowcol</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">transform</span><span class="p">,</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>  <span class="c1"># bottom-right</span>
+
+        <span class="c1"># Ensure bounds are within the raster</span>
+        <span class="n">min_row</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">min_row</span><span class="p">)</span>
+        <span class="n">min_col</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">min_col</span><span class="p">)</span>
+        <span class="n">max_row</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">max_row</span><span class="p">)</span>
+        <span class="n">max_col</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">max_col</span><span class="p">)</span>
+
+        <span class="n">window_width</span> <span class="o">=</span> <span class="n">max_col</span> <span class="o">-</span> <span class="n">min_col</span>
+        <span class="n">window_height</span> <span class="o">=</span> <span class="n">max_row</span> <span class="o">-</span> <span class="n">min_row</span>
+
+        <span class="c1"># Create window</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">window</span> <span class="o">=</span> <span class="n">Window</span><span class="p">(</span><span class="n">min_col</span><span class="p">,</span> <span class="n">min_row</span><span class="p">,</span> <span class="n">window_width</span><span class="p">,</span> <span class="n">window_height</span><span class="p">)</span>
+
+        <span class="c1"># Get window-specific transform (crucial for correct coordinate transformations)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">window_transform</span> <span class="o">=</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">windows</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">window</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">transform</span><span class="p">)</span>
+
+        <span class="c1"># Extract the windowed data</span>
+        <span class="c1"># For file input, data was already read with window</span>
+        <span class="c1"># For direct data input, we need to slice the array</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+            <span class="c1"># Handle different dimensions</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>  <span class="c1"># (bands, height, width)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">data</span><span class="p">[:,</span> <span class="n">min_row</span><span class="p">:</span><span class="n">max_row</span><span class="p">,</span> <span class="n">min_col</span><span class="p">:</span><span class="n">max_col</span><span class="p">]</span>
+            <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>  <span class="c1"># (height, width)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">min_row</span><span class="p">:</span><span class="n">max_row</span><span class="p">,</span> <span class="n">min_col</span><span class="p">:</span><span class="n">max_col</span><span class="p">]</span>
+                <span class="c1"># Ensure data has shape (bands, height, width)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># This shouldn&#39;t happen with current implementation</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Data must be a numpy array&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Apply mask if requested</span>
+        <span class="k">if</span> <span class="n">apply_mask</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">apply_geometry_mask</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">buffer_geometry</span><span class="p">,</span> <span class="n">outside_value</span><span class="p">,</span> <span class="n">bands</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_transform_coords</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">input_crs</span><span class="p">,</span> <span class="n">target_crs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform coordinates from input_crs to target_crs.</span>
+
+<span class="sd">        Handles both single coordinates and lists of coordinates.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">input_crs</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">input_crs</span> <span class="o">==</span> <span class="n">target_crs</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">coords</span>
+
+        <span class="n">transformer</span> <span class="o">=</span> <span class="n">Transformer</span><span class="o">.</span><span class="n">from_crs</span><span class="p">(</span><span class="n">input_crs</span><span class="p">,</span> <span class="n">target_crs</span><span class="p">,</span> <span class="n">always_xy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span>
+                                         <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))):</span>
+            <span class="c1"># Single coordinate pair</span>
+            <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">transformer</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+            <span class="k">return</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># List of coordinates</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">coord</span> <span class="ow">in</span> <span class="n">coords</span><span class="p">:</span>
+                <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">transformer</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">coord</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">coord</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">))</span>
+            <span class="k">return</span> <span class="n">result</span>
+
+<div class="viewcode-block" id="RasterHandler.estimate_optimal_buffer_width">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.raster.handler.RasterHandler.estimate_optimal_buffer_width">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">estimate_optimal_buffer_width</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source_coords</span><span class="p">,</span> <span class="n">target_coords</span><span class="p">,</span> <span class="n">min_buffer</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">max_buffer</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span>
+                                      <span class="n">sample_radius</span><span class="o">=</span><span class="mi">50</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Estimate an appropriate buffer width for path finding based on terrain characteristics.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        -----------</span>
+<span class="sd">        raster_data : numpy.ndarray</span>
+<span class="sd">            2D array containing cost values for traversing each cell</span>
+<span class="sd">        source_coords : tuple</span>
+<span class="sd">            (x, y) coordinates of the source point</span>
+<span class="sd">        target_coords : tuple</span>
+<span class="sd">            (x, y) coordinates of the target point</span>
+<span class="sd">        min_buffer : int</span>
+<span class="sd">            Minimum buffer width to consider (meters)</span>
+<span class="sd">        max_buffer : int</span>
+<span class="sd">            Maximum buffer width to consider (meters)</span>
+<span class="sd">        sample_radius : int</span>
+<span class="sd">            Radius for sampling around the straight line to assess terrain complexity</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        --------</span>
+<span class="sd">        int</span>
+<span class="sd">            Estimated optimal buffer width in meters</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">forbidden_value</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">iinfo</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">max</span>
+        <span class="c1"># Calculate Euclidean distance between source and target</span>
+        <span class="n">dx</span> <span class="o">=</span> <span class="n">target_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">source_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">dy</span> <span class="o">=</span> <span class="n">target_coords</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">source_coords</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">euclidean_dist</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">dx</span> <span class="o">*</span> <span class="n">dx</span> <span class="o">+</span> <span class="n">dy</span> <span class="o">*</span> <span class="n">dy</span><span class="p">)</span>
+
+        <span class="c1"># Sample points along the straight line path</span>
+        <span class="n">num_samples</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">euclidean_dist</span><span class="p">),</span> <span class="mi">1000</span><span class="p">)</span>  <span class="c1"># Cap at 1000 samples</span>
+        <span class="n">x_samples</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">source_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">target_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">num_samples</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+        <span class="n">y_samples</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">source_coords</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">target_coords</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">num_samples</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+
+        <span class="n">rows</span><span class="p">,</span> <span class="n">cols</span> <span class="o">=</span> <span class="n">rowcol</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">transform</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">x_samples</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">y_samples</span><span class="p">))</span>
+
+        <span class="c1"># Convert bounds to pixel coordinates</span>
+        <span class="n">height</span><span class="p">,</span> <span class="n">width</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">x_samples</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">width</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">y_samples</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">cols</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">height</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Sample costs along the line</span>
+        <span class="n">line_costs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">count</span> <span class="o">-</span> <span class="mi">1</span><span class="p">][</span><span class="n">y_samples</span><span class="p">,</span> <span class="n">x_samples</span><span class="p">]</span>
+
+        <span class="c1"># Count obstacles along the direct path</span>
+        <span class="n">obstacle_count</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">line_costs</span> <span class="o">==</span> <span class="n">forbidden_value</span><span class="p">)</span>
+        <span class="n">obstacle_ratio</span> <span class="o">=</span> <span class="n">obstacle_count</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">line_costs</span><span class="p">)</span>
+
+        <span class="c1"># Calculate terrain complexity by examining cost variance in wider area</span>
+        <span class="n">complexity_samples</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="n">num_samples</span><span class="p">)):</span>  <span class="c1"># Limit to 100 sample points for efficiency</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">i</span> <span class="o">*</span> <span class="p">(</span><span class="n">num_samples</span> <span class="o">//</span> <span class="nb">min</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="n">num_samples</span><span class="p">))</span>
+            <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">x_samples</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">y_samples</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+
+            <span class="c1"># Define sample region around this point</span>
+            <span class="n">x_min</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">sample_radius</span><span class="p">))</span>
+            <span class="n">y_min</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">y</span> <span class="o">-</span> <span class="n">sample_radius</span><span class="p">))</span>
+            <span class="n">x_max</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">width</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">sample_radius</span><span class="p">))</span>
+            <span class="n">y_max</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">height</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">y</span> <span class="o">+</span> <span class="n">sample_radius</span><span class="p">))</span>
+
+            <span class="c1"># Sample the region</span>
+            <span class="n">region</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">count</span> <span class="o">-</span> <span class="mi">1</span><span class="p">][</span><span class="n">y_min</span><span class="p">:</span><span class="n">y_max</span><span class="p">,</span> <span class="n">x_min</span><span class="p">:</span><span class="n">x_max</span><span class="p">]</span>
+            <span class="n">valid_costs</span> <span class="o">=</span> <span class="n">region</span><span class="p">[</span><span class="n">region</span> <span class="o">!=</span> <span class="n">forbidden_value</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">valid_costs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="c1"># Calculate coefficient of variation to measure complexity</span>
+                <span class="n">mean_cost</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">valid_costs</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">mean_cost</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">std_cost</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">valid_costs</span><span class="p">)</span>
+                    <span class="n">complexity_samples</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">std_cost</span> <span class="o">/</span> <span class="n">mean_cost</span><span class="p">)</span>
+
+        <span class="c1"># Average complexity (coefficient of variation)</span>
+        <span class="n">terrain_complexity</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">complexity_samples</span><span class="p">)</span> <span class="k">if</span> <span class="n">complexity_samples</span> <span class="k">else</span> <span class="mf">0.5</span>
+
+        <span class="c1"># Base buffer width on distance</span>
+        <span class="n">distance_factor</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">euclidean_dist</span> <span class="o">/</span> <span class="mi">10000</span><span class="p">)</span>
+        <span class="n">base_buffer</span> <span class="o">=</span> <span class="n">min_buffer</span> <span class="o">+</span> <span class="n">distance_factor</span> <span class="o">*</span> <span class="p">(</span><span class="n">max_buffer</span> <span class="o">-</span> <span class="n">min_buffer</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.5</span>
+
+        <span class="c1"># Adjust for terrain complexity and obstacles</span>
+        <span class="n">complexity_factor</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">terrain_complexity</span> <span class="o">*</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">obstacle_factor</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">obstacle_ratio</span> <span class="o">*</span> <span class="mi">5</span><span class="p">)</span>
+
+        <span class="c1"># Final buffer estimation</span>
+        <span class="n">buffer_width</span> <span class="o">=</span> <span class="n">base_buffer</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">complexity_factor</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">+</span> <span class="n">obstacle_factor</span><span class="p">)</span>
+
+        <span class="c1"># Ensure we stay within bounds</span>
+        <span class="n">buffer_width</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">buffer_width</span><span class="p">,</span> <span class="n">min_buffer</span><span class="p">),</span> <span class="n">max_buffer</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">buffer_width</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RasterHandler.apply_geometry_mask">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.raster.handler.RasterHandler.apply_geometry_mask">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply_geometry_mask</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">geometry</span><span class="p">,</span> <span class="n">outside_value</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">bands</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set pixel values outside the given geometry to the specified value.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            geometry: A shapely geometry object (Polygon, LineString, etc.)</span>
+<span class="sd">            outside_value: Value to set for pixels outside the geometry</span>
+<span class="sd">            bands: List of bands to modify (1-based). If None, all bands are modified.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Set default outside value if needed</span>
+        <span class="k">if</span> <span class="n">outside_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">outside_value</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">iinfo</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">max</span>
+
+        <span class="c1"># Create a mask using rasterization</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">rasterize</span><span class="p">(</span>
+            <span class="p">[(</span><span class="n">geometry</span><span class="p">,</span> <span class="mi">1</span><span class="p">)],</span>
+            <span class="n">out_shape</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">window</span><span class="o">.</span><span class="n">height</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">window</span><span class="o">.</span><span class="n">width</span><span class="p">),</span>
+            <span class="n">transform</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">window_transform</span><span class="p">,</span>
+            <span class="n">fill</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+            <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Determine which bands to modify</span>
+        <span class="k">if</span> <span class="n">bands</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">bands</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Convert to 0-based indices for array access</span>
+            <span class="n">bands</span> <span class="o">=</span> <span class="p">[</span><span class="n">b</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">bands</span><span class="p">]</span>
+
+        <span class="c1"># Apply the mask to selected bands</span>
+        <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">bands</span><span class="p">:</span>
+            <span class="c1"># Set all pixels outside the buffer (where mask == 0) to outside_value</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">b</span><span class="p">][</span><span class="n">mask</span> <span class="o">==</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">outside_value</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span></div>
+
+
+<div class="viewcode-block" id="RasterHandler.coords_to_indices">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.raster.handler.RasterHandler.coords_to_indices">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">coords_to_indices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]],</span>
+                                              <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span>
+                                              <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert geographic coordinates to pixel row/column indices within this raster section.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            coords: List of (x, y) coordinate tuples</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            numpy.ndarray: Array of (row, col) pixel indices</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Use rasterio&#39;s rowcol function with the window-specific transform</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">tuple</span><span class="p">):</span>
+            <span class="n">xs</span><span class="p">,</span> <span class="n">ys</span> <span class="o">=</span> <span class="nb">zip</span><span class="p">(</span><span class="o">*</span><span class="n">coords</span><span class="p">)</span>
+            <span class="n">rows</span><span class="p">,</span> <span class="n">cols</span> <span class="o">=</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">rowcol</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">transform</span><span class="p">,</span> <span class="n">xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Single coordinate</span>
+            <span class="n">rows</span><span class="p">,</span> <span class="n">cols</span> <span class="o">=</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">rowcol</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">transform</span><span class="p">,</span> <span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">coords</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+        <span class="c1"># Adjust indices to the window&#39;s local coordinate system</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">window</span><span class="o">.</span><span class="n">row_off</span>
+        <span class="n">cols</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">cols</span><span class="p">)</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">window</span><span class="o">.</span><span class="n">col_off</span>
+
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">cols</span><span class="p">)))</span></div>
+
+
+<div class="viewcode-block" id="RasterHandler.indices_to_coords">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.raster.handler.RasterHandler.indices_to_coords">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">indices_to_coords</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">indices</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert pixel indices to geographic coordinates.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            indices: List of (row, col) pixel indices</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            numpy.ndarray: Array of (x, y) coordinates</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Convert indices to numpy array if needed</span>
+        <span class="n">indices_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">indices</span><span class="p">))</span>
+
+        <span class="c1"># Extract rows and cols correctly</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">indices_array</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span> <span class="n">indices_array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">rows</span> <span class="o">=</span> <span class="n">indices_array</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
+            <span class="n">cols</span> <span class="o">=</span> <span class="n">indices_array</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">rows</span> <span class="o">=</span> <span class="n">indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">cols</span> <span class="o">=</span> <span class="n">indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="c1"># Adjust indices to the full raster coordinate system</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">window</span><span class="o">.</span><span class="n">row_off</span>
+        <span class="n">cols</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">cols</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">window</span><span class="o">.</span><span class="n">col_off</span>
+
+        <span class="c1"># Add 0.5 to convert integer indices to pixel centers</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="n">rows</span> <span class="o">+</span> <span class="mf">0.5</span>
+        <span class="n">cols</span> <span class="o">=</span> <span class="n">cols</span> <span class="o">+</span> <span class="mf">0.5</span>
+
+        <span class="c1"># Get coordinates using rasterio&#39;s transform</span>
+        <span class="n">xs</span><span class="p">,</span> <span class="n">ys</span> <span class="o">=</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">xy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">transform</span><span class="p">,</span> <span class="n">rows</span><span class="p">,</span> <span class="n">cols</span><span class="p">)</span>
+
+        <span class="c1"># Apply correction based on the observed pixel offset</span>
+        <span class="n">pixel_width</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">a</span><span class="p">)</span>
+        <span class="n">pixel_height</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">transform</span><span class="o">.</span><span class="n">e</span><span class="p">)</span>
+
+        <span class="n">xs_corrected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span> <span class="o">-</span> <span class="n">pixel_width</span>
+        <span class="n">ys_corrected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">ys</span><span class="p">)</span> <span class="o">+</span> <span class="n">pixel_height</span>
+
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">xs_corrected</span><span class="p">,</span> <span class="n">ys_corrected</span><span class="p">)))</span></div>
+
+
+<div class="viewcode-block" id="RasterHandler.get_data_at_coords">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.raster.handler.RasterHandler.get_data_at_coords">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_data_at_coords</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]],</span> <span class="n">band</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get pixel values at the specified coordinates.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            coords: List of (x, y) coordinate tuples</span>
+<span class="sd">            band: Band index (1-based, as in rasterio)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            numpy.ndarray: Array of pixel values</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Convert coordinates to indices</span>
+        <span class="n">indices</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">coords_to_indices</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">row</span><span class="p">,</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">indices</span><span class="p">:</span>
+            <span class="c1"># Check bounds to avoid index errors</span>
+            <span class="k">if</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">row</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">window</span><span class="o">.</span><span class="n">height</span> <span class="ow">and</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">col</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">window</span><span class="o">.</span><span class="n">width</span><span class="p">:</span>
+                <span class="n">values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">band</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="n">col</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">values</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RasterHandler.apply_line_buffer_mask">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.raster.handler.RasterHandler.apply_line_buffer_mask">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply_line_buffer_mask</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">buffer_dist_m</span><span class="p">,</span> <span class="n">outside_value</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">bands</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set pixel values outside a buffered line to a specified value.</span>
+
+<span class="sd">        Creates a LineString between source and target points, then creates a buffer around it.</span>
+<span class="sd">        All pixels outside this buffer will be set to the specified outside_value.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            source: Source point as (x, y) tuple or shapely Point</span>
+<span class="sd">            target: Target point as (x, y) tuple or shapely Point</span>
+<span class="sd">            buffer_dist_m: Buffer distance in map units (typically meters)</span>
+<span class="sd">            outside_value: Value to set for pixels outside the buffer</span>
+<span class="sd">            bands: List of bands to modify (1-based). If None, all bands are modified.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            numpy.ndarray: The modified raster data</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Set the outside value to the maximum value of the dtype from the given dataset if it&#39;s not given</span>
+        <span class="k">if</span> <span class="n">outside_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">outside_value</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">iinfo</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">max</span>
+
+        <span class="c1"># Handle different input types for source and target</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="s1">&#39;coords&#39;</span><span class="p">):</span>
+            <span class="n">source_coords</span> <span class="o">=</span> <span class="n">source</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">source_coords</span> <span class="o">=</span> <span class="n">source</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="s1">&#39;coords&#39;</span><span class="p">):</span>
+            <span class="n">target_coords</span> <span class="o">=</span> <span class="n">target</span><span class="o">.</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">target_coords</span> <span class="o">=</span> <span class="n">target</span>
+
+        <span class="c1"># Create LineString between the points</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">LineString</span><span class="p">([</span><span class="n">source_coords</span><span class="p">,</span> <span class="n">target_coords</span><span class="p">])</span>
+
+        <span class="c1"># Create buffer polygon around the line</span>
+        <span class="n">poly_buffer</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">buffer</span><span class="p">(</span><span class="n">distance</span><span class="o">=</span><span class="n">buffer_dist_m</span><span class="p">,</span> <span class="n">quad_segs</span><span class="o">=</span><span class="mi">32</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">apply_geometry_mask</span><span class="p">(</span><span class="n">poly_buffer</span><span class="p">,</span> <span class="n">outside_value</span><span class="p">,</span> <span class="n">bands</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RasterHandler.save_section_as_raster">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.raster.handler.RasterHandler.save_section_as_raster">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save_section_as_raster</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Save the section as a new raster file with proper georeferencing.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            output_path: Path for the output raster file</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Create a new raster file with the same properties as the section</span>
+        <span class="k">with</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">open</span><span class="p">(</span>
+                <span class="n">output_path</span><span class="p">,</span>
+                <span class="s1">&#39;w&#39;</span><span class="p">,</span>
+                <span class="n">driver</span><span class="o">=</span><span class="s1">&#39;GTiff&#39;</span><span class="p">,</span>
+                <span class="n">height</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">window</span><span class="o">.</span><span class="n">height</span><span class="p">,</span>
+                <span class="n">width</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">window</span><span class="o">.</span><span class="n">width</span><span class="p">,</span>
+                <span class="n">count</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">count</span><span class="p">,</span>
+                <span class="n">dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>
+                <span class="n">crs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_dataset</span><span class="o">.</span><span class="n">crs</span><span class="p">,</span>
+                <span class="n">transform</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">window_transform</span>  <span class="c1"># Use the section-specific transform</span>
+        <span class="p">)</span> <span class="k">as</span> <span class="n">dst</span><span class="p">:</span>
+            <span class="n">dst</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="create_test_tiff">
+<a class="viewcode-back" href="../../../pyorps.raster.html#pyorps.raster.handler.create_test_tiff">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_test_tiff</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">transform</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="s2">&quot;EPSG:32632&quot;</span><span class="p">,</span>
+                     <span class="n">pattern</span><span class="o">=</span><span class="s2">&quot;random&quot;</span><span class="p">,</span> <span class="n">bands</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">nodata</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Creates a synthetic GeoTIFF file for testing with different patterns.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        output_path: Path to save the test GeoTIFF file</span>
+<span class="sd">        width: Width of the raster in pixels</span>
+<span class="sd">        height: Height of the raster in pixels</span>
+<span class="sd">        transform: Geotransform for the raster</span>
+<span class="sd">        crs: Coordinate reference system</span>
+<span class="sd">        pattern: Data pattern - &quot;random&quot;, &quot;gradient&quot;, or &quot;checkerboard&quot;</span>
+<span class="sd">        bands: Number of bands to create</span>
+<span class="sd">        nodata: No data value</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">transform</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">transform</span> <span class="o">=</span> <span class="n">from_origin</span><span class="p">(</span><span class="mi">500000</span><span class="p">,</span> <span class="mi">5600000</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">dtype</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">uint16</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">1234</span><span class="p">)</span>
+    <span class="c1"># Create synthetic data based on the specified pattern</span>
+    <span class="k">if</span> <span class="n">pattern</span> <span class="o">==</span> <span class="s2">&quot;random&quot;</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">bands</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="c1">#data = np.sort(data, axis=1)</span>
+    <span class="k">elif</span> <span class="n">pattern</span> <span class="o">==</span> <span class="s2">&quot;gradient&quot;</span><span class="p">:</span>
+        <span class="c1"># Create a gradient from top-left to bottom-right</span>
+        <span class="n">y</span><span class="p">,</span> <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mgrid</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">height</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="n">width</span><span class="p">]</span>
+        <span class="n">base</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">y</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">width</span> <span class="o">+</span> <span class="n">height</span><span class="p">)</span> <span class="o">*</span> <span class="mi">100</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">bands</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">bands</span><span class="p">):</span>
+            <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">base</span> <span class="o">+</span> <span class="n">i</span> <span class="o">*</span> <span class="mi">10</span>
+    <span class="k">elif</span> <span class="n">pattern</span> <span class="o">==</span> <span class="s2">&quot;checkerboard&quot;</span><span class="p">:</span>
+        <span class="c1"># Create a checkerboard pattern</span>
+        <span class="n">y</span><span class="p">,</span> <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mgrid</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">height</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="n">width</span><span class="p">]</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">bands</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">bands</span><span class="p">):</span>
+            <span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">((</span><span class="n">x</span> <span class="o">+</span> <span class="n">y</span> <span class="o">+</span> <span class="n">i</span><span class="p">)</span> <span class="o">%</span> <span class="mi">2</span><span class="p">)</span> <span class="o">*</span> <span class="mi">50</span> <span class="o">+</span> <span class="mi">25</span>
+
+    <span class="c1"># Write the GeoTIFF</span>
+    <span class="k">with</span> <span class="n">rasterio</span><span class="o">.</span><span class="n">open</span><span class="p">(</span>
+            <span class="n">output_path</span><span class="p">,</span>
+            <span class="s2">&quot;w&quot;</span><span class="p">,</span>
+            <span class="n">driver</span><span class="o">=</span><span class="s2">&quot;GTiff&quot;</span><span class="p">,</span>
+            <span class="n">height</span><span class="o">=</span><span class="n">height</span><span class="p">,</span>
+            <span class="n">width</span><span class="o">=</span><span class="n">width</span><span class="p">,</span>
+            <span class="n">count</span><span class="o">=</span><span class="n">bands</span><span class="p">,</span>
+            <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">,</span>
+            <span class="n">crs</span><span class="o">=</span><span class="n">crs</span><span class="p">,</span>
+            <span class="n">transform</span><span class="o">=</span><span class="n">transform</span><span class="p">,</span>
+            <span class="n">nodata</span><span class="o">=</span><span class="n">nodata</span>
+    <span class="p">)</span> <span class="k">as</span> <span class="n">dst</span><span class="p">:</span>
+        <span class="n">dst</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">data</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Martin Hofmann.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

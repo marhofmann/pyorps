@@ -1,0 +1,428 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pyorps.graph.api.igraph_api &mdash; PYORPS 09.05.2025 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=d2164c19"></script>
+      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            PYORPS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../README.html">PYORPS - Python for Optimal Routes in Power Systems</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../../README.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../README.html#features">Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../README.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../README.html#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../README.html#how-it-works">How It Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../README.html#use-cases">Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../README.html#technical-details">Technical Details</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../README.html#documentation">Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../README.html#contributing">Contributing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../README.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../README.html#citation">Citation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../README.html#contact">Contact</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../CONTRIBUTING.html">Contributing to PYORPS</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../../CONTRIBUTING.html#get-in-touch">Get in Touch!</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../CONTRIBUTING.html#setting-up-your-development-environment">Setting Up Your Development Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../CONTRIBUTING.html#making-changes">Making Changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../CONTRIBUTING.html#keeping-your-fork-up-to-date">Keeping Your Fork Up-to-Date</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../CONTRIBUTING.html#writing-tests">Writing Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../CONTRIBUTING.html#code-style">Code Style</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../CONTRIBUTING.html#contributing-examples-or-case-studies">Contributing Examples or Case Studies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../CONTRIBUTING.html#thank-you">Thank You!</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">PYORPS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">pyorps.graph.api.igraph_api</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for pyorps.graph.api.igraph_api</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span>
+
+<span class="c1"># Third party</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">igraph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ig</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">float64</span><span class="p">,</span> <span class="n">ndarray</span><span class="p">,</span> <span class="nb">max</span><span class="p">,</span> <span class="n">array</span><span class="p">,</span> <span class="n">unravel_index</span><span class="p">,</span> <span class="n">power</span><span class="p">,</span> <span class="n">sqrt</span>
+
+<span class="c1"># Project files</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyorps.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">NoPathFoundError</span><span class="p">,</span> <span class="n">AlgorthmNotImplementedError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.graph_library_api</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+
+
+<div class="viewcode-block" id="IGraphAPI">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">IGraphAPI</span><span class="p">(</span><span class="n">GraphLibraryAPI</span><span class="p">):</span>
+
+<div class="viewcode-block" id="IGraphAPI.create_graph">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI.create_graph">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_graph</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">from_nodes</span><span class="p">:</span> <span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">to_nodes</span><span class="p">:</span> <span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">cost</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                     <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Creates a graph object with the igraph library.</span>
+
+<span class="sd">        :param from_nodes: The starting node indices from the edge data.</span>
+<span class="sd">        :param to_nodes: The ending node indices from the edge data.</span>
+<span class="sd">        :param cost: The weight of the edge data.</span>
+<span class="sd">        :param kwargs: Additional parameters for the underlying graph library.</span>
+<span class="sd">        :return: The graph object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Determine number of nodes</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">n</span> <span class="o">:=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;n&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">n_vertices</span> <span class="o">=</span> <span class="n">n</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">n_vertices</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="nb">max</span><span class="p">(</span><span class="n">from_nodes</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">to_nodes</span><span class="p">)])</span> <span class="o">+</span> <span class="mi">1</span>
+
+        <span class="c1"># Create graph</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">graph</span> <span class="o">=</span> <span class="n">ig</span><span class="o">.</span><span class="n">Graph</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">n_vertices</span><span class="p">),</span> <span class="n">directed</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+        <span class="c1"># Create edges</span>
+        <span class="n">edges</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">from_nodes</span><span class="p">,</span> <span class="n">to_nodes</span><span class="p">))</span>
+
+        <span class="c1"># Add edges with weights if provided, otherwise without weights</span>
+        <span class="k">if</span> <span class="n">cost</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">weights</span> <span class="o">=</span> <span class="n">cost</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">float64</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">add_edges</span><span class="p">(</span><span class="n">edges</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">es</span><span class="p">[</span><span class="s1">&#39;weight&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">weights</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">add_edges</span><span class="p">(</span><span class="n">edges</span><span class="p">)</span>
+
+        <span class="c1"># Remove isolated nodes if requested</span>
+        <span class="k">if</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;remove_isolated_nodes&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">remove_isolates</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span></div>
+
+
+<div class="viewcode-block" id="IGraphAPI.get_number_of_nodes">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI.get_number_of_nodes">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_number_of_nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the number of nodes in the graph.</span>
+
+<span class="sd">        :return: The number of Nodes</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">vcount</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="IGraphAPI.get_number_of_edges">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI.get_number_of_edges">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_number_of_edges</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the number of edges in the graph.</span>
+
+<span class="sd">        :return: The number of Edges</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">ecount</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="IGraphAPI.remove_isolates">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI.remove_isolates">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove_isolates</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Removes nodes without any edge (degree == 0).</span>
+
+<span class="sd">        :return: None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Get vertices with degree 0</span>
+        <span class="n">isolated_vertices</span> <span class="o">=</span> <span class="p">[</span><span class="n">v</span><span class="o">.</span><span class="n">index</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">vs</span> <span class="k">if</span> <span class="n">v</span><span class="o">.</span><span class="n">degree</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">]</span>
+        <span class="c1"># Delete them from highest index to lowest to avoid reindexing issues</span>
+        <span class="n">isolated_vertices</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">isolated_vertices</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">delete_vertices</span><span class="p">(</span><span class="n">v</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="IGraphAPI.get_nodes">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI.get_nodes">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        This method returns the nodes in the graph as a list or numpy array of node indices.</span>
+
+<span class="sd">        :return: list[int]</span>
+<span class="sd">            The list of node indices of the nodes in the graph</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">v</span><span class="o">.</span><span class="n">index</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">vs</span><span class="p">()]</span></div>
+
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_path_endpoints</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Ensures the path starts with the source node and ends with the target node.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">path</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">source</span><span class="p">:</span>
+                <span class="n">path</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">source</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">path</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">target</span><span class="p">:</span>
+                <span class="n">path</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">path</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_all_pairs_shortest_paths</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sources</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes paths individually for each source-target pair using the specified algorithm.</span>
+<span class="sd">        Returns empty paths for unreachable targets.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">source</span> <span class="ow">in</span> <span class="n">sources</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">target</span> <span class="ow">in</span> <span class="n">targets</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_path</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                    <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+                <span class="k">except</span> <span class="n">NoPathFoundError</span><span class="p">:</span>
+                    <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+        <span class="k">return</span> <span class="n">paths</span>
+
+<div class="viewcode-block" id="IGraphAPI.shortest_path">
+<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.api.igraph_api.IGraphAPI.shortest_path">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">shortest_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source_indices</span><span class="p">,</span> <span class="n">target_indices</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="s2">&quot;dijkstra&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        This method applies the specified shortest path algorithm on the created graph object and finds the shortest</span>
+<span class="sd">        path between source and target(s) as a list of node indices.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        -----------</span>
+<span class="sd">        source_indices : int or list[int]</span>
+<span class="sd">            Index or indices of source node(s)</span>
+<span class="sd">        target_indices : int or list[int]</span>
+<span class="sd">            Index or indices of target node(s)</span>
+<span class="sd">        algorithm : str, default=&quot;dijkstra&quot;</span>
+<span class="sd">            Algorithm to use for shortest path computation.</span>
+<span class="sd">            Options: &quot;dijkstra&quot;, &quot;bellman_ford&quot;, &quot;astar&quot;</span>
+<span class="sd">        **kwargs:</span>
+<span class="sd">            pairwise : bool</span>
+<span class="sd">                If True, compute pairwise shortest paths between source_indices and target_indices.</span>
+<span class="sd">                Only allowed if len(source_indices) == len(target_indices)</span>
+<span class="sd">            heuristic : callable, optional</span>
+<span class="sd">                A function that takes two node indices (u, target) and returns an estimate of the distance</span>
+<span class="sd">                between them. Only used when algorithm=&quot;astar&quot;.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        --------</span>
+<span class="sd">        list[int] or list[list[int]]:</span>
+<span class="sd">            List of node indices representing the shortest path(s)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Convert single indices to lists for uniform handling</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source_indices</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">ndarray</span><span class="p">)):</span>
+            <span class="n">source_indices</span> <span class="o">=</span> <span class="p">[</span><span class="n">source_indices</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">target_indices</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">ndarray</span><span class="p">)):</span>
+            <span class="n">target_indices</span> <span class="o">=</span> <span class="p">[</span><span class="n">target_indices</span><span class="p">]</span>
+
+        <span class="c1"># Check for pairwise computation</span>
+        <span class="n">pairwise</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;pairwise&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">pairwise</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">source_indices</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">target_indices</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Source and target lists must have the same length for pairwise computation&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pairwise_shortest_path</span><span class="p">(</span><span class="n">source_indices</span><span class="p">,</span> <span class="n">target_indices</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">)</span>
+
+        <span class="c1"># Single source, single target</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">source_indices</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">target_indices</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">source</span> <span class="o">=</span> <span class="n">source_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">target</span> <span class="o">=</span> <span class="n">target_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_path</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># Single source, multiple targets</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">source_indices</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">source</span> <span class="o">=</span> <span class="n">source_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_source_multiple_targets</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target_indices</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># Multiple sources, multiple targets (all pairs)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_all_pairs_shortest_path</span><span class="p">(</span><span class="n">source_indices</span><span class="p">,</span> <span class="n">target_indices</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_single_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes shortest path between a single source and target using the specified algorithm.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">es</span><span class="o">.</span><span class="n">get_attribute_values</span><span class="p">(</span><span class="s1">&#39;weight&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="s1">&#39;weight&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">es</span><span class="o">.</span><span class="n">attributes</span><span class="p">()</span> <span class="k">else</span> <span class="kc">None</span>
+
+        <span class="k">if</span> <span class="n">algorithm</span> <span class="o">==</span> <span class="s2">&quot;dijkstra&quot;</span><span class="p">:</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">get_shortest_paths</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">weights</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="s2">&quot;vpath&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="k">elif</span> <span class="n">algorithm</span> <span class="o">==</span> <span class="s2">&quot;bellman_ford&quot;</span><span class="p">:</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">get_shortest_paths</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span>
+                                                 <span class="n">weights</span><span class="o">=</span><span class="n">weights</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="s2">&quot;vpath&quot;</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="s2">&quot;bellman_ford&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="k">elif</span> <span class="n">algorithm</span> <span class="o">==</span> <span class="s2">&quot;astar&quot;</span><span class="p">:</span>
+            <span class="n">heuristic_function</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;heu&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">heuristic_function</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">_</span><span class="p">,</span> <span class="n">heuristic</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_a_star_heuristic</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+                <span class="k">def</span><span class="w"> </span><span class="nf">heuristic_function</span><span class="p">(</span><span class="n">_graph</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">_target</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="n">heuristic</span><span class="p">[</span><span class="n">node</span><span class="p">]</span>
+
+            <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">get_shortest_path_astar</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span>
+                                                      <span class="n">heuristics</span><span class="o">=</span><span class="n">heuristic_function</span><span class="p">,</span>
+                                                      <span class="n">weights</span><span class="o">=</span><span class="n">weights</span><span class="p">,</span>
+                                                      <span class="n">output</span><span class="o">=</span><span class="s2">&quot;vpath&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;all&quot;</span><span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">AlgorthmNotImplementedError</span><span class="p">(</span><span class="n">algorithm</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">NoPathFoundError</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="o">=</span><span class="n">target</span><span class="p">)</span>
+
+        <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_path_endpoints</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">path</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_single_source_multiple_targets</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes shortest paths from a single source to multiple targets.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">es</span><span class="o">.</span><span class="n">get_attribute_values</span><span class="p">(</span><span class="s1">&#39;weight&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="s1">&#39;weight&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">es</span><span class="o">.</span><span class="n">attributes</span><span class="p">()</span> <span class="k">else</span> <span class="kc">None</span>
+
+        <span class="k">if</span> <span class="n">algorithm</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;dijkstra&quot;</span><span class="p">,</span> <span class="s2">&quot;bellman_ford&quot;</span><span class="p">]:</span>
+            <span class="c1"># igraph can compute paths to multiple targets at once</span>
+            <span class="n">algo</span> <span class="o">=</span> <span class="s2">&quot;dijkstra&quot;</span> <span class="k">if</span> <span class="n">algorithm</span> <span class="o">==</span> <span class="s2">&quot;dijkstra&quot;</span> <span class="k">else</span> <span class="s2">&quot;bellman_ford&quot;</span>
+            <span class="n">all_paths</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">get_shortest_paths</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">weights</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="s2">&quot;vpath&quot;</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="n">algo</span><span class="p">)</span>
+
+            <span class="c1"># Process each path</span>
+            <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">path</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">all_paths</span><span class="p">):</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>  <span class="c1"># No path found</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ensure_path_endpoints</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">targets</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+            <span class="k">return</span> <span class="n">paths</span>
+
+        <span class="k">elif</span> <span class="n">algorithm</span> <span class="o">==</span> <span class="s2">&quot;astar&quot;</span><span class="p">:</span>
+            <span class="c1"># For A*, handle each target separately</span>
+            <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">target</span> <span class="ow">in</span> <span class="n">targets</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_path</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                    <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+                <span class="k">except</span> <span class="n">NoPathFoundError</span><span class="p">:</span>
+                    <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+            <span class="k">return</span> <span class="n">paths</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">AlgorthmNotImplementedError</span><span class="p">(</span><span class="n">algorithm</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_pairwise_shortest_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sources</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes pairwise shortest paths between corresponding sources and targets.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># For igraph, we need to compute each path individually</span>
+        <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">sources</span><span class="p">,</span> <span class="n">targets</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_path</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">NoPathFoundError</span><span class="p">:</span>
+                <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+
+        <span class="k">return</span> <span class="n">paths</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_all_pairs_shortest_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sources</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes shortest paths between all pairs of sources and targets.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">algorithm</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;dijkstra&quot;</span><span class="p">,</span> <span class="s2">&quot;bellman_ford&quot;</span><span class="p">]:</span>
+            <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">weights</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">es</span><span class="o">.</span><span class="n">get_attribute_values</span><span class="p">(</span><span class="s1">&#39;weight&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="s1">&#39;weight&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">es</span><span class="o">.</span><span class="n">attributes</span><span class="p">()</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="n">algo</span> <span class="o">=</span> <span class="s2">&quot;dijkstra&quot;</span> <span class="k">if</span> <span class="n">algorithm</span> <span class="o">==</span> <span class="s2">&quot;dijkstra&quot;</span> <span class="k">else</span> <span class="s2">&quot;bellman_ford&quot;</span>
+
+            <span class="k">for</span> <span class="n">source</span> <span class="ow">in</span> <span class="n">sources</span><span class="p">:</span>
+                <span class="c1"># For each source, compute paths to all targets at once</span>
+                <span class="n">target_paths</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph</span><span class="o">.</span><span class="n">get_shortest_paths</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">weights</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="s2">&quot;vpath&quot;</span><span class="p">,</span>
+                                                             <span class="n">algorithm</span><span class="o">=</span><span class="n">algo</span><span class="p">)</span>
+
+                <span class="c1"># Process each path</span>
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">path</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">target_paths</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>  <span class="c1"># No path found</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ensure_path_endpoints</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">targets</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+
+            <span class="k">return</span> <span class="n">paths</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># For other algorithms, compute each path individually</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_all_pairs_shortest_paths</span><span class="p">(</span><span class="n">sources</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Martin Hofmann.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

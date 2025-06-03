@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>pyorps.graph.path_finder &#8212; PYORPS 09.05.2025 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../../_static/documentation_options.js?v=d2164c19"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+   
+  <link rel="stylesheet" href="../../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for pyorps.graph.path_finder</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Any</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">contextmanager</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">importlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_module</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">geopandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">gpd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">LineString</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rasterio.transform</span><span class="w"> </span><span class="kn">import</span> <span class="n">Affine</span>
+
+
+<span class="c1"># Project imports</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..core.path</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span><span class="p">,</span> <span class="n">PathCollection</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..core.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">BboxType</span><span class="p">,</span> <span class="n">GeometryMaskType</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..raster.rasterizer</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeoRasterizer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..raster.handler</span><span class="w"> </span><span class="kn">import</span> <span class="n">RasterHandler</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..utils.neighborhood</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_neighborhood_steps</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..io.geo_dataset</span><span class="w"> </span><span class="kn">import</span> <span class="n">initialize_geo_dataset</span><span class="p">,</span> <span class="n">VectorDataset</span><span class="p">,</span> <span class="n">RasterDataset</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..utils.traversal</span><span class="w"> </span><span class="kn">import</span> <span class="n">calculate_path_metrics_numba</span>
+
+
+<div class="viewcode-block" id="timed">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.timed">[docs]</a>
+<span class="nd">@contextmanager</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">timed</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">timings_dict</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Simple context manager for timing code blocks.&quot;&quot;&quot;</span>
+    <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">yield</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">timings_dict</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span></div>
+
+
+
+<div class="viewcode-block" id="get_graph_api_class">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.get_graph_api_class">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_graph_api_class</span><span class="p">(</span><span class="n">graph_api</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Dynamically import and return the graph API class based on the selected graph API.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        graph_api (str): The name of the graph API to use (e.g., &quot;networkit&quot;, &quot;igraph&quot;, &quot;cython&quot;).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        class: The corresponding graph API class.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ImportError: If the specified graph API module cannot be imported.</span>
+<span class="sd">        ValueError: If the specified graph API is not supported.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">graph_api_classes</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;networkit&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;pyorps.graph.api.networkit_api&quot;</span><span class="p">,</span> <span class="s2">&quot;NetworkitAPI&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;igraph&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;pyorps.graph.api.igraph_api&quot;</span><span class="p">,</span> <span class="s2">&quot;IGraphAPI&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;rustworkx&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;pyorps.graph.api.rustworkx_api&quot;</span><span class="p">,</span> <span class="s2">&quot;RustworkxAPI&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;networkx&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;pyorps.graph.api.networkx_api&quot;</span><span class="p">,</span> <span class="s2">&quot;NetworkxAPI&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;cugraph&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;pyorps.graph.api.cugraph_api&quot;</span><span class="p">,</span> <span class="s2">&quot;CugraphAPI&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;dask_cugraph&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;pyorps.graph.api.dask_cugraph_api&quot;</span><span class="p">,</span> <span class="s2">&quot;DaskCugraphAPI&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;cython&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;pyorps.graph.api.cython_api&quot;</span><span class="p">,</span> <span class="s2">&quot;CythonAPI&quot;</span><span class="p">),</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="n">graph_api</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">graph_api_classes</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported graph API: </span><span class="si">{</span><span class="n">graph_api</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">module_path</span><span class="p">,</span> <span class="n">class_name</span> <span class="o">=</span> <span class="n">graph_api_classes</span><span class="p">[</span><span class="n">graph_api</span><span class="p">]</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">module</span> <span class="o">=</span> <span class="n">import_module</span><span class="p">(</span><span class="n">module_path</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">class_name</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ImportError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to import </span><span class="si">{</span><span class="n">graph_api</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="PathFinder">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathFinder">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PathFinder</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A class that encapsulates RasterReader and graph-based routing capabilities.</span>
+
+<span class="sd">    This class provides functionality to:</span>
+<span class="sd">    1. Read raster data using RasterReader or create</span>
+<span class="sd">    2. Create a graph representation of the raster</span>
+<span class="sd">    3. Find shortest paths between coordinates</span>
+<span class="sd">    4. Convert between coordinates and graph node indices</span>
+<span class="sd">    5. Create GeoDataFrames of paths</span>
+
+<span class="sd">    The class supports various graph APIs including a special &quot;cython&quot; mode that</span>
+<span class="sd">    performs direct path finding on the raster without creating a graph.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">dataset_source</span><span class="p">,</span>
+                 <span class="n">source_coords</span><span class="p">,</span>
+                 <span class="n">target_coords</span><span class="p">,</span>
+                 <span class="n">search_space_buffer_m</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">neighborhood_str</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="s2">&quot;r2&quot;</span><span class="p">,</span>
+                 <span class="n">steps</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">graph_api</span><span class="o">=</span><span class="s2">&quot;networkit&quot;</span><span class="p">,</span>
+                 <span class="n">cost_assumptions</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">datasets_to_modify</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">crs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">bbox</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BboxType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">mask</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">GeometryMaskType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">transform</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Affine</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">raster_save_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the RasterGraph with a dataset source and routing parameters.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            dataset_source: Either:</span>
+<span class="sd">                          - Path to a file (str)</span>
+<span class="sd">                          - Tuple of (data_array, crs, transform)</span>
+<span class="sd">                          - GeoDataset object</span>
+<span class="sd">                          - Dictionary with url/layer for WFS</span>
+<span class="sd">            source_coords (tuple or list): Either:</span>
+<span class="sd">                - A single coordinate pair (x, y)</span>
+<span class="sd">                - A list of coordinate pairs [(x1, y1), (x2, y2), ...]</span>
+<span class="sd">            target_coords (tuple or list): Either:</span>
+<span class="sd">                - A single coordinate pair (x, y)</span>
+<span class="sd">                - A list of coordinate pairs [(x1, y1), (x2, y2), ...]</span>
+<span class="sd">            search_space_buffer_m (float): Buffer around the source and target coordinates in meters.</span>
+<span class="sd">            neighborhood_str (str, optional): Neighborhood type. Defaults to &quot;r2&quot;.</span>
+<span class="sd">            steps (ndarray, optional): Steps which define the neighborhood. If None, will be created from</span>
+<span class="sd">            neighborhood_str.</span>
+<span class="sd">            graph_api (str, optional): Graph API to use. Defaults to &quot;networkit&quot;.</span>
+<span class="sd">            cost_assumptions (optional): Cost assumptions to use for rasterization. Required if dataset_source is</span>
+<span class="sd">            vector data.</span>
+<span class="sd">            datasets_to_modify (list, optional): List of datasets to use to modify the raster using</span>
+<span class="sd">            GeoRasterizer.modify_raster_from_dataset</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">source_coords</span> <span class="o">=</span> <span class="n">source_coords</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">target_coords</span> <span class="o">=</span> <span class="n">target_coords</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">search_space_buffer_m</span> <span class="o">=</span> <span class="n">search_space_buffer_m</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">neighborhood_str</span> <span class="o">=</span> <span class="n">neighborhood_str</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">graph_api_name</span> <span class="o">=</span> <span class="n">graph_api</span>
+
+        <span class="k">if</span> <span class="n">steps</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">neighborhood_str</span><span class="p">:</span>
+            <span class="n">directed</span> <span class="o">=</span> <span class="kc">True</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph_api_name</span> <span class="o">==</span> <span class="s2">&quot;cython&quot;</span> <span class="k">else</span> <span class="kc">False</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">steps</span> <span class="o">=</span> <span class="n">get_neighborhood_steps</span><span class="p">(</span><span class="n">neighborhood_str</span><span class="p">,</span> <span class="n">directed</span><span class="o">=</span><span class="n">directed</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">steps</span> <span class="o">=</span> <span class="n">steps</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">paths</span> <span class="o">=</span> <span class="n">PathCollection</span><span class="p">()</span>  <span class="c1"># Initialize PathCollection instead of list</span>
+
+        <span class="c1"># Initialize as None (to be lazily loaded/created)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">geo_rasterizer</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_graph_api</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">path_gdf</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="c1"># Load the dataset</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span> <span class="o">=</span> <span class="n">initialize_geo_dataset</span><span class="p">(</span><span class="n">dataset_source</span><span class="p">,</span> <span class="n">crs</span><span class="p">,</span> <span class="n">bbox</span><span class="p">,</span> <span class="n">mask</span><span class="p">,</span> <span class="n">transform</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">source_coords</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">target_coords</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">create_raster_handler</span><span class="p">(</span><span class="n">cost_assumptions</span><span class="p">,</span> <span class="n">datasets_to_modify</span><span class="p">,</span> <span class="n">raster_save_path</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="PathFinder.create_raster_handler">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathFinder.create_raster_handler">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_raster_handler</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cost_assumptions</span><span class="p">,</span> <span class="n">datasets_to_modify</span><span class="p">,</span> <span class="n">raster_save_path</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a RasterReader object for the specified file and parameters.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            RasterReader: The created RasterReader object</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Using timed context manager instead of manual timing</span>
+        <span class="k">with</span> <span class="n">timed</span><span class="p">(</span><span class="s2">&quot;raster_loading&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="p">):</span>
+            <span class="c1"># Check if we have vector data but no cost_assumptions</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="p">,</span> <span class="n">VectorDataset</span><span class="p">)</span> <span class="ow">and</span> <span class="n">cost_assumptions</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Cost assumptions must be provided when using vector data&quot;</span><span class="p">)</span>
+
+            <span class="c1"># Process the dataset based on its type and parameters</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="p">,</span> <span class="n">VectorDataset</span><span class="p">)</span> <span class="ow">and</span> <span class="n">cost_assumptions</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="c1"># Create a GeoRasterizer and rasterize the vector data</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">geo_rasterizer</span> <span class="o">=</span> <span class="n">GeoRasterizer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="p">,</span> <span class="n">cost_assumptions</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">geo_rasterizer</span><span class="o">.</span><span class="n">rasterize</span><span class="p">(</span><span class="n">save_path</span><span class="o">=</span><span class="n">raster_save_path</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+                <span class="c1"># Apply any additional dataset modifications</span>
+                <span class="k">if</span> <span class="n">datasets_to_modify</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">dataset_params</span> <span class="ow">in</span> <span class="n">datasets_to_modify</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">geo_rasterizer</span><span class="o">.</span><span class="n">modify_raster_from_dataset</span><span class="p">(</span><span class="o">**</span><span class="n">dataset_params</span><span class="p">)</span>
+
+                <span class="c1"># Create RasterHandler with the rasterized data</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span> <span class="o">=</span> <span class="n">RasterHandler</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">geo_rasterizer</span><span class="o">.</span><span class="n">raster_dataset</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">source_coords</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">target_coords</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">search_space_buffer_m</span>
+                <span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="p">,</span> <span class="n">RasterDataset</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">cost_assumptions</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="c1"># If we have a raster but also cost assumptions, use GeoRasterizer to modify it</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="o">.</span><span class="n">load_data</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">geo_rasterizer</span> <span class="o">=</span> <span class="n">GeoRasterizer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="p">,</span> <span class="n">cost_assumptions</span><span class="p">)</span>
+
+                    <span class="c1"># Apply any additional dataset modifications</span>
+                    <span class="k">if</span> <span class="n">datasets_to_modify</span><span class="p">:</span>
+                        <span class="k">for</span> <span class="n">dataset_params</span> <span class="ow">in</span> <span class="n">datasets_to_modify</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">geo_rasterizer</span><span class="o">.</span><span class="n">modify_raster_from_dataset</span><span class="p">(</span><span class="o">**</span><span class="n">dataset_params</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">raster_save_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">geo_rasterizer</span><span class="o">.</span><span class="n">save_raster</span><span class="p">(</span><span class="n">raster_save_path</span><span class="p">)</span>
+
+                    <span class="c1"># Create RasterHandler with the modified raster</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span> <span class="o">=</span> <span class="n">RasterHandler</span><span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">geo_rasterizer</span><span class="o">.</span><span class="n">raster_dataset</span><span class="p">,</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">source_coords</span><span class="p">,</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">target_coords</span><span class="p">,</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">search_space_buffer_m</span>
+                    <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># Direct use of the raster without modifications</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="o">.</span><span class="n">load_data</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+                    <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span> <span class="o">=</span> <span class="n">RasterHandler</span><span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="p">,</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">source_coords</span><span class="p">,</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">target_coords</span><span class="p">,</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">search_space_buffer_m</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">raster_save_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">save_section_as_raster</span><span class="p">(</span><span class="n">raster_save_path</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported dataset type: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">search_space_buffer_m</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">search_space_buffer_m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">search_space_buffer_m</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span></div>
+
+
+<div class="viewcode-block" id="PathFinder.create_graph">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathFinder.create_graph">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_graph</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">band_index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a graph from the raster data.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            band_index (int, optional): Index of the raster band to use. Defaults to 0.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The created graph object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Importing the specified graph API using the timed context manager</span>
+        <span class="k">with</span> <span class="n">timed</span><span class="p">(</span><span class="s2">&quot;import_time_graph_api&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="p">):</span>
+            <span class="n">graph_api_class_constructor</span> <span class="o">=</span> <span class="n">get_graph_api_class</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">graph_api_name</span><span class="p">)</span>
+
+        <span class="c1"># Get raster data for the specified band</span>
+        <span class="n">raster_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">band_index</span><span class="p">]</span>
+
+        <span class="c1"># Create graph using the graph API</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_graph_api</span> <span class="o">=</span> <span class="n">graph_api_class_constructor</span><span class="p">(</span><span class="n">raster_data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">steps</span><span class="p">)</span>
+        <span class="c1"># Save edge construction and graph creation times</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_graph_api</span><span class="p">,</span> <span class="s1">&#39;edge_construction_time&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_graph_api</span><span class="p">,</span> <span class="s1">&#39;graph_creation_time&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="p">[</span><span class="s2">&quot;edge_construction&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_graph_api</span><span class="o">.</span><span class="n">edge_construction_time</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="p">[</span><span class="s2">&quot;graph_creation&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_graph_api</span><span class="o">.</span><span class="n">graph_creation_time</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_graph_api</span><span class="o">.</span><span class="n">graph</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="p">[</span><span class="s2">&quot;edge_construction&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="p">[</span><span class="s2">&quot;graph_creation&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+            <span class="k">return</span> <span class="kc">None</span></div>
+
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">graph_api</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_graph_api</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">create_graph</span><span class="p">()</span>
+            <span class="c1"># Overwrite the shortest_path_start_time, to make sure, that graph creation is not part of it</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="p">[</span><span class="s2">&quot;shortest_path_start_time&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_graph_api</span>
+
+<div class="viewcode-block" id="PathFinder.get_node_indices_from_coords">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathFinder.get_node_indices_from_coords">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_node_indices_from_coords</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert coordinates to node indices.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            coords: Either:</span>
+<span class="sd">                - A single coordinate pair (x, y)</span>
+<span class="sd">                - A list of coordinate pairs [(x1, y1), (x2, y2), ...]</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            List of node indices.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Check if coords is a single coordinate pair and not a list</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">coords</span> <span class="o">=</span> <span class="p">[</span><span class="n">coords</span><span class="p">]</span>
+
+        <span class="c1"># Convert coordinates to 2D indices</span>
+        <span class="n">indices_2d</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">coords_to_indices</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+
+        <span class="c1"># Get shape of raster</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">rows</span><span class="p">,</span> <span class="n">cols</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span>
+
+        <span class="c1"># Convert 2D indices to 1D node indices using ravel_multi_index</span>
+        <span class="n">node_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ravel_multi_index</span><span class="p">((</span><span class="n">indices_2d</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">indices_2d</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]),</span> <span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">cols</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">node_indices</span></div>
+
+
+<div class="viewcode-block" id="PathFinder.get_coords_from_node_indices">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathFinder.get_coords_from_node_indices">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_coords_from_node_indices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_indices</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert node indices to coordinates.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            node_indices: List of node indices.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            List of coordinates (x, y).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Get shape of raster</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">rows</span><span class="p">,</span> <span class="n">cols</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span>
+
+        <span class="c1"># Convert 1D indices to 2D indices using unravel_index</span>
+        <span class="n">indices_2d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">unravel_index</span><span class="p">(</span><span class="n">node_indices</span><span class="p">,</span> <span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">cols</span><span class="p">)))</span><span class="o">.</span><span class="n">T</span>
+
+        <span class="c1"># Convert 2D indices to coordinates</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">indices_to_coords</span><span class="p">(</span><span class="n">indices_2d</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">coords</span></div>
+
+
+<div class="viewcode-block" id="PathFinder.find_route">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathFinder.find_route">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">find_route</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">target</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="s2">&quot;dijkstra&quot;</span><span class="p">,</span> <span class="n">calculate_metrics</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">pairwise</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                   <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Find the shortest path between source and target coordinates.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            source: Source coordinates. If None, uses the source_coords provided at initialization.</span>
+<span class="sd">                Can be a single pair (x, y) or a list of pairs [(x1, y1), (x2, y2), ...].</span>
+<span class="sd">            target: Target coordinates. If None, uses the target_coords provided at initialization.</span>
+<span class="sd">                Can be a single pair (x, y) or a list of pairs [(x1, y1), (x2, y2), ...].</span>
+<span class="sd">            algorithm: Algorithm to use for shortest path. Defaults to &quot;dijkstra&quot;.</span>
+<span class="sd">            calculate_metrics: Whether to calculate path metrics. Defaults to True.</span>
+<span class="sd">            pairwise: Whether to calculate paths pairwise (requires equal number of sources and targets).</span>
+<span class="sd">                Default is False.</span>
+<span class="sd">        Returns:</span>
+<span class="sd">            Dictionary or list of dictionaries containing path information</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Get source and target coords</span>
+        <span class="k">if</span> <span class="n">source</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">source</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">source_coords</span>
+        <span class="k">if</span> <span class="n">target</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">target</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">target_coords</span>
+        <span class="k">if</span> <span class="n">source</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">target</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Source and target coordinates must not be None!&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">create_raster_handler</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># Convert coordinates to node indices</span>
+        <span class="n">source_indices</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_node_indices_from_coords</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>
+        <span class="n">target_indices</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_node_indices_from_coords</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+
+        <span class="c1"># Time the shortest path calculation</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="p">[</span><span class="s2">&quot;shortest_path_start_time&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+
+        <span class="c1"># Find shortest path using the graph API</span>
+        <span class="k">with</span> <span class="n">timed</span><span class="p">(</span><span class="s2">&quot;shortest_path&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="p">):</span>
+            <span class="n">path_indices</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph_api</span><span class="o">.</span><span class="n">shortest_path</span><span class="p">(</span>
+                <span class="n">source_indices</span><span class="o">=</span><span class="n">source_indices</span><span class="p">,</span>
+                <span class="n">target_indices</span><span class="o">=</span><span class="n">target_indices</span><span class="p">,</span>
+                <span class="n">algorithm</span><span class="o">=</span><span class="n">algorithm</span><span class="p">,</span>
+                <span class="n">pairwise</span><span class="o">=</span><span class="n">pairwise</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Check if we have multiple paths or a single path</span>
+        <span class="n">is_source_list</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span>
+        <span class="n">is_target_list</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span>
+
+        <span class="c1"># Case 1: Single source, single target -&gt; single path</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_source_list</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_target_list</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_create_path_result</span><span class="p">(</span><span class="n">path_indices</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="n">calculate_metrics</span><span class="p">)</span>
+
+        <span class="c1"># Case 2 &amp; 3: Multiple paths</span>
+        <span class="c1"># For single source + multiple targets OR multiple sources + multiple targets</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="c1"># If path_indices is a list of paths (multiple source-target pairs)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">path_indices</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span>
+                <span class="nb">isinstance</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">path_indices</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">path</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">path_indices</span><span class="p">):</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">source</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_coords_from_node_indices</span><span class="p">(</span><span class="n">path</span><span class="p">[</span><span class="mi">0</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">target</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_coords_from_node_indices</span><span class="p">(</span><span class="n">path</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_create_path_result</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="n">calculate_metrics</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># In case the graph API returns a single path even for multiple inputs</span>
+            <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_create_path_result</span><span class="p">(</span><span class="n">path_indices</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="n">calculate_metrics</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">results</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_create_path_result</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path_indices</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="n">calculate_metrics</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Helper method to create a path result dictionary from path indices.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            path_indices: List of node indices for the path</span>
+<span class="sd">            source: Source coordinate(s)</span>
+<span class="sd">            target: Target coordinate(s)</span>
+<span class="sd">            algorithm: The routing algorithm used</span>
+<span class="sd">            calculate_metrics: Whether to calculate metrics</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Dictionary containing path information</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Convert path indices to coordinates</span>
+        <span class="n">path_coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_coords_from_node_indices</span><span class="p">(</span><span class="n">path_indices</span><span class="p">)</span>
+
+        <span class="c1"># Calculate the euclidean distance</span>
+        <span class="n">euclidean_distance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">((</span><span class="n">path_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">path_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span>
+                                     <span class="p">(</span><span class="n">path_coords</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">path_coords</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+
+        <span class="c1"># Create LineString from path coordinates</span>
+        <span class="n">path_geometry</span> <span class="o">=</span> <span class="n">LineString</span><span class="p">(</span><span class="n">path_coords</span><span class="p">)</span>
+
+        <span class="c1"># Calculate total runtime based on the graph API used</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph_api_name</span> <span class="o">==</span> <span class="s2">&quot;cython&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;raster_loading&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> \
+                                     <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;shortest_path&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;raster_loading&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> \
+                                     <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;graph_creation&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> \
+                                     <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;edge_construction&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> \
+                                     <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;import_time_graph_api&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> \
+                                     <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;shortest_path&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+
+        <span class="c1"># Create path object using the Path dataclass</span>
+        <span class="n">path_id</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">)</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span>
+            <span class="n">source</span><span class="o">=</span><span class="n">source</span><span class="p">,</span>
+            <span class="n">target</span><span class="o">=</span><span class="n">target</span><span class="p">,</span>
+            <span class="n">algorithm</span><span class="o">=</span><span class="n">algorithm</span><span class="p">,</span>
+            <span class="n">graph_api</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">graph_api_name</span><span class="p">,</span>
+            <span class="n">path_indices</span><span class="o">=</span><span class="n">path_indices</span><span class="p">,</span>
+            <span class="n">path_coords</span><span class="o">=</span><span class="n">path_coords</span><span class="p">,</span>
+            <span class="n">path_geometry</span><span class="o">=</span><span class="n">path_geometry</span><span class="p">,</span>
+            <span class="n">euclidean_distance</span><span class="o">=</span><span class="n">euclidean_distance</span><span class="p">,</span>
+            <span class="n">runtimes</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span>
+            <span class="n">path_id</span><span class="o">=</span><span class="n">path_id</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Calculate path metrics if requested</span>
+        <span class="k">if</span> <span class="n">calculate_metrics</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">timed</span><span class="p">(</span><span class="s2">&quot;path_metrics&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">calculate_path_metrics</span><span class="p">(</span><span class="n">path_indices</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+
+        <span class="c1"># Store path in PathCollection</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">path</span>
+
+<div class="viewcode-block" id="PathFinder.calculate_path_metrics">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathFinder.calculate_path_metrics">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">calculate_path_metrics</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path_indices</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate metrics about the path and add directly to the Path object.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            path_indices: List of node indices for the path.</span>
+<span class="sd">            path: Path object to update with metrics.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Ensure path_indices is a numpy array</span>
+        <span class="n">path_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">path_indices</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint32</span><span class="p">)</span>
+
+        <span class="c1"># Get the raster data (costs)</span>
+        <span class="n">raster_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Calculate metrics using Numba-accelerated function</span>
+        <span class="n">path</span><span class="o">.</span><span class="n">total_length</span><span class="p">,</span> <span class="n">categories</span><span class="p">,</span> <span class="n">lengths</span> <span class="o">=</span> <span class="n">calculate_path_metrics_numba</span><span class="p">(</span><span class="n">raster_data</span><span class="p">,</span> <span class="n">path_indices</span><span class="p">)</span>
+
+        <span class="c1"># Convert to regular Python dictionary</span>
+        <span class="n">path</span><span class="o">.</span><span class="n">length_by_category</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">categories</span><span class="p">,</span> <span class="n">lengths</span><span class="p">))</span>
+        <span class="n">tot</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">total_length</span>
+        <span class="n">l_by_cat</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">length_by_category</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="c1"># Calculate percentages</span>
+        <span class="n">path</span><span class="o">.</span><span class="n">length_by_category_percent</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="p">(</span><span class="n">v</span> <span class="o">/</span> <span class="n">tot</span><span class="p">)</span> <span class="o">*</span> <span class="mi">100</span> <span class="k">if</span> <span class="n">tot</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">0</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">l_by_cat</span><span class="p">}</span>
+
+        <span class="c1"># Calculate total cost</span>
+        <span class="n">path</span><span class="o">.</span><span class="n">total_cost</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">cat</span> <span class="o">*</span> <span class="n">length</span> <span class="k">for</span> <span class="n">cat</span><span class="p">,</span> <span class="n">length</span> <span class="ow">in</span> <span class="n">l_by_cat</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PathFinder.get_path">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathFinder.get_path">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path_id</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">target</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Retrieve a stored path by ID, or by source AND target.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            path_id: Numerical ID of the path</span>
+<span class="sd">            source: Source coordinates to search for</span>
+<span class="sd">            target: Target coordinates to search for</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Path object or None if not found</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">path_id</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PathFinder.create_path_geodataframe">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathFinder.create_path_geodataframe">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_path_geodataframe</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a GeoDataFrame containing all stored paths.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            GeoDataFrame containing path data, or None if no paths available</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Check if there are any paths</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="c1"># Use the PathCollection method to get all path records</span>
+        <span class="n">records</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="o">.</span><span class="n">to_geodataframe_records</span><span class="p">()</span>
+
+        <span class="c1"># Create GeoDataFrame directly from records</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">path_gdf</span> <span class="o">=</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">(</span><span class="n">records</span><span class="p">,</span> <span class="n">geometry</span><span class="o">=</span><span class="s2">&quot;geometry&quot;</span><span class="p">,</span> <span class="n">crs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="o">.</span><span class="n">crs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">path_gdf</span></div>
+
+
+<div class="viewcode-block" id="PathFinder.save_paths">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathFinder.save_paths">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save_paths</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">save_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Save all calculated paths to a file in a GIS-compatible format.</span>
+
+<span class="sd">        This method creates a GeoDataFrame containing all paths from the PathCollection</span>
+<span class="sd">        and saves it to the specified file. The file format is automatically determined</span>
+<span class="sd">        from the file extension (e.g., &#39;.shp&#39; for Shapefile, &#39;.gpkg&#39; for GeoPackage).</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            save_path: Path to save the paths file. If None, no file is saved.</span>
+<span class="sd">                Common formats include:</span>
+<span class="sd">                - Shapefile (.shp)</span>
+<span class="sd">                - GeoPackage (.gpkg)</span>
+<span class="sd">                - GeoJSON (.geojson)</span>
+<span class="sd">                - CSV (.csv)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+
+
+<span class="sd">        Notes:</span>
+<span class="sd">            - The saved file includes all path attributes (ID, length, cost data)</span>
+<span class="sd">            - The geometries are saved as LineString features with the CRS from the source dataset</span>
+<span class="sd">            - If no paths have been calculated, an empty GeoDataFrame will be created first</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">path_gdf</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">create_path_geodataframe</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">save_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">save_path</span> <span class="o">!=</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">path_gdf</span><span class="o">.</span><span class="n">to_file</span><span class="p">(</span><span class="n">save_path</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PathFinder.save_raster">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathFinder.save_raster">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save_raster</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">save_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Save the raster data used for path calculations to a GeoTIFF file.</span>
+
+<span class="sd">        This method exports the current raster data to the specified file location.</span>
+<span class="sd">        The raster contains the cost values used for path calculations, including</span>
+<span class="sd">        any modifications from additional datasets. The exported file includes</span>
+<span class="sd">        complete georeferencing information and preserves the original CRS.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            save_path: Path where the raster file should be saved. If None, uses</span>
+<span class="sd">                the default filename &quot;pyorps_raster.tiff&quot; in the current directory.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+
+<span class="sd">        Notes:</span>
+<span class="sd">            - The saved raster includes all cost modifications from additional datasets</span>
+<span class="sd">            - The file is saved in GeoTIFF format which preserves georeferencing information</span>
+<span class="sd">            - If the PathFinder uses a GeoRasterizer, the complete raster is saved</span>
+<span class="sd">            - Otherwise, only the section loaded in the RasterHandler is saved</span>
+<span class="sd">            - For large areas, the resulting file size may be substantial</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">save_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">save_path</span> <span class="o">=</span> <span class="s2">&quot;pyorps_raster.tiff&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">geo_rasterizer</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">geo_rasterizer</span><span class="o">.</span><span class="n">save_raster</span><span class="p">(</span><span class="n">save_path</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="o">.</span><span class="n">save_section_as_raster</span><span class="p">(</span><span class="n">save_path</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PathFinder.plot_paths">
+<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathFinder.plot_paths">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">plot_paths</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                   <span class="n">paths</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="n">PathCollection</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">Path</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">plot_all</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                   <span class="n">subplots</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                   <span class="n">subplotsize</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span>
+                   <span class="n">source_color</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;green&#39;</span><span class="p">,</span>
+                   <span class="n">target_color</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;red&#39;</span><span class="p">,</span>
+                   <span class="n">path_colors</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">source_marker</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;o&#39;</span><span class="p">,</span>
+                   <span class="n">target_marker</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;x&#39;</span><span class="p">,</span>
+                   <span class="n">path_linewidth</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+                   <span class="n">show_raster</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                   <span class="n">title</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">suptitle</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">path_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="n">reverse_colors</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Plot paths with customizable styling and layout options.</span>
+
+<span class="sd">        This method visualizes the calculated paths, allowing for detailed customization of the</span>
+<span class="sd">        plot appearance. It delegates to the PathPlotter class to handle the actual visualization.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            paths: Specific path(s) to plot. If None, uses all paths in this PathFinder instance.</span>
+<span class="sd">                Can be a single Path object, a list of Path objects, or a PathCollection.</span>
+<span class="sd">            plot_all: If True, plots all paths. If False, plots only the path with path_id.</span>
+<span class="sd">            subplots: If True and multiple paths are plotted, creates separate subplots for each path.</span>
+<span class="sd">            subplotsize: Size of each individual subplot in inches (width, height).</span>
+<span class="sd">            source_color: Color for source markers.</span>
+<span class="sd">            target_color: Color for target markers.</span>
+<span class="sd">            path_colors: Colors for path lines. Can be a single color or a list of colors.</span>
+<span class="sd">                If None, default color scheme is used.</span>
+<span class="sd">            source_marker: Marker style for source points.</span>
+<span class="sd">            target_marker: Marker style for target points.</span>
+<span class="sd">            path_linewidth: Line width for the paths.</span>
+<span class="sd">            show_raster: Whether to display the raster data as background.</span>
+<span class="sd">            title: Title for the plot or individual subplot titles if a list is provided.</span>
+<span class="sd">            suptitle: Overall title for the figure (when using multiple subplots).</span>
+<span class="sd">            path_id: ID of specific path to plot when plot_all is False.</span>
+<span class="sd">                Can be a single ID or a list of IDs.</span>
+<span class="sd">            reverse_colors: Whether to reverse the color scheme for raster data</span>
+<span class="sd">                (dark=low cost, bright=high cost).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The matplotlib axes object(s) for the plot. Returns a list of axes if multiple</span>
+<span class="sd">            subplots are created, otherwise returns a single axes object.</span>
+
+<span class="sd">        Runtime Notes:</span>
+<span class="sd">            - The plotting operation itself is generally quick (0.1-0.5 seconds)</span>
+<span class="sd">            - Most time is spent on data preparation in the initial PathFinder setup</span>
+<span class="sd">            - When plotting many paths, using subplots=True can improve readability</span>
+<span class="sd">            - Displaying the raster background (show_raster=True) adds minimal overhead</span>
+<span class="sd">              once the PathFinder is initialized</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">..utils.plotting</span><span class="w"> </span><span class="kn">import</span> <span class="n">PathPlotter</span>
+
+        <span class="c1"># Determine which paths to plot based on the input</span>
+        <span class="k">if</span> <span class="n">paths</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Use all paths from this PathFinder instance</span>
+            <span class="n">path_collection</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">paths</span><span class="p">,</span> <span class="n">Path</span><span class="p">):</span>
+            <span class="c1"># Create a collection with a single path</span>
+            <span class="n">path_collection</span> <span class="o">=</span> <span class="n">PathCollection</span><span class="p">()</span>
+            <span class="n">path_collection</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">paths</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">paths</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="c1"># Create a collection from a list of paths</span>
+            <span class="n">path_collection</span> <span class="o">=</span> <span class="n">PathCollection</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">:</span>
+                <span class="n">path_collection</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Assume it&#39;s already a PathCollection</span>
+            <span class="n">path_collection</span> <span class="o">=</span> <span class="n">paths</span>
+
+        <span class="c1"># Create PathPlotter and delegate the plotting</span>
+        <span class="n">plotter</span> <span class="o">=</span> <span class="n">PathPlotter</span><span class="p">(</span><span class="n">paths</span><span class="o">=</span><span class="n">path_collection</span><span class="p">,</span> <span class="n">raster_handler</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_handler</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">plotter</span><span class="o">.</span><span class="n">plot_paths</span><span class="p">(</span>
+            <span class="n">plot_all</span><span class="o">=</span><span class="n">plot_all</span><span class="p">,</span>
+            <span class="n">subplots</span><span class="o">=</span><span class="n">subplots</span><span class="p">,</span>
+            <span class="n">subplotsize</span><span class="o">=</span><span class="n">subplotsize</span><span class="p">,</span>
+            <span class="n">source_color</span><span class="o">=</span><span class="n">source_color</span><span class="p">,</span>
+            <span class="n">target_color</span><span class="o">=</span><span class="n">target_color</span><span class="p">,</span>
+            <span class="n">path_colors</span><span class="o">=</span><span class="n">path_colors</span><span class="p">,</span>
+            <span class="n">source_marker</span><span class="o">=</span><span class="n">source_marker</span><span class="p">,</span>
+            <span class="n">target_marker</span><span class="o">=</span><span class="n">target_marker</span><span class="p">,</span>
+            <span class="n">path_linewidth</span><span class="o">=</span><span class="n">path_linewidth</span><span class="p">,</span>
+            <span class="n">show_raster</span><span class="o">=</span><span class="n">show_raster</span><span class="p">,</span>
+            <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">,</span>
+            <span class="n">suptitle</span><span class="o">=</span><span class="n">suptitle</span><span class="p">,</span>
+            <span class="n">path_id</span><span class="o">=</span><span class="n">path_id</span><span class="p">,</span>
+            <span class="n">reverse_colors</span><span class="o">=</span><span class="n">reverse_colors</span>
+        <span class="p">)</span></div>
+</div>
+
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../../index.html">PYORPS</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../../index.html">Documentation overview</a><ul>
+  <li><a href="../../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Martin Hofmann.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

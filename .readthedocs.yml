@@ -1,0 +1,26 @@
+# .readthedocs.yml
+
+version: 2
+
+# Build settings
+build:
+  os: ubuntu-22.04
+  tools:
+    python: "3.11"  # Match your project's Python version
+
+# Python dependencies
+python:
+  install:
+    - method: pip
+      path: .
+    - requirements: docs/source/requirements.txt  # Specify your documentation dependencies
+
+# Sphinx configuration
+sphinx:
+  configuration: docs/source/conf.py  # Path to your Sphinx configuration file
+
+# Build documentation formats
+formats:
+  - htmlzip
+  - pdf
+  - epub

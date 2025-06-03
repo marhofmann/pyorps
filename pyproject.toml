@@ -1,0 +1,120 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyorps"
+version = "0.1.4"
+description = "PYORPS (Python for Optimal Routes in Power Systems)"
+readme = "README.md"
+requires-python = ">=3.11"
+license-files = ["LICENSE"]
+authors = [
+    {name = "Martin Hofmann", email = "martin.hofmann-3@ei.thm.de"},
+]
+keywords = [
+    "power line routing",
+    "distribution grid",
+    "power systems planning",
+    "path finding",
+    "rasterized GIS data"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy==2.2.5",
+    "pandas==2.2.3",
+    "geopandas==1.0.1",
+    "numba==0.61.2",
+    "rasterio==1.4.3",
+    "networkit>=11.1",
+    "matplotlib==3.10.1",
+    "requests==2.32.3",
+    "defusedxml==0.7.1"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pyorps*"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.coverage.run]
+source = ["pyorps"]
+relative_files = true
+omit = [
+    "tests/*",
+    "docs/*",
+    "case_studies/*",
+    "examples/*",
+    ".venv/*",
+    ".github/*",
+    "setup.py",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError"
+]
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/pyorps/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true
+
+[project.urls]
+"Homepage" = "https://github.com/marhofmann/pyorps"
+"Bug Tracker" = "https://github.com/marhofmann/pyorps/issues"
+
+[project.optional-dependencies]
+# Graph processing dependencies
+graph = [
+    "rustworkx==0.16.0",
+    "igraph==0.11.8",
+    "networkx==3.4.2"
+]
+
+# Development and testing dependencies
+dev = [
+    "coverage[toml]==7.8.0",
+    "pytest==8.3.5",
+]
+
+# Examples dependencies
+examples = [
+    "notebook==7.4.0",
+    "fiona==1.10.1",
+]
+
+# Case-studies dependencies
+case_studies = [
+    "notebook==7.4.0",
+    "fiona==1.10.1",
+    "pandapower==3.0.0",
+    "contextily==1.6.2"
+
+]
+
+# Addittional dependencies
+addttionals = [
+    "openpyxl==3.1.5",
+]
+
+# All optional dependencies
+full = [
+    "pyorps[graph,dev,examples,case_studies,addttionals]",
+]

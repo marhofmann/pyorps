@@ -1,0 +1,1028 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pyorps.core.cost_assumptions &mdash; PYORPS 09.05.2025 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=d2164c19"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            PYORPS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../README.html">PYORPS - Python for Optimal Routes in Power Systems</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#features">Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#quick-start">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#how-it-works">How It Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#use-cases">Use Cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#technical-details">Technical Details</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#documentation">Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#contributing">Contributing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#license">License</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#citation">Citation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../README.html#contact">Contact</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../CONTRIBUTING.html">Contributing to PYORPS</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#get-in-touch">Get in Touch!</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#setting-up-your-development-environment">Setting Up Your Development Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#making-changes">Making Changes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#keeping-your-fork-up-to-date">Keeping Your Fork Up-to-Date</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#writing-tests">Writing Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#code-style">Code Style</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#contributing-examples-or-case-studies">Contributing Examples or Case Studies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../CONTRIBUTING.html#thank-you">Thank You!</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">PYORPS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">pyorps.core.cost_assumptions</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for pyorps.core.cost_assumptions</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">csv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">geopandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeoDataFrame</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">InvalidSourceError</span><span class="p">,</span> <span class="n">FileLoadError</span><span class="p">,</span> <span class="n">FormatError</span><span class="p">,</span> <span class="n">NoSuitableColumnsError</span>
+
+
+<div class="viewcode-block" id="CostAssumptions">
+<a class="viewcode-back" href="../../../pyorps.core.html#pyorps.CostAssumptions">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CostAssumptions</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A class for handling cost assumptions for rasterization.</span>
+
+<span class="sd">    This class handles:</span>
+<span class="sd">    - Loading cost assumptions from files (CSV, Excel, JSON) or generating of cost assumptions from a GeoDataFrame.</span>
+<span class="sd">    - Mapping costs to features in a GeoDataFrame</span>
+<span class="sd">    - Managing hierarchical cost structures</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the CostAssumptions object.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            source:</span>
+<span class="sd">                1. Path to a cost assumptions file</span>
+<span class="sd">                2. A dictionary of cost values</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">source</span> <span class="o">=</span> <span class="n">source</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">main_feature</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">side_features</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">if</span> <span class="n">source</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="p">(</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">)):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">InvalidSourceError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Parameter &#39;source&#39; must be either a string, a dictionary or a GeoDataFrame, &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;not </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">source</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">FormatError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;The format of the cost assumptions file or dictionary is invalid. Please check &quot;</span>
+                                  <span class="sa">f</span><span class="s2">&quot;the format of your cost assumptions input: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">source</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="CostAssumptions.load">
+<a class="viewcode-back" href="../../../pyorps.core.html#pyorps.CostAssumptions.load">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Load cost assumptions from a file or dictionary.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            source: Path to a file or a dictionary containing cost assumptions</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dictionary of cost assumptions</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">keys</span><span class="p">,</span> <span class="n">costs</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">source</span><span class="o">.</span><span class="n">items</span><span class="p">()))</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">main_feature</span><span class="p">,</span> <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">side_features</span> <span class="o">=</span> <span class="n">keys</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">main_feature</span> <span class="o">=</span> <span class="n">keys</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span> <span class="o">=</span> <span class="n">costs</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
+            <span class="n">file_ext</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">source</span><span class="p">)</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+            <span class="n">loader_map</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s1">&#39;.csv&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_load_csv_cost_assumptions</span><span class="p">,</span>
+                <span class="s1">&#39;.json&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_load_json_cost_assumptions</span><span class="p">,</span>
+                <span class="s1">&#39;.xlsx&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_load_excel_cost_assumptions</span><span class="p">,</span>
+                <span class="s1">&#39;.xls&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_load_excel_cost_assumptions</span><span class="p">,</span>
+            <span class="p">}</span>
+
+            <span class="n">loader</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">dict</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">loader_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">file_ext</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">loader</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">InvalidSourceError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported file format: </span><span class="si">{</span><span class="n">file_ext</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+            <span class="k">return</span> <span class="n">loader</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>
+
+        <span class="k">raise</span> <span class="n">InvalidSourceError</span><span class="p">(</span><span class="s2">&quot;Source must be a dictionary or a valid file path&quot;</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_load_csv_cost_assumptions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Load cost assumptions from a CSV file with auto-detection of encoding,</span>
+<span class="sd">        delimiter, and decimal separator.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - filepath: Path to the CSV file</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - dictionary of cost assumptions</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">encodings</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;utf-8&#39;</span><span class="p">,</span> <span class="s1">&#39;latin-1&#39;</span><span class="p">,</span> <span class="s1">&#39;ISO-8859-1&#39;</span><span class="p">,</span> <span class="s1">&#39;cp1252&#39;</span><span class="p">]</span>
+        <span class="n">decimal_separators</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;.&#39;</span><span class="p">,</span> <span class="s1">&#39;,&#39;</span><span class="p">]</span>
+        <span class="n">common_delimiters</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;,&#39;</span><span class="p">,</span> <span class="s1">&#39;;&#39;</span><span class="p">,</span> <span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">&#39;|&#39;</span><span class="p">]</span>
+
+        <span class="c1"># Try using csv.Sniffer to detect the delimiter</span>
+        <span class="k">for</span> <span class="n">encoding</span> <span class="ow">in</span> <span class="n">encodings</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># Read a sample to detect the dialect</span>
+                <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                    <span class="n">sample</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="mi">4096</span><span class="p">)</span>
+
+                <span class="n">sniffer</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">Sniffer</span><span class="p">()</span>
+                <span class="n">dialect</span> <span class="o">=</span> <span class="n">sniffer</span><span class="o">.</span><span class="n">sniff</span><span class="p">(</span><span class="n">sample</span><span class="p">)</span>
+                <span class="n">delimiter</span> <span class="o">=</span> <span class="n">dialect</span><span class="o">.</span><span class="n">delimiter</span>
+
+                <span class="c1"># Try with detected delimiter and different decimal separators</span>
+                <span class="k">for</span> <span class="n">decimal</span> <span class="ow">in</span> <span class="n">decimal_separators</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span>
+                            <span class="n">filepath</span><span class="p">,</span>
+                            <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">,</span>
+                            <span class="n">delimiter</span><span class="o">=</span><span class="n">delimiter</span><span class="p">,</span>
+                            <span class="n">decimal</span><span class="o">=</span><span class="n">decimal</span>
+                        <span class="p">)</span>
+                        <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+                            <span class="k">continue</span>
+                        <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_numeric_columns</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_df_to_cost_dict</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+                        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span>
+                    <span class="k">except</span> <span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">ParserError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+                        <span class="k">continue</span>
+            <span class="k">except</span> <span class="p">(</span><span class="n">csv</span><span class="o">.</span><span class="n">Error</span><span class="p">,</span> <span class="ne">UnicodeDecodeError</span><span class="p">,</span> <span class="ne">IOError</span><span class="p">):</span>
+                <span class="c1"># If auto-detection fails, try common delimiters</span>
+                <span class="k">for</span> <span class="n">delimiter</span> <span class="ow">in</span> <span class="n">common_delimiters</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">decimal</span> <span class="ow">in</span> <span class="n">decimal_separators</span><span class="p">:</span>
+                        <span class="k">try</span><span class="p">:</span>
+                            <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span>
+                                <span class="n">filepath</span><span class="p">,</span>
+                                <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">,</span>
+                                <span class="n">delimiter</span><span class="o">=</span><span class="n">delimiter</span><span class="p">,</span>
+                                <span class="n">decimal</span><span class="o">=</span><span class="n">decimal</span>
+                            <span class="p">)</span>
+                            <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+                                <span class="k">continue</span>
+                            <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_numeric_columns</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_df_to_cost_dict</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+                            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span>
+                        <span class="k">except</span> <span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">ParserError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="ne">UnicodeDecodeError</span><span class="p">):</span>
+                            <span class="k">continue</span>
+
+        <span class="k">raise</span> <span class="n">FileLoadError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Could not read CSV file </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">. Tried multiple encodings and formats.&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_load_json_cost_assumptions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Load cost assumptions from a JSON file with auto-detection of encoding.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - filepath: Path to the JSON file</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - dictionary of cost assumptions</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">encodings</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;utf-8&#39;</span><span class="p">,</span> <span class="s1">&#39;latin-1&#39;</span><span class="p">,</span> <span class="s1">&#39;ISO-8859-1&#39;</span><span class="p">,</span> <span class="s1">&#39;cp1252&#39;</span><span class="p">]</span>
+        <span class="n">last_error</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">for</span> <span class="n">encoding</span> <span class="ow">in</span> <span class="n">encodings</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                    <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
+                    <span class="c1"># Check if it&#39;s the new format with metadata</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s1">&#39;metadata&#39;</span> <span class="ow">in</span> <span class="n">data</span> <span class="ow">and</span> <span class="s1">&#39;cost_assumptions&#39;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">main_feature</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;metadata&#39;</span><span class="p">][</span><span class="s1">&#39;main_feature&#39;</span><span class="p">]</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">side_features</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;metadata&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;side_features&#39;</span><span class="p">,</span> <span class="p">[])</span>
+
+                        <span class="c1"># Handle tuple keys if necessary</span>
+                        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">side_features</span><span class="p">:</span>
+                            <span class="n">cost_dict</span> <span class="o">=</span> <span class="p">{}</span>
+                            <span class="k">for</span> <span class="n">key_str</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;cost_assumptions&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                                <span class="k">if</span> <span class="s2">&quot;__&quot;</span> <span class="ow">in</span> <span class="n">key_str</span><span class="p">:</span>
+                                    <span class="c1"># Convert string representation back to tuple</span>
+                                    <span class="n">tuple_key</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">key_str</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;__&quot;</span><span class="p">))</span>
+                                    <span class="n">cost_dict</span><span class="p">[</span><span class="n">tuple_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+                                <span class="k">else</span><span class="p">:</span>
+                                    <span class="n">cost_dict</span><span class="p">[</span><span class="n">key_str</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span> <span class="o">=</span> <span class="n">cost_dict</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;cost_assumptions&#39;</span><span class="p">]</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="c1"># Legacy format - just a plain dictionary</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span> <span class="o">=</span> <span class="n">data</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="n">FileLoadError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to read json file </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">. File contains no data or is not in &quot;</span>
+                                            <span class="sa">f</span><span class="s2">&quot;the correct format!&quot;</span><span class="p">)</span>
+                    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">UnicodeDecodeError</span><span class="p">,</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">last_error</span> <span class="o">=</span> <span class="n">e</span>
+                <span class="k">continue</span>
+
+        <span class="k">raise</span> <span class="n">FileLoadError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Could not read JSON file </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">last_error</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_load_excel_cost_assumptions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Load cost assumptions from an Excel file, handling different decimal separators.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - filepath: Path to the Excel file</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - dictionary of cost assumptions</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># First try default settings</span>
+            <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_excel</span><span class="p">(</span><span class="n">filepath</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">FileLoadError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to read Excel file </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">. File contains no data or is not in the &quot;</span>
+                                    <span class="sa">f</span><span class="s2">&quot;correct format!&quot;</span><span class="p">)</span>
+
+            <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_numeric_columns</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_df_to_cost_dict</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span>
+        <span class="k">except</span> <span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">ParserError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="ne">IOError</span><span class="p">)</span> <span class="k">as</span> <span class="n">first_error</span><span class="p">:</span>
+            <span class="c1"># If there&#39;s an issue, try reading as strings and convert manually</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_excel</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">FileLoadError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to read Excel file </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">. File contains no data or is not in the &quot;</span>
+                                        <span class="sa">f</span><span class="s2">&quot;correct format!&quot;</span><span class="p">)</span>
+                <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_numeric_columns</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_df_to_cost_dict</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span>
+            <span class="k">except</span> <span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">ParserError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="ne">IOError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">FileLoadError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Failed to read Excel file </span><span class="si">{</span><span class="n">filepath</span><span class="si">}</span><span class="s2">. Original error: </span><span class="si">{</span><span class="n">first_error</span><span class="si">}</span><span class="s2">. Second attempt error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_convert_df_to_cost_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert a DataFrame to a nested dictionary for cost assumptions.</span>
+
+<span class="sd">        Uses one numeric column for costs, and all other columns as a hierarchical index:</span>
+<span class="sd">        - The first column is the &#39;main_feature&#39;</span>
+<span class="sd">        - All additional columns are &#39;side_features&#39;</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># First ensure numeric columns are properly converted</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_numeric_columns</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+
+        <span class="c1"># Find the numeric column for costs</span>
+        <span class="n">numeric_columns</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">select_dtypes</span><span class="p">(</span><span class="n">include</span><span class="o">=</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">number</span><span class="p">])</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">numeric_columns</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">FormatError</span><span class="p">(</span><span class="s2">&quot;No numeric column found for cost values&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Use the first numeric column as the cost column</span>
+        <span class="n">cost_column</span> <span class="o">=</span> <span class="n">numeric_columns</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># All non-numeric columns form the hierarchical index</span>
+        <span class="n">index_columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">col</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="k">if</span> <span class="n">col</span> <span class="o">!=</span> <span class="n">cost_column</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">index_columns</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">FormatError</span><span class="p">(</span><span class="s2">&quot;No columns found for feature hierarchy&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Fill NaN values and assign features</span>
+        <span class="k">for</span> <span class="n">ci</span><span class="p">,</span> <span class="n">column</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">index_columns</span><span class="p">):</span>
+            <span class="n">df</span><span class="p">[</span><span class="n">column</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">column</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">ci</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">main_feature</span> <span class="o">=</span> <span class="n">column</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">side_features</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">column</span><span class="p">)</span>
+
+        <span class="c1"># Create a series with a MultiIndex and convert to nested dictionaries</span>
+        <span class="n">cost_series</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="n">index_columns</span><span class="p">)[</span><span class="n">cost_column</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">cost_series</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_convert_numeric_columns</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert columns to numeric, handling different decimal separators.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">        - df: DataFrame with potential numeric columns that might use different decimal separators</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">        - DataFrame with properly converted numeric columns</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="c1"># Skip columns that are already numeric or clearly not numeric</span>
+            <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">is_numeric_dtype</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">])</span> <span class="ow">or</span> <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">dtype</span> <span class="o">!=</span> <span class="nb">object</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># Try to convert using various decimal separators</span>
+            <span class="n">original_values</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+            <span class="c1"># Try standard conversion</span>
+            <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_numeric</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">],</span> <span class="n">errors</span><span class="o">=</span><span class="s1">&#39;coerce&#39;</span><span class="p">)</span>
+
+            <span class="c1"># If conversion successful and no NaN values were introduced, continue</span>
+            <span class="k">if</span> <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">==</span> <span class="n">original_values</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span><span class="o">.</span><span class="n">sum</span><span class="p">():</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># Restore original values for next attempt</span>
+            <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">original_values</span>
+
+            <span class="c1"># Try comma as decimal separator</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">str</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">,</span> <span class="s1">&#39;.&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+                <span class="c1"># Revert to original if both attempts fail</span>
+                <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">original_values</span>
+
+        <span class="k">return</span> <span class="n">df</span>
+
+<div class="viewcode-block" id="CostAssumptions.apply_to_geodataframe">
+<a class="viewcode-back" href="../../../pyorps.core.html#pyorps.CostAssumptions.apply_to_geodataframe">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply_to_geodataframe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">,</span> <span class="n">main_feature</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">side_features</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Apply cost assumptions to a GeoDataFrame.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            gdf: GeoDataFrame to apply costs to</span>
+<span class="sd">            main_feature: Main feature column name</span>
+<span class="sd">            side_features: list of side feature column names or single side feature name</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            GeoDataFrame with &#39;cost&#39; column added</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">main_feature</span> <span class="o">=</span> <span class="n">main_feature</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">main_feature</span>
+
+        <span class="k">if</span> <span class="n">side_features</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">side_features</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">side_features</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">side_features</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">side_features</span> <span class="o">=</span> <span class="p">[</span><span class="n">side_features</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">main_feature</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">FormatError</span><span class="p">(</span><span class="s2">&quot;Main feature column not specified&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Fill NA values</span>
+        <span class="n">gdf</span><span class="p">[</span><span class="n">main_feature</span><span class="p">]</span> <span class="o">=</span> <span class="n">gdf</span><span class="p">[</span><span class="n">main_feature</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">feat</span> <span class="ow">in</span> <span class="n">side_features</span><span class="p">:</span>
+            <span class="n">gdf</span><span class="p">[</span><span class="n">feat</span><span class="p">]</span> <span class="o">=</span> <span class="n">gdf</span><span class="p">[</span><span class="n">feat</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Handle different cost assumption structures</span>
+        <span class="n">first_key</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">first_key</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+            <span class="c1"># Complex tuple keys structure - from multi-index</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_apply_tuple_costs</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">main_feature</span><span class="p">,</span> <span class="n">side_features</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">side_features</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span><span class="o">.</span><span class="n">values</span><span class="p">()),</span> <span class="kc">None</span><span class="p">),</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="c1"># Nested dictionary structure</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_apply_nested_costs</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">main_feature</span><span class="p">,</span> <span class="n">side_features</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Simple mapping with numeric values</span>
+            <span class="n">gdf</span><span class="p">[</span><span class="s1">&#39;cost&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">gdf</span><span class="p">[</span><span class="n">main_feature</span><span class="p">]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">gdf</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_tuple_costs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">,</span> <span class="n">main_feature</span><span class="p">,</span> <span class="n">side_features</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Apply costs from tuple-based cost structure.&quot;&quot;&quot;</span>
+        <span class="c1"># Create wildcard dictionary for default values</span>
+        <span class="n">wild_cards</span> <span class="o">=</span> <span class="p">{</span><span class="n">keys</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span> <span class="n">value</span> <span class="k">for</span> <span class="n">keys</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="s1">&#39;&#39;</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">}</span>
+
+        <span class="c1"># Apply specific mappings</span>
+        <span class="k">for</span> <span class="n">keys</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">main_key</span><span class="p">,</span> <span class="o">*</span><span class="n">side_keys</span> <span class="o">=</span> <span class="n">keys</span>
+            <span class="n">mask</span> <span class="o">=</span> <span class="n">gdf</span><span class="p">[</span><span class="n">main_feature</span><span class="p">]</span> <span class="o">==</span> <span class="n">main_key</span>
+            <span class="k">for</span> <span class="n">side_feature</span><span class="p">,</span> <span class="n">side_key</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">side_features</span><span class="p">,</span> <span class="n">side_keys</span><span class="p">):</span>
+                <span class="n">mask</span> <span class="o">&amp;=</span> <span class="n">gdf</span><span class="p">[</span><span class="n">side_feature</span><span class="p">]</span> <span class="o">==</span> <span class="n">side_key</span>
+            <span class="n">gdf</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;cost&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+
+        <span class="c1"># Apply wildcards for missing values</span>
+        <span class="n">cost_nan</span> <span class="o">=</span> <span class="n">gdf</span><span class="p">[</span><span class="s1">&#39;cost&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">wild_card_key</span><span class="p">,</span> <span class="n">wild_card_value</span> <span class="ow">in</span> <span class="n">wild_cards</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">gdf</span><span class="p">[</span><span class="n">main_feature</span><span class="p">]</span> <span class="o">==</span> <span class="n">wild_card_key</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">cost_nan</span>
+            <span class="n">gdf</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;cost&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">wild_card_value</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_nested_costs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gdf</span><span class="p">,</span> <span class="n">main_feature</span><span class="p">,</span> <span class="n">side_features</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Apply costs from nested dictionary structure.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">side_features</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">FormatError</span><span class="p">(</span><span class="s2">&quot;Multiple side features not supported for nested dictionary structure&quot;</span><span class="p">)</span>
+
+        <span class="n">side_feature</span> <span class="o">=</span> <span class="n">side_features</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Iterate over each main feature value and its inner dictionary</span>
+        <span class="k">for</span> <span class="n">main_value</span><span class="p">,</span> <span class="n">inner_dict</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="c1"># Create mask for the main feature</span>
+            <span class="n">main_mask</span> <span class="o">=</span> <span class="n">gdf</span><span class="p">[</span><span class="n">main_feature</span><span class="p">]</span> <span class="o">==</span> <span class="n">main_value</span>
+
+            <span class="c1"># Apply costs for each side feature value</span>
+            <span class="k">for</span> <span class="n">side_value</span><span class="p">,</span> <span class="n">cost</span> <span class="ow">in</span> <span class="n">inner_dict</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">side_value</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span> <span class="ow">or</span> <span class="n">pd</span><span class="o">.</span><span class="n">isnull</span><span class="p">(</span><span class="n">side_value</span><span class="p">):</span>
+                    <span class="c1"># Handle wildcard/default values</span>
+                    <span class="n">side_mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">gdf</span><span class="p">[</span><span class="n">side_feature</span><span class="p">]</span><span class="o">.</span><span class="n">isnull</span><span class="p">()</span> <span class="o">|</span>
+                                 <span class="p">(</span><span class="n">gdf</span><span class="p">[</span><span class="n">side_feature</span><span class="p">]</span> <span class="o">==</span> <span class="n">side_value</span><span class="p">)</span> <span class="o">|</span>
+                                 <span class="o">~</span><span class="n">gdf</span><span class="p">[</span><span class="n">side_feature</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">inner_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># Standard case - exact match</span>
+                    <span class="n">side_mask</span> <span class="o">=</span> <span class="n">gdf</span><span class="p">[</span><span class="n">side_feature</span><span class="p">]</span> <span class="o">==</span> <span class="n">side_value</span>
+
+                <span class="c1"># Apply cost where both masks match</span>
+                <span class="n">combined_mask</span> <span class="o">=</span> <span class="n">main_mask</span> <span class="o">&amp;</span> <span class="n">side_mask</span>
+                <span class="n">gdf</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">combined_mask</span><span class="p">,</span> <span class="s1">&#39;cost&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cost</span>
+
+<div class="viewcode-block" id="CostAssumptions.to_csv">
+<a class="viewcode-back" href="../../../pyorps.core.html#pyorps.CostAssumptions.to_csv">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_csv</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">separator</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;;&#39;</span><span class="p">,</span> <span class="n">decimal</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;.&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;ISO-8859-1&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Save the cost assumptions to a CSV file.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            filepath: Path where to save the CSV file</span>
+<span class="sd">            separator: Column separator character (default is &#39;;&#39;)</span>
+<span class="sd">            decimal: Decimal separator character (default is &#39;.&#39;)</span>
+<span class="sd">            encoding: The encoding of the file (default is &#39;ISO-8859-1&#39;)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Convert the nested dictionary to DataFrame</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cost_dict_to_df</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span><span class="p">)</span>
+
+        <span class="c1"># Handle decimal separator conversion if needed</span>
+        <span class="k">if</span> <span class="n">decimal</span> <span class="o">==</span> <span class="s1">&#39;,&#39;</span><span class="p">:</span>
+            <span class="c1"># Convert numeric columns to use comma as decimal separator</span>
+            <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">select_dtypes</span><span class="p">(</span><span class="n">include</span><span class="o">=</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">number</span><span class="p">])</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span><span class="o">.</span><span class="n">str</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">,</span> <span class="s1">&#39;,&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Save DataFrame to CSV</span>
+        <span class="n">df</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="n">separator</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="CostAssumptions.to_json">
+<a class="viewcode-back" href="../../../pyorps.core.html#pyorps.CostAssumptions.to_json">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_json</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">indent</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span> <span class="n">encoding</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;ISO-8859-1&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Save the cost assumptions to a JSON file.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            filepath: Path where to save the JSON file</span>
+<span class="sd">            indent: Number of spaces for indentation (default is 2)</span>
+<span class="sd">            encoding: The encoding of the file (default is &#39;ISO-8859-1&#39;)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Create a structure that can be properly serialized to JSON</span>
+        <span class="n">output_dict</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;metadata&#39;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s1">&#39;main_feature&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">main_feature</span><span class="p">,</span>
+                <span class="s1">&#39;side_features&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">side_features</span>
+            <span class="p">},</span>
+            <span class="s1">&#39;cost_assumptions&#39;</span><span class="p">:</span> <span class="p">{}</span>
+        <span class="p">}</span>
+
+        <span class="c1"># Convert the cost assumptions dictionary to a JSON-serializable format</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span><span class="p">:</span>
+            <span class="n">first_key</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span><span class="p">))</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">first_key</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+                <span class="c1"># Handle tuple keys by converting them to string representations</span>
+                <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="n">key_str</span> <span class="o">=</span> <span class="s2">&quot;__&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">k</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">key</span><span class="p">)</span>
+                    <span class="n">output_dict</span><span class="p">[</span><span class="s1">&#39;cost_assumptions&#39;</span><span class="p">][</span><span class="n">key_str</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Regular keys can be directly serialized</span>
+                <span class="n">output_dict</span><span class="p">[</span><span class="s1">&#39;cost_assumptions&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span>
+
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="n">encoding</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">output_dict</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="n">indent</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="CostAssumptions.to_excel">
+<a class="viewcode-back" href="../../../pyorps.core.html#pyorps.CostAssumptions.to_excel">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_excel</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sheet_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;CostAssumptions&#39;</span><span class="p">,</span> <span class="n">index</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Save the cost assumptions to an Excel file.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            filepath: Path where to save the Excel file</span>
+<span class="sd">            sheet_name: Name of the worksheet (default is &#39;CostAssumptions&#39;)</span>
+<span class="sd">            index: Whether to write row indices (default is False)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Convert the nested dictionary to DataFrame</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cost_dict_to_df</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cost_assumptions</span><span class="p">)</span>
+
+        <span class="c1"># Save DataFrame to Excel</span>
+        <span class="n">df</span><span class="o">.</span><span class="n">to_excel</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="n">sheet_name</span><span class="o">=</span><span class="n">sheet_name</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">index</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_cost_dict_to_df</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cost_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert cost assumptions dictionary to DataFrame.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            cost_dict: Dictionary of cost assumptions</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            DataFrame representation of cost assumptions</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Check if it&#39;s a simple or nested dictionary</span>
+        <span class="n">first_key</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">cost_dict</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">first_key</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+            <span class="c1"># Handle tuple-based structure</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">keys</span><span class="p">,</span> <span class="n">cost</span> <span class="ow">in</span> <span class="n">cost_dict</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">main_key</span><span class="p">,</span> <span class="o">*</span><span class="n">side_keys</span> <span class="o">=</span> <span class="n">keys</span>
+                <span class="n">row</span> <span class="o">=</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">main_feature</span><span class="p">:</span> <span class="n">main_key</span><span class="p">}</span>
+
+                <span class="k">for</span> <span class="n">side_feature</span><span class="p">,</span> <span class="n">side_key</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">side_features</span><span class="p">,</span> <span class="n">side_keys</span><span class="p">):</span>
+                    <span class="n">row</span><span class="p">[</span><span class="n">side_feature</span><span class="p">]</span> <span class="o">=</span> <span class="n">side_key</span>
+
+                <span class="n">row</span><span class="p">[</span><span class="s1">&#39;cost&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cost</span>
+                <span class="n">data</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+
+            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">side_features</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">cost_dict</span><span class="o">.</span><span class="n">values</span><span class="p">()),</span> <span class="kc">None</span><span class="p">),</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="c1"># Handle nested dictionary structure</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">main_value</span><span class="p">,</span> <span class="n">inner_dict</span> <span class="ow">in</span> <span class="n">cost_dict</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">for</span> <span class="n">side_value</span><span class="p">,</span> <span class="n">cost</span> <span class="ow">in</span> <span class="n">inner_dict</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="n">row</span> <span class="o">=</span> <span class="p">{</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">main_feature</span><span class="p">:</span> <span class="n">main_value</span><span class="p">,</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">side_features</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span> <span class="n">side_value</span><span class="p">,</span>
+                        <span class="s1">&#39;cost&#39;</span><span class="p">:</span> <span class="n">cost</span>
+                    <span class="p">}</span>
+                    <span class="n">data</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+
+            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Simple mapping</span>
+            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">main_feature</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">cost_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">()),</span>
+                <span class="s1">&#39;cost&#39;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">cost_dict</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+            <span class="p">})</span></div>
+
+
+
+<div class="viewcode-block" id="save_empty_cost_assumptions">
+<a class="viewcode-back" href="../../../pyorps.core.html#pyorps.save_empty_cost_assumptions">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_empty_cost_assumptions</span><span class="p">(</span><span class="n">geo_dataset</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+                                <span class="n">save_path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">],</span>
+                                <span class="n">main_feature</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                <span class="n">side_features</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                                <span class="n">file_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;csv&#39;</span><span class="p">,</span>
+                                <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate and save empty cost assumptions with zero values for a geo dataset.</span>
+
+<span class="sd">    This function analyzes the given dataset to detect appropriate feature columns,</span>
+<span class="sd">    creates a CostAssumptions object with zero costs for all feature combinations,</span>
+<span class="sd">    and saves it to the specified path in the requested format.</span>
+
+<span class="sd">    Parameters:</span>
+<span class="sd">        geo_dataset: GeoDataset object with a &#39;data&#39; attribute containing a GeoDataFrame</span>
+<span class="sd">        save_path: File path where the cost assumptions should be saved</span>
+<span class="sd">        file_type: Output file format - one of &#39;json&#39;, &#39;csv&#39;, or &#39;excel&#39;</span>
+<span class="sd">                  (default is &#39;json&#39;)</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        TypeError: If file_type is not one of the supported formats</span>
+<span class="sd">        NoSuitableColumnsError: If no suitable columns can be detected in the dataset</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        None: This function saves to a file and doesn&#39;t return a value</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">main_feature</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">side_features</span><span class="p">:</span>
+        <span class="c1"># Detect main feature and side features from the geodataframe</span>
+        <span class="n">mf</span><span class="p">,</span> <span class="n">sf</span> <span class="o">=</span> <span class="n">detect_feature_columns</span><span class="p">(</span><span class="n">geo_dataset</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+        <span class="n">main_feature</span> <span class="o">=</span> <span class="n">mf</span> <span class="k">if</span> <span class="n">main_feature</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">main_feature</span>
+        <span class="n">side_features</span> <span class="o">=</span> <span class="n">sf</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">side_features</span> <span class="k">else</span> <span class="n">side_features</span>
+
+    <span class="c1"># Generate cost assumptions with zero costs for all feature combinations</span>
+    <span class="n">cost_assumptions</span> <span class="o">=</span> <span class="n">get_zero_cost_assumptions</span><span class="p">(</span><span class="n">geo_dataset</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">main_feature</span><span class="p">,</span> <span class="n">side_features</span><span class="p">)</span>
+
+    <span class="c1"># Save the cost assumptions in the appropriate format</span>
+    <span class="k">if</span> <span class="n">file_type</span> <span class="o">==</span> <span class="s1">&#39;json&#39;</span><span class="p">:</span>
+        <span class="n">cost_assumptions</span><span class="o">.</span><span class="n">to_json</span><span class="p">(</span><span class="n">save_path</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">file_type</span> <span class="o">==</span> <span class="s1">&#39;csv&#39;</span><span class="p">:</span>
+        <span class="n">cost_assumptions</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">save_path</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">file_type</span> <span class="o">==</span> <span class="s2">&quot;excel&quot;</span><span class="p">:</span>
+        <span class="n">cost_assumptions</span><span class="o">.</span><span class="n">to_excel</span><span class="p">(</span><span class="n">save_path</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Parameter file_type must be &#39;json&#39;, &#39;csv&#39; or &#39;excel&#39;!&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cost_assumptions</span><span class="o">.</span><span class="n">cost_assumptions</span></div>
+
+
+
+<div class="viewcode-block" id="detect_feature_columns">
+<a class="viewcode-back" href="../../../pyorps.core.html#pyorps.detect_feature_columns">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">detect_feature_columns</span><span class="p">(</span><span class="n">gdf</span><span class="p">:</span> <span class="n">GeoDataFrame</span><span class="p">,</span> <span class="n">max_features_per_column</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Analyze columns in a geodataframe to identify the best candidates for</span>
+<span class="sd">    main_feature and side_features based on statistical metrics.</span>
+
+<span class="sd">    Parameters:</span>
+<span class="sd">        gdf: GeoDataFrame to analyze</span>
+<span class="sd">        max_features_per_column: Maximum number of unique values allowed in a categorical column</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple of (main_feature, side_features)</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        NoSuitableColumnsError: When no suitable columns are found for feature selection</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Filter out geometry and standard spatial columns</span>
+    <span class="n">non_spatial_cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">col</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">gdf</span><span class="o">.</span><span class="n">columns</span> <span class="k">if</span> <span class="n">col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;geometry&#39;</span><span class="p">,</span> <span class="s1">&#39;id&#39;</span><span class="p">,</span> <span class="s1">&#39;fid&#39;</span><span class="p">,</span> <span class="s1">&#39;gid&#39;</span><span class="p">,</span> <span class="s1">&#39;oid&#39;</span><span class="p">]]</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">non_spatial_cols</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">NoSuitableColumnsError</span><span class="p">(</span><span class="s2">&quot;No suitable feature columns found in the geodataframe&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Analyze columns by their data characteristics</span>
+    <span class="n">col_stats</span> <span class="o">=</span> <span class="n">_calculate_column_statistics</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">non_spatial_cols</span><span class="p">,</span> <span class="n">max_features_per_column</span><span class="p">)</span>
+
+    <span class="c1"># No good candidates found</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">col_stats</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">NoSuitableColumnsError</span><span class="p">(</span><span class="s2">&quot;No suitable categorical columns found in the geodataframe&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Select main feature column (nutzart)</span>
+    <span class="n">main_feature</span> <span class="o">=</span> <span class="n">_select_main_feature</span><span class="p">(</span><span class="n">col_stats</span><span class="p">)</span>
+
+    <span class="c1"># Find suitable side features (bez)</span>
+    <span class="n">side_features</span> <span class="o">=</span> <span class="n">_find_side_features</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">main_feature</span><span class="p">,</span> <span class="n">non_spatial_cols</span><span class="p">,</span> <span class="n">col_stats</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">main_feature</span><span class="p">,</span> <span class="n">side_features</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_find_side_features</span><span class="p">(</span><span class="n">gdf</span><span class="p">:</span> <span class="n">GeoDataFrame</span><span class="p">,</span>
+                        <span class="n">main_feature</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                        <span class="n">columns</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+                        <span class="n">col_stats</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Find suitable side feature columns that refine the main feature.</span>
+
+<span class="sd">    Parameters:</span>
+<span class="sd">        gdf: GeoDataFrame to analyze</span>
+<span class="sd">        main_feature: Selected main feature column name</span>
+<span class="sd">        columns: list of all column names</span>
+<span class="sd">        col_stats: dictionary with column statistics</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        list of side feature column names</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># For all columns allow up to 70% nulls</span>
+    <span class="n">general_candidates</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">col</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">col_stats</span>
+        <span class="k">if</span> <span class="n">col</span> <span class="o">!=</span> <span class="n">main_feature</span> <span class="ow">and</span>
+           <span class="n">col_stats</span><span class="p">[</span><span class="n">col</span><span class="p">][</span><span class="s1">&#39;null_ratio&#39;</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="mf">0.7</span>
+    <span class="p">]</span>
+
+    <span class="n">side_features</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="c1"># Then process other candidates with stricter criteria</span>
+    <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">general_candidates</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">_column_shows_relationship_to_main_feature</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">main_feature</span><span class="p">,</span> <span class="n">col</span><span class="p">):</span>
+            <span class="n">side_features</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">col</span><span class="p">)</span>
+
+    <span class="c1"># Sort side features by information content</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_entropy</span><span class="p">(</span><span class="n">col</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">col_stats</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;count_entropy&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+    <span class="n">side_features</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="n">get_entropy</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">side_features</span> <span class="k">if</span> <span class="n">side_features</span> <span class="k">else</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_column_shows_relationship_to_main_feature</span><span class="p">(</span><span class="n">gdf</span><span class="p">:</span> <span class="n">GeoDataFrame</span><span class="p">,</span> <span class="n">main_feature</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">side_feature</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Determine if a column adds meaningful information in relation to the main feature.</span>
+
+<span class="sd">    Parameters:</span>
+<span class="sd">        gdf: GeoDataFrame containing the data</span>
+<span class="sd">        main_feature: Name of the main feature column</span>
+<span class="sd">        side_feature: Name of the potential side feature column</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        True if the column shows a meaningful relationship, False otherwise</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># Create a cross-tabulation of the two columns</span>
+        <span class="n">crosstab</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">crosstab</span><span class="p">(</span><span class="n">gdf</span><span class="p">[</span><span class="n">main_feature</span><span class="p">],</span> <span class="n">gdf</span><span class="p">[</span><span class="n">side_feature</span><span class="p">])</span>
+
+        <span class="c1"># Skip columns with too many unique values</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">crosstab</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">100</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="c1"># Check for non-empty cells density</span>
+        <span class="n">non_empty_cells</span> <span class="o">=</span> <span class="p">(</span><span class="n">crosstab</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="n">total_cells</span> <span class="o">=</span> <span class="n">crosstab</span><span class="o">.</span><span class="n">size</span>
+
+        <span class="c1"># If there&#39;s a good density of non-empty combinations, that&#39;s a good sign</span>
+        <span class="k">if</span> <span class="n">non_empty_cells</span> <span class="o">/</span> <span class="n">total_cells</span> <span class="o">&gt;</span> <span class="mf">0.05</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+        <span class="c1"># Even with many nulls, check if there&#39;s a pattern to the non-nulls</span>
+        <span class="k">for</span> <span class="n">main_val</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">crosstab</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+            <span class="n">non_zero_vals</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="n">row</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">]</span>
+
+            <span class="c1"># Skip rows with only one value</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">non_zero_vals</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># Check if there&#39;s diversity in the values</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">non_zero_vals</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">True</span>
+
+        <span class="c1"># Special check for columns with many nulls:</span>
+        <span class="c1"># If certain main values have side values while others don&#39;t, that&#39;s meaningful</span>
+        <span class="n">null_cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">col</span> <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">crosstab</span><span class="o">.</span><span class="n">columns</span> <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">isna</span><span class="p">(</span><span class="n">col</span><span class="p">)</span> <span class="ow">or</span> <span class="n">col</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">null_cols</span><span class="p">:</span>
+            <span class="n">non_null_main_values</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">main_val</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">crosstab</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">row</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">null_cols</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s1">&#39;ignore&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">non_null_main_values</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="c1"># If some main values have side values and others don&#39;t, that&#39;s meaningful</span>
+            <span class="k">if</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="n">non_null_main_values</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">crosstab</span><span class="o">.</span><span class="n">index</span><span class="p">):</span>
+                <span class="k">return</span> <span class="kc">True</span>
+
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+        <span class="c1"># If analysis fails, be conservative and return False</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+
+<div class="viewcode-block" id="get_zero_cost_assumptions">
+<a class="viewcode-back" href="../../../pyorps.core.html#pyorps.get_zero_cost_assumptions">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_zero_cost_assumptions</span><span class="p">(</span><span class="n">gdf</span><span class="p">:</span> <span class="n">GeoDataFrame</span><span class="p">,</span>
+                              <span class="n">main_feature</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                              <span class="n">side_features</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">CostAssumptions</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate cost assumptions with zero values for all feature combinations.</span>
+
+<span class="sd">    Creates structures matching format for CostAssumptions:</span>
+<span class="sd">    - Without side features: {main_feature: {val1: 0, val2: 0, ...}}</span>
+<span class="sd">    - With side features: {(main_feature, side_feature1, ...): {(val1, val2, ...): 0, ...}}</span>
+
+<span class="sd">    Parameters:</span>
+<span class="sd">        gdf: GeoDataFrame with feature columns</span>
+<span class="sd">        main_feature: Primary feature column name</span>
+<span class="sd">        side_features: List of secondary feature column names</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        CostAssumptions: Instacne of zero-cost assumptions</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">side_features</span><span class="p">:</span>
+        <span class="c1"># For simple case with only main feature</span>
+        <span class="n">unique_values</span> <span class="o">=</span> <span class="n">gdf</span><span class="p">[</span><span class="n">main_feature</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">()</span>
+        <span class="n">cost_dict</span> <span class="o">=</span> <span class="p">{</span><span class="n">main_feature</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">unique_values</span><span class="p">,</span> <span class="n">unique_values</span><span class="o">.</span><span class="n">size</span> <span class="o">*</span> <span class="p">[</span><span class="mi">0</span><span class="p">]))}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># For complex case with side features</span>
+        <span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="n">main_feature</span><span class="p">]</span> <span class="o">+</span> <span class="n">side_features</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">MultiIndex</span><span class="o">.</span><span class="n">from_frame</span><span class="p">(</span><span class="n">gdf</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="n">columns</span><span class="p">])</span><span class="o">.</span><span class="n">values</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="nb">tuple</span><span class="p">([</span><span class="s1">&#39;&#39;</span> <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="k">else</span> <span class="n">key</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">row</span><span class="p">])</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">]</span>
+        <span class="n">cost_dict</span> <span class="o">=</span> <span class="p">{</span><span class="nb">tuple</span><span class="p">(</span><span class="n">columns</span><span class="p">):</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span> <span class="o">*</span> <span class="p">[</span><span class="mi">0</span><span class="p">]))}</span>
+    <span class="k">return</span> <span class="n">CostAssumptions</span><span class="p">(</span><span class="n">cost_dict</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_calculate_geometry_area_sum</span><span class="p">(</span><span class="n">geometries</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate the sum of areas for a collection of geometries.</span>
+
+<span class="sd">    Parameters:</span>
+<span class="sd">        geometries: Collection of geometry objects</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Sum of areas of all geometries with area attribute</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">total_area</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">geom</span> <span class="ow">in</span> <span class="n">geometries</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="s1">&#39;area&#39;</span><span class="p">):</span>
+            <span class="n">total_area</span> <span class="o">+=</span> <span class="n">geom</span><span class="o">.</span><span class="n">area</span>
+    <span class="k">return</span> <span class="n">total_area</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_calculate_column_statistics</span><span class="p">(</span><span class="n">gdf</span><span class="p">:</span> <span class="n">GeoDataFrame</span><span class="p">,</span>
+                                 <span class="n">columns</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+                                 <span class="n">max_features_per_column</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate statistical properties of columns for feature selection.</span>
+
+<span class="sd">    Parameters:</span>
+<span class="sd">        gdf: GeoDataFrame to analyze</span>
+<span class="sd">        columns: list of column names to analyze</span>
+<span class="sd">        max_features_per_column: Maximum number of unique values for a column to be considered categorical</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        dictionary with column statistics</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ColumnAnalysisError: When column analysis fails unexpectedly</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">col_stats</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="c1"># First pass: filter columns and calculate basic stats</span>
+    <span class="n">candidate_columns</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">:</span>
+        <span class="c1"># Skip numeric columns with many unique values</span>
+        <span class="k">if</span> <span class="n">pd</span><span class="o">.</span><span class="n">api</span><span class="o">.</span><span class="n">types</span><span class="o">.</span><span class="n">is_numeric_dtype</span><span class="p">(</span><span class="n">gdf</span><span class="p">[</span><span class="n">col</span><span class="p">])</span> <span class="ow">and</span> <span class="n">gdf</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">nunique</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">20</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Calculate value counts</span>
+        <span class="n">value_counts</span> <span class="o">=</span> <span class="n">gdf</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">value_counts</span><span class="p">()</span>
+
+        <span class="c1"># Skip columns with too many unique values (likely not categorical)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">value_counts</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_features_per_column</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Calculate basic statistics</span>
+        <span class="n">null_ratio</span> <span class="o">=</span> <span class="n">gdf</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+        <span class="n">is_good_candidate</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="nb">len</span><span class="p">(</span><span class="n">value_counts</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span>
+                <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">value_counts</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.3</span><span class="p">)</span> <span class="ow">and</span>
+                <span class="n">null_ratio</span> <span class="o">&lt;</span> <span class="mf">0.2</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Calculate entropy of count distribution</span>
+        <span class="n">count_fractions</span> <span class="o">=</span> <span class="n">value_counts</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span>
+        <span class="n">count_entropy</span> <span class="o">=</span> <span class="o">-</span><span class="nb">sum</span><span class="p">((</span><span class="n">count_fractions</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log2</span><span class="p">(</span><span class="n">count_fractions</span><span class="p">))</span><span class="o">.</span><span class="n">dropna</span><span class="p">())</span>
+
+        <span class="c1"># Store basic stats</span>
+        <span class="n">col_stats</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;unique_values&#39;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">value_counts</span><span class="p">),</span>
+            <span class="s1">&#39;max_count&#39;</span><span class="p">:</span> <span class="n">value_counts</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">value_counts</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">0</span><span class="p">,</span>
+            <span class="s1">&#39;min_count&#39;</span><span class="p">:</span> <span class="n">value_counts</span><span class="o">.</span><span class="n">min</span><span class="p">()</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">value_counts</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">0</span><span class="p">,</span>
+            <span class="s1">&#39;count_entropy&#39;</span><span class="p">:</span> <span class="n">count_entropy</span><span class="p">,</span>
+            <span class="s1">&#39;null_ratio&#39;</span><span class="p">:</span> <span class="n">null_ratio</span><span class="p">,</span>
+            <span class="s1">&#39;is_good_candidate&#39;</span><span class="p">:</span> <span class="n">is_good_candidate</span>
+        <span class="p">}</span>
+
+        <span class="n">candidate_columns</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">col</span><span class="p">)</span>
+
+    <span class="c1"># Second pass: calculate area-based statistics only for candidates</span>
+    <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">candidate_columns</span><span class="p">:</span>
+        <span class="c1"># Initialize area-based statistics</span>
+        <span class="n">area_entropy</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">area_by_value</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">area_fraction</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Group by column and calculate total area for each value</span>
+            <span class="n">area_by_value</span> <span class="o">=</span> <span class="n">gdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">col</span><span class="p">)[</span><span class="s1">&#39;geometry&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">_calculate_geometry_area_sum</span><span class="p">)</span>
+            <span class="n">total_area</span> <span class="o">=</span> <span class="n">area_by_value</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+
+            <span class="k">if</span> <span class="n">total_area</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">area_fraction</span> <span class="o">=</span> <span class="n">area_by_value</span> <span class="o">/</span> <span class="n">total_area</span>
+                <span class="c1"># Calculate entropy of area distribution</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">area_fraction</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+                    <span class="n">area_entropy</span> <span class="o">=</span> <span class="o">-</span><span class="nb">sum</span><span class="p">((</span><span class="n">area_fraction</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log2</span><span class="p">(</span><span class="n">area_fraction</span><span class="p">))</span><span class="o">.</span><span class="n">dropna</span><span class="p">())</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">AttributeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+            <span class="c1"># Continue with default values for area statistics</span>
+            <span class="k">pass</span>
+
+        <span class="c1"># Update with area-based statistics</span>
+        <span class="n">col_stats</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">update</span><span class="p">({</span>
+            <span class="s1">&#39;area_by_value&#39;</span><span class="p">:</span> <span class="n">area_by_value</span><span class="p">,</span>
+            <span class="s1">&#39;area_fraction&#39;</span><span class="p">:</span> <span class="n">area_fraction</span><span class="p">,</span>
+            <span class="s1">&#39;area_entropy&#39;</span><span class="p">:</span> <span class="n">area_entropy</span><span class="p">,</span>
+        <span class="p">})</span>
+
+    <span class="k">return</span> <span class="n">col_stats</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_calculate_entropy_score</span><span class="p">(</span><span class="n">column_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">col_stats</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate combined entropy score for a column, weighing area entropy more heavily.</span>
+
+<span class="sd">    Parameters:</span>
+<span class="sd">        column_name: Name of the column to calculate score for</span>
+<span class="sd">        col_stats: dictionary with column statistics</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Combined entropy score</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">stats</span> <span class="o">=</span> <span class="n">col_stats</span><span class="p">[</span><span class="n">column_name</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">stats</span><span class="p">[</span><span class="s1">&#39;area_entropy&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.7</span> <span class="o">+</span> <span class="n">stats</span><span class="p">[</span><span class="s1">&#39;count_entropy&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.3</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_select_main_feature</span><span class="p">(</span><span class="n">col_stats</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Select the best main feature column based on statistics.</span>
+
+<span class="sd">    Parameters:</span>
+<span class="sd">        col_stats: dictionary with column statistics</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Name of the best main feature column</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Select the best main feature column</span>
+    <span class="n">main_candidates</span> <span class="o">=</span> <span class="p">[</span><span class="n">col</span> <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">stats</span> <span class="ow">in</span> <span class="n">col_stats</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">stats</span><span class="p">[</span><span class="s1">&#39;is_good_candidate&#39;</span><span class="p">]]</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">main_candidates</span><span class="p">:</span>
+        <span class="c1"># Fall back to any column if no good candidates</span>
+        <span class="n">main_candidates</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">col_stats</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+
+    <span class="c1"># Sort by entropy score (higher is better)</span>
+    <span class="n">sorted_candidates</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span>
+        <span class="n">main_candidates</span><span class="p">,</span>
+        <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">c</span><span class="p">:</span> <span class="n">_calculate_entropy_score</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">col_stats</span><span class="p">),</span>
+        <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">sorted_candidates</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Martin Hofmann.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
