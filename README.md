@@ -6,7 +6,7 @@
 [![codecov](https://codecov.io/gh/marhofmann/pyorps/branch/main/graph/badge.svg)](https://codecov.io/gh/marhofmann/pyorps)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/1403393e905b419b8b3a5865cebe85a7)](https://app.codacy.com/gh/marhofmann/pyorps/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/marhofmann/pyorps/master?filepath=examples)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/marhofmann/pyorps/main?filepath=examples)
 
 
 PYORPS is an open-source tool designed to automate route planning for underground cables in power systems. It uses high-resolution raster geodata to perform least-cost path analyses, optimizing routes based on economic and environmental factors.
@@ -26,7 +26,7 @@ While tailored for distribution grids, it can be adapted for various infrastruct
 <table>
   <tr>
     <td align="center" width="100%">
-      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png" alt="ex." width="100%"/><br>
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png" alt="ex." width="100%"/><br>
       <sub>
         <b>Figure 1:</b> Parallel computation of 21 paths from single source to multiple targets.<br>
         332 s total runtime on laptop with Intel(R) Core(TM) i7-8850H CPU @ 2.6 GHz and 32 GB memory
@@ -180,7 +180,7 @@ This dramatically reduces memory and computation time, especially for high-resol
 <table>
   <tr>
     <td align="center" width="100%">
-      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/buffer_600.png" alt="search spaces" 
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/images/buffer_600.png" alt="search spaces" 
 width="100%"/><br>
       <sub><b>Figure 2:</b> Various optimal paths for different search spaces on rasterised geodata with 1 m² resolution</sub>
     </td>
@@ -204,12 +204,13 @@ This allows you to balance accuracy (following real-world paths) and performance
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/R3-complete.PNG" 
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/images/R3-complete.PNG" 
 alt="R3 complete" width="79%"/><br>
       <sub><b>Figure 3a:</b> Steps for neighbourhoods R0 (blue), R1 (green), R2 (yellow), and R3 (red)</sub>
     </td>
     <td align="center" width="50%">
-      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/master/docs/images/intermediate_steps.PNG" alt="intermediates" width="90%"/><br>
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/images/intermediate_steps.PNG" 
+alt="intermediates" width="90%"/><br>
       <sub><b>Figure 3b:</b> Intermediate elements Ik for selected edges of vertex v<sub>5,5</sub>.</sub>
     </td>
   </tr>
