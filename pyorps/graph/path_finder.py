@@ -1,3 +1,11 @@
+"""
+PYORPS: An Open-Source Tool for Automated Power Line Routing
+
+Reference:
+[1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
+    Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
+    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
+"""
 from time import time
 from typing import Optional, Union, Any, Generator
 from contextlib import contextmanager
@@ -71,6 +79,9 @@ def get_graph_api_class(graph_api: str) -> type:
         case "networkx":
             from pyorps.graph.api.networkx_api import NetworkxAPI
             return NetworkxAPI
+        case "cython":
+            from pyorps.graph.api.cython_api import CythonAPI
+            return CythonAPI
         case _:
             raise ValueError(f"Unsupported graph API: {graph_api}")
 
@@ -98,7 +109,7 @@ class PathFinder:
             search_space_buffer_m: Optional[float] = None,
             neighborhood_str: Optional[Union[str, int]] = "r2",
             steps: Optional[ndarray[int]] = None,
-            ignore_max_cost: bool =True,
+            ignore_max_cost: bool = True,
             graph_api: str = "networkit",
             cost_assumptions: Optional[CostAssumptionsType] = None,
             datasets_to_modify: Optional[list[dict[str, Any]]] = None,
@@ -377,8 +388,12 @@ class PathFinder:
         raster_data = self.raster_handler.data[band_index]
 
         # Create graph using the graph API
-        self._graph_api = graph_api_class_constructor(raster_data, self.steps,
-                                                      ignore_max=self.ignore_max_cost)
+        if self.graph_api_name != "cython":
+            self._graph_api = graph_api_class_constructor(raster_data, self.steps,
+                                                          ignore_max=self.ignore_max_cost)
+        else:
+            self._graph_api = graph_api_class_constructor(raster_data, self.steps)
+
         # Save edge construction and graph creation times
         if (hasattr(self._graph_api, 'edge_construction_time') and
                 hasattr(self._graph_api, 'graph_creation_time')):

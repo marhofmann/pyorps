@@ -1,14 +1,19 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = [
+    "setuptools>=64",
+    "wheel",
+    "cython>=3.0.0",
+    "numpy>=2.0.0",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyorps"
-version = "0.1.0"
+version = "0.2.0"
 description = "PYORPS - (Python for Optimal Routes in Power Systems)"
 readme = "README.md"
 requires-python = ">=3.11"
-license-files = ["LICENSE"]
+license = {file = "LICENSE"}  # FIXED: was license-files
 authors = [
     {name = "Martin Hofmann", email = "martin.hofmann-3@ei.thm.de"},
 ]
@@ -23,19 +28,19 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: GIS",
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
-    "numpy==2.2.5",
-    "pandas==2.2.3",
-    "geopandas==1.0.1",
-    "numba==0.61.2",
-    "rasterio==1.4.3",
-    "networkit>=11.1",
-    "matplotlib==3.10.1",
-    "requests==2.32.3",
-    "defusedxml==0.7.1",
+    "numpy>=2.0.0",  # FIXED: Allow more flexibility
+    "pandas>=2.2.0",
+    "geopandas>=1.0.0",
+    "numba>=0.61.0",
+    "rasterio>=1.4.0",
+    "matplotlib>=3.10.0",
+    "requests>=2.32.0",
+    "defusedxml>=0.7.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -45,6 +50,55 @@ include = ["pyorps*"]
 [tool.setuptools]
 include-package-data = true
 
+# ADDED: Package data for Cython files
+[tool.setuptools.package-data]
+"pyorps.utils" = ["*.pyx", "*.pxd"]
+
+[project.urls]
+"Homepage" = "https://github.com/marhofmann/pyorps"
+"Bug Tracker" = "https://github.com/marhofmann/pyorps/issues"
+
+[project.optional-dependencies]
+# Graph processing dependencies
+graph = [
+    "rustworkx>=0.16.0",
+    "igraph>=0.11.0",
+    "networkx>=3.4.0",
+    "networkit>=11.1",
+]
+
+# Development and testing dependencies
+dev = [
+    "coverage[toml]>=7.8.0",
+    "pytest>=8.3.0",
+    "cython>=3.0.0",
+]
+
+# Examples dependencies
+examples = [
+    "notebook>=7.4.0",
+    "fiona>=1.10.0",
+]
+
+# Case-studies dependencies
+case_studies = [
+    "notebook>=7.4.0",
+    "fiona>=1.10.0",
+    "pandapower>=3.0.0",
+    "contextily>=1.6.0"
+]
+
+# Additional dependencies
+additionals = [
+    "openpyxl>=3.1.0",
+]
+
+# All optional dependencies
+full = [
+    "pyorps[graph,dev,examples,case_studies,additionals]",
+]
+
+# Coverage and other tool configurations...
 [tool.coverage.run]
 source = ["pyorps"]
 relative_files = true
@@ -68,53 +122,4 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "pass",
     "raise ImportError"
-]
-
-[[tool.uv.index]]
-name = "testpypi"
-url = "https://test.pypi.org/pyorps/"
-publish-url = "https://test.pypi.org/legacy/"
-explicit = true
-
-[project.urls]
-"Homepage" = "https://github.com/marhofmann/pyorps"
-"Bug Tracker" = "https://github.com/marhofmann/pyorps/issues"
-
-[project.optional-dependencies]
-# Graph processing dependencies
-graph = [
-    "rustworkx==0.16.0",
-    "igraph==0.11.8",
-    "networkx==3.4.2"
-]
-
-# Development and testing dependencies
-dev = [
-    "coverage[toml]==7.8.0",
-    "pytest==8.3.5",
-]
-
-# Examples dependencies
-examples = [
-    "notebook>=7.4.0",
-    "fiona==1.10.1",
-]
-
-# Case-studies dependencies
-case_studies = [
-    "notebook==7.4.0",
-    "fiona==1.10.1",
-    "pandapower==3.0.0",
-    "contextily==1.6.2"
-
-]
-
-# Addittional dependencies
-addttionals = [
-    "openpyxl==3.1.5",
-]
-
-# All optional dependencies
-full = [
-    "pyorps[graph,dev,examples,case_studies,addttionals]",
 ]

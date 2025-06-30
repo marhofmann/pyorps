@@ -1,43 +1,43 @@
 nutzart;bez;cost
-Wohnbaufläche;;0
-Industrie- und Gewerbefläche;Lagerfläche;0
-Industrie- und Gewerbefläche;Industrie und Gewerbe;0
-Fläche gemischter Nutzung;Gebäude- und Freifläche Mischnutzung mit Wohnen;0
-Fläche gemischter Nutzung;Gebäude- und Freifläche Land- und Forstwirtschaft;0
-Sport-, Freizeit- und Erholungsfläche;Grünanlage;0
+Halde;;0
 Straßenverkehr;;0
 Weg;;0
-Landwirtschaft;Ackerland;0
-Landwirtschaft;Streuobstwiese;0
-Landwirtschaft;Grünland;0
-Gehölz;;0
-Fließgewässer;Graben;0
-Fließgewässer;;0
-Landwirtschaft;Gartenbauland;0
-Fließgewässer;Bach;0
 Weg;Fußweg;0
-Fläche besonderer funktionaler Prägung;;0
-Industrie- und Gewerbefläche;Versorgungsanlage;0
-Fläche gemischter Nutzung;;0
+Landwirtschaft;Ackerland;0
+Landwirtschaft;Grünland;0
+Landwirtschaft;Gartenbauland;0
+Wald;Laub- und Nadelholz;0
+Wald;Nadelholz;0
+Wald;Laubholz;0
+Unland/Vegetationslose Fläche;;0
+Fließgewässer;Graben;0
+Gehölz;;0
+Industrie- und Gewerbefläche;Wasserwerk;0
+Fließgewässer;;0
+Platz;;0
+Sport-, Freizeit- und Erholungsfläche;Sportanlage;0
 Sport-, Freizeit- und Erholungsfläche;Gebäude- und Freifläche Sport, Freizeit und Erholung;0
 Fläche gemischter Nutzung;Landwirtschaftliche Betriebsfläche;0
 Fläche gemischter Nutzung;Wohnen;0
+Wohnbaufläche;;0
+Fläche gemischter Nutzung;Gebäude- und Freifläche Land- und Forstwirtschaft;0
+Fläche gemischter Nutzung;Gebäude- und Freifläche Mischnutzung mit Wohnen;0
+Fläche gemischter Nutzung;;0
+Sport-, Freizeit- und Erholungsfläche;Grünanlage;0
+Industrie- und Gewerbefläche;Lagerfläche;0
+Industrie- und Gewerbefläche;Industrie und Gewerbe;0
+Landwirtschaft;Streuobstwiese;0
+Fließgewässer;Bach;0
+Fläche besonderer funktionaler Prägung;;0
+Industrie- und Gewerbefläche;Versorgungsanlage;0
 Industrie- und Gewerbefläche;Handel und Dienstleistung;0
 Industrie- und Gewerbefläche;Kläranlage, Klärwerk;0
 Tagebau, Grube, Steinbruch;;0
 Fläche besonderer funktionaler Prägung;Öffentliche Zwecke;0
 Friedhof;;0
-Platz;;0
 Platz;Parkplatz;0
-Wald;Laub- und Nadelholz;0
-Wald;Laubholz;0
 Unland/Vegetationslose Fläche;Gewässerbegleitfläche;0
 Industrie- und Gewerbefläche;Funk- und Fernmeldeanlage;0
-Industrie- und Gewerbefläche;Wasserwerk;0
-Halde;;0
-Sport-, Freizeit- und Erholungsfläche;Sportanlage;0
-Wald;Nadelholz;0
-Unland/Vegetationslose Fläche;;0
 Industrie- und Gewerbefläche;Abfallbehandlungsanlage;0
 Industrie- und Gewerbefläche;Umspannstation;0
 Industrie- und Gewerbefläche;;0

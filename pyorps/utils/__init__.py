@@ -34,7 +34,48 @@ from .traversal import (
     calculate_segment_length
 )
 
+# pyorps/utils/__init__.py
+
+# Try to import Cython extensions
+try:
+    from .find_path_cython import (
+        dijkstra_2d_cython,
+        dijkstra_single_source_multiple_targets,
+        dijkstra_some_pairs_shortest_paths,
+        dijkstra_multiple_sources_multiple_targets,
+        create_exclude_mask
+    )
+
+    CYTHON_AVAILABLE = True
+    print("✓ Cython extensions loaded successfully")
+except ImportError as e:
+    CYTHON_AVAILABLE = False
+    print(f"⚠ Cython extensions not available: {e}")
+
+
+    # Provide informative error functions
+    def dijkstra_2d_cython(*args, **kwargs):
+        raise ImportError(
+            "Cython extension 'find_path_cython' not available. "
+            "Please install from source or use a pre-compiled wheel."
+        )
+
+
+    # Copy for other functions
+    dijkstra_single_source_multiple_targets = dijkstra_2d_cython
+    dijkstra_some_pairs_shortest_paths = dijkstra_2d_cython
+    dijkstra_multiple_sources_multiple_targets = dijkstra_2d_cython
+    create_exclude_mask = dijkstra_2d_cython
+
 __all__ = [
+    # Cython interface
+    'dijkstra_2d_cython',
+    'dijkstra_single_source_multiple_targets',
+    'dijkstra_some_pairs_shortest_paths',
+    'dijkstra_multiple_sources_multiple_targets',
+    'create_exclude_mask',
+    'CYTHON_AVAILABLE',
+
     # Core path functions
     "calculate_path_metrics_numba",
     "intermediate_steps_numba",
@@ -57,5 +98,9 @@ __all__ = [
 
     # Path analysis
     "get_outgoing_edges",
-    "calculate_segment_length"
+    "calculate_segment_length",
+
+    "dijkstra_2d_cython",
+    "dijkstra_multiple_sources_multiple_targets",
+    "dijkstra_some_pairs_shortest_paths"
 ]
