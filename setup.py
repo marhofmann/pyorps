@@ -16,6 +16,7 @@ except ImportError:
 
 def get_extensions():
     """Get list of extensions to build with platform-specific configuration"""
+
     extensions = []
 
     # Check if Cython source file exists
@@ -67,14 +68,6 @@ def get_extensions():
         except Exception as e:
             print(f"Warning: Could not add OpenMP support for Linux/macOS: {e}")
 
-        # Add architecture-specific optimizations for Linux
-        if system == "linux":
-            try:
-                extra_compile_args.append("-march=native")
-                print("Added native architecture optimization")
-            except Exception as e:
-                print(f"Warning: Could not add native optimization: {e}")
-
     # Common compiler definitions (platform-independent)
     extra_compile_args.extend([
         "-DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION"
@@ -106,10 +99,20 @@ def get_extensions():
 
 def main():
     """Main setup function"""
+
     print("Starting setup.py...")
     print(f"Python version: {sys.version}")
     print(f"Platform: {platform.platform()}")
     print(f"NumPy version: {np.version}")
+
+    # Clean up any existing build artifacts
+    cleanup_dirs = ['build', 'dist', 'pyorps.egg-info']
+    for cleanup_dir in cleanup_dirs:
+        if os.path.exists(cleanup_dir):
+            print(f"Cleaning up {cleanup_dir}")
+            import shutil
+
+            shutil.rmtree(cleanup_dir, ignore_errors=True)
 
     # Get extensions
     extensions = get_extensions()
@@ -128,11 +131,10 @@ def main():
                     'cdivision': True,  # Use C division semantics
                     'nonecheck': False,  # Disable None checking
                     'embedsignature': True,  # Embed function signatures in docstrings
-                    'binding': True,  # Enable binding for better debugging
                 },
                 # Build options
                 annotate=False,  # Set to True for HTML annotation files
-                force=True,  # Force rebuild
+                force=True,  # Force rebuild to avoid cached issues
                 quiet=False,  # Verbose output
             )
             print(f"Successfully cythonized {len(ext_modules)} extensions")
@@ -153,7 +155,6 @@ def main():
         zip_safe=False,  # Important for Cython extensions
     )
     print("Setup completed successfully!")
-
 
 if __name__ == "main":
     main()

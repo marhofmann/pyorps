@@ -13,7 +13,7 @@ version = "0.2.0"
 description = "PYORPS - (Python for Optimal Routes in Power Systems)"
 readme = "README.md"
 requires-python = ">=3.11"
-license-files = ["LICENSE"]
+license = {text = "MIT"}  # FIXED: Use SPDX expression instead of file reference
 authors = [
     {name = "Martin Hofmann", email = "martin.hofmann-3@ei.thm.de"},
 ]
@@ -33,7 +33,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
-    "numpy>=2.0.0",  # FIXED: Allow more flexibility
+    "numpy>=2.0.0",
     "pandas>=2.2.0",
     "geopandas>=1.0.0",
     "numba>=0.61.0",
@@ -50,7 +50,7 @@ include = ["pyorps*"]
 [tool.setuptools]
 include-package-data = true
 
-# ADDED: Package data for Cython files
+# Package data for Cython files
 [tool.setuptools.package-data]
 "pyorps.utils" = ["*.pyx", "*.pxd"]
 

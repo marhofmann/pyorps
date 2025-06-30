@@ -12,17 +12,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install build dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential gcc g++ libomp-dev
+
+      - name: Clean up any existing build artifacts
+        run: |
+          rm -rf build/
+          rm -rf dist/
+          rm -rf *.egg-info/
+          rm -rf pyorps.egg-info/
+          find . -name "*.pyc" -delete
+          find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
       - name: Install Python dependencies
         run: |
@@ -32,15 +41,17 @@ jobs:
 
       - name: Install package
         run: |
-          pip install -e .[full]
+          pip install -e .[full] --verbose
 
       - name: Check with Flake8
         continue-on-error: true
         run: |
+          # Stop the build if there are Python syntax errors or undefined names
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Check all other issues with a reasonable line length limit
           flake8 . --count --max-complexity=10 --max-line-length=88 --statistics
 
       - name: Lint with Pylint
         continue-on-error: true
         run: |
-          find . -name "*.py" -exec pylint --disable=C0111,R0903,C0103 {} \;
+          find . -name "*.py" -type f -not -path "./build/*" -not -path "./.venv/*" | xargs pylint --disable=C0111,R0903,C0103 --exit-zero
