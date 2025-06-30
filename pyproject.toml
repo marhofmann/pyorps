@@ -13,7 +13,7 @@ version = "0.2.0"
 description = "PYORPS - (Python for Optimal Routes in Power Systems)"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {file = "LICENSE"}  # FIXED: was license-files
+license-files = ["LICENSE"]
 authors = [
     {name = "Martin Hofmann", email = "martin.hofmann-3@ei.thm.de"},
 ]

@@ -19,22 +19,28 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc g++ libomp-dev
+
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install setuptools wheel cython numpy
           pip install flake8 pylint pytest
+
+      - name: Install package
+        run: |
           pip install -e .[full]
 
       - name: Check with Flake8
         continue-on-error: true
         run: |
-          # Stop the build if there are Python syntax errors or undefined names
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Check all other issues with a reasonable line length limit
           flake8 . --count --max-complexity=10 --max-line-length=88 --statistics
 
       - name: Lint with Pylint
         continue-on-error: true
         run: |
-          Get-ChildItem -Path . -Filter "*.py" -Recurse | ForEach-Object { pylint --disable=C0111,R0903,C0103 $_.FullName }
-        shell: pwsh
+          find . -name "*.py" -exec pylint --disable=C0111,R0903,C0103 {} \;

@@ -1,5 +1,6 @@
 import os
 import sys
+import platform
 from setuptools import setup, Extension
 import numpy as np
 
@@ -10,75 +11,149 @@ try:
     HAS_CYTHON = True
 except ImportError:
     HAS_CYTHON = False
+    print("Warning: Cython not available. Skipping Cython extensions.")
 
 
 def get_extensions():
-    """Get list of extensions to build"""
+    """Get list of extensions to build with platform-specific configuration"""
     extensions = []
 
     # Check if Cython source file exists
     pyx_file = "pyorps/utils/find_path_cython.pyx"
-    if os.path.exists(pyx_file) and HAS_CYTHON:
-        # Platform-specific compiler arguments
-        is_windows = sys.platform.startswith("win")
+    if not os.path.exists(pyx_file):
+        print(f"Warning: Cython source file {pyx_file} not found. Skipping extension.")
+        return extensions
 
-        if is_windows:
-            extra_compile_args = ["/O2", "/fp:fast"]
-            extra_link_args = []
-            # Try to add OpenMP support
+    if not HAS_CYTHON:
+        print("Warning: Cython not available. Skipping extension.")
+        return extensions
+
+    # Detect platform
+    system = platform.system().lower()
+    print(f"Building for platform: {system}")
+
+    # Platform-specific compiler and linker arguments
+    if system == "windows":
+        # Windows MSVC compiler flags
+        extra_compile_args = [
+            "/O2",  # Optimization level 2
+            "/fp:fast",  # Fast floating point model
+            "/EHsc",  # Exception handling
+        ]
+        extra_link_args = []
+
+        # Try to add OpenMP support for Windows
+        try:
+            extra_compile_args.append("/openmp")
+            print("Added OpenMP support for Windows")
+        except Exception as e:
+            print(f"Warning: Could not add OpenMP support for Windows: {e}")
+
+    else:
+        # Linux/macOS GCC compiler flags
+        extra_compile_args = [
+            "-O3",  # Optimization level 3
+            "-std=c++11",  # C++11 standard
+            "-ffast-math",  # Fast math operations
+            "-fno-strict-aliasing",  # Avoid strict aliasing issues
+        ]
+        extra_link_args = []
+
+        # Try to add OpenMP support for Linux/macOS
+        try:
+            extra_compile_args.extend(["-fopenmp"])
+            extra_link_args.extend(["-fopenmp"])
+            print("Added OpenMP support for Linux/macOS")
+        except Exception as e:
+            print(f"Warning: Could not add OpenMP support for Linux/macOS: {e}")
+
+        # Add architecture-specific optimizations for Linux
+        if system == "linux":
             try:
-                extra_compile_args.append('/openmp')
-            except:
-                pass
-        else:
-            extra_compile_args = ["-O3", "-std=c++11"]
-            extra_link_args = []
-            # Try to add OpenMP support
-            try:
-                extra_compile_args.append('-fopenmp')
-                extra_link_args.append('-fopenmp')
-            except:
-                pass
+                extra_compile_args.append("-march=native")
+                print("Added native architecture optimization")
+            except Exception as e:
+                print(f"Warning: Could not add native optimization: {e}")
 
-        # Add numpy API version
-        extra_compile_args.append('-DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION')
+    # Common compiler definitions (platform-independent)
+    extra_compile_args.extend([
+        "-DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION"
+    ])
 
-        # Create extension
+    # Debug output
+    print(f"Compiler args: {extra_compile_args}")
+    print(f"Linker args: {extra_link_args}")
+
+    # Create extension
+    try:
         ext = Extension(
-            "pyorps.utils.find_path_cython",
-            [pyx_file],
+            name="pyorps.utils.find_path_cython",
+            sources=[pyx_file],
             include_dirs=[np.get_include()],
             language="c++",
             extra_compile_args=extra_compile_args,
             extra_link_args=extra_link_args,
         )
-
         extensions.append(ext)
+        print(f"Successfully created extension for {pyx_file}")
+
+    except Exception as e:
+        print(f"Error creating extension: {e}")
+        return []
 
     return extensions
 
 
-# Get extensions
-extensions = get_extensions()
+def main():
+    """Main setup function"""
+    print("Starting setup.py...")
+    print(f"Python version: {sys.version}")
+    print(f"Platform: {platform.platform()}")
+    print(f"NumPy version: {np.version}")
 
-# Cythonize if we have extensions
-if extensions and HAS_CYTHON:
-    ext_modules = cythonize(
-        extensions,
-        compiler_directives={
-            'language_level': 3,
-            'boundscheck': False,
-            'wraparound': False,
-            'initializedcheck': False,
-            'cdivision': True,
-            'nonecheck': False,
-        }
+    # Get extensions
+    extensions = get_extensions()
+
+    # Cythonize if we have extensions
+    if extensions and HAS_CYTHON:
+        print("Cythonizing extensions...")
+        try:
+            ext_modules = cythonize(
+                extensions,
+                compiler_directives={
+                    'language_level': 3,  # Python 3
+                    'boundscheck': False,  # Disable bounds checking for performance
+                    'wraparound': False,  # Disable negative index wrapping
+                    'initializedcheck': False,  # Disable initialization checking
+                    'cdivision': True,  # Use C division semantics
+                    'nonecheck': False,  # Disable None checking
+                    'embedsignature': True,  # Embed function signatures in docstrings
+                    'binding': True,  # Enable binding for better debugging
+                },
+                # Build options
+                annotate=False,  # Set to True for HTML annotation files
+                force=True,  # Force rebuild
+                quiet=False,  # Verbose output
+            )
+            print(f"Successfully cythonized {len(ext_modules)} extensions")
+        except Exception as e:
+            print(f"Error during cythonization: {e}")
+            ext_modules = []
+    else:
+        ext_modules = []
+        if extensions:
+            print("Extensions found but Cython not available")
+        else:
+            print("No extensions to build")
+
+    # Run setup
+    print("Running setup...")
+    setup(
+        ext_modules=ext_modules,
+        zip_safe=False,  # Important for Cython extensions
     )
-else:
-    ext_modules = []
+    print("Setup completed successfully!")
 
-# Setup
-setup(
-    ext_modules=ext_modules,
-    zip_safe=False,  # Important for Cython extensions
-)
+
+if __name__ == "main":
+    main()
