@@ -103,7 +103,7 @@ def main():
     print("Starting setup.py...")
     print(f"Python version: {sys.version}")
     print(f"Platform: {platform.platform()}")
-    print(f"NumPy version: {np.version}")
+    print(f"NumPy version: {np.__version__}")
 
     # Clean up any existing build artifacts
     cleanup_dirs = ['build', 'dist', 'pyorps.egg-info']
@@ -156,5 +156,6 @@ def main():
     )
     print("Setup completed successfully!")
 
-if __name__ == "main":
+
+if __name__ == "__main__":
     main()
