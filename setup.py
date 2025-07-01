@@ -4,9 +4,9 @@ import platform
 from setuptools import setup, Extension
 import numpy as np
 
-
 try:
     from Cython.Build import cythonize
+
     HAS_CYTHON = True
 except ImportError:
     HAS_CYTHON = False
@@ -15,9 +15,22 @@ except ImportError:
 
 def get_extensions():
     extensions = []
-    pyx_file = "pyorps/utils/find_path_cython.pyx"
-    if not os.path.exists(pyx_file) or not HAS_CYTHON:
-        print(f"Warning: Cython source file {pyx_file} not found or Cython not available. Skipping extension.")
+
+    # Define individual .pyx files to compile as separate extensions
+    pyx_files = [
+        ("pyorps.utils.path_core", "pyorps/utils/path_core.pyx"),
+        ("pyorps.utils.path_algorithms", "pyorps/utils/path_algorithms.pyx")
+    ]
+
+    # Check if all files exist
+    missing_files = []
+    for name, file_path in pyx_files:
+        if not os.path.exists(file_path):
+            missing_files.append(file_path)
+
+    if missing_files or not HAS_CYTHON:
+        print(
+            f"Warning: Missing files {missing_files} or Cython not available. Skipping extension.")
         return extensions
 
     system = platform.system().lower()
@@ -25,29 +38,36 @@ def get_extensions():
 
     # Set up platform-specific flags
     if system == "windows":
-        # MSVC flags
-        extra_compile_args = ["/O2", "/fp:fast", "/EHsc", "/openmp", "/wd4551"]
+        # MSVC flags with NumPy deprecation fix
+        extra_compile_args = [
+            "/O2", "/fp:fast", "/EHsc", "/openmp", "/wd4551",
+            "/DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION"
+        ]
         extra_link_args = []
     else:
-        # GCC/Clang flags
+        # GCC/Clang flags with NumPy deprecation fix
         extra_compile_args = [
-            "-O3", "-std=c++11", "-ffast-math", "-fno-strict-aliasing", "-fopenmp"
+            "-O3", "-std=c++11", "-ffast-math", "-fno-strict-aliasing", "-fopenmp",
+            "-DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION"
         ]
         extra_link_args = ["-fopenmp"]
 
     print(f"Compiler args: {extra_compile_args}")
     print(f"Linker args: {extra_link_args}")
 
-    ext = Extension(
-        name="pyorps.utils.find_path_cython",
-        sources=[pyx_file],
-        include_dirs=[np.get_include()],
-        language="c++",
-        extra_compile_args=extra_compile_args,
-        extra_link_args=extra_link_args,
-    )
-    extensions.append(ext)
-    print(f"Successfully created extension for {pyx_file}")
+    # Create separate extensions for each .pyx file
+    for ext_name, source_file in pyx_files:
+        ext = Extension(
+            name=ext_name,
+            sources=[source_file],
+            include_dirs=[np.get_include(), "pyorps/utils/"],
+            language="c++",
+            extra_compile_args=extra_compile_args,
+            extra_link_args=extra_link_args,
+        )
+        extensions.append(ext)
+        print(f"Successfully created extension {ext_name} from {source_file}")
+
     return extensions
 
 
@@ -98,6 +118,7 @@ def main():
     setup(
         ext_modules=ext_modules,
         zip_safe=False,
+        include_dirs=[np.get_include(), "pyorps/utils/"]
     )
     print("Setup completed successfully!")
 

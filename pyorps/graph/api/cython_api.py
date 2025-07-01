@@ -4,10 +4,11 @@ from numpy import ndarray, array, uint32
 
 from pyorps.core.exceptions import PairwiseError
 from .graph_api import GraphAPI
-from pyorps.utils.find_path_cython import (dijkstra_2d_cython,
-                                           dijkstra_multiple_sources_multiple_targets,
-                                           dijkstra_single_source_multiple_targets,
-                                           dijkstra_some_pairs_shortest_paths)
+from pyorps.utils.path_algorithms import (dijkstra_2d_cython,
+                          dijkstra_multiple_sources_multiple_targets,
+                          dijkstra_single_source_multiple_targets,
+                          dijkstra_some_pairs_shortest_paths
+                          )
 
 
 class CythonAPI(GraphAPI):

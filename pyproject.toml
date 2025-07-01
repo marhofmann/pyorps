@@ -13,7 +13,7 @@ version = "0.2.0"
 description = "PYORPS - (Python for Optimal Routes in Power Systems)"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}  # FIXED: Use SPDX expression instead of file reference
+license-files = ["LICENSE"]
 authors = [
     {name = "Martin Hofmann", email = "martin.hofmann-3@ei.thm.de"},
 ]
