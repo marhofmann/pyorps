@@ -11,6 +11,7 @@ except ImportError:
     HAS_CYTHON = False
     print("Warning: Cython not available. Skipping Cython extensions.")
 
+
 def get_extensions():
     extensions = []
     pyx_file = "pyorps/utils/find_path_cython.pyx"
@@ -22,16 +23,15 @@ def get_extensions():
     print(f"Building for platform: {system}")
 
     if system == "windows":
-        # MSVC flags
         extra_compile_args = ["/O2", "/fp:fast", "/EHsc", "/openmp"]
         extra_link_args = []
     else:
-        # GCC/Clang flags
         extra_compile_args = ["-O3", "-std=c++11", "-ffast-math", "-fno-strict-aliasing", "-fopenmp"]
         extra_link_args = ["-fopenmp"]
 
-    # Common for all platforms
-    extra_compile_args.append("-DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION")
+    # Defensive: Remove any stray /wd4551
+    extra_compile_args = [arg for arg in extra_compile_args if arg != "/wd4551"]
+    extra_link_args = [arg for arg in extra_link_args if arg != "/wd4551"]
 
     print(f"Compiler args: {extra_compile_args}")
     print(f"Linker args: {extra_link_args}")
@@ -47,6 +47,7 @@ def get_extensions():
     extensions.append(ext)
     print(f"Successfully created extension for {pyx_file}")
     return extensions
+
 
 def main():
     print("Starting setup.py...")
@@ -97,6 +98,7 @@ def main():
         zip_safe=False,
     )
     print("Setup completed successfully!")
+
 
 if __name__ == "__main__":
     main()
