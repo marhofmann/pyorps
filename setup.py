@@ -4,6 +4,7 @@ import platform
 from setuptools import setup, Extension
 import numpy as np
 
+
 try:
     from Cython.Build import cythonize
     HAS_CYTHON = True
@@ -22,16 +23,17 @@ def get_extensions():
     system = platform.system().lower()
     print(f"Building for platform: {system}")
 
+    # Set up platform-specific flags
     if system == "windows":
-        extra_compile_args = ["/O2", "/fp:fast", "/EHsc", "/openmp"]
+        # MSVC flags
+        extra_compile_args = ["/O2", "/fp:fast", "/EHsc", "/openmp", "/wd4551"]
         extra_link_args = []
     else:
-        extra_compile_args = ["-O3", "-std=c++11", "-ffast-math", "-fno-strict-aliasing", "-fopenmp"]
+        # GCC/Clang flags
+        extra_compile_args = [
+            "-O3", "-std=c++11", "-ffast-math", "-fno-strict-aliasing", "-fopenmp"
+        ]
         extra_link_args = ["-fopenmp"]
-
-    # Defensive: Remove any stray /wd4551
-    extra_compile_args = [arg for arg in extra_compile_args if arg != "/wd4551"]
-    extra_link_args = [arg for arg in extra_link_args if arg != "/wd4551"]
 
     print(f"Compiler args: {extra_compile_args}")
     print(f"Linker args: {extra_link_args}")

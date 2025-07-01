@@ -1,7 +1,4 @@
-# distutils: language = c++
 # cython: language_level=3, boundscheck=False, wraparound=False, initializedcheck=False, cdivision=True, nonecheck=False
-# distutils: extra_compile_args = -fopenmp
-# distutils: extra_compile_args=["/wd4551"]
 
 import numpy as np
 cimport numpy as np
