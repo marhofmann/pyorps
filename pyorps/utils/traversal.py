@@ -156,31 +156,41 @@ def calculate_region_bounds(dr: int8_type, dc: int8_type,
     References:
         [1]
     """
-    # Calculate source region bounds based on step direction
-    if dr > 0:
-        s_rows_start, s_rows_end = 0, rows - dr
-    else:
-        s_rows_start, s_rows_end = abs(dr) if dr != 0 else 0, rows
+    s_c_end, s_c_start, s_r_end, s_r_start = _calculate_source_region_bounds(dr, rows,
+                                                                             dc, cols)
 
-    if dc > 0:
-        s_cols_start, s_cols_end = 0, cols - dc
-    else:
-        s_cols_start, s_cols_end = abs(dc) if dc != 0 else 0, cols
+    t_c_end, t_c_start, t_r_end, t_r_start = _calculate_target_region_bounds(dr, rows,
+                                                                             dc, cols)
 
+    return np.array(object=[s_r_start, s_r_end, s_c_start, s_c_end,
+                            t_r_start, t_r_end, t_c_start, t_c_end],
+                    dtype=np.uint32)
+
+
+def _calculate_target_region_bounds(dr, rows, dc, cols):
     # Calculate target region bounds based on step direction
     if dr > 0:
         t_rows_start, t_rows_end = dr, rows
     else:
         t_rows_start, t_rows_end = 0, rows + dr if dr != 0 else rows
-
     if dc > 0:
         t_cols_start, t_cols_end = dc, cols
     else:
         t_cols_start, t_cols_end = 0, cols + dc if dc != 0 else cols
+    return t_cols_end, t_cols_start, t_rows_end, t_rows_start
 
-    return np.array([s_rows_start, s_rows_end, s_cols_start, s_cols_end,
-                     t_rows_start, t_rows_end, t_cols_start, t_cols_end],
-                    dtype=np.uint32)
+
+def _calculate_source_region_bounds(dr, rows, dc, cols):
+    # Calculate source region bounds based on step direction
+    if dr > 0:
+        s_rows_start, s_rows_end = 0, rows - dr
+    else:
+        s_rows_start, s_rows_end = abs(dr) if dr != 0 else 0, rows
+    if dc > 0:
+        s_cols_start, s_cols_end = 0, cols - dc
+    else:
+        s_cols_start, s_cols_end = abs(dc) if dc != 0 else 0, cols
+    return s_cols_end, s_cols_start, s_rows_end, s_rows_start
 
 
 @nb.njit(boolean_type(

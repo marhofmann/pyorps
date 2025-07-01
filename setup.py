@@ -24,7 +24,7 @@ def get_extensions():
 
     # Check if all files exist
     missing_files = []
-    for name, file_path in pyx_files:
+    for _, file_path in pyx_files:
         if not os.path.exists(file_path):
             missing_files.append(file_path)
 

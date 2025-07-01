@@ -5,19 +5,7 @@ Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
-"""
 
-from typing import Optional, Any, Union, List
-from abc import abstractmethod
-import numpy as np
-from time import time
-
-from .graph_api import GraphAPI
-from pyorps.core.exceptions import NoPathFoundError, PairwiseError, PairwiseError
-from pyorps.core.types import SourceTargetType, Node, NodeList, NodePathList
-from pyorps.utils.traversal import construct_edges
-
-"""
 This file contains the abstract base class for the interface to the graph libraries.
 All specific graph library interfaces should inherit from this class. The workflow of
 the specific interfaces are determined by the respective graph library. The workflow
@@ -33,6 +21,17 @@ list, which leads to a much higher (more than double) memory usage!
 
 Please see the specific interfaces to the specific graph libraries for more details!
 """
+
+from typing import Optional, Any, Union, List
+from abc import abstractmethod
+import numpy as np
+from time import time
+
+from .graph_api import GraphAPI
+from pyorps.core.exceptions import NoPathFoundError, PairwiseError
+from pyorps.core.types import SourceTargetType, Node, NodeList, NodePathList
+from pyorps.utils.traversal import construct_edges
+
 
 class GraphLibraryAPI(GraphAPI):
     """

@@ -1,14 +1,12 @@
-from typing import Union
-from numpy import ndarray, array, uint32
-
+from numpy import array, uint32
 
 from pyorps.core.exceptions import PairwiseError
-from .graph_api import GraphAPI
+from pyorps.graph.api.graph_api import *
 from pyorps.utils.path_algorithms import (dijkstra_2d_cython,
-                          dijkstra_multiple_sources_multiple_targets,
-                          dijkstra_single_source_multiple_targets,
-                          dijkstra_some_pairs_shortest_paths
-                          )
+                                          dijkstra_multiple_sources_multiple_targets,
+                                          dijkstra_single_source_multiple_targets,
+                                          dijkstra_some_pairs_shortest_paths
+                                          )
 
 
 class CythonAPI(GraphAPI):
@@ -16,11 +14,13 @@ class CythonAPI(GraphAPI):
     Graph API implementation that directly uses Cython algorithms on the raster data.
     """
 
-    def shortest_path(self,
-                      source_indices: Union[int, list[int], ndarray[int]],
-                      target_indices: Union[int, list[int], ndarray[int]],
-                      algorithm: str = "dijkstra",
-                      pairwise: bool = False) -> list[list[int]]:
+    def shortest_path(
+            self,
+            source_indices: Union[int, list[int], ndarray[int]],
+            target_indices: Union[int, list[int], ndarray[int]],
+            algorithm: str = "dijkstra",
+            **kwargs
+    ) -> Union[NodeList, NodePathList]:
         """
         Find shortest/least-cost path(s) directly on raster data using Cython
         implementations.
@@ -35,23 +35,36 @@ class CythonAPI(GraphAPI):
             list of path indices for each source-target pair
         """
         # Check if we have multiple sources or targets
-        source_list = isinstance(source_indices, (list, ndarray))
-        is_source_list = source_list and len(source_indices) > 1
-        target_list = isinstance(target_indices, (list, ndarray))
-        is_target_list = target_list and len(target_indices) > 1
+        is_source_list, source_list = self.is_list(source_indices)
+        is_target_list, target_list = self.is_list(target_indices)
 
         # For single source and target
         if not is_source_list and not is_target_list:
-            source_idx = source_indices[0] if source_list else source_indices
-            target_idx = target_indices[0] if target_list else target_indices
+            return self._single_source_single_target(source_indices, source_list,
+                                                     target_indices, target_list)
 
-            path_indices = dijkstra_2d_cython(self.raster_data,
-                                              self.steps,
-                                              source_idx,
-                                              target_idx)
+        source_list, target_list = self._get_lists(source_indices,
+                                                   target_indices
+                                                   )
 
-            return list(path_indices)
+        # Case: single source, multiple targets
+        if not is_source_list:
+            paths = self._single_source_multi_target(source_list, target_indices)
 
+        # Case: multiple sources, multiple targets (all pairs)
+        # Case: multiple sources, multiple targets (same length -> pairwise)
+        else:
+            paths = self._multi_source_multi_target(source_indices, source_list,
+                                                    target_indices, target_list, kwargs)
+
+        return paths
+
+    def is_list(self, source_indices):
+        source_list = isinstance(source_indices, (list, ndarray))
+        is_source_list = source_list and len(source_indices) > 1
+        return is_source_list, source_list
+
+    def _get_lists(self, source_indices, target_indices):
         # Convert to lists if they aren't already
         if isinstance(source_indices, list):
             source_list = source_indices
@@ -61,33 +74,41 @@ class CythonAPI(GraphAPI):
             target_list = target_indices
         else:
             target_list = target_indices.tolist()
+        return source_list, target_list
 
-        # Case: single source, multiple targets
-        if not is_source_list:
-            source_idx = source_list[0]
-            s = array([source_idx], dtype=uint32)
-            t = array(target_indices, dtype=uint32)
-            paths_nb_list = dijkstra_single_source_multiple_targets(self.raster_data,
-                                                                    self.steps,
-                                                                    s, t)
-            paths = [list(path) for path in paths_nb_list]
-
-        # Case: multiple sources, multiple targets (all pairs)
-        # Case: multiple sources, multiple targets (same length -> pairwise)
+    def _multi_source_multi_target(self, source_indices, source_list, target_indices,
+                                   target_list, kwargs):
+        s = array(source_indices, dtype=uint32)
+        t = array(target_indices, dtype=uint32)
+        if kwargs.get('pairwise', False):
+            if len(source_list) != len(target_list):
+                raise PairwiseError()
+            paths = dijkstra_some_pairs_shortest_paths(self.raster_data,
+                                                       self.steps,
+                                                       s, t)
         else:
-            s = array(source_indices, dtype=uint32)
-            t = array(target_indices, dtype=uint32)
-
-            if pairwise:
-                if len(source_list) != len(target_list):
-                    raise PairwiseError()
-                paths = dijkstra_some_pairs_shortest_paths(self.raster_data,
-                                                           self.steps,
-                                                           s, t)
-            else:
-                paths = dijkstra_multiple_sources_multiple_targets(self.raster_data,
-                                                                   self.steps,
-                                                                   s, t)
-            paths = [list(p) for path in paths for p in path]
-
+            paths = dijkstra_multiple_sources_multiple_targets(self.raster_data,
+                                                               self.steps,
+                                                               s, t)
+        paths = [list(p) for path in paths for p in path]
         return paths
+
+    def _single_source_multi_target(self, source_list, target_indices):
+        source_idx = source_list[0]
+        s = array([source_idx], dtype=uint32)
+        t = array(target_indices, dtype=uint32)
+        paths_nb_list = dijkstra_single_source_multiple_targets(self.raster_data,
+                                                                self.steps,
+                                                                s, t)
+        paths = [list(path) for path in paths_nb_list]
+        return paths
+
+    def _single_source_single_target(self, source_indices, source_list, target_indices,
+                                     target_list):
+        source_idx = source_indices[0] if source_list else source_indices
+        target_idx = target_indices[0] if target_list else target_indices
+        path_indices = dijkstra_2d_cython(self.raster_data,
+                                          self.steps,
+                                          source_idx,
+                                          target_idx)
+        return list(path_indices)

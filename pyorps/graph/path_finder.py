@@ -280,11 +280,41 @@ class PathFinder:
         if len(input_data) == 0:
             return []
         elif all(isinstance(item, Point) for item in input_data):
-            return [(point.x, point.y) for point in input_data]
+            return PathFinder._get_point_coordinates(input_data)
         elif all(isinstance(item, MultiPoint) for item in input_data):
-            return [(p.x, p.y) for item in input_data for p in item.geoms]
+            return PathFinder._get_multipoint_coordinates(input_data)
         else:
             raise ValueError("Input data cannot be interpreted as coordinates")
+
+    @staticmethod
+    def _get_multipoint_coordinates(input_data):
+        """
+        Extracts coordinates from a collection of MultiPoint geometries
+
+        Parameters:
+            input_data: Collection of MultiPoint objects
+
+        Returns:
+            List of (x, y) coordinate tuples extracted from all points
+            within all MultiPoint geometries
+        """
+        # Iterate through each MultiPoint item and extract coordinates from each
+        # point geometry
+        return [(p.x, p.y) for item in input_data for p in item.geoms]
+
+    @staticmethod
+    def _get_point_coordinates(input_data):
+        """
+        Extracts coordinates from a collection of Point geometries
+
+        Parameters:
+            input_data: Collection of Point objects
+
+        Returns:
+            List of (x, y) coordinate tuples from the Point objects
+        """
+        # Extract x, y coordinates from each Point object
+        return [(point.x, point.y) for point in input_data]
 
     def create_raster_handler(
             self,
@@ -542,15 +572,20 @@ class PathFinder:
             # Case 2 & 3: Multiple paths
             # For single source + multiple targets OR multiple sources +
             # multiple targets
-            results = PathCollection()
-            for path in path_indices:
-                if not path:
-                    continue
-                source = self.get_coords_from_node_indices(path[0])[0]
-                target = self.get_coords_from_node_indices(path[-1])[0]
-                path = self._create_path_result(path, source, target, algorithm,
-                                                calculate_metrics)
-                results.add(path)
+            results = self._extract_path_results(path_indices, algorithm,
+                                                 calculate_metrics)
+        return results
+
+    def _extract_path_results(self, path_indices, algorithm, calculate_metrics):
+        results = PathCollection()
+        for path in path_indices:
+            if not path:
+                continue
+            source = self.get_coords_from_node_indices(path[0])[0]
+            target = self.get_coords_from_node_indices(path[-1])[0]
+            path = self._create_path_result(path, source, target, algorithm,
+                                            calculate_metrics)
+            results.add(path)
         return results
 
     def _create_path_result(self, path_indices, source, target, algorithm,

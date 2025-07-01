@@ -377,14 +377,15 @@ class CostAssumptions:
         if main_feature is None:
             raise FormatError("Main feature column not specified")
 
-        # Fill NA values
-        gdf[main_feature] = gdf[main_feature].fillna('')
-        for feat in side_features:
-            gdf[feat] = gdf[feat].fillna('')
+        CostAssumptions._init_feature_columns(gdf, main_feature, side_features)
 
+        self._set_cost_column(gdf, main_feature, side_features)
+
+        return gdf
+
+    def _set_cost_column(self, gdf, main_feature, side_features):
         # Handle different cost assumption structures
         first_key = next(iter(self.cost_assumptions), None)
-
         if isinstance(first_key, tuple):
             # Complex tuple keys structure - from multi-index
             self._apply_tuple_costs(gdf, main_feature, side_features)
@@ -396,7 +397,12 @@ class CostAssumptions:
             # Simple mapping with numeric values
             gdf['cost'] = gdf[main_feature].map(self.cost_assumptions)
 
-        return gdf
+    @staticmethod
+    def _init_feature_columns(gdf, main_feature, side_features):
+        # Fill NA values
+        gdf[main_feature] = gdf[main_feature].fillna('')
+        for feat in side_features:
+            gdf[feat] = gdf[feat].fillna('')
 
     def _apply_tuple_costs(
             self,
@@ -800,7 +806,7 @@ def column_shows_relationship_to_main_feature(
         null_cols = [col for col in crosstab.columns if pd.isna(col) or col == '']
         if null_cols:
             non_null_main_values = 0
-            for main_val, row in crosstab.iterrows():
+            for _, row in crosstab.iterrows():
                 if row.drop(null_cols, errors='ignore').sum() > 0:
                     non_null_main_values += 1
 
@@ -847,7 +853,7 @@ def get_zero_cost_assumptions(
         keys = pd.MultiIndex.from_frame(gdf.loc[:, columns]).values
 
         def key_valid(key):
-            not isinstance(key, str) and np.isnan(key)
+            return not isinstance(key, str) and np.isnan(key)
 
         keys = [tuple(['' if key_valid(key) else key for key in row]) for row in keys]
         cost_dict = {tuple(columns): dict(zip(keys, len(keys) * [0]))}
@@ -909,29 +915,7 @@ def calculate_column_statistics(
         if len(value_counts) > max_features_per_column:
             continue
 
-        # Calculate basic statistics
-        null_ratio = gdf[col].isna().mean()
-        is_good_candidate = (
-                len(value_counts) > 1 and
-                (len(value_counts) < len(gdf) * 0.3) and
-                null_ratio < 0.2
-        )
-
-        # Calculate entropy of count distribution
-        count_fractions = value_counts / len(gdf)
-        count_entropy = -sum((count_fractions * np.log2(count_fractions)).dropna())
-
-        # Store basic stats
-        col_stats[col] = {
-            'unique_values': len(value_counts),
-            'max_count': value_counts.max() if len(value_counts) > 0 else 0,
-            'min_count': value_counts.min() if len(value_counts) > 0 else 0,
-            'count_entropy': count_entropy,
-            'null_ratio': null_ratio,
-            'is_good': is_good_candidate
-        }
-
-        candidate_columns.append(col)
+        _get_column_statistics(gdf, col, col_stats, candidate_columns, value_counts)
 
     # Second pass: calculate area-based statistics only for candidates
     for col in candidate_columns:
@@ -940,20 +924,10 @@ def calculate_column_statistics(
         area_by_value = None
         area_fraction = None
 
-        try:
-            # Group by column and calculate total area for each value
-            area_by_value = gdf.groupby(col)['geometry'].apply(calculate_geometry_area)
-            total_area = area_by_value.sum()
-
-            if total_area > 0:
-                area_fraction = area_by_value / total_area
-                # Calculate entropy of area distribution
-                if not area_fraction.isna().all():
-                    entropies = (area_fraction * np.log2(area_fraction)).dropna()
-                    area_entropy = -sum(entropies)
-        except (AttributeError, ValueError, TypeError):
-            # Continue with default values for area statistics
-            pass
+        area_by_value, area_entropy, area_fraction = _get_column_metrics(gdf, col,
+                                                                         area_by_value,
+                                                                         area_entropy,
+                                                                         area_fraction)
 
         # Update with area-based statistics
         col_stats[col].update({
@@ -963,6 +937,82 @@ def calculate_column_statistics(
         })
 
     return col_stats
+
+
+def _get_column_statistics(gdf, col, col_stats, candidate_columns, value_counts):
+    """
+    Calculate basic statistical properties for a single column.
+
+    Parameters:
+        gdf: GeoDataFrame containing the data
+        col: Column name to analyze
+        col_stats: Dictionary to store calculated statistics
+        candidate_columns: List to append good candidate columns
+        value_counts: Pre-calculated value counts for the column
+    """
+    # Calculate basic statistics
+    null_ratio = gdf[col].isna().mean()  # Proportion of missing values
+
+    # Determine if column is a good candidate for analysis
+    is_good_candidate = (
+            len(value_counts) > 1 and  # More than one unique value
+            (len(value_counts) < len(gdf) * 0.3) and  # Not too many categories
+            null_ratio < 0.2  # Low missing data rate
+    )
+
+    # Calculate entropy of count distribution (measures diversity)
+    count_fractions = value_counts / len(gdf)  # Convert counts to proportions
+    count_entropy = -sum(
+        (count_fractions * np.log2(count_fractions)).dropna())  # Shannon entropy
+
+    # Store basic stats
+    col_stats[col] = {
+        'unique_values': len(value_counts),
+        'max_count': value_counts.max() if len(value_counts) > 0 else 0,
+        'min_count': value_counts.min() if len(value_counts) > 0 else 0,
+        'count_entropy': count_entropy,
+        'null_ratio': null_ratio,
+        'is_good': is_good_candidate
+    }
+    candidate_columns.append(col)
+
+
+def _get_column_metrics(gdf, col, area_by_value, area_entropy, area_fraction):
+    """
+    Calculate area-based metrics for a column using geometric information.
+
+    Parameters:
+        gdf: GeoDataFrame with geometry column
+        col: Column name to calculate metrics for
+        area_by_value: Initial area by value (will be calculated)
+        area_entropy: Initial area entropy (will be calculated)
+        area_fraction: Initial area fraction (will be calculated)
+
+    Returns:
+        tuple: (area_by_value, area_entropy, area_fraction) with calculated metrics
+    """
+    try:
+        # Group by column and calculate total area for each value
+        area_by_value = gdf.groupby(col)['geometry'].apply(calculate_geometry_area)
+        total_area = area_by_value.sum()
+
+        # Calculate area-based statistics if total area is positive
+        if total_area > 0:
+            # Calculate what fraction of total area each value represents
+            area_fraction = area_by_value / total_area
+
+            # Calculate entropy of area distribution (measures spatial diversity)
+            if not area_fraction.isna().all():
+                # Shannon entropy formula: -sum(p * log2(p)) where p is proportion
+                entropies = (area_fraction * np.log2(area_fraction)).dropna()
+                area_entropy = -sum(entropies)
+
+    except (AttributeError, ValueError, TypeError):
+        # Continue with default values for area statistics if geometry operations fail
+        # This handles cases where geometry might be invalid or missing
+        pass
+
+    return area_by_value, area_entropy, area_fraction
 
 
 def calculate_entropy_score(
