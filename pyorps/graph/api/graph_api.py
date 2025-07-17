@@ -7,7 +7,7 @@ Reference:
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
 from abc import ABC, abstractmethod
-from typing import Union
+from typing import Union, Optional
 
 from numpy import ndarray
 
@@ -20,7 +20,8 @@ class GraphAPI(ABC):
     def __init__(
             self,
             raster_data: ndarray[int],
-            steps: ndarray[int]
+            steps: ndarray[int],
+            ignore_max: Optional[bool] = True,
     ):
         """
         Initialize the base graph API with raster data and neighborhood steps.
@@ -28,9 +29,12 @@ class GraphAPI(ABC):
         Args:
             raster_data: 2D numpy array representing the raster costs
             steps: Array defining the neighborhood connections
+            ignore_max: Ignore edges whose weights are greater or equal to the maximum
+            value in the raster data
         """
         self.raster_data = raster_data
         self.steps = steps
+        self.ignore_max = ignore_max
 
     @abstractmethod
     def shortest_path(

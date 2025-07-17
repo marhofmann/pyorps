@@ -6,7 +6,7 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
-from typing import Union, Optional
+from typing import Union, Optional, Callable, Any
 from copy import deepcopy
 
 import numpy as np
@@ -200,7 +200,9 @@ class GeoRasterizer:
             save_path: Optional[str] = None,
             dtype: str = "uint16",
             geometry_buffer_m: float = 0,
-            bounding_box: Optional[Polygon] = None
+            bounding_box: Optional[Polygon] = None,
+            fancy_function: Optional[Callable] = None,
+            fancy_function_kwargs: Optional[dict[str, Any]] = None,
     ) -> RasterDataset:
         """
         Rasterize the base dataset based on a specified field.
@@ -213,7 +215,10 @@ class GeoRasterizer:
             dtype: Data type for the output raster
             geometry_buffer_m: Buffer to apply to the dataset geometries
             bounding_box: Bounding box to define the rasterization extent
-
+            fancy_function: A function that takes the base dataset as a first
+            argument and other arguments defined in fancy_function_kwargs which will
+            be called before rasterization
+            fancy_function_kwargs: The keyword arguments passed to fancy_function
         Returns:
             tuple of (raster_data, transform)
         """
@@ -222,6 +227,9 @@ class GeoRasterizer:
 
         if self.base_dataset is None or self.base_dataset.data is None:
             raise ValueError("No base dataset loaded to rasterize")
+
+        if fancy_function is not None:
+            fancy_function(self.base_dataset.data, **fancy_function_kwargs)
 
         # Add cost field
         if field_name == 'cost':
@@ -543,7 +551,14 @@ class GeoRasterizer:
                     ignore_value_mask = self.raster != ignore_value
 
                 mask = mask_array & ignore_value_mask
-                self.raster[mask] = unique_value
+
+                # Modify the raster values based on the specified parameters
+                if multiply:
+                    # Set the raster cells to a multiple of the existing values
+                    self.raster[mask] = self.raster[mask] * unique_value
+                else:
+                    # Set the raster cells to the new value
+                    self.raster[mask] = unique_value
         return self.raster
 
     def _modify_raster_from_dataset_simple_cost_assumptions(

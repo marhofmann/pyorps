@@ -281,7 +281,8 @@ class TestTraversalHelpers(unittest.TestCase):
     def test_construct_edges(self):
         """Test construct_edges function."""
         # Construct edges
-        from_nodes, to_nodes, costs = construct_edges(self.raster, self.steps, ignore_max=False)
+        from_nodes, to_nodes, costs = construct_edges(self.raster, self.steps,
+                                                      ignore_max=False)
 
         # Calculate expected number of edges
         # Each step direction should produce (3-1)*3 = 6 edges

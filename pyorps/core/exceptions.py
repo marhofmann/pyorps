@@ -100,9 +100,10 @@ class NoPathFoundError(Exception):
     """
     Custom exception if no path can be found in the graph for source and target
     """
-    def __init__(self, source: int, target: int) -> None:
+    def __init__(self, source: int, target: int, add_message: str = '') -> None:
         message = (f"No path found from {source} to {target}! Choose different "
                    f"source and target or increase buffer!")
+        message = message + add_message
         super().__init__(message)
 
 

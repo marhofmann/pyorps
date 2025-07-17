@@ -34,6 +34,9 @@ class CythonAPI(GraphAPI):
         Returns:
             list of path indices for each source-target pair
         """
+
+        self.max_value = 65535 if self.ignore_max else 65534
+
         # Check if we have multiple sources or targets
         is_source_list, source_list = self.is_list(source_indices)
         is_target_list, target_list = self.is_list(target_indices)
@@ -85,11 +88,13 @@ class CythonAPI(GraphAPI):
                 raise PairwiseError()
             paths = dijkstra_some_pairs_shortest_paths(self.raster_data,
                                                        self.steps,
-                                                       s, t)
+                                                       s, t,
+                                                       max_value=self.max_value)
         else:
             paths = dijkstra_multiple_sources_multiple_targets(self.raster_data,
                                                                self.steps,
-                                                               s, t)
+                                                               s, t,
+                                                               max_value=self.max_value)
         paths = [list(p) for path in paths for p in path]
         return paths
 
@@ -99,7 +104,8 @@ class CythonAPI(GraphAPI):
         t = array(target_indices, dtype=uint32)
         paths_nb_list = dijkstra_single_source_multiple_targets(self.raster_data,
                                                                 self.steps,
-                                                                s, t)
+                                                                s, t,
+                                                                self.max_value)
         paths = [list(path) for path in paths_nb_list]
         return paths
 
@@ -110,5 +116,6 @@ class CythonAPI(GraphAPI):
         path_indices = dijkstra_2d_cython(self.raster_data,
                                           self.steps,
                                           source_idx,
-                                          target_idx)
+                                          target_idx,
+                                          max_value=self.max_value)
         return list(path_indices)

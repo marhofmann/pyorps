@@ -42,29 +42,27 @@ class GraphLibraryAPI(GraphAPI):
     constructed.
     """
 
-    def __init__(
-            self,
-            raster_data: np.ndarray[int],
-            steps: np.ndarray[int],
-            from_nodes: Optional[np.ndarray] = None,
-            to_nodes: Optional[np.ndarray] = None,
-            cost: Optional[np.ndarray] = None,
-            ignore_max: Optional[bool] = True,
-            **kwargs
-    ):
+    def __init__(self,
+                 raster_data: np.ndarray[int],
+                 steps: np.ndarray[int],
+                 ignore_max: Optional[bool] = True,
+                 from_nodes: Optional[np.ndarray] = None,
+                 to_nodes: Optional[np.ndarray] = None,
+                 cost: Optional[np.ndarray] = None, **kwargs):
         """
         Initialize the graph library API.
 
         Parameters:
             raster_data: 2D numpy array representing the raster
             steps: Array defining the neighborhood connections
+            ignore_max: Ignore edges whose weights are greater or equal to the maximum
+            value in the raster data
             from_nodes: Source node indices for edges
             to_nodes: Target node indices for edges
             cost: Edge weights
-            ignore_max: Ignore edges whose weights are equal to the maximum value in
-            the raster data
+
         """
-        super().__init__(raster_data, steps)
+        super().__init__(raster_data, steps, ignore_max)
 
         self.edge_construction_time = 0.0
         if from_nodes is None or to_nodes is None:
@@ -72,7 +70,7 @@ class GraphLibraryAPI(GraphAPI):
             from_nodes, to_nodes, cost = construct_edges(
                 self.raster_data,
                 self.steps,
-                ignore_max
+                self.ignore_max
             )
             self.edge_construction_time = time() - before_constructing_edge_data
 

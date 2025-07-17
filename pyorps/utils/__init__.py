@@ -34,7 +34,6 @@ from .traversal import (
     calculate_segment_length
 )
 
-# pyorps/utils/__init__.py
 
 # Try to import Cython extensions
 try:

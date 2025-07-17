@@ -21,6 +21,7 @@ from pyorps.core.types import (BboxType, GeometryMaskType, InputDataType,
                                CostAssumptionsType, CoordinateInput, Node, NodeList,
                                NodePathList, NormalizedCoordinate, CoordinateTuple,
                                CoordinateList)
+from pyorps.core.exceptions import NoPathFoundError
 from pyorps.graph.api.graph_api import GraphAPI
 from pyorps.raster.rasterizer import GeoRasterizer
 from pyorps.raster.handler import RasterHandler
@@ -347,12 +348,15 @@ class PathFinder:
             if isinstance(self.dataset, VectorDataset) and cost_assumptions is not None:
                 # Create a GeoRasterizer and rasterize the vector data
                 self.geo_rasterizer = GeoRasterizer(self.dataset, cost_assumptions)
-                self.geo_rasterizer.rasterize(save_path=raster_save_path, **kwargs)
+                self.geo_rasterizer.rasterize(**kwargs)
 
                 # Apply any additional dataset modifications
                 if datasets_to_modify:
                     for dataset_params in datasets_to_modify:
                         self.geo_rasterizer.modify_raster_from_dataset(**dataset_params)
+
+                if raster_save_path is not None:
+                    self.geo_rasterizer.save_raster(save_path=raster_save_path)
 
                 # Create RasterHandler with the rasterized data
                 self.raster_handler = RasterHandler(
@@ -418,11 +422,9 @@ class PathFinder:
         raster_data = self.raster_handler.data[band_index]
 
         # Create graph using the graph API
-        if self.graph_api_name != "cython":
-            self._graph_api = graph_api_class_constructor(raster_data, self.steps,
-                                                          ignore_max=self.ignore_max_cost)
-        else:
-            self._graph_api = graph_api_class_constructor(raster_data, self.steps)
+        self._graph_api = graph_api_class_constructor(raster_data,
+                                                      self.steps,
+                                                      ignore_max=self.ignore_max_cost)
 
         # Save edge construction and graph creation times
         if (hasattr(self._graph_api, 'edge_construction_time') and
@@ -563,6 +565,14 @@ class PathFinder:
                 pairwise=pairwise,
                 **kwargs
             )
+
+        if len(path_indices) == 0:
+            msg = (f"In some cases, this happens if source or target are within a "
+                   f"pixel with max cost and ignore_max is set to True! "
+                   f"Either change the coordinates of source or target, change the "
+                   f"cost value to a vlue smaller than the maximum or set ignore_max "
+                   f"to False!")
+            raise NoPathFoundError(source_indices, target_indices, msg)
 
         # Case 1: Single source, single target -> single path
         if not isinstance(path_indices[0], list):

@@ -254,7 +254,7 @@ def group_by_proximity( np.ndarray[np.uint32_t, ndim=1] source_indices, int cols
     return sorted_indices
 
 #Utility functions for raster processing and path validation
-def create_exclude_mask( np.ndarray[uint16_t, ndim=2] raster_arr, uint16_t max_value):
+def create_exclude_mask(np.ndarray[uint16_t, ndim=2] raster_arr, uint16_t max_value):
     """
     Create a binary mask identifying traversable cells in the raster.
 
