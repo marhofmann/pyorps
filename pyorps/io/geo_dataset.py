@@ -150,7 +150,9 @@ class WFSVectorDataset(LocalVectorDataset):
                              f"\nPlease provide a dictionary with a valid 'url' and "
                              f"'layer' key-value pairs!")
         else:
-
+            if self.bbox is None and self.mask is not None:
+                bounds = self.mask.total_bounds
+                self.bbox = (bounds[0], bounds[1], bounds[2], bounds[3])
             self.data = load_from_wfs(
                 url=self.file_source["url"],
                 layer=self.file_source["layer"],
