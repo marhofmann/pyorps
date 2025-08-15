@@ -59,8 +59,7 @@ class TestTraversalBasics(unittest.TestCase):
         bounds = calculate_region_bounds(1, 1, 5, 5)
 
         # Unpack the 8 values
-        (s_rows_start, s_rows_end, s_cols_start, s_cols_end,
-         t_rows_start, t_rows_end, t_cols_start, t_cols_end) = bounds
+        s_rows_start, s_rows_end, s_cols_start, s_cols_end = bounds
 
         # Source region should be (0,0) to (4,4)
         self.assertEqual(s_rows_start, 0)
@@ -68,11 +67,6 @@ class TestTraversalBasics(unittest.TestCase):
         self.assertEqual(s_cols_start, 0)
         self.assertEqual(s_cols_end, 4)
 
-        # Target region should be (1,1) to (5,5)
-        self.assertEqual(t_rows_start, 1)
-        self.assertEqual(t_rows_end, 5)
-        self.assertEqual(t_cols_start, 1)
-        self.assertEqual(t_cols_end, 5)
 
     def test_calculate_segment_length(self):
         """Test calculate_segment_length function."""

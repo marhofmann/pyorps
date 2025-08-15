@@ -145,7 +145,7 @@ def _calculate_target_region_bounds(dr, rows, dc, cols):
         t_cols_start, t_cols_end = dc, cols
     else:
         t_cols_start, t_cols_end = 0, cols + dc if dc != 0 else cols
-    return np.array([t_cols_start, t_cols_end, t_rows_start, t_rows_end],
+    return np.array([t_rows_start, t_rows_end, t_cols_start, t_cols_end],
                     dtype=np.uint32)
 
 
@@ -161,7 +161,7 @@ def _calculate_source_region_bounds(dr, rows, dc, cols):
         s_cols_start, s_cols_end = 0, cols - dc
     else:
         s_cols_start, s_cols_end = abs(dc) if dc != 0 else 0, cols
-    return np.array([s_cols_start, s_cols_end, s_rows_start, s_rows_end],
+    return np.array([s_rows_start, s_rows_end, s_cols_start, s_cols_end],
                     dtype=np.uint32)
 
 
@@ -188,11 +188,9 @@ def calculate_region_bounds(dr: int8_type, dc: int8_type,
     References:
         [1]
     """
+
     source_region_bounds = _calculate_source_region_bounds(dr, rows, dc, cols)
-
-    target_region_bounds = _calculate_target_region_bounds(dr, rows, dc, cols)
-
-    return np.concatenate((source_region_bounds, target_region_bounds))
+    return source_region_bounds
 
 
 @nb.njit(boolean_type(
@@ -369,9 +367,9 @@ def get_max_number_of_edges(n: uint32_type,
     return max_nr_of_edges
 
 
-@nb.njit(nb.types.Tuple((uint32_1d_array, uint32_1d_array, float64_1d_array))
-         (uint16_2d_array, int8_2d_array, nb.types.boolean),
-         parallel=True, cache=True, fastmath=True)
+#@nb.njit(nb.types.Tuple((uint32_1d_array, uint32_1d_array, float64_1d_array))
+#         (uint16_2d_array, int8_2d_array, nb.types.boolean),
+#         parallel=True, cache=True, fastmath=True)
 def construct_edges(raster: uint16_2d_array,
                     steps: int8_2d_array,
                     ignore_max: nb.types.boolean = True
