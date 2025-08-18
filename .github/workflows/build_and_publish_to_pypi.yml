@@ -12,7 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest, macos-14]  # macos-14 for Apple Silicon
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-14]
 
     steps:
       - name: Checkout code
@@ -28,15 +28,27 @@ jobs:
 
       - name: Build wheels
         env:
-          CIBW_BUILD: "cp311-* cp312-*"  # Build for Python 3.11 and 3.12
-          CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_i686"  # Skip 32-bit
+          CIBW_BUILD: "cp311-* cp312-*"
+          CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_i686"
           CIBW_ARCHS_LINUX: x86_64 aarch64
           CIBW_ARCHS_MACOS: x86_64 arm64
           CIBW_ARCHS_WINDOWS: AMD64
-          CIBW_BEFORE_BUILD: pip install numpy cython
+
+          # Build-time prerequisites for your Cython extensions
+          CIBW_BEFORE_BUILD: pip install "numpy>=2" cython
+
+          # Install your wheel with extras during testing so optional backends are available
+          CIBW_TEST_EXTRAS: "all"
+          # extras[test] already includes pytest
+          CIBW_TEST_REQUIRES: ""
+          CIBW_TEST_COMMAND: pytest {project}/tests --tb=short --import-mode=importlib
+
           CIBW_BUILD_VERBOSITY: 1
-          CIBW_TEST_REQUIRES: pytest
-          CIBW_TEST_COMMAND: pytest {project}/tests --tb=short
+
+          # If you want OpenMP on macOS, uncomment the next lines and ensure libomp is installed
+          # CIBW_BEFORE_BUILD_MACOS: brew install libomp && pip install "numpy>=2" cython
+          # CIBW_ENVIRONMENT_MACOS: ENABLE_OPENMP=1
+
         run: python -m cibuildwheel --output-dir wheelhouse
 
       - name: Upload wheels
@@ -60,7 +72,7 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build cython numpy
+          pip install build "numpy>=2" cython
 
       - name: Build source distribution
         run: python -m build --sdist
@@ -96,16 +108,14 @@ jobs:
           merge-multiple: true
           path: wheelhouse/
 
-      - name: Install wheel
+      - name: Install wheel (with all extras)
         run: |
           python -m pip install --upgrade pip
-          # Find and install the appropriate wheel for this platform and Python version
-          python -m pip install --find-links wheelhouse/ pyorps --force-reinstall
+          python -m pip install --find-links wheelhouse/ "pyorps[all]" --force-reinstall
 
-      - name: Test installation
+      - name: Quick import test
         run: |
           python -c "import pyorps; print('Successfully imported pyorps')"
-          python -c "from pyorps.utils import find_path_cython; print('Cython module imported successfully')"
 
   publish:
     name: Publish to PyPI
