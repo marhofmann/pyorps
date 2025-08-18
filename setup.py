@@ -6,7 +6,7 @@ from setuptools import Extension, setup
 try:
     from Cython.Build import cythonize
     HAS_CYTHON = True
-except Exception:
+except ImportError:
     HAS_CYTHON = False
 
 
@@ -96,3 +96,4 @@ def make_extensions():
 
 
 setup(ext_modules=make_extensions(), zip_safe=False)
+

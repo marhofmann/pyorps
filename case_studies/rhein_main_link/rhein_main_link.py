@@ -1,7 +1,7 @@
 
 from os.path import join
 import geopandas as gpd
-import numpy as np
+
 from pyorps import PathFinder
 
 
@@ -95,7 +95,7 @@ oberflaechennutzung_kosten = {
     }
 }
 
-bodenklassen_faktoren = {
+soil_classes_factors = {
     "AUSGANGSGE": {
         # Bodenklasse 5 - Faktor 1.0 (Basis)
         "Lösslehm, Löss": 1.0,
@@ -162,27 +162,22 @@ base_file = {
     "layer": "ave_Nutzung",
 }
 
-mask_path = r"data/shapes/praeferenzraum/masked.shp"
+local_directory = r"data/shapes"
 
-# he_path = (r"<local-path>"
-#        r".geojson")
-# pref_path = (r"<local-path>"
-#          r"/rhein_main_link/data/shapes/praeferenzraum/pref.shp")
-# he = gpd.read_file(he_path)
-# pref = gpd.read_file(pref_path)
-# mask = he.intersection(pref)
-# mask.to_file()
+mask_path = join(local_directory, r"praeferenzraum\masked.shp")
 
-source_path = r"data/shapes/source_and_target/sources_HE.shp"
-target_path = r"data/shapes/source_and_target/targets_HE.shp"
+soil_classes = join(local_directory,
+                    r"additional_data\Bodeneinheiten_Bodenuebersicht_500000.shp",)
+nature_reserves = join(local_directory,
+                       r"additional_data\Natura2000_end2021_rev1_epsg3035.shp")
+drinking_water_protection = join(local_directory, "additional_data/TWS_HQS_TK25.shp")
+wind_energy_area = join(local_directory, r"additional_data\RTW_WINDENERGIE16_F.shp")
 
-
-directory = (r"<local-path>"
-             r"\additional_data")
+source_path = join(local_directory, r"source_and_target\sources_HE.shp")
+target_path = join(local_directory, r"source_and_target\targets_HE.shp")
 
 source = gpd.read_file(source_path).loc[[0]]
 target = gpd.read_file(target_path).loc[[5]]
-
 
 mask = gpd.read_file(mask_path)
 buffers = [0, 20, 40, 60, 80, 100, 125]
@@ -191,44 +186,43 @@ for geometry_buffer_m in buffers:
     # the base data
     datasets_to_modify = [
         {
-            "input_data": r"<local-path> "
-                          r"<client>/Daten/Bodeneinheiten_Bodenuebersicht_500000.shp",
-            "cost_assumptions": bodenklassen_faktoren,
+            "input_data": soil_classes,
+            "cost_assumptions": soil_classes_factors,
             "multiply": True
         },
         {
-            "input_data": join(directory, "Natura2000_end2021_rev1_epsg3035.shp"),
+            "input_data": nature_reserves,
             "cost_assumptions": 1.25,
             "geometry_buffer_m": geometry_buffer_m,
             "multiply": True,
         },
         {
-            "input_data": join(directory, "TWS_HQS_TK25.shp"),
+            "input_data": drinking_water_protection,
             "cost_assumptions": water_protection_cost_assumptions,
             "geometry_buffer_m": geometry_buffer_m,
             "multiply": True,
         },
         {
-            "input_data": r"<local-path> "
-                          r"<client>/Daten/Sperrflächen.shp",
-            "cost_assumptions": 65535,
-            "multiply": False,
+            "input_data": wind_energy_area,
+            "cost_assumptions": 1.25,
+            "geometry_buffer_m": geometry_buffer_m,
+            "multiply": True,
         },
     ]
-
+    raster_path = join("data/raster", f"RML_buffer_{geometry_buffer_m}_m.tiff")
     path_finder = PathFinder(
         source_coords=source,
         target_coords=target,
         dataset_source=base_file,
         graph_api='cython',
         ignore_max_cost=True,
-        #datasets_to_modify=datasets_to_modify,
+        datasets_to_modify=datasets_to_modify,
         cost_assumptions=oberflaechennutzung_kosten,
-        search_space_buffer_m=5_000,
+        search_space_buffer_m=25_000,
         mask=mask,
-        raster_save_path=f"RML_buffer_{geometry_buffer_m}_m.tiff",
-        # fancy_function=fancy_function,
-        # fancy_function_kwargs=fancy_function_kwargs
+        raster_save_path=raster_path,
+        fancy_function=fancy_function,
+        #fancy_function_kwargs=fancy_function_kwargs
     )
     #path_finder.find_route()
     #path_finder.save_paths(f"RML_buffer_{geometry_buffer_m}_m.geojson")
