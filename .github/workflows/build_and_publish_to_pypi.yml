@@ -45,12 +45,12 @@ jobs:
           # Build-time prerequisites for your Cython extensions
           CIBW_BEFORE_BUILD: pip install "numpy>=2" cython
 
-          # Skip running tests inside manylinux to avoid pyproj source builds
+          # Do not run tests inside manylinux containers
           CIBW_TEST_SKIP: "*-manylinux_*"
 
-          # Run tests on Windows during build (copy tests so imports come from installed wheel)
+          # Optional: run tests for Windows build during cibuildwheel (from temp dir)
           CIBW_TEST_EXTRAS: "full"
-          CIBW_TEST_COMMAND_WINDOWS: powershell -Command "Copy-Item -Recurse -Force {project}\tests .; python -m pytest tests --tb=short"
+          CIBW_TEST_COMMAND_WINDOWS: powershell -Command "Copy-Item -Recurse -Force {project}\tests $env:TEMP\tests_run; Set-Location $env:TEMP\tests_run; python -m pytest . --tb=short --import-mode=importlib"
 
           CIBW_BUILD_VERBOSITY: 1
 
@@ -128,12 +128,31 @@ jobs:
         shell: bash
         run: |
           python -m pip install --find-links wheelhouse/ "pyorps[full]" --force-reinstall
+          python - <<'PY'
+          import pyorps, importlib.util
+          print("pyorps imported from:", pyorps.__file__)
+          spec = importlib.util.find_spec("pyorps.utils.path_algorithms")
+          print("pyorps.utils.path_algorithms from:", spec and spec.origin)
+          PY
 
-      - name: Run tests
+      - name: Run tests on Linux from a temp directory
+        if: runner.os == 'Linux'
         shell: bash
         run: |
-          cp -r tests ./tests_run
-          pytest tests_run --tb=short
+          TMPDIR=$(mktemp -d)
+          cp -r tests "$TMPDIR"/tests_run
+          cd "$TMPDIR"
+          pytest tests_run --tb=short --import-mode=importlib
+
+      - name: Run tests on Windows from a temp directory
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tmp = Join-Path $env:TEMP "tests_run_ci"
+          New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+          Copy-Item -Recurse -Force tests (Join-Path $tmp "tests_run")
+          Set-Location $tmp
+          python -m pytest tests_run --tb=short --import-mode=importlib
 
   publish:
     name: Publish to PyPI
