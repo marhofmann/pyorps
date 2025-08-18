@@ -2,14 +2,11 @@ include LICENSE
 include README.md
 include pyproject.toml
 include setup.py
-include pyorps/utils/.pxd include pyorps/utils/.pyx
-include pyorps/utils/*.cpp
+
 recursive-include pyorps *.py
 recursive-include pyorps *.pyx
 recursive-include pyorps *.pxd
+recursive-include pyorps *.cpp
+
 recursive-exclude pyorps *.pyc
 recursive-exclude pyorps __pycache__
-global-exclude *.c
-global-exclude *.cpp
-global-exclude *.so
-global-exclude *.pyd

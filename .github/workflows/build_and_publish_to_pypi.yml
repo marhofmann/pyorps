@@ -28,11 +28,8 @@ jobs:
 
       - name: Build wheels
         env:
-          # Target CPython versions
           CIBW_BUILD: "cp311-* cp312-*"
-          # Skip 32-bit and musllinux if you don't support them
           CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_i686"
-          # Architectures
           CIBW_ARCHS_LINUX: x86_64 aarch64
           CIBW_ARCHS_MACOS: x86_64 arm64
           CIBW_ARCHS_WINDOWS: AMD64
@@ -40,17 +37,17 @@ jobs:
           # Build-time prerequisites for your Cython extensions
           CIBW_BEFORE_BUILD: pip install "numpy>=2" cython
 
-          # Explicitly install optional backends before tests, so backend tests pass
-          CIBW_BEFORE_TEST: pip install -U "networkx>=3" "rustworkx>=0.14" "python-igraph>=0.11" "networkit>=11" "pytest>=7"
+          # Install your wheel with the full extra during tests
+          CIBW_TEST_EXTRAS: "full"
 
-          # Force pytest to import from installed wheel, not the source checkout
+          # Run tests against the installed wheel
           CIBW_TEST_COMMAND_LINUX: pytest {project}/tests --tb=short --import-mode=importlib
           CIBW_TEST_COMMAND_MACOS: pytest {project}/tests --tb=short --import-mode=importlib
           CIBW_TEST_COMMAND_WINDOWS: python -m pytest {project}\tests --tb=short --import-mode=importlib
 
           CIBW_BUILD_VERBOSITY: 1
 
-          # If you want OpenMP on macOS, uncomment the next lines and ensure libomp is installed
+          # Optional: enable OpenMP on macOS (if you’ve installed libomp)
           # CIBW_BEFORE_BUILD_MACOS: brew install libomp && pip install "numpy>=2" cython
           # CIBW_ENVIRONMENT_MACOS: ENABLE_OPENMP=1
 
@@ -113,14 +110,14 @@ jobs:
           merge-multiple: true
           path: wheelhouse/
 
-      - name: Install wheel (with all extras)
+      - name: Install wheel (with full extra)
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --find-links wheelhouse/ "pyorps[all]" --force-reinstall
+          python -m pip install --find-links wheelhouse/ "pyorps[full]" --force-reinstall
 
       - name: Quick import test
         run: |
-          python -c "import pyorps; import pyorps.utils.path_algorithms; print('Successfully imported pyorps and extension')"
+          python -c "import pyorps; import pyorps.utils.path_algorithms; print('Imported pyorps and extension OK')"
 
   publish:
     name: Publish to PyPI

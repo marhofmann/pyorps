@@ -22,7 +22,7 @@ keywords = [
     "distribution grid",
     "power systems planning",
     "path finding",
-    "rasterized GIS data"
+    "rasterized GIS data",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -50,55 +50,58 @@ include = ["pyorps*"]
 [tool.setuptools]
 include-package-data = true
 
-# Package data for Cython files
 [tool.setuptools.package-data]
 "pyorps.utils" = ["*.pyx", "*.pxd"]
 
 [project.urls]
-"Homepage" = "https://github.com/marhofmann/pyorps"
+Homepage = "https://github.com/marhofmann/pyorps"
 "Bug Tracker" = "https://github.com/marhofmann/pyorps/issues"
 
 [project.optional-dependencies]
-# Graph processing dependencies
 graph = [
     "rustworkx>=0.16.0",
-    "igraph>=0.11.0",
+    "python-igraph>=0.11.0",   # import name: igraph
     "networkx>=3.4.0",
     "networkit>=11.1",
 ]
-
-# Development and testing dependencies
 dev = [
     "coverage[toml]>=7.8.0",
     "pytest>=8.3.0",
     "cython>=3.0.0",
 ]
-
-# Examples dependencies
 examples = [
     "notebook>=7.4.0",
     "fiona>=1.10.0",
 ]
-
-# Case-studies dependencies
 case_studies = [
     "notebook>=7.4.0",
     "fiona>=1.10.0",
     "pandapower>=3.0.0",
-    "contextily>=1.6.0"
+    "contextily>=1.6.0",
 ]
-
-# Additional dependencies
 additionals = [
     "openpyxl>=3.1.0",
 ]
-
-# All optional dependencies
 full = [
-    "pyorps[graph,dev,examples,case_studies,additionals]",
+    # graph
+    "rustworkx>=0.16.0",
+    "python-igraph>=0.11.0",
+    "networkx>=3.4.0",
+    "networkit>=11.1",
+    # dev
+    "coverage[toml]>=7.8.0",
+    "pytest>=8.3.0",
+    "cython>=3.0.0",
+    # examples
+    "notebook>=7.4.0",
+    "fiona>=1.10.0",
+    # case_studies
+    "pandapower>=3.0.0",
+    "contextily>=1.6.0",
+    # additionals
+    "openpyxl>=3.1.0",
 ]
 
-# Coverage and other tool configurations...
 [tool.coverage.run]
 source = ["pyorps"]
 relative_files = true
@@ -121,5 +124,5 @@ exclude_lines = [
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
     "pass",
-    "raise ImportError"
+    "raise ImportError",
 ]
