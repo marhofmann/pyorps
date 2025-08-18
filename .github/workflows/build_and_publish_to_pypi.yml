@@ -11,8 +11,17 @@ jobs:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            CIBW_ARCHS_LINUX: "x86_64 aarch64"
+          - os: windows-latest
+            CIBW_ARCHS_WINDOWS: "AMD64"
+          - os: macos-13    # Intel host -> native x86_64 builds
+            CIBW_ARCHS_MACOS: "x86_64"
+          - os: macos-14    # Apple Silicon host -> native arm64 builds
+            CIBW_ARCHS_MACOS: "arm64"
 
     steps:
       - name: Checkout code
@@ -28,11 +37,15 @@ jobs:
 
       - name: Build wheels
         env:
+          # Target Python versions
           CIBW_BUILD: "cp311-* cp312-*"
+          # Skip 32-bit and musllinux if unsupported
           CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_i686"
-          CIBW_ARCHS_LINUX: x86_64 aarch64
-          CIBW_ARCHS_MACOS: x86_64 arm64
-          CIBW_ARCHS_WINDOWS: AMD64
+
+          # Architectures (from matrix)
+          CIBW_ARCHS_LINUX: ${{ matrix.CIBW_ARCHS_LINUX }}
+          CIBW_ARCHS_MACOS: ${{ matrix.CIBW_ARCHS_MACOS }}
+          CIBW_ARCHS_WINDOWS: ${{ matrix.CIBW_ARCHS_WINDOWS }}
 
           # Build-time prerequisites for your Cython extensions
           CIBW_BEFORE_BUILD: pip install "numpy>=2" cython
@@ -47,7 +60,7 @@ jobs:
 
           CIBW_BUILD_VERBOSITY: 1
 
-          # Optional: enable OpenMP on macOS (if libomp is installed)
+          # Optional: enable OpenMP on macOS (requires libomp)
           # CIBW_BEFORE_BUILD_MACOS: brew install libomp && pip install "numpy>=2" cython
           # CIBW_ENVIRONMENT_MACOS: ENABLE_OPENMP=1
 
@@ -83,15 +96,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cibw-sdist
-          path: dist/*.tar.gz
+          path: dist/*
 
   test-wheels:
     name: Test wheels
     needs: [build-wheels, build-sdist]
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-13, macos-14]
         python-version: ["3.11", "3.12"]
 
     steps:
@@ -117,7 +131,7 @@ jobs:
 
       - name: Quick import test
         run: |
-          python -c "import pyorps; import pyorps.utils.path_algorithms; print('Imported pyorps and extension OK')"
+          python -c "import pyorps, sys; print('pyorps:', pyorps.__file__); import pyorps.utils.path_algorithms as m; print('ext:', m.__file__)"
 
   publish:
     name: Publish to PyPI
@@ -135,5 +149,16 @@ jobs:
           merge-multiple: true
           path: dist/
 
+      - name: Collect distributions
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          mkdir -p upload
+          mv dist/**/*.whl upload/ || true
+          mv dist/**/*.tar.gz upload/ || true
+          ls -l upload
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: upload
