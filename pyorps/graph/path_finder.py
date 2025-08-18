@@ -111,7 +111,7 @@ class PathFinder:
             neighborhood_str: Optional[Union[str, int]] = "r2",
             steps: Optional[ndarray[int]] = None,
             ignore_max_cost: bool = True,
-            graph_api: str = "networkit",
+            graph_api: str = "cython",
             cost_assumptions: Optional[CostAssumptionsType] = None,
             datasets_to_modify: Optional[list[dict[str, Any]]] = None,
             crs: Optional[str] = None,
