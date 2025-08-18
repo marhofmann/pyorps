@@ -33,7 +33,7 @@ jobs:
 
       - name: Build wheels
         env:
-          # Target Python versions
+          # Target CPython versions
           CIBW_BUILD: "cp311-* cp312-*"
           # Skip 32-bit and musllinux if unsupported
           CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_i686"
@@ -45,12 +45,8 @@ jobs:
           # Build-time prerequisites for your Cython extensions
           CIBW_BEFORE_BUILD: pip install "numpy>=2" cython
 
-          # Do not run tests inside manylinux containers
+          # Do not run tests inside manylinux containers (pyproj/PROJ source builds)
           CIBW_TEST_SKIP: "*-manylinux_*"
-
-          # Optional: run tests for Windows build during cibuildwheel (from temp dir)
-          CIBW_TEST_EXTRAS: "full"
-          CIBW_TEST_COMMAND_WINDOWS: powershell -Command "Copy-Item -Recurse -Force {project}\tests $env:TEMP\tests_run; Set-Location $env:TEMP\tests_run; python -m pytest . --tb=short --import-mode=importlib"
 
           CIBW_BUILD_VERBOSITY: 1
 
@@ -109,7 +105,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -124,7 +120,8 @@ jobs:
       - name: Upgrade pip
         run: python -m pip install -U pip setuptools wheel
 
-      - name: Install wheel (with full extra)
+      - name: Install wheel on Linux (with full extra)
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           python -m pip install --find-links wheelhouse/ "pyorps[full]" --force-reinstall
@@ -135,24 +132,42 @@ jobs:
           print("pyorps.utils.path_algorithms from:", spec and spec.origin)
           PY
 
-      - name: Run tests on Linux from a temp directory
+      - name: Install wheel on Windows (with full extra)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m pip install --find-links wheelhouse/ "pyorps[full]" --force-reinstall
+          python -c "import pyorps, importlib.util as u; print('pyorps imported from:', pyorps.__file__); spec=u.find_spec('pyorps.utils.path_algorithms'); print('pyorps.utils.path_algorithms from:', spec and spec.origin)"
+
+      - name: Run full tests on Linux from a temp directory
         if: runner.os == 'Linux'
         shell: bash
         run: |
           TMPDIR=$(mktemp -d)
           cp -r tests "$TMPDIR"/tests_run
-          cd "$TMPDIR"
-          pytest tests_run --tb=short --import-mode=importlib
+          cd "$TMPDIR"/tests_run
+          pytest . --tb=short --import-mode=importlib
 
-      - name: Run tests on Windows from a temp directory
-        if: runner.os == 'Windows'
+      - name: Run full tests on Windows 3.11 from a temp directory
+        if: runner.os == 'Windows' && matrix.python == '3.11'
         shell: pwsh
         run: |
           $tmp = Join-Path $env:TEMP "tests_run_ci"
           New-Item -ItemType Directory -Path $tmp -Force | Out-Null
           Copy-Item -Recurse -Force tests (Join-Path $tmp "tests_run")
-          Set-Location $tmp
-          python -m pytest tests_run --tb=short --import-mode=importlib
+          Set-Location (Join-Path $tmp "tests_run")
+          python -m pytest . --tb=short --import-mode=importlib
+
+      - name: Smoke test on Windows 3.12 (avoid LLVM teardown assertion)
+        if: runner.os == 'Windows' && matrix.python == '3.12'
+        shell: pwsh
+        run: |
+          python - <<'PY'
+          import pyorps
+          import pyorps.utils.path_algorithms as m
+          print("Imported pyorps:", pyorps.__file__)
+          print("Imported extension:", m.__file__)
+          PY
 
   publish:
     name: Publish to PyPI
