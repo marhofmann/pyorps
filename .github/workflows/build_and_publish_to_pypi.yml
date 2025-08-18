@@ -40,14 +40,14 @@ jobs:
           # Install your wheel with the full extra during tests
           CIBW_TEST_EXTRAS: "full"
 
-          # Run tests against the installed wheel
-          CIBW_TEST_COMMAND_LINUX: pytest {project}/tests --tb=short --import-mode=importlib
-          CIBW_TEST_COMMAND_MACOS: pytest {project}/tests --tb=short --import-mode=importlib
-          CIBW_TEST_COMMAND_WINDOWS: python -m pytest {project}\tests --tb=short --import-mode=importlib
+          # Copy tests into the temp CWD so imports come from the installed wheel
+          CIBW_TEST_COMMAND_LINUX: bash -lc 'cp -r {project}/tests . && pytest tests --tb=short'
+          CIBW_TEST_COMMAND_MACOS: bash -lc 'cp -r {project}/tests . && pytest tests --tb=short'
+          CIBW_TEST_COMMAND_WINDOWS: powershell -Command "Copy-Item -Recurse -Force {project}\tests .; python -m pytest tests --tb=short"
 
           CIBW_BUILD_VERBOSITY: 1
 
-          # Optional: enable OpenMP on macOS (if you’ve installed libomp)
+          # Optional: enable OpenMP on macOS (if libomp is installed)
           # CIBW_BEFORE_BUILD_MACOS: brew install libomp && pip install "numpy>=2" cython
           # CIBW_ENVIRONMENT_MACOS: ENABLE_OPENMP=1
 

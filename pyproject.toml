@@ -60,7 +60,7 @@ Homepage = "https://github.com/marhofmann/pyorps"
 [project.optional-dependencies]
 graph = [
     "rustworkx>=0.16.0",
-    "python-igraph>=0.11.0",   # import name: igraph
+    "python-igraph>=0.11.0",
     "networkx>=3.4.0",
     "networkit>=11.1",
 ]

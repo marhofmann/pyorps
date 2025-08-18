@@ -1,7 +1,3 @@
-"""
-Run setup with:
-python setup.py build_ext --inplace
-"""
 import os
 import platform
 from pathlib import Path
@@ -10,7 +6,7 @@ from setuptools import Extension, setup
 try:
     from Cython.Build import cythonize
     HAS_CYTHON = True
-except ImportError:
+except Exception:
     HAS_CYTHON = False
 
 
