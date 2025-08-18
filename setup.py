@@ -43,19 +43,28 @@ def get_extensions():
 
     # Set up platform-specific flags
     if system == "windows":
-        # MSVC flags with NumPy deprecation fix
         extra_compile_args = [
             "/O2", "/fp:fast", "/EHsc", "/openmp", "/wd4551",
             "/DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION"
         ]
         extra_link_args = []
+        libraries = []
+    elif system == "darwin":
+        # Apple clang has no OpenMP by default; build without it
+        extra_compile_args = [
+            "-O3", "-std=c++11", "-ffast-math", "-fno-strict-aliasing",
+            "-DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION"
+        ]
+        extra_link_args = []
+        libraries = []
     else:
-        # GCC/Clang flags with NumPy deprecation fix
+        # Linux (GCC/Clang with OpenMP)
         extra_compile_args = [
             "-O3", "-std=c++11", "-ffast-math", "-fno-strict-aliasing", "-fopenmp",
             "-DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION"
         ]
         extra_link_args = ["-fopenmp"]
+        libraries = []
 
     print(f"Compiler args: {extra_compile_args}")
     print(f"Linker args: {extra_link_args}")
@@ -69,6 +78,7 @@ def get_extensions():
             language="c++",
             extra_compile_args=extra_compile_args,
             extra_link_args=extra_link_args,
+            libraries=libraries,
         )
         extensions.append(ext)
         print(f"Successfully created extension {ext_name} from {source_file}")
