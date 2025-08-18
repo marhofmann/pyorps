@@ -2,17 +2,30 @@
 Run setup with:
 python setup.py build_ext --inplace
 """
+
 import os
 import platform
 from pathlib import Path
-from setuptools import setup, Extension
+
 import numpy as np
+from setuptools import Extension, find_packages, setup
 
 try:
     from Cython.Build import cythonize
     HAS_CYTHON = True
 except Exception:
     HAS_CYTHON = False
+
+
+def read_version():
+    about = {}
+    version_file = Path("pyorps") / "__init__.py"
+    if version_file.exists():
+        exec(version_file.read_text(), about)
+        if "__version__" in about:
+            return about["__version__"]
+    # Fallback if not found
+    return "0.0.0"
 
 
 def make_extensions():
@@ -27,7 +40,10 @@ def make_extensions():
     # Platform-specific flags
     if system == "windows":
         extra_compile_args = [
-            "/O2", "/fp:fast", "/EHsc", "/openmp",
+            "/O2",
+            "/fp:fast",
+            "/EHsc",
+            "/openmp",
             "/DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION",
         ]
         extra_link_args = []
@@ -35,12 +51,14 @@ def make_extensions():
     elif system == "darwin":
         # Apple clang has no OpenMP by default; disabled unless explicitly enabled
         extra_compile_args = [
-            "-O3", "-std=c++11", "-ffast-math", "-fno-strict-aliasing",
+            "-O3",
+            "-std=c++11",
+            "-ffast-math",
+            "-fno-strict-aliasing",
             "-DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION",
         ]
         extra_link_args = []
         libraries = []
-
         if os.environ.get("ENABLE_OPENMP", "0") == "1":
             # Requires: brew install libomp and proper include/lib paths in CFLAGS/LDFLAGS
             extra_compile_args += ["-Xpreprocessor", "-fopenmp"]
@@ -48,7 +66,11 @@ def make_extensions():
     else:
         # Linux: enable OpenMP
         extra_compile_args = [
-            "-O3", "-std=c++11", "-ffast-math", "-fno-strict-aliasing", "-fopenmp",
+            "-O3",
+            "-std=c++11",
+            "-ffast-math",
+            "-fno-strict-aliasing",
+            "-fopenmp",
             "-DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION",
         ]
         extra_link_args = ["-fopenmp"]
@@ -101,12 +123,12 @@ def make_extensions():
     return extensions
 
 
-# Optional/test dependencies so CI can install them with CIBW_TEST_EXTRAS
+# Optional/test dependencies. We also install these explicitly in CI before tests.
 extras = {
     "graph": [
         "networkx>=3",
         "rustworkx>=0.14",
-        "python-igraph>=0.11",  # import name: igraph
+        "python-igraph>=0.11",  # import name is 'igraph'
         "networkit>=11",
     ],
     "test": [
@@ -116,7 +138,26 @@ extras = {
 extras["all"] = sorted(set(sum(extras.values(), [])))
 
 setup(
+    name="pyorps",
+    version=read_version(),
+    description="pyorps",
+    long_description="pyorps package",
+    long_description_content_type="text/markdown",
+    author="Your Name",
+    url="https://github.com/your-org/pyorps",
+    license="MIT",
+    packages=find_packages(exclude=("tests", "tests.*")),
+    include_package_data=True,
+    python_requires=">=3.11",
+    install_requires=[
+        # core runtime deps (if any)
+    ],
+    extras_require=extras,
     ext_modules=make_extensions(),
     zip_safe=False,
-    extras_require=extras,
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Cython",
+        "Operating System :: OS Independent",
+    ],
 )
