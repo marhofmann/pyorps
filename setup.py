@@ -1,3 +1,8 @@
+"""
+Run setup with:
+python setup.py build_ext --inplace
+"""
+
 import os
 import sys
 import platform
