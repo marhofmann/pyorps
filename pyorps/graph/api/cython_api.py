@@ -153,3 +153,4 @@ class CythonAPI(GraphAPI):
         else:
             raise AlgorthmNotImplementedError(algorithm, graph_library="cython")
         return list(path_indices)
+
