@@ -1,12 +1,17 @@
-from numpy import array, uint32
+from numpy import array, uint32, uint16
 
-from pyorps.core.exceptions import PairwiseError
+from pyorps.core.exceptions import PairwiseError, AlgorthmNotImplementedError
 from pyorps.graph.api.graph_api import *
 from pyorps.utils.path_algorithms import (dijkstra_2d_cython,
                                           dijkstra_multiple_sources_multiple_targets,
                                           dijkstra_single_source_multiple_targets,
                                           dijkstra_some_pairs_shortest_paths
                                           )
+from pyorps.utils.path_delta import (delta_stepping_2d,
+                                     delta_stepping_some_pairs_shortest_paths,
+                                     delta_stepping_multiple_sources_multiple_targets,
+                                     delta_stepping_single_source_multiple_targets,
+                                     estimate_optimal_delta_fast)
 
 
 class CythonAPI(GraphAPI):
@@ -44,21 +49,20 @@ class CythonAPI(GraphAPI):
         # For single source and target
         if not is_source_list and not is_target_list:
             return self._single_source_single_target(source_indices, source_list,
-                                                     target_indices, target_list)
-
-        source_list, target_list = self._get_lists(source_indices,
-                                                   target_indices
-                                                   )
+                                                     target_indices, target_list,
+                                                     algorithm=algorithm)
 
         # Case: single source, multiple targets
         if not is_source_list:
-            paths = self._single_source_multi_target(source_list, target_indices)
+            paths = self._single_source_multi_target(source_indices, target_indices,
+                                                     algorithm=algorithm)
 
         # Case: multiple sources, multiple targets (all pairs)
         # Case: multiple sources, multiple targets (same length -> pairwise)
         else:
             paths = self._multi_source_multi_target(source_indices, source_list,
-                                                    target_indices, target_list, kwargs)
+                                                    target_indices, target_list,
+                                                    algorithm, kwargs)
 
         return paths
 
@@ -80,42 +84,72 @@ class CythonAPI(GraphAPI):
         return source_list, target_list
 
     def _multi_source_multi_target(self, source_indices, source_list, target_indices,
-                                   target_list, kwargs):
+                                   target_list, algorithm, kwargs):
         s = array(source_indices, dtype=uint32)
         t = array(target_indices, dtype=uint32)
         if kwargs.get('pairwise', False):
             if len(source_list) != len(target_list):
                 raise PairwiseError()
-            paths = dijkstra_some_pairs_shortest_paths(self.raster_data,
-                                                       self.steps,
-                                                       s, t,
-                                                       max_value=self.max_value)
+            if algorithm.lower() == "dijkstra":
+                paths = dijkstra_some_pairs_shortest_paths(self.raster_data,
+                                                           self.steps,
+                                                           s, t,
+                                                           max_value=self.max_value)
+            elif algorithm.lower() == "delta-stepping":
+                func = delta_stepping_some_pairs_shortest_paths
+                paths = func(self.raster_data, self.steps, s, t, delta=50,
+                             max_value=self.max_value)
+            else:
+                raise AlgorthmNotImplementedError(algorithm, graph_library="cython")
+
         else:
-            paths = dijkstra_multiple_sources_multiple_targets(self.raster_data,
-                                                               self.steps,
-                                                               s, t,
-                                                               max_value=self.max_value)
+            if algorithm.lower() == "dijkstra":
+                paths = dijkstra_multiple_sources_multiple_targets(self.raster_data,
+                                                                   self.steps,
+                                                                   s, t,
+                                                                   self.max_value)
+            elif algorithm.lower() == "delta-stepping":
+                func = delta_stepping_multiple_sources_multiple_targets
+                paths = func(self.raster_data, self.steps, s, t, delta=50,
+                             max_value=self.max_value)
+            else:
+                raise AlgorthmNotImplementedError(algorithm, graph_library="cython")
+
         paths = [list(p) for path in paths for p in path]
         return paths
 
-    def _single_source_multi_target(self, source_list, target_indices):
-        source_idx = source_list[0]
+    def _single_source_multi_target(self, source_idx, target_indices, algorithm):
         s = array([source_idx], dtype=uint32)
         t = array(target_indices, dtype=uint32)
-        paths_nb_list = dijkstra_single_source_multiple_targets(self.raster_data,
-                                                                self.steps,
-                                                                s, t,
-                                                                self.max_value)
+        if algorithm.lower() == "dijkstra":
+            paths_nb_list = dijkstra_single_source_multiple_targets(self.raster_data,
+                                                                    self.steps,
+                                                                    s, t,
+                                                                    self.max_value)
+        elif algorithm.lower() == "delta-stepping":
+            func = delta_stepping_single_source_multiple_targets
+            paths_nb_list = func(self.raster_data, self.steps,
+                                 s, t, delta=50, max_value=self.max_value)
+        else:
+            raise AlgorthmNotImplementedError(algorithm, graph_library="cython")
+
         paths = [list(path) for path in paths_nb_list]
         return paths
 
     def _single_source_single_target(self, source_indices, source_list, target_indices,
-                                     target_list):
+                                     target_list, algorithm):
         source_idx = source_indices[0] if source_list else source_indices
         target_idx = target_indices[0] if target_list else target_indices
-        path_indices = dijkstra_2d_cython(self.raster_data,
-                                          self.steps,
-                                          source_idx,
-                                          target_idx,
-                                          max_value=self.max_value)
+        if algorithm.lower() == "dijkstra":
+            path_indices = dijkstra_2d_cython(self.raster_data,
+                                              self.steps,
+                                              source_idx,
+                                              target_idx,
+                                              max_value=self.max_value)
+        elif algorithm.lower() == "delta-stepping":
+            path_indices = delta_stepping_2d(self.raster_data, self.steps,
+                                             source_idx, target_idx, delta=50,
+                                             max_value=self.max_value)
+        else:
+            raise AlgorthmNotImplementedError(algorithm, graph_library="cython")
         return list(path_indices)

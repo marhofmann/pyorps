@@ -19,6 +19,7 @@ def make_extensions():
     modules = [
         ("pyorps.utils.path_core", "pyorps/utils/path_core"),
         ("pyorps.utils.path_algorithms", "pyorps/utils/path_algorithms"),
+        ("pyorps.utils.path_delta", "pyorps/utils/path_delta")
     ]
 
     system = platform.system().lower()
