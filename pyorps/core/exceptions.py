@@ -107,7 +107,7 @@ class NoPathFoundError(Exception):
         super().__init__(message)
 
 
-class AlgorthmNotImplementedError(Exception):
+class AlgorithmNotImplementedError(Exception):
     """
     Custom exception if a specific algorithm is not implemented in the API or the graph
     library

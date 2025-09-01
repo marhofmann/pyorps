@@ -12,7 +12,7 @@ from .exceptions import (
     # WFS exceptions
     WFSError, WFSConnectionError, WFSResponseParsingError, WFSLayerNotFoundError,
     # Graph API exceptions
-    RasterShapeError, NoPathFoundError, AlgorthmNotImplementedError
+    RasterShapeError, NoPathFoundError, AlgorithmNotImplementedError
 )
 
 __all__ = [
@@ -35,5 +35,5 @@ __all__ = [
     "WFSError", "WFSConnectionError", "WFSResponseParsingError", "WFSLayerNotFoundError",
 
     # Exceptions - Graph API
-    "RasterShapeError", "NoPathFoundError", "AlgorthmNotImplementedError"
+    "RasterShapeError", "NoPathFoundError", "AlgorithmNotImplementedError"
 ]

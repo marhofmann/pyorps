@@ -15,7 +15,7 @@ from networkit import Graph
 from networkit.distance import Dijkstra, BidirectionalDijkstra, AStar
 
 # Project files
-from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError
+from pyorps.core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
 from pyorps.core.types import Node, NodeList, NodePathList
 from pyorps.graph.api.graph_library_api import GraphLibraryAPI
 
@@ -137,7 +137,7 @@ class NetworkitAPI(GraphLibraryAPI):
             path = astar.getPath()
 
         else:
-            raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
+            raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
 
         if len(path) == 0:
             raise NoPathFoundError(source=source, target=target)
@@ -183,7 +183,7 @@ class NetworkitAPI(GraphLibraryAPI):
             else:
                 return self._compute_multi_target_dijkstra(source, targets)
         else:
-            raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
+            raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
 
     def _compute_multi_target_dijkstra(self, source, targets):
         # Use MultiTargetDijkstra for efficient computation

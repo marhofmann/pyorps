@@ -12,7 +12,7 @@ from numpy import where, ndarray, ravel_multi_index, max as np_max
 from typing import Optional
 
 # Project files
-from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError
+from pyorps.core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
 from pyorps.core.types import Node, NodeList, NodePathList
 from pyorps.graph.api.graph_library_api import GraphLibraryAPI
 
@@ -156,7 +156,7 @@ class RustworkxAPI(GraphLibraryAPI):
                                                       weight_fn=weight_fn)
                 path = list(path[target])
             else:
-                raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
+                raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
 
             return self._ensure_path_endpoints(path, source, target)
         except rx.NoPathFound:

@@ -367,9 +367,9 @@ def get_max_number_of_edges(n: uint32_type,
     return max_nr_of_edges
 
 
-#@nb.njit(nb.types.Tuple((uint32_1d_array, uint32_1d_array, float64_1d_array))
-#         (uint16_2d_array, int8_2d_array, nb.types.boolean),
-#         parallel=True, cache=True, fastmath=True)
+@nb.njit(nb.types.Tuple((uint32_1d_array, uint32_1d_array, float64_1d_array))
+         (uint16_2d_array, int8_2d_array, nb.types.boolean),
+         parallel=True, cache=True, fastmath=True)
 def construct_edges(raster: uint16_2d_array,
                     steps: int8_2d_array,
                     ignore_max: nb.types.boolean = True

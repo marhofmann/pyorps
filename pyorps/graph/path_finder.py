@@ -67,7 +67,7 @@ def get_graph_api_class(graph_api: str) -> type:
         ImportError: If the specified graph API module cannot be imported.
         ValueError: If the specified graph API is not supported.
     """
-    match graph_api:
+    match graph_api.lower():
         case "networkit":
             from pyorps.graph.api.networkit_api import NetworkitAPI
             return NetworkitAPI
@@ -575,7 +575,8 @@ class PathFinder:
             raise NoPathFoundError(source_indices, target_indices, msg)
 
         # Case 1: Single source, single target -> single path
-        if not isinstance(path_indices[0], list):
+        if (not isinstance(path_indices[0], list) and
+                not isinstance(path_indices[0], ndarray)):
             return self._create_path_result(path_indices, source, target, algorithm,
                                             calculate_metrics)
         else:
@@ -617,8 +618,8 @@ class PathFinder:
         path_coords = self.get_coords_from_node_indices(path_indices)
 
         # Calculate the Euclidean distance
-        euclidean_distance = sqrt((path_coords[0][0] - path_coords[0][1]) ** 2 +
-                                  (path_coords[-1][0] - path_coords[-1][1]) ** 2)
+        euclidean_distance = sqrt((path_coords[0][0] - path_coords[-1][0]) ** 2 +
+                                  (path_coords[0][1] - path_coords[-1][1]) ** 2)
 
         # Create LineString from path coordinates
         path_geometry = LineString(path_coords)

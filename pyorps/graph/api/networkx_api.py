@@ -14,7 +14,7 @@ from numpy import ndarray
 
 # Project files
 from pyorps.core.types import Node, NodeList, NodePathList
-from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError
+from pyorps.core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
 from pyorps.graph.api.graph_library_api import GraphLibraryAPI
 
 
@@ -132,7 +132,7 @@ class NetworkxAPI(GraphLibraryAPI):
                                      weight='weight')
 
             else:
-                raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
+                raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
 
         except nx.NetworkXNoPath:
             raise NoPathFoundError(source=source, target=target)
@@ -188,7 +188,7 @@ class NetworkxAPI(GraphLibraryAPI):
             return paths
 
         else:
-            raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
+            raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
 
     def _all_pairs_shortest_path(
             self,

@@ -14,7 +14,7 @@ from .path_finder import PathFinder, get_graph_api_class
 from ..core.path import Path, PathCollection
 
 # Import exceptions
-from ..core.exceptions import NoPathFoundError, AlgorthmNotImplementedError
+from ..core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
 
 # Import API base classes
 from .api import GraphAPI, GraphLibraryAPI
@@ -34,5 +34,5 @@ __all__ = [
 
     # Exceptions
     "NoPathFoundError",
-    "AlgorthmNotImplementedError"
+    "AlgorithmNotImplementedError"
 ]

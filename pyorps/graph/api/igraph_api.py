@@ -13,7 +13,7 @@ import igraph as ig
 from numpy import float64, ndarray, max as np_max
 
 # Project files
-from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError
+from pyorps.core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
 from pyorps.core.types import Node, NodeList, NodePathList
 from pyorps.graph.api.graph_library_api import GraphLibraryAPI
 
@@ -157,7 +157,7 @@ class IGraphAPI(GraphLibraryAPI):
                                                       output="vpath", mode="all")
 
         else:
-            raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
+            raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
 
         if len(path) == 0:
             raise NoPathFoundError(source=source, target=target)
@@ -218,7 +218,7 @@ class IGraphAPI(GraphLibraryAPI):
             return paths
 
         else:
-            raise AlgorthmNotImplementedError(algorithm, self.__class__.__name__)
+            raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
 
     def _all_pairs_shortest_path(
             self,

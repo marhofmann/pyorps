@@ -9,6 +9,7 @@ Reference:
 from typing import Optional, Any
 from dataclasses import dataclass
 
+from numpy import ndarray
 from shapely.geometry import LineString
 
 from pyorps.core.types import CoordinateTuple, NodeList, CoordinateList
@@ -89,6 +90,9 @@ class Path:
             result += f", length_m={self.total_length:.2f}"
         if self.total_cost is not None:
             result += f", cost={self.total_cost:.2f}"
+        if "runtime_total" in self.runtimes:
+            result += f", runtime_total={self.total_cost:.2f}"
+
         result += ")"
         return result
 
@@ -103,10 +107,18 @@ class Path:
         Check for equality between two paths.
         """
         equal = True
-        equal &= self.source.__eq__(other.source)
-        equal &= self.target.__eq__(other.target)
-        equal &= self.algorithm.__eq__(other.algorithm)
-        equal &= self.graph_api.__eq__(other.graph_api)
+        same_source = self.source.__eq__(other.source)
+
+        if isinstance(same_source, ndarray):
+            equal &= same_source.all()
+        else:
+            equal &= same_source
+
+        same_target = self.target.__eq__(other.target)
+        if isinstance(same_target, ndarray):
+            equal &= same_target.all()
+        else:
+            equal &= same_target
         equal &= all(pi in self.path_indices for pi in other.path_indices)
         equal &= self.euclidean_distance.__eq__(other.euclidean_distance)
         equal &= self.search_space_buffer_m.__eq__(other.search_space_buffer_m)
@@ -219,7 +231,20 @@ class PathCollection:
         """
         Return a string representation of the path collection.
         """
-        return f"PathCollection(count={len(self._paths)})"
+        if len(self._paths) <= 5:
+            paths_str = ""
+            for path in self._paths:
+                if paths_str != "":
+                    paths_str += ",\n"
+                paths_str += str(path)
+        else:
+            # Show first 2 paths and last path for large collections
+            paths_str = (f"\n\t{str(self.all[0])},"
+                          f"\n\t{str(self.all[1])},"
+                          f"\n\t ..., "
+                          f"\n\t{str(self.all[-1])}")
+
+        return f"PathCollection(paths=[{paths_str}], count={len(self._paths)})"
 
     def __repr__(self) -> str:
         """
@@ -256,4 +281,4 @@ class PathCollection:
         Check if PathCollections are equal. They do not have to be in the same order
         to be equal!
         """
-        return all(o in self.all for o in other.all)
+        return all(any(o == p for p in self.all) for o in other.all)

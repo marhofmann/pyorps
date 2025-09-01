@@ -39,8 +39,8 @@ class GraphAPI(ABC):
     @abstractmethod
     def shortest_path(
             self,
-            source_indices: Union[int, list[int], ndarray[int]],
-            target_indices: Union[int, list[int], ndarray[int]],
+            source_indices: Union[int, list[int], ndarray[int], tuple[int, int]],
+            target_indices: Union[int, list[int], ndarray[int], tuple[int, int]],
             algorithm: str = "dijkstra",
             **kwargs
     ) -> Union[NodeList, NodePathList]:
