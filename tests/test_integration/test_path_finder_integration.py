@@ -14,7 +14,7 @@ from pyorps.raster.handler import create_test_tiff
 from pyorps.core.cost_assumptions import CostAssumptions
 from pyorps.core.path import Path, PathCollection
 from pyorps.io.geo_dataset import initialize_geo_dataset, LocalRasterDataset, VectorDataset, RasterDataset
-from pyorps.core.exceptions import AlgorthmNotImplementedError
+from pyorps.core.exceptions import AlgorithmNotImplementedError
 
 # List of graph libraries to test
 LIBRARIES_AND_MODULE_NAMES = [
@@ -712,7 +712,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
                         # Check results based on scenario
                         self._validate_path_results(result, algorithm, test_name)
 
-                    except AlgorthmNotImplementedError:
+                    except AlgorithmNotImplementedError:
                         # If algorithm is truly not implemented, that's okay
                         warnings.warn(f"{test_name}: Algorithm not implemented")
                     except Exception as e:
@@ -785,7 +785,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
                 self.assertAlmostEqual(end_coord[0], self.target_coords[0], delta=5)
                 self.assertAlmostEqual(end_coord[1], self.target_coords[1], delta=5)
 
-            except AlgorthmNotImplementedError:
+            except AlgorithmNotImplementedError:
                 warnings.warn(f"Algorithm {algorithm} not implemented for {lib_name}")
 
         # Compare the paths from different algorithms

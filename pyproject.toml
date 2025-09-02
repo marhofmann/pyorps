@@ -41,6 +41,7 @@ dependencies = [
     "matplotlib>=3.10.0",
     "requests>=2.32.0",
     "defusedxml>=0.7.0",
+    "seaborn>=0.13.2",
 ]
 
 [tool.setuptools.packages.find]

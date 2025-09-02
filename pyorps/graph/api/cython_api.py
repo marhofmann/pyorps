@@ -83,21 +83,13 @@ class CythonAPI(GraphAPI):
                 source, target,
                 max_value=self.max_value
             )
-        elif algo == "delta-stepping-circular":
-            path = delta_stepping_2d_circular(
+        else:
+            path = delta_stepping_2d(
                 self.raster_data, self.steps,
                 uint64(source), uint64(target),
                 delta=kwargs.get("delta", 100),
                 num_threads=kwargs.get('num_threads', 0),
-            )
-        else:  # delta-stepping
-            # Convert to uint64 for delta-stepping
-            path = delta_stepping_2d(
-                self.raster_data, self.steps,
-                uint64(source), uint64(target),
-                delta=kwargs.get('delta', 100),
-                max_value=self.max_value,
-                num_threads=kwargs.get('num_threads', 0),
+                margin=kwargs.get('margin', 1.1)
             )
         return list(path)
 
@@ -117,7 +109,7 @@ class CythonAPI(GraphAPI):
                 array(targets, dtype=uint64),
                 delta=kwargs.get('delta', 100),
                 max_value=self.max_value,
-                num_threads=kwargs.get('num_threads', 0)
+                num_threads=kwargs.get('num_threads', 0),
             )
         return [list(path) for path in paths]
 

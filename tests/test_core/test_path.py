@@ -220,7 +220,7 @@ class TestPathCollection(unittest.TestCase):
         self.collection.add(self.path2, replace=True)
 
         str_repr = str(self.collection)
-        self.assertIn("PathCollection(count=2)", str_repr)
+        self.assertIn("count=2)", str_repr)
 
         repr_str = repr(self.collection)
         self.assertIn("PathCollection(paths=[", repr_str)

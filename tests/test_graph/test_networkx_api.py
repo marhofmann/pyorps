@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 import numpy as np
 
-from pyorps.core.exceptions import NoPathFoundError, AlgorthmNotImplementedError
+from pyorps.core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
 from pyorps.graph.api.networkx_api import NetworkxAPI
 
 
@@ -193,7 +193,7 @@ class TestNetworkxAPI(unittest.TestCase):
 
     def test_shortest_path_unknown_algorithm(self):
         """Test shortest_path with unknown algorithm."""
-        with self.assertRaises(AlgorthmNotImplementedError):
+        with self.assertRaises(AlgorithmNotImplementedError):
             self.api.shortest_path(0, 4, algorithm="unknown_algorithm")
 
     def test_shortest_path_no_path_found(self):

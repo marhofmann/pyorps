@@ -3,7 +3,7 @@ from pyorps.core.exceptions import (
     CostAssumptionsError, FileLoadError, InvalidSourceError, FormatError,
     FeatureColumnError, NoSuitableColumnsError, ColumnAnalysisError,
     WFSError, WFSConnectionError, WFSResponseParsingError, WFSLayerNotFoundError,
-    RasterShapeError, NoPathFoundError, AlgorthmNotImplementedError
+    RasterShapeError, NoPathFoundError, AlgorithmNotImplementedError
 )
 
 
@@ -35,5 +35,5 @@ class TestExceptions(unittest.TestCase):
         self.assertIn("No path found from 10 to 20", str(error))
 
         # AlgorthmNotImplementedError
-        error = AlgorthmNotImplementedError("dijkstra", "networkx")
+        error = AlgorithmNotImplementedError("dijkstra", "networkx")
         self.assertIn("Algorithm dijkstra for networkx not supported", str(error))
