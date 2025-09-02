@@ -13,7 +13,7 @@ version = "0.2.0"
 description = "PYORPS - (Python for Optimal Routes in Power Systems)"
 readme = "README.md"
 requires-python = ">=3.11"
-license-files = ["LICENSE"]
+license = {file = "LICENSE"}
 authors = [
     {name = "Martin Hofmann", email = "martin.hofmann-3@ei.thm.de"},
 ]
@@ -43,16 +43,6 @@ dependencies = [
     "defusedxml>=0.7.0",
     "seaborn>=0.13.2",
 ]
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["pyorps*"]
-
-[tool.setuptools]
-include-package-data = true
-
-[tool.setuptools.package-data]
-"pyorps.utils" = ["*.pyx", "*.pxd"]
 
 [project.urls]
 Homepage = "https://github.com/marhofmann/pyorps"
@@ -102,6 +92,14 @@ full = [
     # additionals
     "openpyxl>=3.1.0",
 ]
+
+[tool.setuptools]
+packages = ["pyorps", "pyorps.utils", "pyorps.graph", "pyorps.graph.api"]
+include-package-data = true
+zip-safe = false
+
+[tool.setuptools.package-data]
+pyorps = ["**/*.pyx", "**/*.pxd", "**/*.pxi"]
 
 [tool.coverage.run]
 source = ["pyorps"]

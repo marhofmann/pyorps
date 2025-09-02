@@ -38,22 +38,42 @@ jobs:
           # Skip 32-bit and musllinux if unsupported
           CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_i686"
 
-          # Use newer manylinux image with GCC 12
+          # Use newer manylinux image with GCC 12 for C++20 support
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
 
           # Architectures (from matrix)
           CIBW_ARCHS_LINUX: ${{ matrix.CIBW_ARCHS_LINUX }}
           CIBW_ARCHS_WINDOWS: ${{ matrix.CIBW_ARCHS_WINDOWS }}
 
-          # Build-time prerequisites for your Cython extensions
-          CIBW_BEFORE_BUILD: pip install "numpy>=2" cython
+          # Build-time prerequisites - ensure Cython and numpy are installed
+          CIBW_BEFORE_BUILD: >
+            pip install --upgrade pip setuptools wheel &&
+            pip install "numpy>=2.0.0" "cython>=3.0.0" &&
+            pip list
+
+          # Ensure the build uses setuptools properly
+          CIBW_ENVIRONMENT: >
+            SETUPTOOLS_USE_DISTUTILS=stdlib
+            SETUPTOOLS_ENABLE_FEATURES=legacy-editable
 
           # Do not run tests inside manylinux containers
           CIBW_TEST_SKIP: "*-manylinux_*"
 
-          CIBW_BUILD_VERBOSITY: 1
+          # Increase verbosity to debug build issues
+          CIBW_BUILD_VERBOSITY: 2
 
         run: python -m cibuildwheel --output-dir wheelhouse
+
+      - name: Verify wheel contents
+        shell: bash
+        run: |
+          echo "Checking wheel contents for Cython extensions..."
+          for wheel in wheelhouse/*.whl; do
+            echo "===== Checking $wheel ====="
+            python -m zipfile -l "$wheel" | grep -E "path_algorithms.*\.(pyd|so)" || echo "WARNING: path_algorithms extension not found!"
+            python -m zipfile -l "$wheel" | grep -E "path_core.*\.(pyd|so)" || echo "WARNING: path_core extension not found!"
+            echo ""
+          done
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -75,8 +95,8 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install build "numpy>=2" cython
+          python -m pip install --upgrade pip setuptools wheel
+          pip install build "numpy>=2.0.0" "cython>=3.0.0"
 
       - name: Build source distribution
         run: python -m build --sdist
@@ -127,20 +147,72 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          # Install the wheel with full extras
           python -m pip install --find-links wheelhouse/ "pyorps[full]" --force-reinstall
+          
+          # Verify the installation
           python - <<'PY'
-          import pyorps, importlib.util
+          import sys
+          import pyorps
+          import importlib.util
+          
+          print("Python version:", sys.version)
           print("pyorps imported from:", pyorps.__file__)
-          spec = importlib.util.find_spec("pyorps.utils.path_algorithms")
-          print("pyorps.utils.path_algorithms from:", spec and spec.origin)
+          
+          # Check for Cython extensions
+          try:
+              import pyorps.utils.path_algorithms as pa
+              print("path_algorithms extension imported from:", pa.__file__)
+          except ImportError as e:
+              print(f"ERROR: Could not import path_algorithms: {e}")
+              sys.exit(1)
+          
+          try:
+              import pyorps.utils.path_core as pc
+              print("path_core extension imported from:", pc.__file__)
+          except ImportError as e:
+              print(f"ERROR: Could not import path_core: {e}")
+              sys.exit(1)
+          
+          print("SUCCESS: All extensions loaded correctly!")
           PY
 
       - name: Install wheel on Windows (with full extra)
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: 1
         run: |
+          # Install the wheel with full extras
           python -m pip install --find-links wheelhouse/ "pyorps[full]" --force-reinstall
-          python -c "import pyorps, importlib.util as u; print('pyorps imported from:', pyorps.__file__); spec=u.find_spec('pyorps.utils.path_algorithms'); print('pyorps.utils.path_algorithms from:', spec and spec.origin)"
+          
+          # Verify the installation
+          python -c @"
+          import sys
+          import pyorps
+          import importlib.util
+          
+          print('Python version:', sys.version)
+          print('pyorps imported from:', pyorps.__file__)
+          
+          # Check for Cython extensions
+          try:
+              import pyorps.utils.path_algorithms as pa
+              print('path_algorithms extension imported from:', pa.__file__)
+          except ImportError as e:
+              print(f'ERROR: Could not import path_algorithms: {e}')
+              sys.exit(1)
+          
+          try:
+              import pyorps.utils.path_core as pc
+              print('path_core extension imported from:', pc.__file__)
+          except ImportError as e:
+              print(f'ERROR: Could not import path_core: {e}')
+              sys.exit(1)
+          
+          print('SUCCESS: All extensions loaded correctly!')
+          "@
 
       - name: Run full tests on Linux from a temp directory
         if: runner.os == 'Linux'
@@ -154,6 +226,9 @@ jobs:
       - name: Run full tests on Windows 3.11 from a temp directory
         if: runner.os == 'Windows' && matrix.python == '3.11'
         shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: 1
         run: |
           $tmp = Join-Path $env:TEMP "tests_run_ci"
           New-Item -ItemType Directory -Path $tmp -Force | Out-Null
@@ -164,13 +239,19 @@ jobs:
       - name: Smoke test on Windows 3.12 (avoid LLVM teardown assertion)
         if: runner.os == 'Windows' && matrix.python == '3.12'
         shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: 1
         run: |
-          python - <<'PY'
+          python -c @"
           import pyorps
           import pyorps.utils.path_algorithms as m
-          print("Imported pyorps:", pyorps.__file__)
-          print("Imported extension:", m.__file__)
-          PY
+          import pyorps.utils.path_core as c
+          print('Imported pyorps:', pyorps.__file__)
+          print('Imported path_algorithms extension:', m.__file__)
+          print('Imported path_core extension:', c.__file__)
+          print('SUCCESS: All modules imported correctly!')
+          "@
 
   publish:
     name: Publish to PyPI
@@ -195,7 +276,8 @@ jobs:
           mkdir -p upload
           mv dist/**/*.whl upload/ || true
           mv dist/**/*.tar.gz upload/ || true
-          ls -l upload
+          echo "Files to be uploaded:"
+          ls -la upload/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

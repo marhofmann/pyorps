@@ -122,7 +122,24 @@ def detect_cpp_standard():
     """
 
     # C++ standards to test (newest first)
-    standards = ["c++23", "c++2b", "c++20", "c++2a", "c++17", "c++14", "c++11"]
+    # For GCC 10 and below, limit to C++17
+    standards = ["c++17", "c++14", "c++11"]
+
+    # Check GCC version first
+    try:
+        result = subprocess.run([cxx, "--version"], capture_output=True, text=True)
+        output = result.stdout.lower()
+        if "gcc" in output or "g++" in output:
+            # Extract version number
+            import re
+            match = re.search(r'(\d+)\.(\d+)', result.stdout)
+            if match:
+                major = int(match.group(1))
+                if major >= 11:
+                    # GCC 11+ supports C++20
+                    standards = ["c++20", "c++17", "c++14", "c++11"]
+    except:
+        pass
 
     for std in standards:
         if test_cpp_standard(cxx, std, test_code):
@@ -186,8 +203,8 @@ def detect_msvc_cpp_standard():
             return std
 
     # Modern MSVC should support at least C++17
-    print("Warning: Could not detect MSVC C++ standard, using C++20 as default")
-    return "/std:c++20"
+    print("Warning: Could not detect MSVC C++ standard, using C++17 as default")
+    return "/std:c++17"
 
 
 def test_cpp_standard(compiler, standard, code):
@@ -348,9 +365,9 @@ def make_extensions():
         if cpp_standard:
             extra_compile_args.append(cpp_standard)
         else:
-            # Force modern C++ if detection somehow failed
-            extra_compile_args.append("/std:c++20")
-            print("Forcing C++20 standard as fallback")
+            # Force C++17 if detection somehow failed
+            extra_compile_args.append("/std:c++17")
+            print("Forcing C++17 standard as fallback")
 
         # Add OpenMP if available
         if features["has_openmp"]:
@@ -431,7 +448,11 @@ def make_extensions():
         elif cpp.exists():
             sources = [str(cpp)]
         else:
-            raise RuntimeError(f"Neither {pyx} nor {cpp} found for {ext_name}")
+            # If neither exists, use .pyx and let cythonize handle it
+            sources = [str(pyx)]
+            need_cythonize = True
+            print(
+                f"Warning: Neither {pyx} nor {cpp} found, expecting Cython to generate")
 
         extensions.append(
             Extension(
@@ -463,6 +484,9 @@ def make_extensions():
     return extensions
 
 
-# Main setup call
+# Main setup call - IMPORTANT: Always build extensions
 if __name__ == "__main__":
+    setup(ext_modules=make_extensions(), zip_safe=False)
+else:
+    # This ensures extensions are built even when not called directly
     setup(ext_modules=make_extensions(), zip_safe=False)
