@@ -1,0 +1,10 @@
+/examples/data/raster/big_raster.tiff
+/examples/api_comparison.py
+*.shp
+*.prj
+*.sbn
+*.shx
+*.dbf
+*.CPG
+*.gpkg
+*.pyc

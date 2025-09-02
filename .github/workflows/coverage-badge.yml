@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 permissions:
-  contents: write
-  pages: write
+  contents: read
 
 jobs:
   coverage:
@@ -16,8 +18,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -35,27 +35,21 @@ jobs:
         env:
           NUMBA_DISABLE_JIT: 1
         run: |
-          python -m pytest --cov=pyorps tests/ --cov-config=pyproject.toml --cov-report=xml --cov-report=term-missing > result.log 
-          type result.log | Select-Object -Last 10
+          python -m pytest --cov=pyorps tests/ --cov-config=pyproject.toml --cov-report=xml --cov-report=term-missing --cov-report=html
 
-      - name: Generate coverage badge
+      - name: Display coverage report
         shell: pwsh
-        env:
-          NUMBA_DISABLE_JIT: 1
         run: |
-          $coverage = (python -m pytest --cov=pyorps tests/ --cov-report=term | Select-String -Pattern '\d+%$' | Select-Object -Last 1).Matches.Value -replace '%',''
-          $color = if ($coverage -lt 70) { 'red' } elseif ($coverage -lt 90) { 'orange' } else { 'green' }
-          Invoke-WebRequest -Uri "https://img.shields.io/badge/coverage-${coverage}%25-${color}.svg" -OutFile coverage.svg
+          Write-Host "Coverage Report Summary:" -ForegroundColor Green
+          Get-Content coverage.xml | Select-String -Pattern 'line-rate' | Select-Object -First 1
+          python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); print(f\"Coverage: {float(root.get('line-rate'))*100:.2f}%\")"
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: marhofmann/pyorps
-
-      - name: Deploy badge
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: .
-          publish_branch: gh-pages
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+          verbose: true
