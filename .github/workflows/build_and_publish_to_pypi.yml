@@ -118,8 +118,12 @@ jobs:
             python: "3.12"
 
     steps:
-      - name: Checkout code
+      - name: Checkout code (for tests only)
         uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tests
+          sparse-checkout-cone-mode: false
 
       - name: Set up Python ${{ matrix.python }}
         uses: actions/setup-python@v5
@@ -142,20 +146,28 @@ jobs:
         env:
           PYTHON_VERSION: ${{ matrix.python }}
         run: |
+          # Move to a temp directory to avoid importing from source
+          cd /tmp
+          
           # Find the appropriate wheel for this Python version
           PYVER=$(echo $PYTHON_VERSION | tr -d '.')
-          WHEEL=$(ls wheelhouse/pyorps*cp${PYVER}*linux*.whl 2>/dev/null | head -n1)
+          WHEEL=$(ls $GITHUB_WORKSPACE/wheelhouse/pyorps*cp${PYVER}*linux*.whl 2>/dev/null | head -n1)
           if [ -z "$WHEEL" ]; then
-            WHEEL=$(ls wheelhouse/pyorps*.whl | head -n1)
+            WHEEL=$(ls $GITHUB_WORKSPACE/wheelhouse/pyorps*.whl | head -n1)
           fi
           echo "Installing wheel: $WHEEL"
           
           # Install the wheel with full extras
           python -m pip install "${WHEEL}[full]" --force-reinstall
           
-          # Verify the installation
+          # Verify the installation FROM A DIFFERENT DIRECTORY
           python <<'EOF'
           import sys
+          import os
+          
+          # Ensure we're not in the source directory
+          assert 'pyorps' not in os.listdir('.'), "Still in source directory!"
+          
           import pyorps
           
           print("Python version:", sys.version)
@@ -187,20 +199,28 @@ jobs:
           PYTHONUTF8: 1
           PYTHON_VERSION: ${{ matrix.python }}
         run: |
+          # Move to temp directory to avoid importing from source
+          Set-Location $env:TEMP
+          
           # Find the appropriate wheel for this Python version
           $pyver = $env:PYTHON_VERSION -replace '\.',''
-          $wheel = Get-ChildItem wheelhouse\pyorps*cp${pyver}*win*.whl -ErrorAction SilentlyContinue | Select-Object -First 1
+          $wheel = Get-ChildItem "$env:GITHUB_WORKSPACE\wheelhouse\pyorps*cp${pyver}*win*.whl" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $wheel) {
-            $wheel = Get-ChildItem wheelhouse\pyorps*.whl | Select-Object -First 1
+            $wheel = Get-ChildItem "$env:GITHUB_WORKSPACE\wheelhouse\pyorps*.whl" | Select-Object -First 1
           }
           Write-Host "Installing wheel: $wheel"
           
           # Install the wheel with full extras
           python -m pip install "$wheel[full]" --force-reinstall
           
-          # Verify the installation
+          # Verify the installation FROM A DIFFERENT DIRECTORY
           python -c @"
           import sys
+          import os
+          
+          # Ensure we're not in the source directory
+          assert 'pyorps' not in os.listdir('.'), 'Still in source directory!'
+          
           import pyorps
           
           print('Python version:', sys.version)
@@ -256,6 +276,9 @@ jobs:
           PYTHONIOENCODING: utf-8
           PYTHONUTF8: 1
         run: |
+          # Make sure we're not in the source directory
+          Set-Location $env:TEMP
+          
           python -c @"
           import pyorps
           import pyorps.utils.path_algorithms as m
