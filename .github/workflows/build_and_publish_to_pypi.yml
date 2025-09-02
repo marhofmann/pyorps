@@ -31,25 +31,25 @@ jobs:
       - name: Install cibuildwheel
         run: python -m pip install cibuildwheel==2.16.2
 
-      - name: Build wheels
+      - name: Build wheels on Linux
+        if: runner.os == 'Linux'
         env:
           # Target CPython versions
           CIBW_BUILD: "cp311-* cp312-*"
           # Skip 32-bit and musllinux if unsupported
           CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_i686"
 
-          # Use newer manylinux image with GCC 12 for C++20 support
+          # Use newer manylinux image with GCC 12 for better C++ support
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
 
-          # Architectures (from matrix)
+          # Architecture
           CIBW_ARCHS_LINUX: ${{ matrix.CIBW_ARCHS_LINUX }}
-          CIBW_ARCHS_WINDOWS: ${{ matrix.CIBW_ARCHS_WINDOWS }}
 
-          # Build-time prerequisites - ensure Cython and numpy are installed
+          # Build-time prerequisites for Linux
           CIBW_BEFORE_BUILD: >
-            pip install --upgrade pip setuptools wheel &&
-            pip install "numpy>=2.0.0" "cython>=3.0.0" &&
-            pip list
+            python -m pip install --upgrade pip setuptools wheel &&
+            python -m pip install "numpy>=2.0.0" "cython>=3.0.0" &&
+            python -m pip list
 
           # Ensure the build uses setuptools properly
           CIBW_ENVIRONMENT: >
@@ -64,15 +64,42 @@ jobs:
 
         run: python -m cibuildwheel --output-dir wheelhouse
 
+      - name: Build wheels on Windows
+        if: runner.os == 'Windows'
+        env:
+          # Target CPython versions
+          CIBW_BUILD: "cp311-* cp312-*"
+          # Skip 32-bit
+          CIBW_SKIP: "*-win32"
+
+          # Architecture
+          CIBW_ARCHS_WINDOWS: ${{ matrix.CIBW_ARCHS_WINDOWS }}
+
+          # Build-time prerequisites for Windows - use python -m pip to avoid upgrade issues
+          CIBW_BEFORE_BUILD: >
+            python -m pip install --upgrade pip setuptools wheel numpy>=2.0.0 cython>=3.0.0
+
+          # Ensure the build uses setuptools properly
+          CIBW_ENVIRONMENT: >
+            SETUPTOOLS_USE_DISTUTILS=stdlib
+            SETUPTOOLS_ENABLE_FEATURES=legacy-editable
+
+          # Increase verbosity to debug build issues
+          CIBW_BUILD_VERBOSITY: 2
+
+        run: python -m cibuildwheel --output-dir wheelhouse
+
       - name: Verify wheel contents
         shell: bash
         run: |
           echo "Checking wheel contents for Cython extensions..."
           for wheel in wheelhouse/*.whl; do
-            echo "===== Checking $wheel ====="
-            python -m zipfile -l "$wheel" | grep -E "path_algorithms.*\.(pyd|so)" || echo "WARNING: path_algorithms extension not found!"
-            python -m zipfile -l "$wheel" | grep -E "path_core.*\.(pyd|so)" || echo "WARNING: path_core extension not found!"
-            echo ""
+            if [ -f "$wheel" ]; then
+              echo "===== Checking $wheel ====="
+              python -m zipfile -l "$wheel" | grep -E "path_algorithms.*\.(pyd|so)" || echo "WARNING: path_algorithms extension not found!"
+              python -m zipfile -l "$wheel" | grep -E "path_core.*\.(pyd|so)" || echo "WARNING: path_core extension not found!"
+              echo ""
+            fi
           done
 
       - name: Upload wheels
@@ -96,7 +123,7 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install build "numpy>=2.0.0" "cython>=3.0.0"
+          python -m pip install build "numpy>=2.0.0" "cython>=3.0.0"
 
       - name: Build source distribution
         run: python -m build --sdist
@@ -105,7 +132,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cibw-sdist
-          path: dist/*
+          path: dist/*.tar.gz
 
   test-wheels:
     name: Test built wheels on hosts
@@ -141,14 +168,18 @@ jobs:
           path: wheelhouse/
 
       - name: Upgrade pip
-        run: python -m pip install -U pip setuptools wheel
+        run: python -m pip install --upgrade pip setuptools wheel
 
       - name: Install wheel on Linux (with full extra)
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          # Find the appropriate wheel for this Python version
+          WHEEL=$(ls wheelhouse/pyorps*cp${PYTHON_VERSION/./}*linux*.whl 2>/dev/null | head -n1 || ls wheelhouse/pyorps*.whl | head -n1)
+          echo "Installing wheel: $WHEEL"
+          
           # Install the wheel with full extras
-          python -m pip install --find-links wheelhouse/ "pyorps[full]" --force-reinstall
+          python -m pip install "${WHEEL}[full]" --force-reinstall
           
           # Verify the installation
           python - <<'PY'
@@ -176,6 +207,8 @@ jobs:
           
           print("SUCCESS: All extensions loaded correctly!")
           PY
+        env:
+          PYTHON_VERSION: ${{ matrix.python }}
 
       - name: Install wheel on Windows (with full extra)
         if: runner.os == 'Windows'
@@ -183,9 +216,18 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
           PYTHONUTF8: 1
+          PYTHON_VERSION: ${{ matrix.python }}
         run: |
+          # Find the appropriate wheel for this Python version
+          $pyver = $env:PYTHON_VERSION -replace '\.',''
+          $wheel = Get-ChildItem wheelhouse\pyorps*cp${pyver}*win*.whl -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $wheel) {
+            $wheel = Get-ChildItem wheelhouse\pyorps*.whl | Select-Object -First 1
+          }
+          Write-Host "Installing wheel: $wheel"
+          
           # Install the wheel with full extras
-          python -m pip install --find-links wheelhouse/ "pyorps[full]" --force-reinstall
+          python -m pip install "$wheel[full]" --force-reinstall
           
           # Verify the installation
           python -c @"
@@ -214,6 +256,9 @@ jobs:
           print('SUCCESS: All extensions loaded correctly!')
           "@
 
+      - name: Install pytest
+        run: python -m pip install pytest
+
       - name: Run full tests on Linux from a temp directory
         if: runner.os == 'Linux'
         shell: bash
@@ -221,7 +266,7 @@ jobs:
           TMPDIR=$(mktemp -d)
           cp -r tests "$TMPDIR"/tests_run
           cd "$TMPDIR"/tests_run
-          pytest . --tb=short --import-mode=importlib
+          python -m pytest . --tb=short --import-mode=importlib
 
       - name: Run full tests on Windows 3.11 from a temp directory
         if: runner.os == 'Windows' && matrix.python == '3.11'
@@ -260,6 +305,7 @@ jobs:
     environment: pypi
     permissions:
       id-token: write
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Download all artifacts
@@ -269,17 +315,22 @@ jobs:
           merge-multiple: true
           path: dist/
 
+      - name: List all downloaded files
+        run: |
+          echo "Contents of dist/:"
+          ls -la dist/
+
       - name: Collect distributions
         shell: bash
         run: |
-          shopt -s globstar nullglob
           mkdir -p upload
-          mv dist/**/*.whl upload/ || true
-          mv dist/**/*.tar.gz upload/ || true
+          # Move wheels and source distributions
+          find dist -name "*.whl" -exec mv {} upload/ \; 2>/dev/null || true
+          find dist -name "*.tar.gz" -exec mv {} upload/ \; 2>/dev/null || true
           echo "Files to be uploaded:"
           ls -la upload/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: upload
+          packages-dir: upload/
