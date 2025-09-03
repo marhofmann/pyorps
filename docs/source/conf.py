@@ -1,26 +1,21 @@
 import os
 import sys
+from pathlib import Path
 
-# Add both the project root and the parent directory to sys.path
-sys.path.insert(0, os.path.abspath('../..'))  # Project root
-sys.path.insert(0, os.path.abspath('..'))  # Parent of docs
+# Add paths to ensure modules can be found
+project_root = Path(__file__).parent.parent.parent.resolve()
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / 'pyorps'))
 
-# Configuration file for the Sphinx documentation builder.
-#
-# For the full list of built-in configuration values, see the documentation:
-# https://www.sphinx-doc.org/en/master/usage/configuration.html
+print(f"Python path includes: {sys.path[:3]}")
 
 # -- Project information -----------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
-
 project = 'PYORPS'
 copyright = '2025, Martin Hofmann'
 author = 'Martin Hofmann'
-release = '09.05.2025'
+release = '0.2.1'
 
 # -- General configuration ---------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
-
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
@@ -31,25 +26,14 @@ extensions = [
     'sphinx.ext.intersphinx',
 ]
 
-# Autosummary configuration - generate stub files for all modules
+# Autosummary configuration
 autosummary_generate = True
 autosummary_generate_overwrite = True
 autosummary_imported_members = True
 
-# Add modules to be documented explicitly
-autosummary_modules = [
-    'pyorps',
-    'pyorps.core',
-    'pyorps.io',
-    'pyorps.raster',
-    'pyorps.graph',
-    'pyorps.graph.api',
-    'pyorps.utils',
-]
-
 myst_enable_extensions = [
-    "colon_fence",  # For ::: fenced code blocks
-    "linkify",  # Automatically convert URLs into links
+    "colon_fence",
+    "linkify",
 ]
 
 source_suffix = {
@@ -57,49 +41,47 @@ source_suffix = {
     '.md': 'markdown',
 }
 
-# Enhanced autodoc options to catch all modules and Cython code
+# Autodoc configuration
 autodoc_default_options = {
     'members': True,
     'undoc-members': True,
     'private-members': False,
-    # Changed to False to avoid cluttering with private methods
     'special-members': '__init__',
     'imported-members': True,
     'show-inheritance': True,
     'inherited-members': True,
 }
 
-# Type hints configuration
 autodoc_typehints = 'description'
 autodoc_type_aliases = {}
 
-# Handle Cython modules and C extensions
-# Add any problematic imports that fail on ReadTheDocs
+# Start with empty mock imports
 autodoc_mock_imports = []
 
-# Try to import Cython modules, if they fail, mock them
-try:
-    import pyorps.utils
-except ImportError:
-    autodoc_mock_imports.append('pyorps.utils')
+# Optional dependencies to check
+optional_deps = {
+    'rustworkx': 'rustworkx',
+    'igraph': 'igraph',
+    'networkx': 'networkx',
+    'networkit': 'networkit',
+}
 
-try:
-    import pyorps.graph.api
-except ImportError:
-    # If the module can't be imported, we'll still try to document it
-    pass
+# Check each optional dependency
+for import_name, module_name in optional_deps.items():
+    try:
+        __import__(import_name)
+        print(f"✓ {module_name} available")
+    except ImportError:
+        print(f"✗ {module_name} not available - will be mocked")
+        autodoc_mock_imports.append(import_name)
 
-# Detect if we're on ReadTheDocs
+# Detect if on ReadTheDocs
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 
 if on_rtd:
-    # On ReadTheDocs, we might need to build Cython extensions differently
-    # or mock them if building fails
     import subprocess
 
-    # Try to build Cython extensions
     try:
-        # Change to project root
         project_root = os.path.abspath('../..')
         result = subprocess.run(
             ['python', 'setup.py', 'build_ext', '--inplace'],
@@ -110,24 +92,48 @@ if on_rtd:
         )
         if result.returncode != 0:
             print(f"Warning: Failed to build Cython extensions: {result.stderr}")
-            # Add Cython modules to mock imports if build fails
-            autodoc_mock_imports.extend(['pyorps.utils', 'pyorps.graph._cgraph'])
     except Exception as e:
         print(f"Warning: Could not build Cython extensions: {e}")
-        autodoc_mock_imports.extend(['pyorps.utils', 'pyorps.graph._cgraph'])
 
-# Napoleon settings for Google and NumPy style docstrings
+
+# Try to discover all modules
+def discover_modules():
+    """Discover all modules in the package."""
+    try:
+        import pyorps
+        import pkgutil
+
+        discovered = []
+        for importer, modname, ispkg in pkgutil.walk_packages(
+                path=pyorps.__path__,
+                prefix=pyorps.__name__ + '.',
+                onerror=lambda x: None
+        ):
+            if 'test' not in modname:
+                discovered.append(modname)
+                try:
+                    __import__(modname)
+                    print(f"✓ Imported {modname}")
+                except ImportError as e:
+                    print(f"✗ Could not import {modname}: {e}")
+
+        return discovered
+    except ImportError:
+        print("Warning: Could not import pyorps for module discovery")
+        return []
+
+
+# Discover modules at configuration time
+discovered_modules = discover_modules()
+
+# Napoleon settings
 napoleon_google_docstring = True
 napoleon_numpy_docstring = True
 napoleon_include_init_with_doc = True
 napoleon_include_private_with_doc = False
 napoleon_include_special_with_doc = True
-napoleon_use_ivar = False
-napoleon_use_param = True
-napoleon_use_rtype = True
-napoleon_preprocess_types = True
 
-# Intersphinx mapping for cross-references
+# Intersphinx mapping
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
     'numpy': ('https://numpy.org/doc/stable/', None),
@@ -137,56 +143,28 @@ intersphinx_mapping = {
 templates_path = ['_templates']
 exclude_patterns = []
 
-
-# Explicitly add modules that are not imported in __init__.py
-# This helps autodoc find them
-def setup(app):
-    """Custom setup to ensure all modules are documented."""
-    import inspect
-    import pkgutil
-
-    try:
-        import pyorps
-
-        # Walk through all submodules
-        for importer, modname, ispkg in pkgutil.walk_packages(
-                path=pyorps.__path__,
-                prefix=pyorps.__name__ + '.',
-                onerror=lambda x: None
-        ):
-            try:
-                # Try to import each module to make it available to autodoc
-                __import__(modname)
-            except ImportError as e:
-                print(f"Could not import {modname}: {e}")
-                # Add to mock imports if it fails
-                if modname not in autodoc_mock_imports:
-                    autodoc_mock_imports.append(modname)
-    except ImportError:
-        print("Warning: Could not import pyorps package")
-
-
-# -- Options for HTML output -------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
-
+# HTML output configuration
 html_theme = "sphinx_rtd_theme"
 
-# Optional: Customize the sidebar depth
 html_theme_options = {
-    "navigation_depth": 4,  # Increased to show more nested modules
-    "collapse_navigation": False,  # Keeps the sidebar expanded
-    "sticky_navigation": True,  # Keeps the sidebar visible while scrolling
+    "navigation_depth": 4,
+    "collapse_navigation": False,
+    "sticky_navigation": True,
     "includehidden": True,
     "titles_only": False,
 }
 
-html_static_path = ['_static']
+# Create _static directory if needed
+static_dir = Path(__file__).parent / '_static'
+static_dir.mkdir(exist_ok=True)
+html_static_path = ['_static'] if static_dir.exists() else []
 
-
-# Add custom CSS if needed for better display
-def add_custom_css(app):
-    app.add_css_file('custom.css')
-
-
-# Suppress specific warnings if needed
+# Suppress specific warnings
 suppress_warnings = ['autodoc.import_error']
+
+
+# Custom setup
+def setup(app):
+    """Ensure all modules are available for documentation."""
+    print(f"Discovered {len(discovered_modules)} modules for documentation")
+    print(f"Mock imports: {autodoc_mock_imports}")

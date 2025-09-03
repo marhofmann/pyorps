@@ -39,17 +39,137 @@ jobs:
         run: |
           # Build Cython extensions in-place
           python setup.py build_ext --inplace
+          # List the built extensions for debugging
+          echo "Built Cython extensions:"
+          find . -name "*.so" -o -name "*.pyd" | head -20
+
+      - name: Verify module imports
+        run: |
+          # Test that modules can be imported
+          python -c "import pyorps; print('✓ pyorps imported')"
+          python -c "import pyorps.graph.api; print('✓ pyorps.graph.api imported')"
+          python -c "import pyorps.utils; print('✓ pyorps.utils imported')"
+          python -c "from pyorps.graph.api import networkx_api; print('✓ networkx_api imported')"
+          python -c "from pyorps.utils import path_core; print('✓ path_core imported')" || echo "⚠ path_core import failed"
 
       - name: Generate API documentation
         run: |
           cd docs
           # Create the _static directory if it doesn't exist
           mkdir -p source/_static
-          # Auto-generate RST files for all modules
-          sphinx-apidoc -f -o source/api ../pyorps
+          
+          # Clean old API docs
+          rm -rf source/api
+          
+          # Generate complete API documentation with forced regeneration
+          sphinx-apidoc -f -M -e -o source/api ../pyorps ../pyorps/tests ../pyorps/*test*
+          
+          # Create an index file that explicitly includes all modules
+          cat > source/api_index.rst << 'EOF'
+          API Reference
+          =============
+          
+          .. toctree::
+             :maxdepth: 4
+             :caption: API Documentation:
+          
+             api/modules
+          
+          Core Modules
+          ------------
+          
+          .. automodule:: pyorps.core
+             :members:
+             :undoc-members:
+             :show-inheritance:
+          
+          IO Modules
+          ----------
+          
+          .. automodule:: pyorps.io
+             :members:
+             :undoc-members:
+             :show-inheritance:
+          
+          Raster Modules
+          --------------
+          
+          .. automodule:: pyorps.raster
+             :members:
+             :undoc-members:
+             :show-inheritance:
+          
+          Graph Modules
+          -------------
+          
+          .. automodule:: pyorps.graph
+             :members:
+             :undoc-members:
+             :show-inheritance:
+          
+          Graph API Modules
+          -----------------
+          
+          .. automodule:: pyorps.graph.api
+             :members:
+             :undoc-members:
+             :show-inheritance:
+          
+          .. automodule:: pyorps.graph.api.networkx_api
+             :members:
+             :undoc-members:
+             :show-inheritance:
+          
+          .. automodule:: pyorps.graph.api.rustworkx_api
+             :members:
+             :undoc-members:
+             :show-inheritance:
+          
+          .. automodule:: pyorps.graph.api.igraph_api
+             :members:
+             :undoc-members:
+             :show-inheritance:
+          
+          .. automodule:: pyorps.graph.api.networkit_api
+             :members:
+             :undoc-members:
+             :show-inheritance:
+          
+          Utility Modules
+          ---------------
+          
+          .. automodule:: pyorps.utils
+             :members:
+             :undoc-members:
+             :show-inheritance:
+          
+          .. automodule:: pyorps.utils.path_core
+             :members:
+             :undoc-members:
+             :show-inheritance:
+          
+          .. automodule:: pyorps.utils.path_algorithms
+             :members:
+             :undoc-members:
+             :show-inheritance:
+          EOF
+          
+          # Update the main index.rst to include api_index
+          if ! grep -q "api_index" source/index.rst; then
+            echo "   api_index" >> source/index.rst
+          fi
 
       - name: Build documentation
         run: |
           cd docs
           # Set PYTHONPATH to find the modules
-      
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)/..:$(pwd)/../pyorps"
+          make html
+
+      - name: Trigger ReadTheDocs Build
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: dfm/rtds-action@v1
+        with:
+          webhook_url: ${{ secrets.RTDS_WEBHOOK_URL }}
+          webhook_token: ${{ secrets.RTDS_WEBHOOK_TOKEN }}
+          commit_ref: ${{ github.ref }}

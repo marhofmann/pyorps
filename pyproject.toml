@@ -94,7 +94,15 @@ full = [
 ]
 
 [tool.setuptools]
-packages = ["pyorps", "pyorps.utils", "pyorps.graph", "pyorps.graph.api"]
+packages = [
+    "pyorps",
+    "pyorps.utils",
+    "pyorps.graph",
+    "pyorps.graph.api",
+    "pyorps.core",
+    "pyorps.io",
+    "pyorps.raster",
+]
 include-package-data = true
 zip-safe = false
 
