@@ -1,37 +1,58 @@
 name: Build and Deploy Docs
 
 on:
- push:
-   branches:
-     - main
- pull_request:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
- build-docs:
-   runs-on: ubuntu-latest
-   steps:
-     - name: Checkout code
-       uses: actions/checkout@v2
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-     - name: Set up Python
-       uses: actions/setup-python@v2
-       with:
-         python-version: 3.11
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.11
 
-     - name: Install dependencies
-       run: |
-         python -m pip install --upgrade pip
-         pip install -r docs/source/requirements.txt
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
 
-     - name: Build documentation
-       run: |
-         cd docs
-         make html
+      - name: Install Python dependencies and Cython
+        run: |
+          python -m pip install --upgrade pip
+          pip install cython numpy  # Install Cython before other dependencies
+          pip install -r docs/source/requirements.txt
 
-     - name: Trigger ReadTheDocs Build
-       uses: dfm/rtds-action@v1
-       with:
-         webhook_url: ${{ secrets.RTDS_WEBHOOK_URL }}
-         webhook_token: ${{ secrets.RTDS_WEBHOOK_TOKEN }}
-         commit_ref: ${{ github.ref }}
+      - name: Build Cython extensions
+        run: |
+          # Build Cython extensions in-place for documentation
+          python setup.py build_ext --inplace
 
+      - name: Generate API documentation stubs
+        run: |
+          cd docs
+          # Auto-generate RST files for missing modules
+          sphinx-apidoc -f -o source/api ../pyorps ../pyorps/tests/* ../pyorps/*test*
+          # Explicitly generate docs for the missing modules
+          sphinx-apidoc -f -o source/api/graph ../pyorps/graph
+          sphinx-apidoc -f -o source/api/utils ../pyorps/utils
+
+      - name: Build documentation
+        run: |
+          cd docs
+          # Set environment variable to help Sphinx find Cython modules
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)/.."
+          make html
+
+      - name: Trigger ReadTheDocs Build
+        uses: dfm/rtds-action@v1
+        with:
+          webhook_url: ${{ secrets.RTDS_WEBHOOK_URL }}
+          webhook_token: ${{ secrets.RTDS_WEBHOOK_TOKEN }}
+          commit_ref: ${{ github.ref }}
