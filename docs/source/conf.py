@@ -5,9 +5,9 @@ from pathlib import Path
 # Add paths to ensure modules can be found
 project_root = Path(__file__).parent.parent.parent.resolve()
 sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / 'pyorps'))
 
 print(f"Python path includes: {sys.path[:3]}")
+print(f"Current working directory: {os.getcwd()}")
 
 # -- Project information -----------------------------------------------------
 project = 'PYORPS'
@@ -28,8 +28,7 @@ extensions = [
 
 # Autosummary configuration
 autosummary_generate = True
-autosummary_generate_overwrite = True
-autosummary_imported_members = True
+autosummary_imported_members = False  # Avoid duplicates
 
 myst_enable_extensions = [
     "colon_fence",
@@ -47,97 +46,62 @@ autodoc_default_options = {
     'undoc-members': True,
     'private-members': False,
     'special-members': '__init__',
-    'imported-members': True,
     'show-inheritance': True,
-    'inherited-members': True,
+    'inherited-members': False,  # Avoid duplicates
+    'member-order': 'bysource',
 }
 
 autodoc_typehints = 'description'
-autodoc_type_aliases = {}
+autodoc_inherit_docstrings = False  # Prevent matplotlib docstring inheritance issues
 
-# Start with empty mock imports
+# Mock imports for optional dependencies
 autodoc_mock_imports = []
 
-# Optional dependencies to check
-optional_deps = {
-    'rustworkx': 'rustworkx',
-    'igraph': 'igraph',
-    'networkx': 'networkx',
-    'networkit': 'networkit',
-}
+# Check and mock optional dependencies
+optional_libs = ['rustworkx', 'igraph', 'networkx', 'networkit']
 
-# Check each optional dependency
-for import_name, module_name in optional_deps.items():
+for lib in optional_libs:
     try:
-        __import__(import_name)
-        print(f"✓ {module_name} available")
+        __import__(lib)
+        print(f"✓ {lib} available")
     except ImportError:
-        print(f"✗ {module_name} not available - will be mocked")
-        autodoc_mock_imports.append(import_name)
+        autodoc_mock_imports.append(lib)
+        print(f"✗ {lib} not available - will be mocked")
 
 # Detect if on ReadTheDocs
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 
 if on_rtd:
+    print("Building on ReadTheDocs")
     import subprocess
 
     try:
-        project_root = os.path.abspath('../..')
         result = subprocess.run(
             ['python', 'setup.py', 'build_ext', '--inplace'],
-            cwd=project_root,
+            cwd=str(project_root),
             capture_output=True,
             text=True,
             timeout=300
         )
-        if result.returncode != 0:
-            print(f"Warning: Failed to build Cython extensions: {result.stderr}")
+        if result.returncode == 0:
+            print("✓ Cython extensions built successfully")
+        else:
+            print(f"✗ Failed to build Cython extensions: {result.stderr}")
     except Exception as e:
-        print(f"Warning: Could not build Cython extensions: {e}")
-
-
-# Try to discover all modules
-def discover_modules():
-    """Discover all modules in the package."""
-    try:
-        import pyorps
-        import pkgutil
-
-        discovered = []
-        for importer, modname, ispkg in pkgutil.walk_packages(
-                path=pyorps.__path__,
-                prefix=pyorps.__name__ + '.',
-                onerror=lambda x: None
-        ):
-            if 'test' not in modname:
-                discovered.append(modname)
-                try:
-                    __import__(modname)
-                    print(f"✓ Imported {modname}")
-                except ImportError as e:
-                    print(f"✗ Could not import {modname}: {e}")
-
-        return discovered
-    except ImportError:
-        print("Warning: Could not import pyorps for module discovery")
-        return []
-
-
-# Discover modules at configuration time
-discovered_modules = discover_modules()
+        print(f"✗ Could not build Cython extensions: {e}")
 
 # Napoleon settings
 napoleon_google_docstring = True
 napoleon_numpy_docstring = True
 napoleon_include_init_with_doc = True
-napoleon_include_private_with_doc = False
-napoleon_include_special_with_doc = True
 
-# Intersphinx mapping
+# Intersphinx mapping - Include matplotlib for role definitions
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3', None),
     'numpy': ('https://numpy.org/doc/stable/', None),
     'pandas': ('https://pandas.pydata.org/docs/', None),
+    'matplotlib': ('https://matplotlib.org/stable/', None),
+    'geopandas': ('https://geopandas.org/en/stable/', None),
 }
 
 templates_path = ['_templates']
@@ -160,11 +124,25 @@ static_dir.mkdir(exist_ok=True)
 html_static_path = ['_static'] if static_dir.exists() else []
 
 # Suppress specific warnings
-suppress_warnings = ['autodoc.import_error']
+suppress_warnings = ['autodoc.import_error', 'ref.footnote']
+nitpicky = False  # Disable nitpicky mode to avoid matplotlib role warnings
 
 
-# Custom setup
+# Custom setup to handle matplotlib roles
 def setup(app):
-    """Ensure all modules are available for documentation."""
-    print(f"Discovered {len(discovered_modules)} modules for documentation")
-    print(f"Mock imports: {autodoc_mock_imports}")
+    """Custom setup for documentation."""
+    # Register matplotlib-specific roles if they're not available
+    from docutils.parsers.rst import roles
+
+    # Define dummy role functions for matplotlib-specific roles
+    def dummy_role(name, rawtext, text, lineno, inliner, options={}, content=[]):
+        """Dummy role that just returns the text as a literal."""
+        from docutils import nodes
+        return [nodes.literal(text=text)], []
+
+    # Register matplotlib-specific roles
+    for role_name in ['mpltype', 'rc']:
+        if role_name not in roles._roles:
+            roles.register_local_role(role_name, dummy_role)
+
+    print("Registered matplotlib-specific roles")
