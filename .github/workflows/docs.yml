@@ -21,36 +21,40 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential
+          sudo apt-get install -y build-essential gdal-bin libgdal-dev
 
-      - name: Install Python dependencies and Cython
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install cython numpy  # Install Cython before other dependencies
+          # Install Cython and numpy first (build dependencies)
+          pip install cython numpy
+          # Install the project in editable mode with all dependencies
+          pip install -e .
+          # Install documentation dependencies
           pip install -r docs/source/requirements.txt
 
       - name: Build Cython extensions
         run: |
-          # Build Cython extensions in-place for documentation
+          # Build Cython extensions in-place
           python setup.py build_ext --inplace
 
-      - name: Generate API documentation stubs
+      - name: Generate API documentation
         run: |
           cd docs
-          # Auto-generate RST files for missing modules
-          sphinx-apidoc -f -o source/api ../pyorps ../pyorps/tests/* ../pyorps/*test*
-          # Explicitly generate docs for the missing modules
-          sphinx-apidoc -f -o source/api/graph ../pyorps/graph
-          sphinx-apidoc -f -o source/api/utils ../pyorps/utils
+          # Create the _static directory if it doesn't exist
+          mkdir -p source/_static
+          # Auto-generate RST files for all modules
+          sphinx-apidoc -f -o source/api ../pyorps
 
       - name: Build documentation
         run: |
           cd docs
-          # Set environment variable to help Sphinx find Cython modules
+          # Set PYTHONPATH to find the modules
           export PYTHONPATH="${PYTHONPATH}:$(pwd)/.."
           make html
 
       - name: Trigger ReadTheDocs Build
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: dfm/rtds-action@v1
         with:
           webhook_url: ${{ secrets.RTDS_WEBHOOK_URL }}
