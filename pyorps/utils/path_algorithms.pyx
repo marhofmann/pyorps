@@ -28,16 +28,12 @@ Performance Characteristics:
 import numpy as np
 cimport numpy as np
 from libcpp.vector cimport vector
-from libcpp.pair cimport pair
-from libcpp.algorithm cimport sort
-from libc.math cimport sqrt, sqrtf, floor, ceil, abs
+from libc.math cimport sqrtf, abs
 from cython.parallel cimport prange, threadid
 from libc.stdlib cimport malloc, free, calloc
 from openmp cimport (omp_lock_t, omp_init_lock, omp_destroy_lock, omp_set_lock,
                      omp_unset_lock, omp_get_max_threads, omp_set_num_threads)
-import psutil
-import sys
-from libc.stdint cimport SIZE_MAX, UINT32_MAX, UINT64_MAX
+
 
 # Import core data structures and utilities
 from .path_core cimport (
@@ -46,9 +42,8 @@ from .path_core cimport (
     BinaryHeap, heap_init, heap_empty, heap_top, heap_push, heap_pop,
     ravel_index, unravel_index, check_path, check_path_cached,
     precompute_directions, precompute_cached_steps, precompute_directions_optimized,
-    get_system_limits, calculate_initial_bucket_size, calculate_thread_buffer_capacity,
-    create_exclude_mask, INF_F32, path_cost, path_cost_uint32, round_up_power_of_two,
-    get_circular_index,
+    get_system_limits, calculate_thread_buffer_capacity, INF_F32, path_cost,
+    path_cost_uint32, round_up_power_of_two, get_circular_index,
 )
 
 
