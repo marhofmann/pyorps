@@ -2,15 +2,8 @@
 
 # Import core data structures and utilities from path_core
 from pyorps.utils.path_core cimport (
-    int8_t, uint8_t, uint16_t, uint32_t, int32_t, int64_t, uint64_t,
-    float32_t, float64_t, npy_intp,
-    StepData, CachedStepData, BinaryHeap, SystemLimits,
-    heap_init, heap_empty, heap_top, heap_push, heap_pop,
-    ravel_index, unravel_index, check_path, check_path_cached,
-    precompute_directions, precompute_cached_steps,
-    precompute_directions_optimized, get_system_limits,
-    calculate_initial_bucket_size, calculate_thread_buffer_capacity,
-    INF_F32
+    uint8_t, uint16_t, uint32_t, int64_t, uint64_t,
+    StepData, CachedStepData, SystemLimits
 )
 
 import numpy as np

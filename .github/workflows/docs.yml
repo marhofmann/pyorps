@@ -26,10 +26,12 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
+          # Ensure we have setuptools>=77.0.0 for proper license format support
+          pip install "setuptools>=77.0.0" wheel
           # Install Cython and numpy first (build dependencies)
           pip install cython numpy
-          # Install the project in editable mode with all dependencies
-          pip install -e .
+          # Install the project with graph extras for documentation
+          pip install -e ".[graph]"
           # Install documentation dependencies
           pip install -r docs/source/requirements.txt
 
@@ -50,13 +52,4 @@ jobs:
         run: |
           cd docs
           # Set PYTHONPATH to find the modules
-          export PYTHONPATH="${PYTHONPATH}:$(pwd)/.."
-          make html
-
-      - name: Trigger ReadTheDocs Build
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: dfm/rtds-action@v1
-        with:
-          webhook_url: ${{ secrets.RTDS_WEBHOOK_URL }}
-          webhook_token: ${{ secrets.RTDS_WEBHOOK_TOKEN }}
-          commit_ref: ${{ github.ref }}
+      

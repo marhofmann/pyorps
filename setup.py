@@ -1,6 +1,4 @@
-import os
 import platform
-import sys
 from pathlib import Path
 from setuptools import Extension, setup
 

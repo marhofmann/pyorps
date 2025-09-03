@@ -1,6 +1,6 @@
 [build-system]
 requires = [
-    "setuptools>=64",
+    "setuptools>=77",
     "wheel",
     "cython>=3.0.0",
     "numpy>=2.0.0",
@@ -13,7 +13,7 @@ version = "0.2.1"
 description = "PYORPS - (Python for Optimal Routes in Power Systems)"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Martin Hofmann", email = "martin.hofmann-3@ei.thm.de"},
 ]
@@ -41,7 +41,7 @@ dependencies = [
     "matplotlib>=3.10.0",
     "requests>=2.32.0",
     "defusedxml>=0.7.0",
-    "seaborn>=0.13.2",
+    "psutil>=5.9.0",
 ]
 
 [project.urls]

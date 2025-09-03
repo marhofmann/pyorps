@@ -97,7 +97,10 @@ cdef SystemLimits get_system_limits() except*:
     if limits.max_array_size < <uint64_t>limits.max_iterations:
         limits.max_iterations = <int>min(limits.max_array_size, <uint64_t>2147483647)
 
-    limits.num_cores = psutil.cpu_count(logical=True)
+    num_cores = psutil.cpu_count(logical=True)
+    # Limit amount of cores to 12 as it does not increase performance further if more
+    # than 12 cores are used!
+    limits.num_cores = 12 if num_cores > 12 else num_cores
 
     return limits
 
