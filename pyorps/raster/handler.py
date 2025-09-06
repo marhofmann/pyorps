@@ -18,7 +18,7 @@ from pyproj import Transformer
 
 from pyorps.io.geo_dataset import RasterDataset
 from pyorps.core.types import CoordinateTuple, CoordinateList
-
+from pyorps.core.exceptions import RasterShapeError
 
 class RasterHandler:
     """
@@ -147,6 +147,7 @@ class RasterHandler:
             # Create a convex hull from all points and buffer it
             multi_point = MultiPoint(all_points)
             buffer_geom = multi_point.convex_hull
+
         if search_space_buffer_m is None:
             self.search_space_buffer_m = self.estimate_buffer_width(source_coords,
                                                                     target_coords)
@@ -277,7 +278,12 @@ class RasterHandler:
         x_samples = np.clip(rows, 0, width - 1)
         y_samples = np.clip(cols, 0, height - 1)
 
-        raster_array = self.raster_dataset.data[self.raster_dataset.count - 1]
+        if len(self.raster_dataset.data.shape) == 3:
+            raster_array = self.raster_dataset.data[0]
+        elif len(self.raster_dataset.data.shape) == 2:
+            raster_array = self.raster_dataset.data
+        else:
+            raise RasterShapeError(self.raster_dataset.data.shape)
         # Sample costs along the line
         line_costs = raster_array[y_samples, x_samples]
 

@@ -582,6 +582,8 @@ class CostAssumptions:
         Returns:
             DataFrame representation of cost assumptions
         """
+        if cost_dict is None:
+            cost_dict = self.cost_assumptions
         # Check if it's a simple or nested dictionary
         first_key = next(iter(cost_dict), None)
 

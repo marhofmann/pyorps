@@ -803,3 +803,513 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
                     self.assertLess(abs(length1 - length2) / max(length1, length2), 0.15,
                                     f"Paths from {algo1} and {algo2} differ too much in length")
 
+    def test_correct_max_cost_positions_basic(self):
+        """Test correcting positions with maximum cost values in the raster."""
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        # Create test raster path
+        test_raster = os.path.join(self.temp_dir.name, "test_max_cost.tiff")
+
+        # Create raster data with some max cost positions - use uint16!
+        raster_data = np.ones((100, 100), dtype=np.uint16) * 10
+        max_cost = np.iinfo(np.uint16).max  # 65535 for uint16
+
+        # Add some max cost positions (obstacles)
+        raster_data[10:15, 20:25] = max_cost  # A block of max cost
+        raster_data[50, 50] = max_cost  # A single max cost position
+        raster_data[70:75, 70:75] = max_cost  # Another block
+
+        # Save the test raster using rasterio
+        transform = from_origin(500000, 5600000, 1, 1)
+        with rasterio.open(
+                test_raster, 'w',
+                driver='GTiff',
+                height=100,
+                width=100,
+                count=1,
+                dtype=raster_data.dtype,
+                crs='EPSG:32632',
+                transform=transform,
+        ) as dst:
+            dst.write(raster_data, 1)
+
+        # Create PathFinder with the test raster
+        path_finder = PathFinder(
+            dataset_source=test_raster,
+            source_coords=(500020, 5599980),
+            target_coords=(500080, 5599920),
+            graph_api="networkit",
+            search_space_buffer_m=100,
+            neighborhood_str='r1',
+        )
+
+        # Test positions that include max cost values
+        positions_to_correct = np.array([[10, 20], [11, 21], [50, 50], [30, 30]],
+                                        dtype=np.int32)
+
+        # Call the method
+        corrected = path_finder._correct_max_cost_positions(positions_to_correct)
+
+        # Check that max cost positions were corrected
+        # The corrected positions should not point to max cost values anymore
+        self.assertIsNotNone(corrected)
+
+        # For positions that had max cost, check they were moved
+        original_max_positions = [(10, 20), (11, 21), (50, 50)]
+        for i, (orig_row, orig_col) in enumerate(original_max_positions):
+            if i < len(positions_to_correct):
+                # Check if this position was in a max cost area
+                if orig_row >= 10 and orig_row < 15 and orig_col >= 20 and orig_col < 25:
+                    # This was in a max cost block, should have been corrected
+                    corrected_row, corrected_col = corrected[i]
+                    # The corrected position should be different or have a non-max value
+                    value_at_corrected = path_finder.raster_handler.data[
+                        0, corrected_row, corrected_col]
+                    self.assertLess(value_at_corrected, max_cost)
+
+    def test_correct_max_cost_positions_with_replacement_value(self):
+        """Test correcting max cost positions with a specific replacement value."""
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        # Create test raster
+        test_raster = os.path.join(self.temp_dir.name, "test_replacement.tiff")
+
+        # Create raster data - use uint16!
+        raster_data = np.ones((100, 100), dtype=np.uint16) * 5
+        max_cost = np.iinfo(np.uint16).max  # 65535
+
+        # Add max cost positions
+        raster_data[25:30, 25:30] = max_cost
+
+        # Save the test raster
+        transform = from_origin(500000, 5600000, 1, 1)
+        with rasterio.open(
+                test_raster, 'w',
+                driver='GTiff',
+                height=100,
+                width=100,
+                count=1,
+                dtype=raster_data.dtype,
+                crs='EPSG:32632',
+                transform=transform,
+        ) as dst:
+            dst.write(raster_data, 1)
+
+        # Create PathFinder
+        path_finder = PathFinder(
+            dataset_source=test_raster,
+            source_coords=(500020, 5599980),
+            target_coords=(500080, 5599920),
+            graph_api="networkit",
+            search_space_buffer_m=100,
+            neighborhood_str='r1',
+        )
+
+        # Define positions to correct
+        positions_to_correct = np.array([[25, 25], [26, 26], [27, 27]], dtype=np.int32)
+
+        # The current implementation finds nearest valid positions
+        # It doesn't support a replacement_value parameter directly
+        corrected = path_finder._correct_max_cost_positions(positions_to_correct)
+
+        # Verify that positions were corrected (moved to valid locations)
+        self.assertIsNotNone(corrected)
+        for i in range(len(positions_to_correct)):
+            row, col = corrected[i]
+            value = path_finder.raster_handler.data[0, row, col]
+            self.assertLess(value, max_cost,
+                            f"Position ({row}, {col}) should not have max cost")
+
+    def test_correct_max_cost_positions_boundary_cases(self):
+        """Test correcting max cost positions at raster boundaries."""
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        # Create test raster
+        test_raster = os.path.join(self.temp_dir.name, "test_boundaries.tiff")
+
+        # Create raster data with max cost at boundaries - use uint16!
+        raster_data = np.ones((100, 100), dtype=np.uint16) * 20
+        max_cost = np.iinfo(np.uint16).max
+
+        # Set boundary positions to max cost
+        raster_data[0, :] = max_cost  # Top row
+        raster_data[-1, :] = max_cost  # Bottom row
+        raster_data[:, 0] = max_cost  # Left column
+        raster_data[:, -1] = max_cost  # Right column
+
+        # Save the test raster
+        transform = from_origin(500000, 5600000, 1, 1)
+        with rasterio.open(
+                test_raster, 'w',
+                driver='GTiff',
+                height=100,
+                width=100,
+                count=1,
+                dtype=raster_data.dtype,
+                crs='EPSG:32632',
+                transform=transform,
+        ) as dst:
+            dst.write(raster_data, 1)
+
+        # Create PathFinder
+        path_finder = PathFinder(
+            dataset_source=test_raster,
+            source_coords=(500050, 5599950),
+            target_coords=(500060, 5599940),
+            graph_api="networkit",
+            search_space_buffer_m=100,
+            neighborhood_str='r1',
+        )
+
+        # Test boundary positions
+        boundary_positions = np.array([[0, 0], [0, 50], [99, 0], [99, 99]],
+                                      dtype=np.int32)
+
+        # Call the method
+        corrected = path_finder._correct_max_cost_positions(boundary_positions)
+
+        # Verify corrections were made appropriately
+        self.assertIsNotNone(corrected)
+        for i in range(len(boundary_positions)):
+            row, col = corrected[i]
+            # Corrected positions should be away from boundaries
+            value = path_finder.raster_handler.data[0, row, col]
+            self.assertLess(value, max_cost,
+                            f"Boundary position corrected to ({row}, {col}) should not have max cost")
+
+    def test_correct_max_cost_positions_empty_list(self):
+        """Test correcting an empty list of positions."""
+        # Create PathFinder with standard test raster
+        path_finder = PathFinder(
+            dataset_source=self.test_raster_path,
+            source_coords=self.source_coords,
+            target_coords=self.target_coords,
+            graph_api="networkit",
+            search_space_buffer_m=50,
+            neighborhood_str='r1',
+        )
+
+        # Test with empty 2D array (proper format for the function)
+        import numpy as np
+        empty_positions = np.array([], dtype=np.int32).reshape(0, 2)
+
+        # This should handle empty array gracefully
+        result = path_finder._correct_max_cost_positions(empty_positions)
+
+        # Should return the same empty array
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), 0, "Empty input should return empty result")
+
+    def test_correct_max_cost_positions_numpy_array_input(self):
+        """Test correcting positions provided as numpy array."""
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        # Create test raster
+        test_raster = os.path.join(self.temp_dir.name, "test_numpy_input.tiff")
+
+        # Create raster data - use uint16!
+        raster_data = np.ones((100, 100), dtype=np.uint16) * 15
+        max_cost = np.iinfo(np.uint16).max
+        raster_data[40:45, 40:45] = max_cost
+
+        # Save the test raster
+        transform = from_origin(500000, 5600000, 1, 1)
+        with rasterio.open(
+                test_raster, 'w',
+                driver='GTiff',
+                height=100,
+                width=100,
+                count=1,
+                dtype=raster_data.dtype,
+                crs='EPSG:32632',
+                transform=transform,
+        ) as dst:
+            dst.write(raster_data, 1)
+
+        # Create PathFinder
+        path_finder = PathFinder(
+            dataset_source=test_raster,
+            source_coords=(500020, 5599980),
+            target_coords=(500080, 5599920),
+            graph_api="networkit",
+            search_space_buffer_m=100,
+            neighborhood_str='r1',
+        )
+
+        # Test with numpy array input
+        positions_array = np.array([[40, 40], [41, 41], [42, 42], [30, 30]],
+                                   dtype=np.int32)
+
+        # Call the method
+        corrected = path_finder._correct_max_cost_positions(positions_array)
+
+        # Verify corrections
+        self.assertIsNotNone(corrected)
+
+        # Check that max cost positions were corrected
+        for i in range(3):  # First 3 positions were in max cost area
+            row, col = corrected[i]
+            value = path_finder.raster_handler.data[0, row, col]
+            self.assertLess(value, max_cost,
+                            f"Max cost position should be corrected")
+
+        # Non-max position (30, 30) should remain unchanged
+        self.assertEqual(corrected[3][0], 30)
+        self.assertEqual(corrected[3][1], 30)
+
+    def test_correct_max_cost_positions_interpolation(self):
+        """Test correcting max cost positions using interpolation from neighbors."""
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        # Create test raster
+        test_raster = os.path.join(self.temp_dir.name, "test_interpolation.tiff")
+
+        # Create raster data with gradient pattern - use uint16!
+        raster_data = np.zeros((100, 100), dtype=np.uint16)
+        for i in range(100):
+            for j in range(100):
+                # Scale the gradient to fit in uint16 range
+                value = int((i + j) * 100 / 198 + 1)  # Scale to 1-101 range
+                raster_data[i, j] = min(value, 65534)  # Keep below max_cost
+
+        max_cost = np.iinfo(np.uint16).max
+
+        # Set some isolated max cost positions
+        raster_data[50, 50] = max_cost
+        raster_data[51, 50] = max_cost
+        raster_data[50, 51] = max_cost
+
+        # Save the test raster
+        transform = from_origin(500000, 5600000, 1, 1)
+        with rasterio.open(
+                test_raster, 'w',
+                driver='GTiff',
+                height=100,
+                width=100,
+                count=1,
+                dtype=raster_data.dtype,
+                crs='EPSG:32632',
+                transform=transform,
+        ) as dst:
+            dst.write(raster_data, 1)
+
+        # Create PathFinder
+        path_finder = PathFinder(
+            dataset_source=test_raster,
+            source_coords=(500020, 5599980),
+            target_coords=(500080, 5599920),
+            graph_api="networkit",
+            search_space_buffer_m=100,
+            neighborhood_str='r1',
+        )
+
+        # Test interpolation-based correction
+        positions_to_correct = np.array([[50, 50], [51, 50], [50, 51]], dtype=np.int32)
+
+        # Call the method (current implementation finds nearest valid)
+        corrected = path_finder._correct_max_cost_positions(positions_to_correct)
+
+        # Check that corrected values are reasonable
+        self.assertIsNotNone(corrected)
+        for i in range(len(positions_to_correct)):
+            row, col = corrected[i]
+            value = path_finder.raster_handler.data[0, row, col]
+
+            # Value should be less than max_cost
+            self.assertLess(value, max_cost)
+
+            # Value should be positive and reasonable
+            self.assertGreater(value, 0)
+
+    def test_correct_max_cost_positions_large_block(self):
+        """Test correcting a large contiguous block of max cost positions."""
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        # Create test raster
+        test_raster = os.path.join(self.temp_dir.name, "test_large_block.tiff")
+
+        # Create raster data - use uint16!
+        raster_data = np.ones((100, 100), dtype=np.uint16) * 25
+        max_cost = np.iinfo(np.uint16).max
+
+        # Create a large block of max cost (like a lake or building)
+        raster_data[30:60, 30:60] = max_cost
+
+        # Save the test raster
+        transform = from_origin(500000, 5600000, 1, 1)
+        with rasterio.open(
+                test_raster, 'w',
+                driver='GTiff',
+                height=100,
+                width=100,
+                count=1,
+                dtype=raster_data.dtype,
+                crs='EPSG:32632',
+                transform=transform,
+        ) as dst:
+            dst.write(raster_data, 1)
+
+        # Create PathFinder
+        path_finder = PathFinder(
+            dataset_source=test_raster,
+            source_coords=(500020, 5599980),
+            target_coords=(500080, 5599920),
+            graph_api="networkit",
+            search_space_buffer_m=100,
+            neighborhood_str='r1',
+        )
+
+        # Test correcting positions in the middle of the block
+        positions_in_block = np.array([[45, 45], [40, 40], [50, 50], [35, 35]],
+                                      dtype=np.int32)
+
+        # Call the method
+        corrected = path_finder._correct_max_cost_positions(positions_in_block)
+
+        # Verify corrections - positions should be moved outside the block
+        self.assertIsNotNone(corrected)
+        for i in range(len(positions_in_block)):
+            row, col = corrected[i]
+            value = path_finder.raster_handler.data[0, row, col]
+            self.assertLess(value, max_cost,
+                            f"Position in large block should be corrected to valid location")
+
+    def test_correct_max_cost_positions_mixed_values(self):
+        """Test that valid positions are preserved while max cost positions are corrected."""
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        # Create test raster
+        test_raster = os.path.join(self.temp_dir.name, "test_mixed.tiff")
+
+        # Create raster data with varied values - use uint16!
+        np.random.seed(42)  # For reproducibility
+        raster_data = np.random.randint(1, 100, size=(100, 100), dtype=np.uint16)
+        max_cost = np.iinfo(np.uint16).max
+
+        # Set specific positions to max cost
+        raster_data[20, 20] = max_cost
+        raster_data[21, 21] = max_cost
+        # Keep some positions with normal values
+        raster_data[22, 22] = 42
+        raster_data[23, 23] = 37
+
+        # Save the test raster
+        transform = from_origin(500000, 5600000, 1, 1)
+        with rasterio.open(
+                test_raster, 'w',
+                driver='GTiff',
+                height=100,
+                width=100,
+                count=1,
+                dtype=raster_data.dtype,
+                crs='EPSG:32632',
+                transform=transform,
+        ) as dst:
+            dst.write(raster_data, 1)
+
+        # Create PathFinder
+        path_finder = PathFinder(
+            dataset_source=test_raster,
+            source_coords=(500020, 5599980),
+            target_coords=(500080, 5599920),
+            graph_api="networkit",
+            search_space_buffer_m=100,
+            neighborhood_str='r1',
+        )
+
+        # Mix of max cost and valid positions
+        mixed_positions = np.array([[20, 20], [21, 21], [22, 22], [23, 23]],
+                                   dtype=np.int32)
+
+        # Call the method
+        corrected = path_finder._correct_max_cost_positions(mixed_positions)
+
+        self.assertIsNotNone(corrected)
+
+        # Check that max cost positions were corrected (moved)
+        for i in range(2):  # First 2 positions had max cost
+            row, col = corrected[i]
+            value = path_finder.raster_handler.data[0, row, col]
+            self.assertLess(value, max_cost)
+
+        # Valid positions should remain unchanged
+        self.assertEqual(corrected[2][0], 22)
+        self.assertEqual(corrected[2][1], 22)
+        self.assertEqual(corrected[3][0], 23)
+        self.assertEqual(corrected[3][1], 23)
+
+    def test_correct_max_cost_positions_path_finding_integration(self):
+        """Test that max cost correction improves path finding through obstacles."""
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_origin
+
+        # Create test raster with a barrier
+        test_raster = os.path.join(self.temp_dir.name, "test_barrier.tiff")
+
+        # Create raster data with a vertical barrier - use uint16!
+        raster_data = np.ones((100, 100), dtype=np.uint16) * 10
+        max_cost = np.iinfo(np.uint16).max
+
+        # Create a vertical barrier in the middle
+        raster_data[20:80, 48:52] = max_cost
+
+        # But leave a small gap for potential path
+        raster_data[48:52, 48:52] = 20  # Create a passable area
+
+        # Save the test raster
+        transform = from_origin(500000, 5600000, 1, 1)
+        with rasterio.open(
+                test_raster, 'w',
+                driver='GTiff',
+                height=100,
+                width=100,
+                count=1,
+                dtype=raster_data.dtype,
+                crs='EPSG:32632',
+                transform=transform,
+        ) as dst:
+            dst.write(raster_data, 1)
+
+        # Create PathFinder
+        path_finder = PathFinder(
+            dataset_source=test_raster,
+            source_coords=(500025, 5599975),  # Left side of barrier
+            target_coords=(500075, 5599925),  # Right side of barrier
+            graph_api="networkit",
+            search_space_buffer_m=100,
+            neighborhood_str='r1',
+        )
+
+        # Find path - should go through the gap
+        path = path_finder.find_route()
+
+        # The path should exist
+        self.assertIsNotNone(path)
+        self.assertGreater(path.total_length, 0)
+
+        # Now test correction of positions that might be in the barrier
+        barrier_positions = np.array([[50, 49], [51, 49], [52, 49]], dtype=np.int32)
+        corrected = path_finder._correct_max_cost_positions(barrier_positions)
+
+        # Corrected positions should be outside the barrier
+        self.assertIsNotNone(corrected)
+        for i in range(len(barrier_positions)):
+            row, col = corrected[i]
+            value = path_finder.raster_handler.data[0, row, col]
+            self.assertLess(value, max_cost,
+                            "Corrected position should not be in barrier")

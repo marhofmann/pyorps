@@ -31,6 +31,105 @@ uint16_1d_array_c = nb.types.Array(uint16_type, 1, 'C')
 float64_1d_array_c = nb.types.Array(float64_type, 1, 'C')
 
 
+@nb.njit(cache=True, parallel=True)
+def find_nearest_valid_positions_numba(raster_data: np.ndarray,
+                                       invalid_positions: np.ndarray,
+                                       max_value: int) -> np.ndarray:
+    """
+    Find nearest valid positions for all invalid positions using Numba.
+
+    Parameters:
+        raster_data: 2D array of raster values
+        invalid_positions: Array of shape (n, 2) with row, col indices
+        max_value: The maximum value to avoid
+
+    Returns:
+        Array of corrected positions with shape (n, 2)
+    """
+    rows, cols = raster_data.shape
+    num_positions = invalid_positions.shape[0]
+    corrected = np.empty((num_positions, 2), dtype=np.int32)
+
+    for i in nb.prange(num_positions):
+        row = invalid_positions[i, 0]
+        col = invalid_positions[i, 1]
+
+        # Find nearest valid position
+        min_dist = np.inf
+        best_row = row
+        best_col = col
+        found = False
+
+        # Search in expanding radius
+        max_radius = max(rows, cols)
+        for radius in range(1, max_radius):
+            if found:
+                break
+
+            # Check all positions at current radius
+            for dr in range(-radius, radius + 1):
+                new_row = row + dr
+                if new_row < 0 or new_row >= rows:
+                    continue
+
+                for dc in range(-radius, radius + 1):
+                    # Skip if not on the perimeter of the search square
+                    if abs(dr) != radius and abs(dc) != radius:
+                        continue
+
+                    new_col = col + dc
+                    if new_col < 0 or new_col >= cols:
+                        continue
+
+                    # Check if this position is valid
+                    if raster_data[new_row, new_col] != max_value:
+                        dist = np.sqrt(dr * dr + dc * dc)
+                        if dist < min_dist:
+                            min_dist = dist
+                            best_row = new_row
+                            best_col = new_col
+                            found = True
+
+        corrected[i, 0] = best_row
+        corrected[i, 1] = best_col
+
+    return corrected
+
+
+@nb.njit(cache=True)
+def check_max_values(raster_data: np.ndarray,
+                     indices_2d: np.ndarray,
+                     max_value: int) -> tuple:
+    """
+    Check which positions have the maximum value.
+
+    Returns:
+        Tuple of (has_max_values, invalid_mask, invalid_indices)
+    """
+    num_positions = indices_2d.shape[0]
+    invalid_mask = np.empty(num_positions, dtype=np.bool_)
+    invalid_count = 0
+
+    for i in range(num_positions):
+        row = indices_2d[i, 0]
+        col = indices_2d[i, 1]
+        if raster_data[row, col] == max_value:
+            invalid_mask[i] = True
+            invalid_count += 1
+        else:
+            invalid_mask[i] = False
+
+    # Get invalid indices
+    invalid_indices = np.empty((invalid_count, 2), dtype=np.int32)
+    idx = 0
+    for i in range(num_positions):
+        if invalid_mask[i]:
+            invalid_indices[idx] = indices_2d[i]
+            idx += 1
+
+    return invalid_count > 0, invalid_mask, invalid_indices
+
+
 @nb.njit(int8_2d_array(int8_type, int8_type), cache=True, parallel=True,
          fastmath=True)
 def intermediate_steps_numba(dr: int8_type, dc: int8_type) -> int8_2d_array:

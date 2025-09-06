@@ -1575,3 +1575,4 @@ class TestPathFinder(unittest.TestCase):
         self.assertIsInstance(PathFinder.normalize_coordinates([[1.0, 2.0], [3.0, 4.0]]), list)
         self.assertIsInstance(PathFinder.normalize_coordinates(MultiPoint([(1.0, 2.0), (3.0, 4.0)])), list)
         self.assertIsInstance(PathFinder.normalize_coordinates([Point(1.0, 2.0), Point(3.0, 4.0)]), list)
+

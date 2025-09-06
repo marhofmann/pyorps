@@ -118,7 +118,8 @@ class PathPlotter:
 
             # Plot raster background if requested
             if show_raster and self.raster_handler is not None:
-                raster_viz_data = self._plot_raster_background(ax, raster_viz_data, reverse_colors=reverse_colors)
+                raster_viz_data = self._plot_raster_background(ax, raster_viz_data,
+                                                               reverse_colors=reverse_colors)
 
             # Plot the path and add to legend
             path_color = path_colors[i] if isinstance(path_colors, list) else path_colors

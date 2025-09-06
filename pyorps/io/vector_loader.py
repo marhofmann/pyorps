@@ -282,7 +282,8 @@ def _resolve_layer(url: str, requested_layer: str) -> str:
         return best_match
 
     raise WFSLayerNotFoundError(f"Layer '{requested_layer}' not found and no similar "
-                                f"layers available.")
+                                f"layers available! Available layers:"
+                                f"\n{available_layers}")
 
 
 def _get_available_layers(url: str) -> list[str]:

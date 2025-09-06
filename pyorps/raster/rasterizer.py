@@ -201,8 +201,8 @@ class GeoRasterizer:
             dtype: str = "uint16",
             geometry_buffer_m: float = 0,
             bounding_box: Optional[Polygon] = None,
-            fancy_function: Optional[Callable] = None,
-            fancy_function_kwargs: Optional[dict[str, Any]] = None,
+            preprocessing_function: Optional[Callable] = None,
+            preprocessing_kwargs: Optional[dict[str, Any]] = None,
     ) -> RasterDataset:
         """
         Rasterize the base dataset based on a specified field.
@@ -215,10 +215,10 @@ class GeoRasterizer:
             dtype: Data type for the output raster
             geometry_buffer_m: Buffer to apply to the dataset geometries
             bounding_box: Bounding box to define the rasterization extent
-            fancy_function: A function that takes the base dataset as a first
-            argument and other arguments defined in fancy_function_kwargs which will
+            preprocessing_function: A function that takes the base dataset as a first
+            argument and other arguments defined in preprocessing_kwargs which will
             be called before rasterization
-            fancy_function_kwargs: The keyword arguments passed to fancy_function
+            preprocessing_kwargs: The keyword arguments passed to preprocessing_function
         Returns:
             tuple of (raster_data, transform)
         """
@@ -228,8 +228,8 @@ class GeoRasterizer:
         if self.base_dataset is None or self.base_dataset.data is None:
             raise ValueError("No base dataset loaded to rasterize")
 
-        if fancy_function is not None:
-            fancy_function(self.base_dataset.data, **fancy_function_kwargs)
+        if preprocessing_function is not None:
+            preprocessing_function(self.base_dataset.data, **preprocessing_kwargs)
 
         # Add cost field
         if field_name == 'cost':

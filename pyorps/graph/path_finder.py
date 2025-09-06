@@ -9,8 +9,10 @@ Reference:
 from time import time
 from typing import Optional, Union, Any, Generator
 from contextlib import contextmanager
+from warnings import warn
 
-from numpy import array, ndarray, ravel_multi_index, unravel_index, sqrt, uint32 
+from numpy import (array, ndarray, ravel_multi_index, unravel_index, sqrt, uint32,
+                   int32, asarray, iinfo, uint16)
 from geopandas import GeoDataFrame, GeoSeries
 from shapely.geometry import LineString, Point, MultiPoint
 from rasterio.transform import Affine
@@ -21,13 +23,15 @@ from pyorps.core.types import (BboxType, GeometryMaskType, InputDataType,
                                CostAssumptionsType, CoordinateInput, Node, NodeList,
                                NodePathList, NormalizedCoordinate, CoordinateTuple,
                                CoordinateList)
-from pyorps.core.exceptions import NoPathFoundError
+from pyorps.core.exceptions import NoPathFoundError, RasterShapeError
 from pyorps.graph.api.graph_api import GraphAPI
 from pyorps.raster.rasterizer import GeoRasterizer
 from pyorps.raster.handler import RasterHandler
 from pyorps.utils.neighborhood import get_neighborhood_steps
 from pyorps.io.geo_dataset import initialize_geo_dataset, VectorDataset, RasterDataset
-from pyorps.utils.traversal import calculate_path_metrics_numba
+from pyorps.utils.traversal import (calculate_path_metrics_numba,
+                                    find_nearest_valid_positions_numba,
+                                    check_max_values)
 
 
 @contextmanager
@@ -136,8 +140,8 @@ class PathFinder:
             target_coords: CoordinateInput
                 Can be: tuple, list of tuples, array of arrays, shapely Point,
                 shapely MultiPoint, GeoSeries of points, or GeoDataFrame of points.
-            search_space_buffer_m: Buffer around the source and target
-            coordinates in meters.
+            search_space_buffer_m: Buffer around the source and target coordinates in
+                meters. If set to 0, the entire Raster will be considered!
             neighborhood_str: Neighborhood type. Defaults to "r2".
             steps: Steps which define the neighborhood. If None,
                 will be created from neighborhood_str.
@@ -468,8 +472,16 @@ class PathFinder:
         # Convert coordinates to 2D indices
         indices_2d = self.raster_handler.coords_to_indices(coords)
 
+        # Correct positions with max cost if needed (using Numba-optimized method)
+        indices_2d = self._correct_max_cost_positions(indices_2d)
+
         # Get shape of raster
-        _, rows, cols = self.raster_handler.data.shape
+        if len(self.raster_handler.data.shape) == 3:
+            _, rows, cols = self.raster_handler.data.shape
+        elif len(self.raster_handler.data.shape) == 2:
+            rows, cols = self.raster_handler.data.shape
+        else:
+            raise RasterShapeError(self.raster_handler.data.shape)
 
         # Convert 2D indices to 1D node indices using ravel_multi_index
         node_indices = ravel_multi_index(
@@ -480,6 +492,84 @@ class PathFinder:
         else:
             result = node_indices
         return result
+
+    def _correct_max_cost_positions(self, indices_2d: ndarray) -> ndarray:
+        """
+        Check and correct positions that have maximum cost value (uint16 max) using
+        Numba-optimized functions.
+
+        If positions in the raster have the maximum value (65535 for uint16),
+        find the nearest position that doesn't have the maximum value.
+
+        Parameters:
+            indices_2d: Array of (row, col) indices to check and potentially correct
+
+        Returns:
+            Corrected array of (row, col) indices
+        """
+        if not self.ignore_max_cost:
+            return indices_2d
+
+        # Get the maximum value for uint16
+        max_value = iinfo(uint16).max  # 65535
+
+        # Get raster data (handle different shapes)
+        if len(self.raster_handler.data.shape) == 3:
+            raster_data = self.raster_handler.data[0]  # Use first band
+            _, rows, cols = self.raster_handler.data.shape
+        elif len(self.raster_handler.data.shape) == 2:
+            raster_data = self.raster_handler.data
+            rows, cols = self.raster_handler.data.shape
+        else:
+            raise RasterShapeError(self.raster_handler.data.shape)
+
+        # Ensure indices are in the right format for Numba
+        indices_2d = asarray(indices_2d, dtype=int32)
+
+        # Check which positions have max values using Numba function [[11]]
+        has_max_values, invalid_mask, invalid_indices = check_max_values(
+            raster_data, indices_2d, max_value
+        )
+
+        if not has_max_values:
+            return indices_2d
+
+        # Find nearest valid positions for all invalid positions at once
+        corrected_positions = find_nearest_valid_positions_numba(
+            raster_data, invalid_indices, max_value
+        )
+
+        # Create corrected indices array
+        corrected_indices = indices_2d.copy()
+
+        # Update the corrected positions and print warnings
+        invalid_idx = 0
+        for i in range(len(indices_2d)):
+            if invalid_mask[i]:
+                original_row, original_col = indices_2d[i]
+                new_row, new_col = corrected_positions[invalid_idx]
+
+                if new_row != original_row or new_col != original_col:
+                    # Convert back to coordinates for warning message
+                    original_coords = self.raster_handler.indices_to_coords(
+                        [(original_row, original_col)]
+                    )[0]
+                    corrected_coords = self.raster_handler.indices_to_coords(
+                        [(new_row, new_col)]
+                    )[0]
+
+                    warning_msg = (f"Position at coordinates {original_coords} "
+                                   f"(indices [{original_row}, {original_col}]) has "
+                                   f"maximum cost value ({max_value}). Correcting to "
+                                   f"nearest valid position at {corrected_coords} "
+                                   f"(indices [{new_row}, {new_col}]).")
+                    warn(warning_msg, UserWarning)
+
+                    corrected_indices[i] = [new_row, new_col]
+
+                invalid_idx += 1
+
+        return corrected_indices
 
     def get_coords_from_node_indices(
             self,
@@ -567,7 +657,7 @@ class PathFinder:
             )
 
         if len(path_indices) == 0:
-            msg = (f"In some cases, this happens if source or target are within a "
+            msg = (f" In some cases, this happens if source or target are within a "
                    f"pixel with max cost and ignore_max is set to True! "
                    f"Either change the coordinates of source or target, change the "
                    f"cost value to a vlue smaller than the maximum or set ignore_max "
