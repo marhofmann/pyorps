@@ -120,7 +120,7 @@ This command will install the core functionality of **PYORPS** along with its es
 
 **PYORPS** offers several optional dependencies that enhance its functionality. You can install these extras by specifying them in square brackets:
 
-- **Examples**: To include example scripts:
+- **Examples**: To include all dependencies for examples and case-studies:
   ```bash
   pip install pyorps[examples]
   ```
