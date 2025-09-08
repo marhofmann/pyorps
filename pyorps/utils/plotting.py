@@ -69,7 +69,7 @@ class PathPlotter:
                    title: Optional[Union[str, List[str]]] = None,
                    suptitle: Optional[str] = None,
                    path_id: Optional[int | list[int]] = None,
-                   reverse_colors: bool = True) -> Union[Axes, List[Axes]]:
+                   reverse_colors: bool = False) -> Union[Axes, List[Axes]]:
         """
         Plot paths with options to display all paths or individual paths.
 

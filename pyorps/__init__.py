@@ -29,5 +29,6 @@ __all__ = [
     "PathFinder", "Path", "PathCollection",
 
     # Cost assumptions
-    "CostAssumptions", "get_zero_cost_assumptions", "detect_feature_columns", "save_empty_cost_assumptions",
+    "CostAssumptions", "get_zero_cost_assumptions", "detect_feature_columns",
+    "save_empty_cost_assumptions",
 ]
