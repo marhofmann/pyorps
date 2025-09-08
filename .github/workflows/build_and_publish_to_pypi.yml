@@ -34,7 +34,7 @@ jobs:
       - name: Build wheels on Linux
         if: runner.os == 'Linux'
         env:
-          CIBW_BUILD: "cp311-* cp312-*"
+          CIBW_BUILD: "cp311-* cp312-* cp313-*"
           CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_i686"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_ARCHS_LINUX: ${{ matrix.CIBW_ARCHS_LINUX }}
@@ -47,7 +47,7 @@ jobs:
       - name: Build wheels on Windows
         if: runner.os == 'Windows'
         env:
-          CIBW_BUILD: "cp311-* cp312-*"
+          CIBW_BUILD: "cp311-* cp312-* cp313-*"
           CIBW_SKIP: "*-win32"
           CIBW_ARCHS_WINDOWS: ${{ matrix.CIBW_ARCHS_WINDOWS }}
           CIBW_BEFORE_BUILD: "python -m pip install --upgrade pip setuptools wheel numpy>=2.0.0 cython>=3.0.0"
@@ -112,10 +112,14 @@ jobs:
             python: "3.11"
           - os: ubuntu-latest
             python: "3.12"
+          - os: ubuntu-latest
+            python: "3.13"
           - os: windows-latest
             python: "3.11"
           - os: windows-latest
             python: "3.12"
+          - os: windows-latest
+            python: "3.13"
 
     steps:
       - name: Checkout code (for tests only)
@@ -271,6 +275,26 @@ jobs:
 
       - name: Smoke test on Windows 3.12 (avoid LLVM teardown assertion)
         if: runner.os == 'Windows' && matrix.python == '3.12'
+        shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: 1
+        run: |
+          # Make sure we're not in the source directory
+          Set-Location $env:TEMP
+          
+          python -c @"
+          import pyorps
+          import pyorps.utils.path_algorithms as m
+          import pyorps.utils.path_core as c
+          print('Imported pyorps:', pyorps.__file__)
+          print('Imported path_algorithms extension:', m.__file__)
+          print('Imported path_core extension:', c.__file__)
+          print('SUCCESS: All modules imported correctly!')
+          "@
+
+      - name: Smoke test on Windows 3.13 (avoid LLVM teardown assertion)
+        if: runner.os == 'Windows' && matrix.python == '3.13'
         shell: pwsh
         env:
           PYTHONIOENCODING: utf-8

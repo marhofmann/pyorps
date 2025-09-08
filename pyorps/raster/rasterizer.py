@@ -229,6 +229,8 @@ class GeoRasterizer:
             raise ValueError("No base dataset loaded to rasterize")
 
         if preprocessing_function is not None:
+            if preprocessing_kwargs is None:
+                preprocessing_kwargs = dict()
             preprocessing_function(self.base_dataset.data, **preprocessing_kwargs)
 
         # Add cost field

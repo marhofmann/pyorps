@@ -13,7 +13,7 @@ class CythonAPI(GraphAPI):
 
     def __init__(self, raster_data, steps, ignore_max=False):
         super().__init__(raster_data, steps, ignore_max)
-        self.max_value = 65535 if self.ignore_max else 65534
+        self.max_value = 65535 if self.ignore_max else 0
 
     def shortest_path(
             self,
@@ -88,6 +88,7 @@ class CythonAPI(GraphAPI):
                 self.raster_data, self.steps,
                 uint64(source), uint64(target),
                 delta=kwargs.get("delta", 100),
+                max_value=self.max_value,
                 num_threads=kwargs.get('num_threads', 0),
                 margin=kwargs.get('margin', 1.1)
             )
