@@ -1,6 +1,6 @@
 """PYORPS - Python for Optimal Routes in Power Systems."""
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 # Import key components for easy access
 from .io.geo_dataset import (
