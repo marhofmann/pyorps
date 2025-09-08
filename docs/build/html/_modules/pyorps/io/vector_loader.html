@@ -4,11 +4,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>pyorps.io.vector_loader &#8212; PYORPS 09.05.2025 documentation</title>
+    <title>pyorps.io.vector_loader &#8212; PYORPS 0.2.2 documentation</title>
     <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=5ecbeea2" />
     <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=b08954a9" />
     <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
-    <script src="../../../_static/documentation_options.js?v=d2164c19"></script>
+    <script src="../../../_static/documentation_options.js?v=000c92bf"></script>
     <script src="../../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <link rel="index" title="Index" href="../../../genindex.html" />
@@ -31,12 +31,20 @@
           <div class="body" role="main">
             
   <h1>Source code for pyorps.io.vector_loader</h1><div class="highlight"><pre>
-<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Union</span>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">PYORPS: An Open-Source Tool for Automated Power Line Routing</span>
+
+<span class="sd">Reference:</span>
+<span class="sd">[1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: &#39;PYORPS: An Open-Source Tool for</span>
+<span class="sd">    Automated Power Line Routing&#39;, CIRED 2025 - 28th Conference and Exhibition on</span>
+<span class="sd">    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">concurrent.futures</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThreadPoolExecutor</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">difflib</span><span class="w"> </span><span class="kn">import</span> <span class="n">SequenceMatcher</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">xml.etree</span><span class="w"> </span><span class="kn">import</span> <span class="n">ElementTree</span> <span class="k">as</span> <span class="n">et</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">defusedxml</span><span class="w"> </span><span class="kn">import</span> <span class="n">ElementTree</span> <span class="k">as</span> <span class="n">et</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
@@ -45,16 +53,18 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">box</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">shapely.ops</span><span class="w"> </span><span class="kn">import</span> <span class="n">unary_union</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">..core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">WFSLayerNotFoundError</span><span class="p">,</span> <span class="n">WFSConnectionError</span><span class="p">,</span> <span class="n">WFSResponseParsingError</span><span class="p">,</span> <span class="n">WFSError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..core.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">BboxType</span><span class="p">,</span> <span class="n">GeometryMaskType</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">WFSLayerNotFoundError</span><span class="p">,</span> <span class="n">WFSConnectionError</span><span class="p">,</span>
+                               <span class="n">WFSResponseParsingError</span><span class="p">,</span> <span class="n">WFSError</span><span class="p">)</span>
 
 
 <div class="viewcode-block" id="load_from_wfs">
-<a class="viewcode-back" href="../../../pyorps.io.html#pyorps.io.vector_loader.load_from_wfs">[docs]</a>
+<a class="viewcode-back" href="../../../generated/pyorps.io.vector_loader.html#pyorps.io.load_from_wfs">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_from_wfs</span><span class="p">(</span>
         <span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">layer</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-        <span class="n">bbox</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="n">mask</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="p">,</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoSeries</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">bbox</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BboxType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">mask</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">GeometryMaskType</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">filter_params</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">auto_match</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
         <span class="n">max_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">4</span>
@@ -66,9 +76,11 @@
 <span class="sd">        url: The base URL of the WFS service</span>
 <span class="sd">        layer: Name of the layer to retrieve</span>
 <span class="sd">        bbox: Optional bounding box to limit the query extent (minx, miny, maxx, maxy)</span>
-<span class="sd">        mask: Optional geometry mask to limit the query (Shapely Polygon, GeoDataFrame, or GeoSeries)</span>
+<span class="sd">        mask: Optional geometry mask to limit the query (Shapely Polygon, GeoDataFrame,</span>
+<span class="sd">                or GeoSeries)</span>
 <span class="sd">        filter_params: Additional WFS parameters to filter results</span>
-<span class="sd">        auto_match: Whether to attempt finding similar layer names if exact match not found</span>
+<span class="sd">        auto_match: Whether to attempt finding similar layer names if exact match not</span>
+<span class="sd">                found</span>
 <span class="sd">        max_workers: Maximum number of parallel threads to use</span>
 
 <span class="sd">    Returns:</span>
@@ -77,8 +89,6 @@
 <span class="sd">    Raises:</span>
 <span class="sd">        WFSLayerNotFoundError: If the layer cannot be found and auto_match is False</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
-
     <span class="c1"># Find the correct layer name</span>
     <span class="k">if</span> <span class="n">auto_match</span><span class="p">:</span>
         <span class="n">layer</span> <span class="o">=</span> <span class="n">_resolve_layer</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">layer</span><span class="p">)</span>
@@ -216,12 +226,13 @@
 <span class="sd">        mask: Optional geometry mask to limit the query</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        tuple of (GeoDataFrame or None, boolean indicating if a server limit was likely reached)</span>
+<span class="sd">        tuple of (GeoDataFrame or None, boolean indicating if a server limit was</span>
+<span class="sd">        likely reached)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c1"># Extract namespace if present</span>
     <span class="n">namespace</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="k">if</span> <span class="s1">&#39;:&#39;</span> <span class="ow">in</span> <span class="n">layer</span><span class="p">:</span>
-        <span class="n">namespace</span><span class="p">,</span> <span class="n">local_name</span> <span class="o">=</span> <span class="n">layer</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;:&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">namespace</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">layer</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;:&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
 
     <span class="c1"># Try different WFS versions</span>
     <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;2.0.0&quot;</span><span class="p">,</span> <span class="s2">&quot;1.1.0&quot;</span><span class="p">,</span> <span class="s2">&quot;1.0.0&quot;</span><span class="p">]:</span>
@@ -238,7 +249,8 @@
 
         <span class="c1"># Add namespace parameter if needed</span>
         <span class="k">if</span> <span class="n">namespace</span> <span class="ow">and</span> <span class="n">version</span> <span class="o">==</span> <span class="s2">&quot;2.0.0&quot;</span><span class="p">:</span>
-            <span class="n">params</span><span class="p">[</span><span class="s1">&#39;NAMESPACES&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;xmlns(</span><span class="si">{</span><span class="n">namespace</span><span class="si">}</span><span class="s1">=https://www.adv-online.de/namespaces/adv/gid/</span><span class="si">{</span><span class="n">namespace</span><span class="si">}</span><span class="s1">)&#39;</span>
+            <span class="n">base</span> <span class="o">=</span> <span class="s1">&#39;https://www.adv-online.de/namespaces/adv/gid&#39;</span>
+            <span class="n">params</span><span class="p">[</span><span class="s1">&#39;NAMESPACES&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;xmlns(</span><span class="si">{</span><span class="n">namespace</span><span class="si">}</span><span class="s1">=</span><span class="si">{</span><span class="n">base</span><span class="si">}</span><span class="s1">/</span><span class="si">{</span><span class="n">namespace</span><span class="si">}</span><span class="s1">)&#39;</span>
 
         <span class="c1"># Add any additional filter parameters</span>
         <span class="k">if</span> <span class="n">filter_params</span><span class="p">:</span>
@@ -261,11 +273,13 @@
                 <span class="k">if</span> <span class="n">mask</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="n">gdf</span> <span class="o">=</span> <span class="n">_clip_data_by_mask</span><span class="p">(</span><span class="n">gdf</span><span class="p">,</span> <span class="n">mask</span><span class="p">)</span>
 
-                    <span class="c1"># If the mask filtered out all data, consider it empty but not limited</span>
+                    <span class="c1"># If the mask filtered out all data, consider it empty but not</span>
+                    <span class="c1"># limited</span>
                     <span class="k">if</span> <span class="n">gdf</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
                         <span class="k">return</span> <span class="n">gdf</span><span class="p">,</span> <span class="kc">False</span>
 
-                <span class="c1"># Check if we likely hit a server limit (common limits are 10,000 or 100,000)</span>
+                <span class="c1"># Check if we likely hit a server limit (common limits are 10,000 or</span>
+                <span class="c1"># 100,000)</span>
                 <span class="n">limit_reached</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">gdf</span><span class="p">)</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">10_000</span><span class="p">,</span> <span class="mi">100_000</span><span class="p">,</span> <span class="mi">1_000</span><span class="p">,</span> <span class="mi">5_000</span><span class="p">,</span> <span class="mi">50_000</span><span class="p">)</span>
                 <span class="k">return</span> <span class="n">gdf</span><span class="p">,</span> <span class="n">limit_reached</span>
 
@@ -303,7 +317,9 @@
     <span class="k">if</span> <span class="n">best_match</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">best_match</span>
 
-    <span class="k">raise</span> <span class="n">WFSLayerNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Layer &#39;</span><span class="si">{</span><span class="n">requested_layer</span><span class="si">}</span><span class="s2">&#39; not found and no similar layers available.&quot;</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="n">WFSLayerNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Layer &#39;</span><span class="si">{</span><span class="n">requested_layer</span><span class="si">}</span><span class="s2">&#39; not found and no similar &quot;</span>
+                                <span class="sa">f</span><span class="s2">&quot;layers available! Available layers:&quot;</span>
+                                <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="si">{</span><span class="n">available_layers</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_get_available_layers</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
@@ -344,7 +360,8 @@
 
         <span class="c1"># Try different paths to find feature types</span>
         <span class="k">for</span> <span class="n">namespace_prefix</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;wfs:&#39;</span><span class="p">,</span> <span class="s1">&#39;wfs1:&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">]:</span>
-            <span class="n">feature_types</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;.//</span><span class="si">{</span><span class="n">namespace_prefix</span><span class="si">}</span><span class="s1">FeatureType&#39;</span><span class="p">,</span> <span class="n">namespaces</span><span class="p">)</span>
+            <span class="n">feature_types</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;.//</span><span class="si">{</span><span class="n">namespace_prefix</span><span class="si">}</span><span class="s1">FeatureType&#39;</span><span class="p">,</span>
+                                         <span class="n">namespaces</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">feature_types</span><span class="p">:</span>
                 <span class="k">break</span>
 
@@ -352,7 +369,8 @@
         <span class="n">layers</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">feature_type</span> <span class="ow">in</span> <span class="n">feature_types</span><span class="p">:</span>
             <span class="k">for</span> <span class="n">namespace_prefix</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;wfs:&#39;</span><span class="p">,</span> <span class="s1">&#39;wfs1:&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">]:</span>
-                <span class="n">name_elem</span> <span class="o">=</span> <span class="n">feature_type</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;.//</span><span class="si">{</span><span class="n">namespace_prefix</span><span class="si">}</span><span class="s1">Name&#39;</span><span class="p">,</span> <span class="n">namespaces</span><span class="p">)</span>
+                <span class="n">name_elem</span> <span class="o">=</span> <span class="n">feature_type</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;.//</span><span class="si">{</span><span class="n">namespace_prefix</span><span class="si">}</span><span class="s1">Name&#39;</span><span class="p">,</span>
+                                              <span class="n">namespaces</span><span class="p">)</span>
                 <span class="k">if</span> <span class="n">name_elem</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">name_elem</span><span class="o">.</span><span class="n">text</span><span class="p">:</span>
                     <span class="n">layers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">name_elem</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
                     <span class="k">break</span>
@@ -362,10 +380,12 @@
     <span class="k">except</span> <span class="n">et</span><span class="o">.</span><span class="n">ParseError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
         <span class="k">raise</span> <span class="n">WFSResponseParsingError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to parse WFS capabilities: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
     <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="n">WFSResponseParsingError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unexpected error parsing WFS capabilities: </span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">WFSResponseParsingError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unexpected error parsing WFS capabilities: &quot;</span>
+                                      <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_find_best_matching_layer</span><span class="p">(</span><span class="n">target_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">available_layers</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_find_best_matching_layer</span><span class="p">(</span><span class="n">target_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                              <span class="n">available_layers</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Find the layer name with highest similarity to the target name.</span>
 
@@ -394,7 +414,11 @@
     <span class="k">return</span> <span class="n">best_match</span> <span class="k">if</span> <span class="n">score</span> <span class="o">&gt;</span> <span class="mf">0.3</span> <span class="k">else</span> <span class="kc">None</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_get_extent_from_capabilities</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">layer</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_extent_from_capabilities</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                                  <span class="n">layer</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span>
+                                                                <span class="nb">float</span><span class="p">,</span>
+                                                                <span class="nb">float</span><span class="p">,</span>
+                                                                <span class="nb">float</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Extract layer extent from WFS GetCapabilities response.</span>
 
@@ -450,15 +474,18 @@
 
             <span class="k">if</span> <span class="n">name</span> <span class="ow">and</span> <span class="n">name</span> <span class="o">==</span> <span class="n">layer</span><span class="p">:</span>
                 <span class="c1"># Try to find WGS 84 bounding box</span>
-                <span class="k">for</span> <span class="n">bbox_path</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;./ows:WGS84BoundingBox&#39;</span><span class="p">,</span> <span class="s1">&#39;./WGS84BoundingBox&#39;</span><span class="p">,</span> <span class="s1">&#39;./BoundingBox&#39;</span><span class="p">]:</span>
+                <span class="k">for</span> <span class="n">bbox_path</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;./ows:WGS84BoundingBox&#39;</span><span class="p">,</span> <span class="s1">&#39;./WGS84BoundingBox&#39;</span><span class="p">,</span>
+                                  <span class="s1">&#39;./BoundingBox&#39;</span><span class="p">]:</span>
                     <span class="n">bbox_elem</span> <span class="o">=</span> <span class="n">feature_type</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">bbox_path</span><span class="p">,</span> <span class="n">namespaces</span><span class="p">)</span>
                     <span class="k">if</span> <span class="n">bbox_elem</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                         <span class="k">break</span>
 
                 <span class="k">if</span> <span class="n">bbox_elem</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="c1"># Get lower and upper corners</span>
-                    <span class="n">lower_corner</span> <span class="o">=</span> <span class="n">bbox_elem</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;./ows:LowerCorner&#39;</span><span class="p">,</span> <span class="n">namespaces</span><span class="p">)</span> <span class="ow">or</span> <span class="n">bbox_elem</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;./LowerCorner&#39;</span><span class="p">)</span>
-                    <span class="n">upper_corner</span> <span class="o">=</span> <span class="n">bbox_elem</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;./ows:UpperCorner&#39;</span><span class="p">,</span> <span class="n">namespaces</span><span class="p">)</span> <span class="ow">or</span> <span class="n">bbox_elem</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;./UpperCorner&#39;</span><span class="p">)</span>
+                    <span class="n">lower_corner</span> <span class="o">=</span> <span class="p">(</span><span class="n">bbox_elem</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;./ows:LowerCorner&#39;</span><span class="p">,</span> <span class="n">namespaces</span><span class="p">)</span>
+                                    <span class="ow">or</span> <span class="n">bbox_elem</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;./LowerCorner&#39;</span><span class="p">))</span>
+                    <span class="n">upper_corner</span> <span class="o">=</span> <span class="p">(</span><span class="n">bbox_elem</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;./ows:UpperCorner&#39;</span><span class="p">,</span> <span class="n">namespaces</span><span class="p">)</span>
+                                    <span class="ow">or</span> <span class="n">bbox_elem</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;./UpperCorner&#39;</span><span class="p">))</span>
 
                     <span class="k">if</span> <span class="n">lower_corner</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">upper_corner</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                         <span class="c1"># Parse coordinates</span>
@@ -499,7 +526,7 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_create_grid</span><span class="p">(</span>
-        <span class="n">bbox</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span>
+        <span class="n">bbox</span><span class="p">:</span> <span class="n">BboxType</span><span class="p">,</span>
         <span class="n">x_divisions</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
         <span class="n">y_divisions</span><span class="p">:</span> <span class="nb">int</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]:</span>
@@ -514,7 +541,10 @@
 <span class="sd">    Returns:</span>
 <span class="sd">        list of bounding boxes representing grid cells</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">minx</span><span class="p">,</span> <span class="n">miny</span><span class="p">,</span> <span class="n">maxx</span><span class="p">,</span> <span class="n">maxy</span> <span class="o">=</span> <span class="n">bbox</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">bbox</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+        <span class="n">minx</span><span class="p">,</span> <span class="n">miny</span><span class="p">,</span> <span class="n">maxx</span><span class="p">,</span> <span class="n">maxy</span> <span class="o">=</span> <span class="n">bbox</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">minx</span><span class="p">,</span> <span class="n">miny</span><span class="p">,</span> <span class="n">maxx</span><span class="p">,</span> <span class="n">maxy</span> <span class="o">=</span> <span class="n">bbox</span><span class="o">.</span><span class="n">total_bounds</span>
     <span class="n">width</span> <span class="o">=</span> <span class="p">(</span><span class="n">maxx</span> <span class="o">-</span> <span class="n">minx</span><span class="p">)</span> <span class="o">/</span> <span class="n">x_divisions</span>
     <span class="n">height</span> <span class="o">=</span> <span class="p">(</span><span class="n">maxy</span> <span class="o">-</span> <span class="n">miny</span><span class="p">)</span> <span class="o">/</span> <span class="n">y_divisions</span>
 
@@ -560,7 +590,8 @@
 
     <span class="c1"># Filter chunks by mask if provided</span>
     <span class="k">if</span> <span class="n">mask</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">initial_chunks</span> <span class="o">=</span> <span class="p">[</span><span class="n">chunk</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">initial_chunks</span> <span class="k">if</span> <span class="n">_chunk_intersects_mask</span><span class="p">(</span><span class="n">chunk</span><span class="p">,</span> <span class="n">mask</span><span class="p">)]</span>
+        <span class="n">initial_chunks</span> <span class="o">=</span> <span class="p">[</span><span class="n">chunk</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">initial_chunks</span>
+                          <span class="k">if</span> <span class="n">_chunk_intersects_mask</span><span class="p">(</span><span class="n">chunk</span><span class="p">,</span> <span class="n">mask</span><span class="p">)]</span>
 
     <span class="c1"># Track chunks to process and processed chunks</span>
     <span class="n">chunks_to_process</span> <span class="o">=</span> <span class="p">[(</span><span class="n">chunk</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span> <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">initial_chunks</span><span class="p">]</span>
@@ -589,7 +620,8 @@
             <span class="n">future_to_chunk_info</span> <span class="o">=</span> <span class="p">{}</span>
             <span class="k">for</span> <span class="n">chunk_info</span> <span class="ow">in</span> <span class="n">filtered_batch</span><span class="p">:</span>
                 <span class="n">chunk</span> <span class="o">=</span> <span class="n">chunk_info</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-                <span class="n">future</span> <span class="o">=</span> <span class="n">executor</span><span class="o">.</span><span class="n">submit</span><span class="p">(</span><span class="n">_fetch_wfs_data</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">layer</span><span class="p">,</span> <span class="n">chunk</span><span class="p">,</span> <span class="n">filter_params</span><span class="p">)</span>
+                <span class="n">future</span> <span class="o">=</span> <span class="n">executor</span><span class="o">.</span><span class="n">submit</span><span class="p">(</span><span class="n">_fetch_wfs_data</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">layer</span><span class="p">,</span>
+                                         <span class="n">chunk</span><span class="p">,</span> <span class="n">filter_params</span><span class="p">)</span>
                 <span class="n">future_to_chunk_info</span><span class="p">[</span><span class="n">future</span><span class="p">]</span> <span class="o">=</span> <span class="n">chunk_info</span>
 
             <span class="c1"># Process results as they complete</span>
@@ -627,10 +659,11 @@
 
                         <span class="c1"># Add new sub-chunks to queue</span>
                         <span class="n">chunks_to_process</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
-                            <span class="p">[(</span><span class="n">sub_chunk</span><span class="p">,</span> <span class="n">new_x_div</span><span class="p">,</span> <span class="n">new_y_div</span><span class="p">)</span> <span class="k">for</span> <span class="n">sub_chunk</span> <span class="ow">in</span> <span class="n">sub_chunks</span><span class="p">]</span>
+                            <span class="p">[(</span><span class="n">sub_chunk</span><span class="p">,</span> <span class="n">new_x_div</span><span class="p">,</span> <span class="n">new_y_div</span><span class="p">)</span>
+                             <span class="k">for</span> <span class="n">sub_chunk</span> <span class="ow">in</span> <span class="n">sub_chunks</span><span class="p">]</span>
                         <span class="p">)</span>
 
-                <span class="k">except</span> <span class="p">(</span><span class="n">WFSError</span><span class="p">,</span> <span class="n">requests</span><span class="o">.</span><span class="n">RequestException</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">except</span> <span class="p">(</span><span class="n">WFSError</span><span class="p">,</span> <span class="n">requests</span><span class="o">.</span><span class="n">RequestException</span><span class="p">):</span>
                     <span class="c1"># If a chunk fails, try to subdivide it</span>
                     <span class="n">sub_chunks</span> <span class="o">=</span> <span class="n">_create_grid</span><span class="p">(</span><span class="n">chunk</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
 
@@ -642,7 +675,8 @@
                         <span class="p">]</span>
 
                     <span class="n">chunks_to_process</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
-                        <span class="p">[(</span><span class="n">sub_chunk</span><span class="p">,</span> <span class="n">x_div</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span> <span class="n">y_div</span> <span class="o">*</span> <span class="mi">2</span><span class="p">)</span> <span class="k">for</span> <span class="n">sub_chunk</span> <span class="ow">in</span> <span class="n">sub_chunks</span><span class="p">]</span>
+                        <span class="p">[(</span><span class="n">sub_chunk</span><span class="p">,</span> <span class="n">x_div</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span> <span class="n">y_div</span> <span class="o">*</span> <span class="mi">2</span><span class="p">)</span>
+                         <span class="k">for</span> <span class="n">sub_chunk</span> <span class="ow">in</span> <span class="n">sub_chunks</span><span class="p">]</span>
                     <span class="p">)</span>
 
     <span class="c1"># Combine all collected data</span>
@@ -683,7 +717,7 @@
     <span class="c1"># Extract namespace if present</span>
     <span class="n">namespace</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="k">if</span> <span class="s1">&#39;:&#39;</span> <span class="ow">in</span> <span class="n">layer</span><span class="p">:</span>
-        <span class="n">namespace</span><span class="p">,</span> <span class="n">local_name</span> <span class="o">=</span> <span class="n">layer</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;:&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">namespace</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">layer</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;:&#39;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
 
     <span class="c1"># Try different WFS versions</span>
     <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;2.0.0&quot;</span><span class="p">,</span> <span class="s2">&quot;1.1.0&quot;</span><span class="p">,</span> <span class="s2">&quot;1.0.0&quot;</span><span class="p">]:</span>
@@ -701,7 +735,8 @@
 
         <span class="c1"># Add namespace parameter if needed</span>
         <span class="k">if</span> <span class="n">namespace</span> <span class="ow">and</span> <span class="n">version</span> <span class="o">==</span> <span class="s2">&quot;2.0.0&quot;</span><span class="p">:</span>
-            <span class="n">params</span><span class="p">[</span><span class="s1">&#39;NAMESPACES&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;xmlns(</span><span class="si">{</span><span class="n">namespace</span><span class="si">}</span><span class="s1">=https://www.adv-online.de/namespaces/adv/gid/</span><span class="si">{</span><span class="n">namespace</span><span class="si">}</span><span class="s1">)&#39;</span>
+            <span class="n">base</span> <span class="o">=</span> <span class="s1">&#39;https://www.adv-online.de/namespaces/adv/gid&#39;</span>
+            <span class="n">params</span><span class="p">[</span><span class="s1">&#39;NAMESPACES&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;xmlns(</span><span class="si">{</span><span class="n">namespace</span><span class="si">}</span><span class="s1">=</span><span class="si">{</span><span class="n">base</span><span class="si">}</span><span class="s1">/</span><span class="si">{</span><span class="n">namespace</span><span class="si">}</span><span class="s1">)&#39;</span>
 
         <span class="c1"># Add any additional filter parameters</span>
         <span class="k">if</span> <span class="n">filter_params</span><span class="p">:</span>
@@ -737,7 +772,7 @@
         <span class="n">geojson_data</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
         <span class="k">if</span> <span class="s1">&#39;features&#39;</span> <span class="ow">in</span> <span class="n">geojson_data</span> <span class="ow">and</span> <span class="n">geojson_data</span><span class="p">[</span><span class="s1">&#39;features&#39;</span><span class="p">]:</span>
             <span class="k">return</span> <span class="n">gpd</span><span class="o">.</span><span class="n">GeoDataFrame</span><span class="o">.</span><span class="n">from_features</span><span class="p">(</span><span class="n">geojson_data</span><span class="p">[</span><span class="s1">&#39;features&#39;</span><span class="p">])</span>
-    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>
 
 
@@ -756,7 +791,7 @@
             <span class="n">temp_file</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">temp_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s2">&quot;wfs_response.xml&quot;</span>
             <span class="n">temp_file</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
             <span class="k">return</span> <span class="n">gpd</span><span class="o">.</span><span class="n">read_file</span><span class="p">(</span><span class="n">temp_file</span><span class="p">)</span>
-    <span class="k">except</span> <span class="ne">IOError</span><span class="p">:</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">IOError</span><span class="p">,</span> <span class="ne">IndexError</span><span class="p">):</span>
         <span class="k">return</span> <span class="kc">None</span>
 
 
@@ -787,28 +822,7 @@
         </div>
       </div>
       <div class="sphinxsidebar" role="navigation" aria-label="Main">
-        <div class="sphinxsidebarwrapper">
-<h1 class="logo"><a href="../../../index.html">PYORPS</a></h1>
-
-
-
-
-
-
-
-
-
-<search id="searchbox" style="display: none" role="search">
-    <div class="searchformwrapper">
-    <form class="search" action="../../../search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
-      <input type="submit" value="Go" />
-    </form>
-    </div>
-</search>
-<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
-
-<div class="relations">
+        <div class="sphinxsidebarwrapper"><div class="relations">
 <h3>Related Topics</h3>
 <ul>
   <li><a href="../../../index.html">Documentation overview</a><ul>
@@ -817,13 +831,32 @@
   </ul></li>
 </ul>
 </div>
-
-
-
-
-
-
-
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+<h3><a href="../../../index.html">Table of Contents</a></h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated/pyorps.core.html">pyorps.core</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated/pyorps.io.html">pyorps.io</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated/pyorps.graph.html">pyorps.graph</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated/pyorps.raster.html">pyorps.raster</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated/pyorps.utils.html">pyorps.utils</a></li>
+</ul>
 
         </div>
       </div>

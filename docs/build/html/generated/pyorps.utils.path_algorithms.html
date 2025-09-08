@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>pyorps.utils.path_algorithms &#8212; PYORPS 0.2.2 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=000c92bf"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="pyorps.utils.path_core" href="pyorps.utils.path_core.html" />
+    <link rel="prev" title="pyorps.utils.neighborhood" href="pyorps.utils.neighborhood.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-pyorps.utils.path_algorithms">
+<span id="pyorps-utils-path-algorithms"></span><h1>pyorps.utils.path_algorithms<a class="headerlink" href="#module-pyorps.utils.path_algorithms" title="Link to this heading">¶</a></h1>
+<p>High-performance pathfinding algorithms implemented in Cython.</p>
+<p>This module contains optimized implementations of Dijkstra’s algorithm variants
+and delta-stepping algorithms for different pathfinding scenarios:
+- Single source to single target (classical shortest path)
+- Single source to multiple targets (one-to-many)
+- Multiple sources to multiple targets (many-to-many)
+- Delta-stepping with parallel edge relaxation
+- A* optimization for directed searches</p>
+<p>All algorithms support complex movement patterns with intermediate steps,
+making them suitable for realistic pathfinding in raster environments with
+diagonal and extended-range movements.</p>
+<dl class="simple">
+<dt>Performance Characteristics:</dt><dd><ul class="simple">
+<li><p>Dijkstra single-source: O((V + E) log V) where V=cells, E=edges</p></li>
+<li><p>Delta-stepping: O((V + E) / p + D·L) where p=parallelism, D=diameter, L=bucket operations</p></li>
+<li><p>Multi-target optimization: Amortizes setup costs across related queries</p></li>
+<li><p>Batch processing: Reduces redundant computation for spatially related paths</p></li>
+<li><p>Memory efficiency: Reuses data structures across multiple path queries</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Functions</p>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyorps.utils.path_algorithms.delta_stepping_2d" title="pyorps.utils.path_algorithms.delta_stepping_2d"><code class="xref py py-obj docutils literal notranslate"><span class="pre">delta_stepping_2d</span></code></a>(ndarray raster_arr, ...)</p></td>
+<td><p>Find the shortest path using parallel delta-stepping with circular buffer.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#pyorps.utils.path_algorithms.delta_stepping_multiple_sources_multiple_targets" title="pyorps.utils.path_algorithms.delta_stepping_multiple_sources_multiple_targets"><code class="xref py py-obj docutils literal notranslate"><span class="pre">delta_stepping_multiple_sources_multiple_targets</span></code></a>(...)</p></td>
+<td><p>Compute all-pairs shortest paths between multiple sources and targets.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyorps.utils.path_algorithms.delta_stepping_single_source_multiple_targets" title="pyorps.utils.path_algorithms.delta_stepping_single_source_multiple_targets"><code class="xref py py-obj docutils literal notranslate"><span class="pre">delta_stepping_single_source_multiple_targets</span></code></a>(...)</p></td>
+<td><p>Find optimal paths from single source to multiple targets.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#pyorps.utils.path_algorithms.delta_stepping_some_pairs_shortest_paths" title="pyorps.utils.path_algorithms.delta_stepping_some_pairs_shortest_paths"><code class="xref py py-obj docutils literal notranslate"><span class="pre">delta_stepping_some_pairs_shortest_paths</span></code></a>(...)</p></td>
+<td><p>Find optimal paths for specific source-target pairs using pairwise processing.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyorps.utils.path_algorithms.dijkstra_2d_cython" title="pyorps.utils.path_algorithms.dijkstra_2d_cython"><code class="xref py py-obj docutils literal notranslate"><span class="pre">dijkstra_2d_cython</span></code></a>(ndarray raster_arr, ...)</p></td>
+<td><p>Find shortest path between two points in a 2D raster using Dijkstra.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#pyorps.utils.path_algorithms.dijkstra_multiple_sources_multiple_targets" title="pyorps.utils.path_algorithms.dijkstra_multiple_sources_multiple_targets"><code class="xref py py-obj docutils literal notranslate"><span class="pre">dijkstra_multiple_sources_multiple_targets</span></code></a>(...)</p></td>
+<td><p>Compute all-pairs shortest paths between multiple sources and targets.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyorps.utils.path_algorithms.dijkstra_single_source_multiple_targets" title="pyorps.utils.path_algorithms.dijkstra_single_source_multiple_targets"><code class="xref py py-obj docutils literal notranslate"><span class="pre">dijkstra_single_source_multiple_targets</span></code></a>(...)</p></td>
+<td><p>Find optimal paths from one source to multiple targets efficiently.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#pyorps.utils.path_algorithms.dijkstra_some_pairs_shortest_paths" title="pyorps.utils.path_algorithms.dijkstra_some_pairs_shortest_paths"><code class="xref py py-obj docutils literal notranslate"><span class="pre">dijkstra_some_pairs_shortest_paths</span></code></a>(...)</p></td>
+<td><p>Find optimal paths for specific source-target pairs using batch optimization.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyorps.utils.path_algorithms.group_by_proximity" title="pyorps.utils.path_algorithms.group_by_proximity"><code class="xref py py-obj docutils literal notranslate"><span class="pre">group_by_proximity</span></code></a>(ndarray source_indices, ...)</p></td>
+<td><p>Group source indices by spatial proximity for optimized batch processing.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#pyorps.utils.path_algorithms.group_by_proximity_uint32" title="pyorps.utils.path_algorithms.group_by_proximity_uint32"><code class="xref py py-obj docutils literal notranslate"><span class="pre">group_by_proximity_uint32</span></code></a>(...)</p></td>
+<td><p>Group source indices by spatial proximity (uint32_t version).</p></td>
+</tr>
+</tbody>
+</table>
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.path_algorithms.delta_stepping_2d">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.path_algorithms.</span></span><span class="sig-name descname"><span class="pre">delta_stepping_2d</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">raster_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">steps_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint64_t</span> <span class="pre">source_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint64_t</span> <span class="pre">target_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">float</span> <span class="pre">delta</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint16_t</span> <span class="pre">max_value=65535</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">int</span> <span class="pre">num_threads=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size_t</span> <span class="pre">max_buckets_in_memory=2048</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">float</span> <span class="pre">margin=1.00001</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyorps.utils.path_algorithms.delta_stepping_2d" title="Link to this definition">¶</a></dt>
+<dd><p>Find the shortest path using parallel delta-stepping with circular buffer.</p>
+<p>This function implements the delta-stepping algorithm [1] for single-source
+single-target the shortest path computation. It uses a circular buffer to manage
+buckets efficiently and supports parallel edge relaxation for improved
+performance on multi-core systems.</p>
+<p>The margin parameter enables early termination once the target is found.
+When the target is settled, the algorithm continues processing buckets only
+until distance &gt; target_distance * margin, ensuring optimal path discovery
+while avoiding unnecessary computation. This optimization is particularly
+effective for large graphs where the target is much closer than the graph
+diameter.</p>
+<dl class="simple">
+<dt>Algorithm Overview:</dt><dd><ol class="arabic simple">
+<li><p>Initialize circular buffer of size max_buckets_in_memory (power of 2)</p></li>
+<li><p>Process buckets in order of increasing distance:
+- Light phase: Relax edges with weight ≤ delta (can be done multiple times)
+- Heavy phase: Relax edges with weight &gt; delta (once per bucket)</p></li>
+<li><p>Early termination when current_bucket * delta &gt; target_distance * margin</p></li>
+<li><p>Reconstruct path using predecessor array</p></li>
+</ol>
+</dd>
+</dl>
+<p>References:
+[1] Meyer, U., Sanders, P.: δ-stepping: a parallelizable shortest path algorithm. J.</p>
+<blockquote>
+<div><p>Algorithms 49, 1 (2003), 114–152.
+DOI:http://dx.doi.org/10.1016/S0196-6774(03)00076-2 1998 European Symposium
+on Algorithms.</p>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>raster_arr</strong> – 2D cost matrix where each cell contains traversal cost</p></li>
+<li><p><strong>steps_arr</strong> – 2D array defining movement directions as (dr, dc) pairs</p></li>
+<li><p><strong>source_idx</strong> – Linear index of the starting cell</p></li>
+<li><p><strong>target_idx</strong> – Linear index of the destination cell</p></li>
+<li><p><strong>delta</strong> – Bucket width for edge classification (must be &gt; 0)</p></li>
+<li><p><strong>max_value</strong> – Cost value representing obstacles (default 65535)</p></li>
+<li><p><strong>num_threads</strong> – Number of OpenMP threads (0 = auto-detect)</p></li>
+<li><p><strong>max_buckets_in_memory</strong> – Size of circular buffer (must be power of 2)</p></li>
+<li><p><strong>margin</strong> – Safety factor for early termination (default 1.0001)
+Values &gt; 1.0 allow earlier termination with confidence</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>1D numpy array (uint64) of linear indices representing the optimal path.
+Empty array if no path exists.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Performance Characteristics:</dt><dd><ul class="simple">
+<li><p>Time complexity: O((V + E) / p + D·L) where p=parallelism, D=diameter</p></li>
+<li><p>Memory: O(V) for distance/predecessor + O(B) for circular buffer</p></li>
+<li><p>Early termination reduces average case significantly</p></li>
+<li><p>Typical speedup: 2-10x over Dijkstra for appropriate delta values</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.path_algorithms.delta_stepping_multiple_sources_multiple_targets">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.path_algorithms.</span></span><span class="sig-name descname"><span class="pre">delta_stepping_multiple_sources_multiple_targets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">raster_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">steps_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">float</span> <span class="pre">delta</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint16_t</span> <span class="pre">max_value=65535</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bool</span> <span class="pre">return_paths=True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">int</span> <span class="pre">num_threads=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size_t</span> <span class="pre">max_buckets_in_memory=2048</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyorps.utils.path_algorithms.delta_stepping_multiple_sources_multiple_targets" title="Link to this definition">¶</a></dt>
+<dd><p>Compute all-pairs shortest paths between multiple sources and targets.</p>
+<p>Finds optimal paths from every source to every target by iterating through
+sources and using single-source-multiple-targets delta-stepping for each.
+Sources are processed in spatial proximity order for better cache locality.</p>
+<section id="important-no-margin-parameter">
+<h2>IMPORTANT: No Margin Parameter<a class="headerlink" href="#important-no-margin-parameter" title="Link to this heading">¶</a></h2>
+<p>This function does not include a margin parameter because:</p>
+<ol class="arabic simple">
+<li><p>It delegates to delta_stepping_single_source_multiple_targets, which
+itself cannot use margin (must find ALL targets from each source)</p></li>
+<li><p>Users expect a complete M×N result matrix where M=sources, N=targets.
+Partial results would violate this contract.</p></li>
+<li><p>The primary optimization here is batching multiple targets per source,
+not early termination.</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">param raster_arr<span class="colon">:</span></dt>
+<dd class="field-odd"><p>2D cost matrix with traversal costs</p>
+</dd>
+<dt class="field-even">param steps_arr<span class="colon">:</span></dt>
+<dd class="field-even"><p>2D array defining movement directions</p>
+</dd>
+<dt class="field-odd">param source_indices<span class="colon">:</span></dt>
+<dd class="field-odd"><p>1D array of source cell indices</p>
+</dd>
+<dt class="field-even">param target_indices<span class="colon">:</span></dt>
+<dd class="field-even"><p>1D array of target cell indices</p>
+</dd>
+<dt class="field-odd">param delta<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Bucket width for edge classification</p>
+</dd>
+<dt class="field-even">param max_value<span class="colon">:</span></dt>
+<dd class="field-even"><p>Cost value representing obstacles</p>
+</dd>
+<dt class="field-odd">param return_paths<span class="colon">:</span></dt>
+<dd class="field-odd"><p>If True, returns paths; if False, returns cost matrix</p>
+</dd>
+<dt class="field-even">param num_threads<span class="colon">:</span></dt>
+<dd class="field-even"><p>Number of OpenMP threads</p>
+</dd>
+<dt class="field-odd">param max_buckets_in_memory<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Circular buffer size</p>
+</dd>
+<dt class="field-even">returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of lists, paths[i][j] = path from source i to target j
+If return_paths=False: 2D cost matrix with distances</p>
+</dd>
+<dt class="field-odd">rtype<span class="colon">:</span></dt>
+<dd class="field-odd"><p>If return_paths=True</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.path_algorithms.delta_stepping_single_source_multiple_targets">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.path_algorithms.</span></span><span class="sig-name descname"><span class="pre">delta_stepping_single_source_multiple_targets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">raster_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">steps_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint64_t</span> <span class="pre">source_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">float</span> <span class="pre">delta</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint16_t</span> <span class="pre">max_value=65535</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">int</span> <span class="pre">num_threads=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size_t</span> <span class="pre">max_buckets_in_memory=2048</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyorps.utils.path_algorithms.delta_stepping_single_source_multiple_targets" title="Link to this definition">¶</a></dt>
+<dd><p>Find optimal paths from single source to multiple targets.</p>
+<p>This function extends delta-stepping to efficiently find the shortest paths
+from one source to multiple targets in a single traversal. The algorithm
+continues until ALL targets have been discovered, making it significantly
+more efficient than running separate single-target searches.</p>
+<section id="id1">
+<h2>IMPORTANT: No Margin Parameter<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h2>
+<p>Unlike delta_stepping_2d, this function does NOT include a margin parameter
+for early termination. The reasons are:</p>
+<ol class="arabic simple">
+<li><p>Completeness requirement: Must find paths to ALL targets, not just the
+nearest one. Targets may be at vastly different distances.</p></li>
+<li><p>Algorithm correctness: Delta-stepping expands outward in distance order.
+Stopping after finding the first target (even with margin) would miss
+targets beyond that distance threshold.</p></li>
+</ol>
+<dl class="simple">
+<dt>Example: Source at (0,0), Target A at distance 100, Target B at distance 150</dt><dd><p>With margin=1.1, would stop at 110, never reaching Target B</p>
+</dd>
+</dl>
+<p>The algorithm does terminate early when ALL targets are found, providing
+the maximum safe optimization without sacrificing correctness.</p>
+<dl class="field-list simple">
+<dt class="field-odd">param raster_arr<span class="colon">:</span></dt>
+<dd class="field-odd"><p>2D cost matrix where each cell contains traversal cost</p>
+</dd>
+<dt class="field-even">param steps_arr<span class="colon">:</span></dt>
+<dd class="field-even"><p>2D array defining movement directions</p>
+</dd>
+<dt class="field-odd">param source_idx<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Linear index of the starting cell</p>
+</dd>
+<dt class="field-even">param target_indices<span class="colon">:</span></dt>
+<dd class="field-even"><p>1D array of target cell indices to find paths to</p>
+</dd>
+<dt class="field-odd">param delta<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Bucket width for edge classification (must be &gt; 0)</p>
+</dd>
+<dt class="field-even">param max_value<span class="colon">:</span></dt>
+<dd class="field-even"><p>Cost value representing obstacles</p>
+</dd>
+<dt class="field-odd">param num_threads<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Number of OpenMP threads (0 = auto-detect)</p>
+</dd>
+<dt class="field-even">param max_buckets_in_memory<span class="colon">:</span></dt>
+<dd class="field-even"><p>Size of circular buffer (power of 2)</p>
+</dd>
+<dt class="field-odd">returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List of numpy arrays, one path per target (empty if no path exists)</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Performance:</dt><dd><ul class="simple">
+<li><p>Single traversal for all targets vs. N separate searches</p></li>
+<li><p>Typical speedup: 5-15x for 10+ targets</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.path_algorithms.delta_stepping_some_pairs_shortest_paths">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.path_algorithms.</span></span><span class="sig-name descname"><span class="pre">delta_stepping_some_pairs_shortest_paths</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">raster_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">steps_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">float</span> <span class="pre">delta</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint16_t</span> <span class="pre">max_value=65535</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bool</span> <span class="pre">return_paths=True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">int</span> <span class="pre">num_threads=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size_t</span> <span class="pre">max_buckets_in_memory=2048</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">float</span> <span class="pre">margin=1.00001</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyorps.utils.path_algorithms.delta_stepping_some_pairs_shortest_paths" title="Link to this definition">¶</a></dt>
+<dd><p>Find optimal paths for specific source-target pairs using pairwise processing.</p>
+<p>This function computes shortest paths for a set of source-target pairs by
+processing each pair individually. The i-th source is paired with the i-th
+target, making this suitable for scenarios where each source has exactly one
+designated target. Each pair is processed using the single-source-single-target
+delta-stepping algorithm with margin-based early termination.</p>
+<section id="important-margin-parameter-usage">
+<h2>IMPORTANT: Margin Parameter Usage<a class="headerlink" href="#important-margin-parameter-usage" title="Link to this heading">¶</a></h2>
+<p>This function fully utilizes the margin parameter for ALL pairs since each
+pair is processed individually using delta_stepping_2d. The margin enables
+early termination once each target is found with the specified confidence
+factor, providing consistent performance optimization across all pairs.</p>
+<dl class="simple">
+<dt>Algorithm Strategy:</dt><dd><ol class="arabic simple">
+<li><p>Process pairs sequentially: (source[0]→target[0]), (source[1]→target[1]), etc.</p></li>
+<li><p>Each pair uses delta_stepping_2d with margin-based early termination</p></li>
+<li><p>No batching or multi-target optimization is performed</p></li>
+<li><p>Results maintain strict ordering correspondence with input arrays</p></li>
+</ol>
+</dd>
+<dt>Use Cases:</dt><dd><ul class="simple">
+<li><p>One-to-one correspondence problems</p></li>
+<li><p>Paired origin-destination matrices where each origin has one destination</p></li>
+<li><p>Applications requiring consistent margin-based optimization for all pairs</p></li>
+<li><p>Scenarios where batching would complicate result interpretation</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list">
+<dt class="field-odd">param raster_arr<span class="colon">:</span></dt>
+<dd class="field-odd"><p>2D cost matrix with traversal costs</p>
+</dd>
+<dt class="field-even">param steps_arr<span class="colon">:</span></dt>
+<dd class="field-even"><p>2D array defining movement directions</p>
+</dd>
+<dt class="field-odd">param source_indices<span class="colon">:</span></dt>
+<dd class="field-odd"><p>1D array of source indices (pairs with target_indices by position)</p>
+</dd>
+<dt class="field-even">param target_indices<span class="colon">:</span></dt>
+<dd class="field-even"><p>1D array of target indices (pairs with source_indices by position)</p>
+</dd>
+<dt class="field-odd">param delta<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Bucket width for edge classification (must be &gt; 0)</p>
+</dd>
+<dt class="field-even">param max_value<span class="colon">:</span></dt>
+<dd class="field-even"><p>Cost value representing obstacles (default 65535)</p>
+</dd>
+<dt class="field-odd">param return_paths<span class="colon">:</span></dt>
+<dd class="field-odd"><p>If True, returns paths; if False, returns costs only</p>
+</dd>
+<dt class="field-even">param num_threads<span class="colon">:</span></dt>
+<dd class="field-even"><p>Number of OpenMP threads (0 = auto-detect)</p>
+</dd>
+<dt class="field-odd">param max_buckets_in_memory<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Circular buffer size (power of 2)</p>
+</dd>
+<dt class="field-even">param margin<span class="colon">:</span></dt>
+<dd class="field-even"><p>Safety factor for early termination (default 1.0001)
+Applied consistently to ALL pairs via delta_stepping_2d</p>
+</dd>
+<dt class="field-odd">returns<span class="colon">:</span></dt>
+<dd class="field-odd"><dl class="simple">
+<dt>List of path arrays in pair order</dt><dd><p>(empty arrays indicate no path exists)</p>
+</dd>
+</dl>
+<p>If return_paths=False: 1D array of path costs (inf for no path)</p>
+</dd>
+<dt class="field-even">rtype<span class="colon">:</span></dt>
+<dd class="field-even"><p>If return_paths=True</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Performance Notes:</dt><dd><ul class="simple">
+<li><p>Each pair benefits from margin-based early termination</p></li>
+<li><p>No batching overhead or complexity</p></li>
+<li><p>Predictable performance: O(n) separate pathfinding operations</p></li>
+<li><p>Memory efficient: Only one path computed at a time</p></li>
+<li><p>Typical speedup with margin: 1.5-3x per pair for nearby targets</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.path_algorithms.dijkstra_2d_cython">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.path_algorithms.</span></span><span class="sig-name descname"><span class="pre">dijkstra_2d_cython</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">raster_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">steps_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint32_t</span> <span class="pre">source_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint32_t</span> <span class="pre">target_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint16_t</span> <span class="pre">max_value=65535</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyorps.utils.path_algorithms.dijkstra_2d_cython" title="Link to this definition">¶</a></dt>
+<dd><p>Find shortest path between two points in a 2D raster using Dijkstra.</p>
+<p>This is the primary single-source, single-target pathfinding function.
+It handles all preprocessing steps including exclude mask creation and
+direction precomputation before delegating to the optimized internal
+implementation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>raster_arr</strong> – 2D numpy array (uint16) containing cell traversal costs</p></li>
+<li><p><strong>steps_arr</strong> – 2D numpy array (int8) defining movement directions</p></li>
+<li><p><strong>source_idx</strong> – Linear index of starting cell</p></li>
+<li><p><strong>target_idx</strong> – Linear index of destination cell</p></li>
+<li><p><strong>max_value</strong> – Cost value representing obstacles (default 65535)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>1D numpy array (uint32) containing linear indices of cells in the
+optimal path from source to target. Empty array if no path exists.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Performance Notes:</dt><dd><ul class="simple">
+<li><p>Typical runtime: 1-50ms for 1000x1000 rasters</p></li>
+<li><p>Memory usage: ~40MB for 1000x1000 raster</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.path_algorithms.dijkstra_multiple_sources_multiple_targets">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.path_algorithms.</span></span><span class="sig-name descname"><span class="pre">dijkstra_multiple_sources_multiple_targets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">raster_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">steps_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint16_t</span> <span class="pre">max_value=65535</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bool</span> <span class="pre">return_paths=True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyorps.utils.path_algorithms.dijkstra_multiple_sources_multiple_targets" title="Link to this definition">¶</a></dt>
+<dd><p>Compute all-pairs shortest paths between multiple sources and targets.</p>
+<p>This function finds the optimal path from every source to every target,
+creating a complete distance matrix or path collection. It optimizes
+computation by processing sources in spatial proximity order.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>raster_arr</strong> – 2D numpy array (uint16) containing cell traversal costs</p></li>
+<li><p><strong>steps_arr</strong> – 2D numpy array (int8) defining movement directions</p></li>
+<li><p><strong>source_indices</strong> – 1D array (uint32) of all source cell indices</p></li>
+<li><p><strong>target_indices</strong> – 1D array (uint32) of all target cell indices</p></li>
+<li><p><strong>max_value</strong> – Cost value representing obstacles (default 65535)</p></li>
+<li><p><strong>return_paths</strong> – If True, returns paths; if False, returns cost matrix</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of lists with paths[i][j] = path from source i to target j
+If return_paths=False: 2D cost matrix with distances</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>If return_paths=True</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.path_algorithms.dijkstra_single_source_multiple_targets">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.path_algorithms.</span></span><span class="sig-name descname"><span class="pre">dijkstra_single_source_multiple_targets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">raster_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">steps_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint32_t</span> <span class="pre">source_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint16_t</span> <span class="pre">max_value=65535</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyorps.utils.path_algorithms.dijkstra_single_source_multiple_targets" title="Link to this definition">¶</a></dt>
+<dd><p>Find optimal paths from one source to multiple targets efficiently.</p>
+<p>This function implements a highly optimized variant of Dijkstra’s algorithm
+that finds shortest paths from a single source to multiple targets in a
+single traversal. This approach is significantly more efficient than
+running separate single-target searches.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>raster_arr</strong> – 2D numpy array (uint16) containing cell traversal costs</p></li>
+<li><p><strong>steps_arr</strong> – 2D numpy array (int8) defining movement directions</p></li>
+<li><p><strong>source_idx</strong> – Linear index of the single starting cell</p></li>
+<li><p><strong>target_indices</strong> – 1D numpy array (uint32) of target cell indices</p></li>
+<li><p><strong>max_value</strong> – Cost value representing obstacles (default 65535)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of numpy arrays, where each array contains the optimal path from
+the source to the corresponding target. Empty arrays indicate no path.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Performance Benefits:</dt><dd><ul class="simple">
+<li><p>5 targets: ~3-5x faster than individual searches</p></li>
+<li><p>10 targets: ~5-8x faster</p></li>
+<li><p>50+ targets: ~10-15x faster</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.path_algorithms.dijkstra_some_pairs_shortest_paths">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.path_algorithms.</span></span><span class="sig-name descname"><span class="pre">dijkstra_some_pairs_shortest_paths</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">raster_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">steps_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint16_t</span> <span class="pre">max_value=65535</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bool</span> <span class="pre">return_paths=True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyorps.utils.path_algorithms.dijkstra_some_pairs_shortest_paths" title="Link to this definition">¶</a></dt>
+<dd><p>Find optimal paths for specific source-target pairs using batch optimization.</p>
+<p>This function efficiently computes shortest paths for a set of specific
+source-target pairs by identifying opportunities to batch related queries.
+It analyzes the connectivity patterns in the input pairs and uses nodes
+that appear as both sources and targets as “central hubs” to minimize
+the number of separate Dijkstra runs required.</p>
+<dl class="simple">
+<dt>Optimization Strategy:</dt><dd><ol class="arabic simple">
+<li><p>Identify nodes that serve as both sources and targets (central nodes)</p></li>
+<li><p>For each central node, batch all related queries into a single
+multi-target Dijkstra run</p></li>
+<li><p>Handle remaining one-off pairs with individual computations</p></li>
+<li><p>Automatically reverse paths when necessary for correct orientation</p></li>
+</ol>
+</dd>
+<dt>Use Cases:</dt><dd><ul class="simple">
+<li><p>Vehicle routing with pickup and delivery constraints</p></li>
+<li><p>Multi-modal transportation planning</p></li>
+<li><p>Supply chain optimization with intermediate warehouses</p></li>
+<li><p>Network flow problems with specific origin-destination pairs</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>raster_arr</strong> – 2D numpy array (uint16) containing cell traversal costs</p></li>
+<li><p><strong>steps_arr</strong> – 2D numpy array (int8) defining movement directions</p></li>
+<li><p><strong>source_indices</strong> – 1D array (uint32) of source cell indices</p></li>
+<li><p><strong>target_indices</strong> – 1D array (uint32) of target cell indices
+(pairs formed by matching array positions)</p></li>
+<li><p><strong>max_value</strong> – Cost value representing obstacles (default 65535)</p></li>
+<li><p><strong>return_paths</strong> – If True, returns actual paths; if False, returns only costs</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of path arrays (may contain empty arrays)
+If return_paths=False: 1D array of path costs (inf for no path)</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>If return_paths=True</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Performance Benefits:</dt><dd><ul class="simple">
+<li><p>Typical speedup: 2-10x over individual pair computations</p></li>
+<li><p>Memory efficiency: Reuses data structures across related queries</p></li>
+<li><p>Scales well with increasing connectivity between sources and targets</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition-example admonition">
+<p class="admonition-title">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># Multi-stop delivery route optimization</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sources</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">depot</span><span class="p">,</span> <span class="n">store1</span><span class="p">,</span> <span class="n">store2</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint32</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">targets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">store1</span><span class="p">,</span> <span class="n">store2</span><span class="p">,</span> <span class="n">depot</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint32</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">paths</span> <span class="o">=</span> <span class="n">dijkstra_some_pairs_shortest_paths</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">raster</span><span class="p">,</span> <span class="n">steps</span><span class="p">,</span> <span class="n">sources</span><span class="p">,</span> <span class="n">targets</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Returns: [depot→store1, store1→store2, store2→depot]</span>
+</pre></div>
+</div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.path_algorithms.group_by_proximity">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.path_algorithms.</span></span><span class="sig-name descname"><span class="pre">group_by_proximity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint64_t</span> <span class="pre">cols</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyorps.utils.path_algorithms.group_by_proximity" title="Link to this definition">¶</a></dt>
+<dd><p>Group source indices by spatial proximity for optimized batch processing.</p>
+<p>This function reorders source nodes to improve cache locality and
+computational efficiency during multi-source pathfinding operations.
+Nodes that are spatially close in the raster are processed together,
+reducing memory access patterns and improving overall performance.</p>
+<dl class="simple">
+<dt>Algorithm:</dt><dd><ol class="arabic simple">
+<li><p>Convert linear indices to 2D coordinates</p></li>
+<li><p>Sort by row coordinate (simple spatial grouping)</p></li>
+<li><p>Return indices in the new proximity-based order</p></li>
+</ol>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source_indices</strong> – 1D array of linear node indices to reorder</p></li>
+<li><p><strong>cols</strong> – Number of columns in the raster (for coordinate conversion)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>1D array of node indices reordered by spatial proximity</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Performance Notes:</dt><dd><ul class="simple">
+<li><p>Provides significant speedup for large multi-source problems</p></li>
+<li><p>Simple row-based sorting balances complexity vs. benefit</p></li>
+<li><p>Memory allocation pattern optimized for NumPy operations</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.path_algorithms.group_by_proximity_uint32">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.path_algorithms.</span></span><span class="sig-name descname"><span class="pre">group_by_proximity_uint32</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ndarray</span> <span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">uint64_t</span> <span class="pre">cols</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pyorps.utils.path_algorithms.group_by_proximity_uint32" title="Link to this definition">¶</a></dt>
+<dd><p>Group source indices by spatial proximity (uint32_t version).</p>
+<p>This is a compatibility version for Dijkstra algorithms that use uint32_t indices.</p>
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="pyorps.utils.html">pyorps.utils</a><ul>
+      <li>Previous: <a href="pyorps.utils.neighborhood.html" title="previous chapter">pyorps.utils.neighborhood</a></li>
+      <li>Next: <a href="pyorps.utils.path_core.html" title="next chapter">pyorps.utils.path_core</a></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+<h3><a href="../index.html">Table of Contents</a></h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.core.html">pyorps.core</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.io.html">pyorps.io</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.graph.html">pyorps.graph</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.raster.html">pyorps.raster</a></li>
+</ul>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="pyorps.utils.html">pyorps.utils</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.dijkstra_2d_cython"><code class="docutils literal notranslate"><span class="pre">dijkstra_2d_cython()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.dijkstra_single_source_multiple_targets"><code class="docutils literal notranslate"><span class="pre">dijkstra_single_source_multiple_targets()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.dijkstra_some_pairs_shortest_paths"><code class="docutils literal notranslate"><span class="pre">dijkstra_some_pairs_shortest_paths()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.dijkstra_multiple_sources_multiple_targets"><code class="docutils literal notranslate"><span class="pre">dijkstra_multiple_sources_multiple_targets()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.delta_stepping_2d"><code class="docutils literal notranslate"><span class="pre">delta_stepping_2d()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.delta_stepping_single_source_multiple_targets"><code class="docutils literal notranslate"><span class="pre">delta_stepping_single_source_multiple_targets()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.delta_stepping_some_pairs_shortest_paths"><code class="docutils literal notranslate"><span class="pre">delta_stepping_some_pairs_shortest_paths()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.delta_stepping_multiple_sources_multiple_targets"><code class="docutils literal notranslate"><span class="pre">delta_stepping_multiple_sources_multiple_targets()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.group_by_proximity"><code class="docutils literal notranslate"><span class="pre">group_by_proximity()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.path_cost"><code class="docutils literal notranslate"><span class="pre">path_cost()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.create_exclude_mask"><code class="docutils literal notranslate"><span class="pre">create_exclude_mask()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.calculate_path_metrics_numba"><code class="docutils literal notranslate"><span class="pre">calculate_path_metrics_numba()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.intermediate_steps_numba"><code class="docutils literal notranslate"><span class="pre">intermediate_steps_numba()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.construct_edges"><code class="docutils literal notranslate"><span class="pre">construct_edges()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.get_max_number_of_edges"><code class="docutils literal notranslate"><span class="pre">get_max_number_of_edges()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.euclidean_distances_numba"><code class="docutils literal notranslate"><span class="pre">euclidean_distances_numba()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.get_cost_factor_numba"><code class="docutils literal notranslate"><span class="pre">get_cost_factor_numba()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.ravel_index"><code class="docutils literal notranslate"><span class="pre">ravel_index()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.calculate_region_bounds"><code class="docutils literal notranslate"><span class="pre">calculate_region_bounds()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.is_valid_node"><code class="docutils literal notranslate"><span class="pre">is_valid_node()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.find_valid_nodes"><code class="docutils literal notranslate"><span class="pre">find_valid_nodes()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.get_outgoing_edges"><code class="docutils literal notranslate"><span class="pre">get_outgoing_edges()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.calculate_segment_length"><code class="docutils literal notranslate"><span class="pre">calculate_segment_length()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.neighborhood.html">pyorps.utils.neighborhood</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">pyorps.utils.path_algorithms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.path_algorithms.delta_stepping_2d"><code class="docutils literal notranslate"><span class="pre">delta_stepping_2d()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.path_algorithms.delta_stepping_multiple_sources_multiple_targets"><code class="docutils literal notranslate"><span class="pre">delta_stepping_multiple_sources_multiple_targets()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.path_algorithms.delta_stepping_single_source_multiple_targets"><code class="docutils literal notranslate"><span class="pre">delta_stepping_single_source_multiple_targets()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.path_algorithms.delta_stepping_some_pairs_shortest_paths"><code class="docutils literal notranslate"><span class="pre">delta_stepping_some_pairs_shortest_paths()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.path_algorithms.dijkstra_2d_cython"><code class="docutils literal notranslate"><span class="pre">dijkstra_2d_cython()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.path_algorithms.dijkstra_multiple_sources_multiple_targets"><code class="docutils literal notranslate"><span class="pre">dijkstra_multiple_sources_multiple_targets()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.path_algorithms.dijkstra_single_source_multiple_targets"><code class="docutils literal notranslate"><span class="pre">dijkstra_single_source_multiple_targets()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.path_algorithms.dijkstra_some_pairs_shortest_paths"><code class="docutils literal notranslate"><span class="pre">dijkstra_some_pairs_shortest_paths()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.path_algorithms.group_by_proximity"><code class="docutils literal notranslate"><span class="pre">group_by_proximity()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.path_algorithms.group_by_proximity_uint32"><code class="docutils literal notranslate"><span class="pre">group_by_proximity_uint32()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.path_core.html">pyorps.utils.path_core</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.plotting.html">pyorps.utils.plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.traversal.html">pyorps.utils.traversal</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Martin Hofmann.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="../_sources/generated/pyorps.utils.path_algorithms.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

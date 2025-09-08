@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>pyorps.io.vector_loader &#8212; PYORPS 0.2.2 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=000c92bf"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="pyorps.graph" href="pyorps.graph.html" />
+    <link rel="prev" title="pyorps.io.geo_dataset" href="pyorps.io.geo_dataset.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-pyorps.io.vector_loader">
+<span id="pyorps-io-vector-loader"></span><h1>pyorps.io.vector_loader<a class="headerlink" href="#module-pyorps.io.vector_loader" title="Link to this heading">¶</a></h1>
+<p>PYORPS: An Open-Source Tool for Automated Power Line Routing</p>
+<p>Reference:
+[1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: ‘PYORPS: An Open-Source Tool for</p>
+<blockquote>
+<div><p>Automated Power Line Routing’, CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland</p>
+</div></blockquote>
+<p class="rubric">Functions</p>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyorps.io.vector_loader.load_from_wfs" title="pyorps.io.vector_loader.load_from_wfs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_from_wfs</span></code></a>(url, layer[, bbox, mask, ...])</p></td>
+<td><p>Load data from a Web Feature Service (WFS) using chunked loading.</p></td>
+</tr>
+</tbody>
+</table>
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.io.vector_loader.load_from_wfs">
+<span class="sig-prename descclassname"><span class="pre">pyorps.io.vector_loader.</span></span><span class="sig-name descname"><span class="pre">load_from_wfs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auto_match</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_workers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/pyorps/io/vector_loader.html#load_from_wfs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.io.vector_loader.load_from_wfs" title="Link to this definition">¶</a></dt>
+<dd><p>Load data from a Web Feature Service (WFS) using chunked loading.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>url</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – The base URL of the WFS service</p></li>
+<li><p><strong>layer</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Name of the layer to retrieve</p></li>
+<li><p><strong>bbox</strong> (<a class="reference external" href="https://shapely.readthedocs.io/en/stable/reference/shapely.Polygon.html#shapely.Polygon" title="(in Shapely)"><em>Polygon</em></a><em> | </em><a class="reference external" href="https://geopandas.org/en/stable/docs/reference/api/geopandas.GeoDataFrame.html#geopandas.GeoDataFrame" title="(in GeoPandas v1.1.1)"><em>GeoDataFrame</em></a><em> | </em><a class="reference external" href="https://geopandas.org/en/stable/docs/reference/api/geopandas.GeoSeries.html#geopandas.GeoSeries" title="(in GeoPandas v1.1.1)"><em>GeoSeries</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a><em>] </em><em>| </em><em>None</em>) – Optional bounding box to limit the query extent (minx, miny, maxx, maxy)</p></li>
+<li><p><strong>mask</strong> (<a class="reference external" href="https://shapely.readthedocs.io/en/stable/reference/shapely.Polygon.html#shapely.Polygon" title="(in Shapely)"><em>Polygon</em></a><em> | </em><a class="reference external" href="https://geopandas.org/en/stable/docs/reference/api/geopandas.GeoDataFrame.html#geopandas.GeoDataFrame" title="(in GeoPandas v1.1.1)"><em>GeoDataFrame</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><em>tuple</em></a><em> | </em><em>None</em>) – Optional geometry mask to limit the query (Shapely Polygon, GeoDataFrame,
+or GeoSeries)</p></li>
+<li><p><strong>filter_params</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><em>dict</em></a><em> | </em><em>None</em>) – Additional WFS parameters to filter results</p></li>
+<li><p><strong>auto_match</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><em>bool</em></a>) – Whether to attempt finding similar layer names if exact match not
+found</p></li>
+<li><p><strong>max_workers</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a>) – Maximum number of parallel threads to use</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Loaded GeoDataFrame or None if no data could be loaded</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="pyorps.core.html#pyorps.core.WFSLayerNotFoundError" title="pyorps.core.WFSLayerNotFoundError"><strong>WFSLayerNotFoundError</strong></a> – If the layer cannot be found and auto_match is False</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://geopandas.org/en/stable/docs/reference/api/geopandas.GeoDataFrame.html#geopandas.GeoDataFrame" title="(in GeoPandas v1.1.1)"><em>GeoDataFrame</em></a> | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="pyorps.io.html">pyorps.io</a><ul>
+      <li>Previous: <a href="pyorps.io.geo_dataset.html" title="previous chapter">pyorps.io.geo_dataset</a></li>
+      <li>Next: <a href="pyorps.graph.html" title="next chapter">pyorps.graph</a></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+<h3><a href="../index.html">Table of Contents</a></h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.core.html">pyorps.core</a></li>
+</ul>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="pyorps.io.html">pyorps.io</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.GeoDataset"><code class="docutils literal notranslate"><span class="pre">GeoDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.VectorDataset"><code class="docutils literal notranslate"><span class="pre">VectorDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.RasterDataset"><code class="docutils literal notranslate"><span class="pre">RasterDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.InMemoryVectorDataset"><code class="docutils literal notranslate"><span class="pre">InMemoryVectorDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.LocalVectorDataset"><code class="docutils literal notranslate"><span class="pre">LocalVectorDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.WFSVectorDataset"><code class="docutils literal notranslate"><span class="pre">WFSVectorDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.LocalRasterDataset"><code class="docutils literal notranslate"><span class="pre">LocalRasterDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.InMemoryRasterDataset"><code class="docutils literal notranslate"><span class="pre">InMemoryRasterDataset</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.initialize_geo_dataset"><code class="docutils literal notranslate"><span class="pre">initialize_geo_dataset()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.load_from_wfs"><code class="docutils literal notranslate"><span class="pre">load_from_wfs()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.WFSError"><code class="docutils literal notranslate"><span class="pre">WFSError</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.WFSConnectionError"><code class="docutils literal notranslate"><span class="pre">WFSConnectionError</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.WFSResponseParsingError"><code class="docutils literal notranslate"><span class="pre">WFSResponseParsingError</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.html#pyorps.io.WFSLayerNotFoundError"><code class="docutils literal notranslate"><span class="pre">WFSLayerNotFoundError</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.io.geo_dataset.html">pyorps.io.geo_dataset</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">pyorps.io.vector_loader</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.io.vector_loader.load_from_wfs"><code class="docutils literal notranslate"><span class="pre">load_from_wfs()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.graph.html">pyorps.graph</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.raster.html">pyorps.raster</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.utils.html">pyorps.utils</a></li>
+</ul>
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Martin Hofmann.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="../_sources/generated/pyorps.io.vector_loader.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

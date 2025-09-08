@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>pyorps.graph.api.graph_api &#8212; PYORPS 0.2.2 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=000c92bf"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="pyorps.graph.api.graph_library_api" href="pyorps.graph.api.graph_library_api.html" />
+    <link rel="prev" title="pyorps.graph.api.cython_api" href="pyorps.graph.api.cython_api.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-pyorps.graph.api.graph_api">
+<span id="pyorps-graph-api-graph-api"></span><h1>pyorps.graph.api.graph_api<a class="headerlink" href="#module-pyorps.graph.api.graph_api" title="Link to this heading">¶</a></h1>
+<p>PYORPS: An Open-Source Tool for Automated Power Line Routing</p>
+<p>Reference:
+[1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: ‘PYORPS: An Open-Source Tool for</p>
+<blockquote>
+<div><p>Automated Power Line Routing’, CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland</p>
+</div></blockquote>
+<p class="rubric">Classes</p>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyorps.graph.api.graph_api.GraphAPI" title="pyorps.graph.api.graph_api.GraphAPI"><code class="xref py py-obj docutils literal notranslate"><span class="pre">GraphAPI</span></code></a>(raster_data, steps[, ignore_max])</p></td>
+<td><p>Base class for all graph APIs defining the minimal required interface.</p></td>
+</tr>
+</tbody>
+</table>
+<dl class="py class">
+<dt class="sig sig-object py" id="pyorps.graph.api.graph_api.GraphAPI">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">pyorps.graph.api.graph_api.</span></span><span class="sig-name descname"><span class="pre">GraphAPI</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/pyorps/graph/api/graph_api.html#GraphAPI"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.graph_api.GraphAPI" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/abc.html#abc.ABC" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></a></p>
+<p>Base class for all graph APIs defining the minimal required interface.</p>
+<p>Initialize the base graph API with raster data and neighborhood steps.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>raster_data</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.3)"><em>ndarray</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>]</em>) – 2D numpy array representing the raster costs</p></li>
+<li><p><strong>steps</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.3)"><em>ndarray</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>]</em>) – Array defining the neighborhood connections</p></li>
+<li><p><strong>ignore_max</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><em>bool</em></a><em> | </em><em>None</em>) – Ignore edges whose weights are greater or equal to the maximum</p></li>
+<li><p><strong>data</strong> (<em>value in the raster</em>)</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.graph_api.GraphAPI.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raster_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/pyorps/graph/api/graph_api.html#GraphAPI.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.graph_api.GraphAPI.__init__" title="Link to this definition">¶</a></dt>
+<dd><p>Initialize the base graph API with raster data and neighborhood steps.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>raster_data</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.3)"><em>ndarray</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>]</em>) – 2D numpy array representing the raster costs</p></li>
+<li><p><strong>steps</strong> (<a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.3)"><em>ndarray</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>]</em>) – Array defining the neighborhood connections</p></li>
+<li><p><strong>ignore_max</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><em>bool</em></a><em> | </em><em>None</em>) – Ignore edges whose weights are greater or equal to the maximum</p></li>
+<li><p><strong>data</strong> (<em>value in the raster</em>)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pyorps.graph.api.graph_api.GraphAPI.shortest_path">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">shortest_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dijkstra'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/pyorps/graph/api/graph_api.html#GraphAPI.shortest_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.graph.api.graph_api.GraphAPI.shortest_path" title="Link to this definition">¶</a></dt>
+<dd><p>Find the shortest path(s) between source and target indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source_indices</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>] </em><em>| </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.3)"><em>ndarray</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>]</em>) – Source node indices</p></li>
+<li><p><strong>target_indices</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em> | </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)"><em>list</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>] </em><em>| </em><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.3)"><em>ndarray</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>] </em><em>| </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><em>tuple</em></a><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>]</em>) – Target node indices</p></li>
+<li><p><strong>algorithm</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a>) – Algorithm name (e.g., “dijkstra”, “astar”)</p></li>
+<li><p><strong>**kwargs</strong> – <dl class="simple">
+<dt>pairwise<span class="classifier">bool</span></dt><dd><p>If True, compute pairwise shortest paths between source_indices and
+target_indices.
+Only allowed if len(source_indices) == len(target_indices)</p>
+</dd>
+<dt>heuristic<span class="classifier">callable, optional</span></dt><dd><p>A function that takes two node indices (u, target) and returns an
+estimate of the distance between them. Only used when
+algorithm=”astar”.</p>
+</dd>
+</dl>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>list of path indices for each source-target pair</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)">int</a> | <em>int32</em> | <em>int64</em> | <em>uint32</em> | <em>uint64</em>] | <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.3)"><em>ndarray</em></a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)">int</a>] | <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)">int</a> | <em>int32</em> | <em>int64</em> | <em>uint32</em> | <em>uint64</em>] | <a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.3)"><em>ndarray</em></a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)">int</a>]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="pyorps.graph.html">pyorps.graph</a><ul>
+  <li><a href="pyorps.graph.api.html">pyorps.graph.api</a><ul>
+      <li>Previous: <a href="pyorps.graph.api.cython_api.html" title="previous chapter">pyorps.graph.api.cython_api</a></li>
+      <li>Next: <a href="pyorps.graph.api.graph_library_api.html" title="next chapter">pyorps.graph.api.graph_library_api</a></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+<h3><a href="../index.html">Table of Contents</a></h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.core.html">pyorps.core</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.io.html">pyorps.io</a></li>
+</ul>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="pyorps.graph.html">pyorps.graph</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.html#pyorps.graph.PathFinder"><code class="docutils literal notranslate"><span class="pre">PathFinder</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.html#pyorps.graph.get_graph_api_class"><code class="docutils literal notranslate"><span class="pre">get_graph_api_class()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.html#pyorps.graph.Path"><code class="docutils literal notranslate"><span class="pre">Path</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.html#pyorps.graph.PathCollection"><code class="docutils literal notranslate"><span class="pre">PathCollection</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.html#pyorps.graph.GraphAPI"><code class="docutils literal notranslate"><span class="pre">GraphAPI</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.html#pyorps.graph.GraphLibraryAPI"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.html#pyorps.graph.NoPathFoundError"><code class="docutils literal notranslate"><span class="pre">NoPathFoundError</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.html#pyorps.graph.AlgorithmNotImplementedError"><code class="docutils literal notranslate"><span class="pre">AlgorithmNotImplementedError</span></code></a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="pyorps.graph.api.html">pyorps.graph.api</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.GraphAPI"><code class="docutils literal notranslate"><span class="pre">GraphAPI</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.html#pyorps.graph.api.GraphLibraryAPI"><code class="docutils literal notranslate"><span class="pre">GraphLibraryAPI</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.cython_api.html">pyorps.graph.api.cython_api</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">pyorps.graph.api.graph_api</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#pyorps.graph.api.graph_api.GraphAPI"><code class="docutils literal notranslate"><span class="pre">GraphAPI</span></code></a><ul>
+<li class="toctree-l5"><a class="reference internal" href="#pyorps.graph.api.graph_api.GraphAPI.__init__"><code class="docutils literal notranslate"><span class="pre">GraphAPI.__init__()</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="#pyorps.graph.api.graph_api.GraphAPI.shortest_path"><code class="docutils literal notranslate"><span class="pre">GraphAPI.shortest_path()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.graph_library_api.html">pyorps.graph.api.graph_library_api</a></li>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.igraph_api.html">pyorps.graph.api.igraph_api</a></li>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.networkit_api.html">pyorps.graph.api.networkit_api</a></li>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.networkx_api.html">pyorps.graph.api.networkx_api</a></li>
+<li class="toctree-l3"><a class="reference internal" href="pyorps.graph.api.rustworkx_api.html">pyorps.graph.api.rustworkx_api</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.graph.path_finder.html">pyorps.graph.path_finder</a></li>
+</ul>
+</li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.raster.html">pyorps.raster</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.utils.html">pyorps.utils</a></li>
+</ul>
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Martin Hofmann.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="../_sources/generated/pyorps.graph.api.graph_api.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

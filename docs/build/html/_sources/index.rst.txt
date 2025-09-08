@@ -1,17 +1,86 @@
-.. PYORPS documentation master file, created by
-   sphinx-quickstart on Fri May  9 12:33:32 2025.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+.. PYORPS documentation master file
 
-PYORPS documentation
+PYORPS Documentation
 ====================
 
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
-
+.. include:: ../../README.md
+   :parser: myst_parser.sphinx_
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
+   :hidden:
 
+   API Reference <generated/modules>
+
+API Documentation
+=================
+
+This section provides detailed API documentation for all PYORPS modules.
+
+Core Module
+-----------
+
+The core module contains essential data structures and types.
+
+.. autosummary::
+   :toctree: generated
+   :recursive:
+   :nosignatures:
+
+   pyorps.core
+
+I/O Module
+----------
+
+Input/output operations for geospatial data.
+
+.. autosummary::
+   :toctree: generated
+   :recursive:
+   :nosignatures:
+
+   pyorps.io
+
+Graph Module
+------------
+
+Graph operations and routing algorithms.
+
+.. autosummary::
+   :toctree: generated
+   :recursive:
+   :nosignatures:
+
+   pyorps.graph
+
+Raster Module
+-------------
+
+Raster data processing functionality.
+
+.. autosummary::
+   :toctree: generated
+   :recursive:
+   :nosignatures:
+
+   pyorps.raster
+
+Utils Module
+------------
+
+Utility functions and optimized algorithms.
+
+.. autosummary::
+   :toctree: generated
+   :recursive:
+   :nosignatures:
+
+   pyorps.utils
+
+Indices and Tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`

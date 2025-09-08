@@ -891,7 +891,7 @@ class PathFinder:
                    title: Optional[Union[str, list[str]]] = None,
                    sup_title: Optional[str] = None,
                    path_id: Optional[Union[int, list[int]]] = None,
-                   reverse_colors: bool = True) -> Union[Any, list[Any]]:
+                   reverse_colors: bool = False) -> Union[Any, list[Any]]:
         """
         Plot paths with customizable styling and layout options.
 

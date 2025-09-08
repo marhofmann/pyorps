@@ -4,11 +4,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>pyorps.core.path &#8212; PYORPS 09.05.2025 documentation</title>
+    <title>pyorps.core.path &#8212; PYORPS 0.2.2 documentation</title>
     <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=5ecbeea2" />
     <link rel="stylesheet" type="text/css" href="../../../_static/basic.css?v=b08954a9" />
     <link rel="stylesheet" type="text/css" href="../../../_static/alabaster.css?v=27fed22d" />
-    <script src="../../../_static/documentation_options.js?v=d2164c19"></script>
+    <script src="../../../_static/documentation_options.js?v=000c92bf"></script>
     <script src="../../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <link rel="index" title="Index" href="../../../genindex.html" />
@@ -31,43 +31,58 @@
           <div class="body" role="main">
             
   <h1>Source code for pyorps.core.path</h1><div class="highlight"><pre>
-<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">PYORPS: An Open-Source Tool for Automated Power Line Routing</span>
+
+<span class="sd">Reference:</span>
+<span class="sd">[1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: &#39;PYORPS: An Open-Source Tool for</span>
+<span class="sd">    Automated Power Line Routing&#39;, CIRED 2025 - 28th Conference and Exhibition on</span>
+<span class="sd">    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
 
-<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">ndarray</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">shapely.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">LineString</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyorps.core.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">CoordinateTuple</span><span class="p">,</span> <span class="n">NodeList</span><span class="p">,</span> <span class="n">CoordinateList</span>
 
 
 <div class="viewcode-block" id="Path">
-<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.Path">[docs]</a>
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.Path">[docs]</a>
 <span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">Path</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Dataclass representing a path in a raster graph.&quot;&quot;&quot;</span>
-    <span class="n">source</span><span class="p">:</span> <span class="n">Any</span>
-    <span class="n">target</span><span class="p">:</span> <span class="n">Any</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Dataclass representing a path in a raster graph. Used as container for all path</span>
+<span class="sd">    metrics and information.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">source</span><span class="p">:</span> <span class="n">CoordinateTuple</span>
+    <span class="n">target</span><span class="p">:</span> <span class="n">CoordinateTuple</span>
     <span class="n">algorithm</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">graph_api</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">path_indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span>
-    <span class="n">path_coords</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span>
+    <span class="n">path_indices</span><span class="p">:</span> <span class="n">NodeList</span>
+    <span class="n">path_coords</span><span class="p">:</span> <span class="n">CoordinateList</span>
     <span class="n">path_geometry</span><span class="p">:</span> <span class="n">LineString</span>
     <span class="n">euclidean_distance</span><span class="p">:</span> <span class="nb">float</span>
-    <span class="n">runtimes</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span>
+    <span class="n">runtimes</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span>
     <span class="n">path_id</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">search_space_buffer_m</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">neighborhood</span><span class="p">:</span> <span class="nb">str</span>
 
     <span class="c1"># Optional metrics that may be calculated</span>
     <span class="n">total_length</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">total_cost</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">length_by_category</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">length_by_category_percent</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">length_by_category</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">length_by_category_percent</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
 
 <div class="viewcode-block" id="Path.to_geodataframe_dict">
-<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.Path.to_geodataframe_dict">[docs]</a>
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.Path.to_geodataframe_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">to_geodataframe_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Convert Path object to a dictionary suitable for GeoDataFrame creation.</span>
 
 <span class="sd">        Returns:</span>
-<span class="sd">            Dictionary with path data formatted for GeoDataFrame</span>
+<span class="sd">            dictionary with path data formatted for GeoDataFrame</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c1"># Add runtime information</span>
         <span class="n">result</span> <span class="o">=</span> <span class="p">{</span><span class="sa">f</span><span class="s2">&quot;runtime_</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">value</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
@@ -79,7 +94,10 @@
             <span class="s2">&quot;target&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">target</span><span class="p">),</span>
             <span class="s2">&quot;algorithm&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">algorithm</span><span class="p">,</span>
             <span class="s2">&quot;graph_api&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">graph_api</span><span class="p">,</span>
-            <span class="s2">&quot;geometry&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">path_geometry</span>
+            <span class="s2">&quot;geometry&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">path_geometry</span><span class="p">,</span>
+            <span class="s2">&quot;search_space_buffer_m&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">search_space_buffer_m</span><span class="p">,</span>
+            <span class="s2">&quot;euclidean_distance&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">euclidean_distance</span><span class="p">,</span>
+            <span class="s2">&quot;neighborhood&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">neighborhood</span><span class="p">,</span>
         <span class="p">})</span>
 
         <span class="c1"># Add metrics if they exist</span>
@@ -91,53 +109,108 @@
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">length_by_category</span><span class="p">:</span>
                 <span class="k">for</span> <span class="n">category</span><span class="p">,</span> <span class="n">length</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">length_by_category</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
                     <span class="n">result</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;length_cost_</span><span class="si">{</span><span class="n">category</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">length</span>
-                    <span class="n">result</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;percent_cost_</span><span class="si">{</span><span class="n">category</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">length_by_category_percent</span><span class="p">[</span><span class="n">category</span><span class="p">]</span>
+                    <span class="n">lbc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">length_by_category_percent</span><span class="p">[</span><span class="n">category</span><span class="p">]</span>
+                    <span class="n">result</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;percent_cost_</span><span class="si">{</span><span class="n">category</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">lbc</span>
 
         <span class="k">return</span> <span class="n">result</span></div>
 
 
+<div class="viewcode-block" id="Path.__str__">
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.Path.__str__">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Return a string representation of the path.</span>
+<span class="sd">        Return a string representation of the path including the path_id, source and</span>
+<span class="sd">        target, as well as the path&#39;s total length and total cost.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            A string representation of the path.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">result</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Path(id=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">path_id</span><span class="si">}</span><span class="s2">, source=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">source</span><span class="si">}</span><span class="s2">, target=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target</span><span class="si">}</span><span class="s2">&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">result</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;, length=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">total_length</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">result</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;, length_m=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">total_length</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_cost</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">result</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;, cost=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">total_cost</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span>
-        <span class="n">result</span> <span class="o">+=</span> <span class="s2">&quot;)&quot;</span>
-        <span class="k">return</span> <span class="n">result</span>
+        <span class="k">if</span> <span class="s2">&quot;runtime_total&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">runtimes</span><span class="p">:</span>
+            <span class="n">result</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;, runtime_total=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">total_cost</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span>
 
+        <span class="n">result</span> <span class="o">+=</span> <span class="s2">&quot;)&quot;</span>
+        <span class="k">return</span> <span class="n">result</span></div>
+
+
+<div class="viewcode-block" id="Path.__repr__">
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.Path.__repr__">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return a detailed string representation of the path.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Path(path_id=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">path_id</span><span class="si">}</span><span class="s2">, source=</span><span class="si">{</span><span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">source</span><span class="p">)</span><span class="si">}</span><span class="s2">, target=</span><span class="si">{</span><span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">target</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_length</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">result</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;, total_length=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">total_length</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_cost</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">result</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;, total_cost=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">total_cost</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span>
-        <span class="n">result</span> <span class="o">+=</span> <span class="s2">&quot;)&quot;</span>
-        <span class="k">return</span> <span class="n">result</span></div>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Path.__eq__">
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.Path.__eq__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check for equality between two paths.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">equal</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">same_source</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">source</span><span class="o">.</span><span class="fm">__eq__</span><span class="p">(</span><span class="n">other</span><span class="o">.</span><span class="n">source</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">same_source</span><span class="p">,</span> <span class="n">ndarray</span><span class="p">):</span>
+            <span class="n">equal</span> <span class="o">&amp;=</span> <span class="n">same_source</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">equal</span> <span class="o">&amp;=</span> <span class="n">same_source</span>
+
+        <span class="n">same_target</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">target</span><span class="o">.</span><span class="fm">__eq__</span><span class="p">(</span><span class="n">other</span><span class="o">.</span><span class="n">target</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">same_target</span><span class="p">,</span> <span class="n">ndarray</span><span class="p">):</span>
+            <span class="n">equal</span> <span class="o">&amp;=</span> <span class="n">same_target</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">equal</span> <span class="o">&amp;=</span> <span class="n">same_target</span>
+        <span class="n">equal</span> <span class="o">&amp;=</span> <span class="nb">all</span><span class="p">(</span><span class="n">pi</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">path_indices</span> <span class="k">for</span> <span class="n">pi</span> <span class="ow">in</span> <span class="n">other</span><span class="o">.</span><span class="n">path_indices</span><span class="p">)</span>
+        <span class="n">equal</span> <span class="o">&amp;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">euclidean_distance</span><span class="o">.</span><span class="fm">__eq__</span><span class="p">(</span><span class="n">other</span><span class="o">.</span><span class="n">euclidean_distance</span><span class="p">)</span>
+        <span class="n">equal</span> <span class="o">&amp;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">search_space_buffer_m</span><span class="o">.</span><span class="fm">__eq__</span><span class="p">(</span><span class="n">other</span><span class="o">.</span><span class="n">search_space_buffer_m</span><span class="p">)</span>
+        <span class="n">equal</span> <span class="o">&amp;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">neighborhood</span><span class="o">.</span><span class="fm">__eq__</span><span class="p">(</span><span class="n">other</span><span class="o">.</span><span class="n">neighborhood</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">equal</span></div>
+</div>
 
 
 
 <div class="viewcode-block" id="PathCollection">
-<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathCollection">[docs]</a>
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.PathCollection">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">PathCollection</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Container for Path objects with O(1) retrieval by path ID.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    Container for Path objects with O(1) retrieval by path ID and  O(n) lookup for</span>
+<span class="sd">    source and target information. Paths can be added with new id by replacing a Path</span>
+<span class="sd">    object with the same ID already existing in th PathCollection.</span>
 
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_paths</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Path</span><span class="p">]</span>
+    <span class="n">_next_id</span><span class="p">:</span> <span class="nb">int</span>
+
+<div class="viewcode-block" id="PathCollection.__init__">
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.PathCollection.__init__">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_paths</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c1"># Dictionary with path_id as keys for O(1) lookup</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_next_id</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># Track the next available path ID</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create an empty PathCollection for collecting Paths with their IDs in a</span>
+<span class="sd">        dictionary.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_paths</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c1"># dictionary with path_id as keys for O(1) lookup</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_next_id</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># Track the next available path ID</span></div>
+
 
 <div class="viewcode-block" id="PathCollection.add">
-<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathCollection.add">[docs]</a>
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.PathCollection.add">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">replace</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Add a path to the collection.</span>
+<span class="sd">        Add a path to the PathCollection. If the Path&#39;s path_id is None or if replace is</span>
+<span class="sd">        False, the path_id of the Path object will set to self._next_id and</span>
+<span class="sd">        self._next_id will be incremented. If the Path&#39;s path_id is not None and</span>
+<span class="sd">        replace is True, a Path with the same path_id (if present) will be replaced</span>
+<span class="sd">        with the new Path object.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            path: A Path object which should be added to the PathCollection.</span>
+<span class="sd">            replace: Whether to replace an existing Path object with the same path_id</span>
+<span class="sd">                (if present) or not.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">path_id</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">replace</span><span class="p">:</span>
             <span class="n">path</span><span class="o">.</span><span class="n">path_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_next_id</span>
@@ -150,10 +223,27 @@
 
 
 <div class="viewcode-block" id="PathCollection.get">
-<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathCollection.get">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path_id</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">target</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Path</span><span class="p">]:</span>
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.PathCollection.get">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">path_id</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">source</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">target</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Path</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Retrieve a stored path by ID, or by source AND target.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            path_id: The ID of the Path object to retrieve (must be None if path</span>
+<span class="sd">                should be found by source and target)</span>
+<span class="sd">            source: The source Path object to retrieve (only used if path_id is None</span>
+<span class="sd">                and target os set too; neglected otherwise)</span>
+<span class="sd">            target: The target Path object to retrieve (only used if path_id is None</span>
+<span class="sd">                and target os set too; neglected otherwise)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The Path object with the specified ID or source/target pair. None if no</span>
+<span class="sd">            such path exists.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">path_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="c1"># O(1) lookup by ID</span>
@@ -170,7 +260,7 @@
 
 
 <div class="viewcode-block" id="PathCollection.to_geodataframe_records">
-<a class="viewcode-back" href="../../../pyorps.graph.html#pyorps.PathCollection.to_geodataframe_records">[docs]</a>
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.PathCollection.to_geodataframe_records">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">to_geodataframe_records</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Convert all paths to a list of dictionaries suitable for a GeoDataFrame.</span>
@@ -181,50 +271,97 @@
         <span class="k">return</span> <span class="p">[</span><span class="n">path</span><span class="o">.</span><span class="n">to_geodataframe_dict</span><span class="p">()</span> <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="o">.</span><span class="n">values</span><span class="p">()]</span></div>
 
 
+<div class="viewcode-block" id="PathCollection.__iter__">
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.PathCollection.__iter__">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Iterate through paths.</span>
+<span class="sd">        Iterate through all paths in the PathCollection.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="o">.</span><span class="n">values</span><span class="p">())</span></div>
 
+
+<div class="viewcode-block" id="PathCollection.__len__">
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.PathCollection.__len__">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Return the number of paths.</span>
+<span class="sd">        Return the number of paths in the PathCollection.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="p">)</span></div>
 
+
+<div class="viewcode-block" id="PathCollection.__getitem__">
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.PathCollection.__getitem__">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path_id</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Get path by ID.</span>
+<span class="sd">        Get path by path_id of the Path object from the PathCollection.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="p">[</span><span class="n">path_id</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="p">[</span><span class="n">path_id</span><span class="p">]</span></div>
 
+
+<div class="viewcode-block" id="PathCollection.__str__">
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.PathCollection.__str__">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return a string representation of the path collection.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;PathCollection(paths=</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="p">)</span><span class="si">}</span><span class="s2">)&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">5</span><span class="p">:</span>
+            <span class="n">paths_str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+            <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">paths_str</span> <span class="o">!=</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
+                    <span class="n">paths_str</span> <span class="o">+=</span> <span class="s2">&quot;,</span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="n">paths_str</span> <span class="o">+=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Show first 2 paths and last path for large collections</span>
+            <span class="n">paths_str</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n\t</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">all</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2">,&quot;</span>
+                          <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n\t</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">all</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="si">}</span><span class="s2">,&quot;</span>
+                          <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n\t</span><span class="s2"> ..., &quot;</span>
+                          <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n\t</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">all</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;PathCollection(paths=[</span><span class="si">{</span><span class="n">paths_str</span><span class="si">}</span><span class="s2">], count=</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="p">)</span><span class="si">}</span><span class="s2">)&quot;</span></div>
+
+
+<div class="viewcode-block" id="PathCollection.__repr__">
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.PathCollection.__repr__">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return a detailed string representation of the path collection.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">5</span><span class="p">:</span>
-            <span class="n">paths_repr</span> <span class="o">=</span> <span class="s2">&quot;, </span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+            <span class="n">paths_repr</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+            <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">paths_repr</span> <span class="o">!=</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
+                    <span class="n">paths_repr</span> <span class="o">+=</span> <span class="s2">&quot;,</span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="n">paths_repr</span> <span class="o">+=</span> <span class="nb">repr</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="c1"># Show first 2 paths and last path for large collections</span>
-            <span class="n">paths</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
-            <span class="n">paths_repr</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">repr</span><span class="p">(</span><span class="n">paths</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2">, </span><span class="se">\n</span><span class="si">{</span><span class="nb">repr</span><span class="p">(</span><span class="n">paths</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="si">}</span><span class="s2">, </span><span class="se">\n</span><span class="s2">..., </span><span class="se">\n</span><span class="si">{</span><span class="nb">repr</span><span class="p">(</span><span class="n">paths</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">paths_repr</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n\t</span><span class="si">{</span><span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">all</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2">,&quot;</span>
+                          <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n\t</span><span class="si">{</span><span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">all</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="si">}</span><span class="s2">,&quot;</span>
+                          <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n\t</span><span class="s2"> ..., &quot;</span>
+                          <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n\t</span><span class="si">{</span><span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">all</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;PathCollection(paths=[</span><span class="si">{</span><span class="n">paths_repr</span><span class="si">}</span><span class="s2">], count=</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="p">)</span><span class="si">}</span><span class="s2">)&quot;</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;PathCollection(paths=[</span><span class="si">{</span><span class="n">paths_repr</span><span class="si">}</span><span class="s2">], count=</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="p">)</span><span class="si">}</span><span class="s2">)&quot;</span></div>
+
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">all</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Return all paths as a list.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="o">.</span><span class="n">values</span><span class="p">())</span></div>
+<span class="sd">        Return all Path objects from the values of the PathCollection&#39;s _paths</span>
+<span class="sd">        dictionary as a list.</span>
 
+<span class="sd">        Returns:</span>
+<span class="sd">            A list of all Path objects in the PathCollection.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_paths</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+
+<div class="viewcode-block" id="PathCollection.__eq__">
+<a class="viewcode-back" href="../../../generated/pyorps.graph.html#pyorps.core.PathCollection.__eq__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check if PathCollections are equal. They do not have to be in the same order</span>
+<span class="sd">        to be equal!</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">all</span><span class="p">(</span><span class="nb">any</span><span class="p">(</span><span class="n">o</span> <span class="o">==</span> <span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">all</span><span class="p">)</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">other</span><span class="o">.</span><span class="n">all</span><span class="p">)</span></div>
+</div>
 
 </pre></div>
 
@@ -233,28 +370,7 @@
         </div>
       </div>
       <div class="sphinxsidebar" role="navigation" aria-label="Main">
-        <div class="sphinxsidebarwrapper">
-<h1 class="logo"><a href="../../../index.html">PYORPS</a></h1>
-
-
-
-
-
-
-
-
-
-<search id="searchbox" style="display: none" role="search">
-    <div class="searchformwrapper">
-    <form class="search" action="../../../search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
-      <input type="submit" value="Go" />
-    </form>
-    </div>
-</search>
-<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
-
-<div class="relations">
+        <div class="sphinxsidebarwrapper"><div class="relations">
 <h3>Related Topics</h3>
 <ul>
   <li><a href="../../../index.html">Documentation overview</a><ul>
@@ -263,13 +379,32 @@
   </ul></li>
 </ul>
 </div>
-
-
-
-
-
-
-
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+<h3><a href="../../../index.html">Table of Contents</a></h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated/pyorps.core.html">pyorps.core</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated/pyorps.io.html">pyorps.io</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated/pyorps.graph.html">pyorps.graph</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated/pyorps.raster.html">pyorps.raster</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../generated/pyorps.utils.html">pyorps.utils</a></li>
+</ul>
 
         </div>
       </div>

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>pyorps.utils.neighborhood &#8212; PYORPS 0.2.2 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=000c92bf"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="pyorps.utils.path_algorithms" href="pyorps.utils.path_algorithms.html" />
+    <link rel="prev" title="pyorps.utils" href="pyorps.utils.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-pyorps.utils.neighborhood">
+<span id="pyorps-utils-neighborhood"></span><h1>pyorps.utils.neighborhood<a class="headerlink" href="#module-pyorps.utils.neighborhood" title="Link to this heading">¶</a></h1>
+<p>PYORPS: An Open-Source Tool for Automated Power Line Routing</p>
+<p>References:
+[1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: ‘PYORPS: An Open-Source Tool for</p>
+<blockquote>
+<div><p>Automated Power Line Routing’, CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland</p>
+</div></blockquote>
+<dl class="simple">
+<dt>[2] Goodchild, M. F.: ‘An evaluation of lattice solutions to the problem of corridor</dt><dd><p>location’, Environment and Planning A: Economy and Space, 1977, 9, (7), pp 727-738</p>
+</dd>
+</dl>
+<p class="rubric">Functions</p>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyorps.utils.neighborhood.calculate_errors" title="pyorps.utils.neighborhood.calculate_errors"><code class="xref py py-obj docutils literal notranslate"><span class="pre">calculate_errors</span></code></a>(directions, phi)</p></td>
+<td><p>Calculate elongation error and maximum deviation for a given set of directions and path angle.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#pyorps.utils.neighborhood.elongation_error" title="pyorps.utils.neighborhood.elongation_error"><code class="xref py py-obj docutils literal notranslate"><span class="pre">elongation_error</span></code></a>(theta_j, theta_j_plus_1, phi)</p></td>
+<td><p>Calculate the elongation error for a lattice path using Goodchild's formulation.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyorps.utils.neighborhood.find_adjacent_directions" title="pyorps.utils.neighborhood.find_adjacent_directions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_adjacent_directions</span></code></a>(phi, directions)</p></td>
+<td><p>Find the adjacent directions θ_j and θ_{j+1} such that θ_j &lt; φ &lt; θ_{j+1}.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#pyorps.utils.neighborhood.find_max_errors" title="pyorps.utils.neighborhood.find_max_errors"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_max_errors</span></code></a>(directions)</p></td>
+<td><p>Find the maximum elongation error and maximum deviation for a given set of directions.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyorps.utils.neighborhood.get_move_directions" title="pyorps.utils.neighborhood.get_move_directions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_move_directions</span></code></a>(moves)</p></td>
+<td><p>Get all possible move directions in radians for a given move set.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#pyorps.utils.neighborhood.get_neighborhood_steps" title="pyorps.utils.neighborhood.get_neighborhood_steps"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_neighborhood_steps</span></code></a>(k[, directed])</p></td>
+<td><p>Generate the steps for a k-neighborhood.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#pyorps.utils.neighborhood.max_deviation" title="pyorps.utils.neighborhood.max_deviation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">max_deviation</span></code></a>(theta_j, theta_j_plus_1, phi)</p></td>
+<td><p>Calculate the maximum deviation for a lattice path using Goodchild's formulation.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#pyorps.utils.neighborhood.normalize_angle" title="pyorps.utils.neighborhood.normalize_angle"><code class="xref py py-obj docutils literal notranslate"><span class="pre">normalize_angle</span></code></a>(angle)</p></td>
+<td><p>Normalize an angle to the range [0, 2π).</p></td>
+</tr>
+</tbody>
+</table>
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.get_neighborhood_steps">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">get_neighborhood_steps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">directed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/pyorps/utils/neighborhood.html#get_neighborhood_steps"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.get_neighborhood_steps" title="Link to this definition">¶</a></dt>
+<dd><p>Generate the steps for a k-neighborhood.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>k</strong> (<em>Union</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><em>int</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><em>str</em></a><em>]</em>) – The neighborhood parameter (k &gt;= 0)</p></li>
+<li><p><strong>directed</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.13)"><em>bool</em></a>) – If True, includes all possible step directions;
+if False, includes a minimal set of steps that ensures
+bidirectional connectivity in the graph</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A numpy array with dtype int8 containing all steps</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+</dl>
+<p class="rubric">References</p>
+<p>[1]</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.normalize_angle">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">normalize_angle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">angle</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/pyorps/utils/neighborhood.html#normalize_angle"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.normalize_angle" title="Link to this definition">¶</a></dt>
+<dd><p>Normalize an angle to the range [0, 2π).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>angle</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Input angle in radians</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Normalized angle in the range [0, 2π)</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.get_move_directions">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">get_move_directions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">moves</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/pyorps/utils/neighborhood.html#get_move_directions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.get_move_directions" title="Link to this definition">¶</a></dt>
+<dd><p>Get all possible move directions in radians for a given move set.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>moves</strong> (<em>np.ndarray</em>) – Array of move vectors</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A sorted list of angles in radians [0, 2π)</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.find_adjacent_directions">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">find_adjacent_directions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">phi</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">directions</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/pyorps/utils/neighborhood.html#find_adjacent_directions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.find_adjacent_directions" title="Link to this definition">¶</a></dt>
+<dd><p>Find the adjacent directions θ_j and θ_{j+1} such that θ_j &lt; φ &lt; θ_{j+1}.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>phi</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – The path direction in radians</p></li>
+<li><p><strong>directions</strong> (<em>List</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a><em>]</em>) – Sorted list of all possible move directions in radians</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple (θ_j, θ_{j+1})</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.elongation_error">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">elongation_error</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">theta_j</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">theta_j_plus_1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phi</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/pyorps/utils/neighborhood.html#elongation_error"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.elongation_error" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate the elongation error for a lattice path using Goodchild’s formulation.</p>
+<p>The elongation error is given by:
+e(φ) = (sin(θ_{j+1} - φ) + sin(φ - θ_j)) / sin(θ_{j+1} - θ_j)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>theta_j</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Lower adjacent direction in radians</p></li>
+<li><p><strong>theta_j_plus_1</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Upper adjacent direction in radians</p></li>
+<li><p><strong>phi</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Path direction in radians</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The elongation error</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+<p class="rubric">References</p>
+<p>[2]</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.max_deviation">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">max_deviation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">theta_j</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">theta_j_plus_1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phi</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/pyorps/utils/neighborhood.html#max_deviation"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.max_deviation" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate the maximum deviation for a lattice path using Goodchild’s formulation.</p>
+<p>The maximum deviation is given by:
+δ(φ) = (sin(θ_{j+1} - φ) * sin(φ - θ_j)) / sin(θ_{j+1} - θ_j)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>theta_j</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Lower adjacent direction in radians</p></li>
+<li><p><strong>theta_j_plus_1</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Upper adjacent direction in radians</p></li>
+<li><p><strong>phi</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – Path direction in radians</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The maximum deviation</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a></p>
+</dd>
+</dl>
+<p class="rubric">References</p>
+<p>[2]</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.calculate_errors">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">calculate_errors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">directions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phi</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/pyorps/utils/neighborhood.html#calculate_errors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.calculate_errors" title="Link to this definition">¶</a></dt>
+<dd><p>Calculate elongation error and maximum deviation for a given set of directions and path angle.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>directions</strong> (<em>List</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a><em>]</em>) – Sorted list of all possible move directions in radians</p></li>
+<li><p><strong>phi</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a>) – The path direction in radians</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A dictionary with the calculated errors</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dict[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a>]</p>
+</dd>
+</dl>
+<p class="rubric">References</p>
+<p>[2]</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="pyorps.utils.neighborhood.find_max_errors">
+<span class="sig-prename descclassname"><span class="pre">pyorps.utils.neighborhood.</span></span><span class="sig-name descname"><span class="pre">find_max_errors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">directions</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/pyorps/utils/neighborhood.html#find_max_errors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pyorps.utils.neighborhood.find_max_errors" title="Link to this definition">¶</a></dt>
+<dd><p>Find the maximum elongation error and maximum deviation for a given set of directions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>directions</strong> (<em>List</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><em>float</em></a><em>]</em>) – Sorted list of all possible move directions in radians</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A dictionary with the maximum calculated errors</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dict[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)">str</a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="pyorps.utils.html">pyorps.utils</a><ul>
+      <li>Previous: <a href="pyorps.utils.html" title="previous chapter">pyorps.utils</a></li>
+      <li>Next: <a href="pyorps.utils.path_algorithms.html" title="next chapter">pyorps.utils.path_algorithms</a></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+<h3><a href="../index.html">Table of Contents</a></h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.core.html">pyorps.core</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.io.html">pyorps.io</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.graph.html">pyorps.graph</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="pyorps.raster.html">pyorps.raster</a></li>
+</ul>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="pyorps.utils.html">pyorps.utils</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.dijkstra_2d_cython"><code class="docutils literal notranslate"><span class="pre">dijkstra_2d_cython()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.dijkstra_single_source_multiple_targets"><code class="docutils literal notranslate"><span class="pre">dijkstra_single_source_multiple_targets()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.dijkstra_some_pairs_shortest_paths"><code class="docutils literal notranslate"><span class="pre">dijkstra_some_pairs_shortest_paths()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.dijkstra_multiple_sources_multiple_targets"><code class="docutils literal notranslate"><span class="pre">dijkstra_multiple_sources_multiple_targets()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.delta_stepping_2d"><code class="docutils literal notranslate"><span class="pre">delta_stepping_2d()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.delta_stepping_single_source_multiple_targets"><code class="docutils literal notranslate"><span class="pre">delta_stepping_single_source_multiple_targets()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.delta_stepping_some_pairs_shortest_paths"><code class="docutils literal notranslate"><span class="pre">delta_stepping_some_pairs_shortest_paths()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.delta_stepping_multiple_sources_multiple_targets"><code class="docutils literal notranslate"><span class="pre">delta_stepping_multiple_sources_multiple_targets()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.group_by_proximity"><code class="docutils literal notranslate"><span class="pre">group_by_proximity()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.path_cost"><code class="docutils literal notranslate"><span class="pre">path_cost()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.create_exclude_mask"><code class="docutils literal notranslate"><span class="pre">create_exclude_mask()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.calculate_path_metrics_numba"><code class="docutils literal notranslate"><span class="pre">calculate_path_metrics_numba()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.intermediate_steps_numba"><code class="docutils literal notranslate"><span class="pre">intermediate_steps_numba()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.construct_edges"><code class="docutils literal notranslate"><span class="pre">construct_edges()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.get_max_number_of_edges"><code class="docutils literal notranslate"><span class="pre">get_max_number_of_edges()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.euclidean_distances_numba"><code class="docutils literal notranslate"><span class="pre">euclidean_distances_numba()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.get_cost_factor_numba"><code class="docutils literal notranslate"><span class="pre">get_cost_factor_numba()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.ravel_index"><code class="docutils literal notranslate"><span class="pre">ravel_index()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.calculate_region_bounds"><code class="docutils literal notranslate"><span class="pre">calculate_region_bounds()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.is_valid_node"><code class="docutils literal notranslate"><span class="pre">is_valid_node()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.find_valid_nodes"><code class="docutils literal notranslate"><span class="pre">find_valid_nodes()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.get_outgoing_edges"><code class="docutils literal notranslate"><span class="pre">get_outgoing_edges()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.html#pyorps.utils.calculate_segment_length"><code class="docutils literal notranslate"><span class="pre">calculate_segment_length()</span></code></a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">pyorps.utils.neighborhood</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.neighborhood.get_neighborhood_steps"><code class="docutils literal notranslate"><span class="pre">get_neighborhood_steps()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.neighborhood.normalize_angle"><code class="docutils literal notranslate"><span class="pre">normalize_angle()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.neighborhood.get_move_directions"><code class="docutils literal notranslate"><span class="pre">get_move_directions()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.neighborhood.find_adjacent_directions"><code class="docutils literal notranslate"><span class="pre">find_adjacent_directions()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.neighborhood.elongation_error"><code class="docutils literal notranslate"><span class="pre">elongation_error()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.neighborhood.max_deviation"><code class="docutils literal notranslate"><span class="pre">max_deviation()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.neighborhood.calculate_errors"><code class="docutils literal notranslate"><span class="pre">calculate_errors()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pyorps.utils.neighborhood.find_max_errors"><code class="docutils literal notranslate"><span class="pre">find_max_errors()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.path_algorithms.html">pyorps.utils.path_algorithms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.path_core.html">pyorps.utils.path_core</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.plotting.html">pyorps.utils.plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pyorps.utils.traversal.html">pyorps.utils.traversal</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Martin Hofmann.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="../_sources/generated/pyorps.utils.neighborhood.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

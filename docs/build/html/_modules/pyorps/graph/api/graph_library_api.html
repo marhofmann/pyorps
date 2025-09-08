@@ -4,11 +4,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>pyorps.graph.api.graph_library_api &#8212; PYORPS 09.05.2025 documentation</title>
+    <title>pyorps.graph.api.graph_library_api &#8212; PYORPS 0.2.2 documentation</title>
     <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=5ecbeea2" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/basic.css?v=b08954a9" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/alabaster.css?v=27fed22d" />
-    <script src="../../../../_static/documentation_options.js?v=d2164c19"></script>
+    <script src="../../../../_static/documentation_options.js?v=000c92bf"></script>
     <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <link rel="index" title="Index" href="../../../../genindex.html" />
@@ -32,79 +32,128 @@
             
   <h1>Source code for pyorps.graph.api.graph_library_api</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">This file contains the abstract base class for the interface to the graph libraries. All specific graph library</span>
-<span class="sd">interfaces should inherit from this class. The workflow of the specific interfaces are determined by the respective</span>
-<span class="sd">graph library. The workflow of the graph libraries can vary!</span>
+<span class="sd">PYORPS: An Open-Source Tool for Automated Power Line Routing</span>
+
+<span class="sd">Reference:</span>
+<span class="sd">[1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: &#39;PYORPS: An Open-Source Tool for</span>
+<span class="sd">    Automated Power Line Routing&#39;, CIRED 2025 - 28th Conference and Exhibition on</span>
+<span class="sd">    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland</span>
+
+<span class="sd">This file contains the abstract base class for the interface to the graph libraries.</span>
+<span class="sd">All specific graph library interfaces should inherit from this class. The workflow of</span>
+<span class="sd">the specific interfaces are determined by the respective graph library. The workflow</span>
+<span class="sd">of the graph libraries can vary!</span>
 
 <span class="sd">- For rustworkx and igraph the nodes need to be created before the edges can be added</span>
 <span class="sd">- For networkit and networkx the edges can be added on the fly when adding the nodes</span>
 
-<span class="sd">- For rustworkx and igraph the edges can only be added as a list of tuples. This means that the edge information as</span>
-<span class="sd">retrieved by numpy arrays, need to be converted into a list, which leads to a much higher (more than double) memory</span>
-<span class="sd">usage!</span>
+<span class="sd">- For rustworkx and igraph the edges can only be added as a list of tuples. This means</span>
+<span class="sd">that the edge information as retrieved by numpy arrays, need to be converted into a</span>
+<span class="sd">list, which leads to a much higher (more than double) memory usage!</span>
 <span class="sd">- For networkit and networkx edges can be added as a sparse matrix or as numpy arrays</span>
 
 <span class="sd">Please see the specific interfaces to the specific graph libraries for more details!</span>
 <span class="sd">&quot;&quot;&quot;</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Union</span><span class="p">,</span> <span class="n">List</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">abstractmethod</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">time</span><span class="w"> </span><span class="kn">import</span> <span class="n">time</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">.graph_api</span><span class="w"> </span><span class="kn">import</span> <span class="n">GraphAPI</span>
-
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyorps.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">NoPathFoundError</span><span class="p">,</span> <span class="n">PairwiseError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyorps.core.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">SourceTargetType</span><span class="p">,</span> <span class="n">Node</span><span class="p">,</span> <span class="n">NodeList</span><span class="p">,</span> <span class="n">NodePathList</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pyorps.utils.traversal</span><span class="w"> </span><span class="kn">import</span> <span class="n">construct_edges</span>
 
 
 <div class="viewcode-block" id="GraphLibraryAPI">
-<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI">[docs]</a>
+<a class="viewcode-back" href="../../../../generated/pyorps.graph.api.graph_library_api.html#pyorps.graph.GraphLibraryAPI">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">GraphLibraryAPI</span><span class="p">(</span><span class="n">GraphAPI</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Base class for all graph library-based APIs.</span>
 
-<span class="sd">    This class extends GraphAPI with common functionality needed by standard graph libraries</span>
-<span class="sd">    that require edge data to be explicitly provided and a graph to be constructed.</span>
+<span class="sd">    This class extends GraphAPI with common functionality needed by standard graph</span>
+<span class="sd">    libraries that require edge data to be explicitly provided and a graph to be</span>
+<span class="sd">    constructed.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
+<div class="viewcode-block" id="GraphLibraryAPI.__init__">
+<a class="viewcode-back" href="../../../../generated/pyorps.graph.api.graph_library_api.html#pyorps.graph.GraphLibraryAPI.__init__">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                  <span class="n">raster_data</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
                  <span class="n">steps</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+                 <span class="n">ignore_max</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                  <span class="n">from_nodes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">to_nodes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">cost</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">ignore_max</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-                 <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+                 <span class="n">cost</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Initialize the graph library API.</span>
 
-<span class="sd">        Args:</span>
+<span class="sd">        Parameters:</span>
 <span class="sd">            raster_data: 2D numpy array representing the raster</span>
 <span class="sd">            steps: Array defining the neighborhood connections</span>
-<span class="sd">            from_nodes: Source node indices for each edge</span>
-<span class="sd">            to_nodes: Target node indices for each edge</span>
+<span class="sd">            ignore_max: Ignore edges whose weights are greater or equal to the maximum</span>
+<span class="sd">            value in the raster data</span>
+<span class="sd">            from_nodes: Source node indices for edges</span>
+<span class="sd">            to_nodes: Target node indices for edges</span>
 <span class="sd">            cost: Edge weights</span>
+
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">raster_data</span><span class="p">,</span> <span class="n">steps</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">raster_data</span><span class="p">,</span> <span class="n">steps</span><span class="p">,</span> <span class="n">ignore_max</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">edge_construction_time</span> <span class="o">=</span> <span class="mf">0.0</span>
         <span class="k">if</span> <span class="n">from_nodes</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">to_nodes</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">before_constructing_edge_data</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span>
-            <span class="n">from_nodes</span><span class="p">,</span> <span class="n">to_nodes</span><span class="p">,</span> <span class="n">cost</span> <span class="o">=</span> <span class="n">construct_edges</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">steps</span><span class="p">,</span> <span class="n">ignore_max</span><span class="p">)</span>
+            <span class="n">from_nodes</span><span class="p">,</span> <span class="n">to_nodes</span><span class="p">,</span> <span class="n">cost</span> <span class="o">=</span> <span class="n">construct_edges</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">steps</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">ignore_max</span>
+            <span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">edge_construction_time</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">before_constructing_edge_data</span>
 
         <span class="n">before_graph_creation</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">graph</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_graph</span><span class="p">(</span><span class="n">from_nodes</span><span class="p">,</span> <span class="n">to_nodes</span><span class="p">,</span> <span class="n">cost</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">graph_creation_time</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">before_graph_creation</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">graph_creation_time</span> <span class="o">=</span> <span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">before_graph_creation</span></div>
+
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_path_endpoints</span><span class="p">(</span>
+            <span class="n">path</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+            <span class="n">source</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+            <span class="n">target</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Ensures the path starts with the source node and ends with the target node.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            path: List of node IDs representing a path</span>
+<span class="sd">            source: ID of the source node that should be at the start of the path</span>
+<span class="sd">            target: ID of the target node that should be at the end of the path</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            list of node IDs with source and target at endpoints if needed</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">path</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">source</span><span class="p">:</span>
+                <span class="n">path</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">source</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">path</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">target</span><span class="p">:</span>
+                <span class="n">path</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">path</span>
 
 <div class="viewcode-block" id="GraphLibraryAPI.create_graph">
-<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.create_graph">[docs]</a>
+<a class="viewcode-back" href="../../../../generated/pyorps.graph.api.graph_library_api.html#pyorps.graph.GraphLibraryAPI.create_graph">[docs]</a>
     <span class="nd">@abstractmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">create_graph</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">from_nodes</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">to_nodes</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
-                     <span class="n">cost</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_graph</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">from_nodes</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+            <span class="n">to_nodes</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+            <span class="n">cost</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Creates a graph object with the graph library specified in the selected interface.</span>
 
-<span class="sd">        Args:</span>
+<span class="sd">        Parameters:</span>
 <span class="sd">            from_nodes: The starting node indices from the edge data</span>
 <span class="sd">            to_nodes: The ending node indices from the edge data</span>
 <span class="sd">            cost: The weight of the edge data</span>
@@ -112,88 +161,269 @@
 
 <span class="sd">        Returns:</span>
 <span class="sd">            The graph object</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">pass</span></div>
+<span class="sd">        &quot;&quot;&quot;</span></div>
 
 
 <div class="viewcode-block" id="GraphLibraryAPI.get_number_of_nodes">
-<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.get_number_of_nodes">[docs]</a>
+<a class="viewcode-back" href="../../../../generated/pyorps.graph.api.graph_library_api.html#pyorps.graph.GraphLibraryAPI.get_number_of_nodes">[docs]</a>
     <span class="nd">@abstractmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_number_of_nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Returns the number of nodes in the graph.</span>
 
-<span class="sd">        :return: The number of Nodes</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">pass</span></div>
+<span class="sd">        Returns:</span>
+<span class="sd">            The number of nodes</span>
+<span class="sd">        &quot;&quot;&quot;</span></div>
 
 
 <div class="viewcode-block" id="GraphLibraryAPI.get_number_of_edges">
-<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.get_number_of_edges">[docs]</a>
+<a class="viewcode-back" href="../../../../generated/pyorps.graph.api.graph_library_api.html#pyorps.graph.GraphLibraryAPI.get_number_of_edges">[docs]</a>
     <span class="nd">@abstractmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_number_of_edges</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Returns the number of edges in the graph.</span>
 
-<span class="sd">        :return: The number of Edges</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">pass</span></div>
+<span class="sd">        Returns:</span>
+<span class="sd">            The number of edges</span>
+<span class="sd">        &quot;&quot;&quot;</span></div>
 
 
 <div class="viewcode-block" id="GraphLibraryAPI.remove_isolates">
-<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.remove_isolates">[docs]</a>
+<a class="viewcode-back" href="../../../../generated/pyorps.graph.api.graph_library_api.html#pyorps.graph.GraphLibraryAPI.remove_isolates">[docs]</a>
     <span class="nd">@abstractmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">remove_isolates</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        If the graph object was initialized with the maximum number of nodes, this function helps to reduce the occupied</span>
-<span class="sd">        memory by removing nodes without any edge (degree == 0).</span>
+<span class="sd">        If the graph object was initialized with the maximum number of nodes, this</span>
+<span class="sd">        function helps to reduce the occupied memory by removing nodes without any</span>
+<span class="sd">        edge (degree == 0).</span>
 
-<span class="sd">        :return: None</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">pass</span></div>
-
-
-<div class="viewcode-block" id="GraphLibraryAPI.shortest_path">
-<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.shortest_path">[docs]</a>
-    <span class="nd">@abstractmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">shortest_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source_indices</span><span class="p">,</span> <span class="n">target_indices</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="s2">&quot;dijkstra&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        This method applies the specified shortest path algorithm on the created graph object and finds the shortest</span>
-<span class="sd">        path between source and target(s) as a list of node indices.</span>
-
-<span class="sd">        :return: list[int]</span>
-<span class="sd">            The list of node indices of the shortest path between source and target</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">pass</span></div>
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span></div>
 
 
 <div class="viewcode-block" id="GraphLibraryAPI.get_nodes">
-<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.get_nodes">[docs]</a>
+<a class="viewcode-back" href="../../../../generated/pyorps.graph.api.graph_library_api.html#pyorps.graph.GraphLibraryAPI.get_nodes">[docs]</a>
     <span class="nd">@abstractmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">get_nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        This method returns the nodes in the graph as a list or numpy array of node indices.</span>
+<span class="sd">        This method returns the nodes in the graph as a list or numpy array of node</span>
+<span class="sd">        indices.</span>
 
-<span class="sd">        :return:  list[int] | ndarray[int]</span>
-<span class="sd">            The list of node indices of the nodes in the graph</span>
+<span class="sd">        Returns:</span>
+<span class="sd">            List or array of node indices of the nodes in the graph</span>
+<span class="sd">        &quot;&quot;&quot;</span></div>
+
+
+<div class="viewcode-block" id="GraphLibraryAPI.shortest_path">
+<a class="viewcode-back" href="../../../../generated/pyorps.graph.api.graph_library_api.html#pyorps.graph.GraphLibraryAPI.shortest_path">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">shortest_path</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">source_indices</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">SourceTargetType</span><span class="p">],</span>
+            <span class="n">target_indices</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">SourceTargetType</span><span class="p">],</span>
+            <span class="n">algorithm</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;dijkstra&quot;</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">NodeList</span><span class="p">,</span> <span class="n">NodePathList</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        This method applies the specified shortest path algorithm on the created graph</span>
+<span class="sd">        object and finds the shortest path between source(s) and target(s) as a list of</span>
+<span class="sd">        node indices.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            source_indices: Index or indices of source node(s) (int or list[int])</span>
+<span class="sd">            target_indices: Index or indices of target node(s) (int or list[int])</span>
+<span class="sd">            algorithm: Algorithm to use for shortest path computation.</span>
+<span class="sd">                Options depend on the specific library implementation.</span>
+<span class="sd">            kwargs: Additional parameters for specific algorithms library including</span>
+<span class="sd">            specific keywords and:</span>
+<span class="sd">                &quot;pairwise&quot;: If True, compute pairwise shortest paths between</span>
+<span class="sd">                source_indices and target_indices.</span>
+<span class="sd">                Only allowed if len(source_indices) == len(target_indices)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            List of node indices representing the shortest path(s)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">pass</span></div>
+        <span class="n">source_has_len</span> <span class="o">=</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">source_indices</span><span class="p">,</span> <span class="s1">&#39;__len__&#39;</span><span class="p">)</span>
+        <span class="n">target_has_len</span> <span class="o">=</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">target_indices</span><span class="p">,</span> <span class="s1">&#39;__len__&#39;</span><span class="p">)</span>
 
+        <span class="c1"># Single source, single target</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">source_has_len</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">target_has_len</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_path</span><span class="p">(</span><span class="n">source_indices</span><span class="p">,</span>
+                                             <span class="n">target_indices</span><span class="p">,</span>
+                                             <span class="n">algorithm</span><span class="p">,</span>
+                                             <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># Single source, multiple targets</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="n">source_has_len</span> <span class="ow">and</span> <span class="n">target_has_len</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_source_multiple_targets</span><span class="p">(</span><span class="n">source_indices</span><span class="p">,</span>
+                                                                <span class="n">target_indices</span><span class="p">,</span>
+                                                                <span class="n">algorithm</span><span class="p">,</span>
+                                                                <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="c1"># Multiple sources, single target</span>
+        <span class="k">elif</span> <span class="n">source_has_len</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">target_has_len</span><span class="p">:</span>
+            <span class="n">paths</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_source_multiple_targets</span><span class="p">(</span><span class="n">target_indices</span><span class="p">,</span>
+                                                                 <span class="n">source_indices</span><span class="p">,</span>
+                                                                 <span class="n">algorithm</span><span class="p">,</span>
+                                                                 <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">p</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">]</span>
+
+        <span class="c1"># Multiple sources, multiple targets (all pairs or pairwise)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Check for pairwise computation</span>
+            <span class="n">pairwise</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;pairwise&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">pairwise</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">source_indices</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">target_indices</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="n">PairwiseError</span><span class="p">()</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pairwise_shortest_path</span><span class="p">(</span><span class="n">source_indices</span><span class="p">,</span> <span class="n">target_indices</span><span class="p">,</span>
+                                                    <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_all_pairs_shortest_path</span><span class="p">(</span><span class="n">source_indices</span><span class="p">,</span> <span class="n">target_indices</span><span class="p">,</span>
+                                                     <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_single_path</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">source</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span>
+            <span class="n">target</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span>
+            <span class="n">algorithm</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NodeList</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes shortest path between a single source and target.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            source: Source node identifier</span>
+<span class="sd">            target: Target node identifier</span>
+<span class="sd">            algorithm: Algorithm to use for computation</span>
+<span class="sd">            kwargs: Additional algorithm-specific parameters</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            List of node identifiers representing the shortest path</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_single_source_multiple_targets</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">source</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span>
+            <span class="n">targets</span><span class="p">:</span> <span class="n">NodeList</span><span class="p">,</span>
+            <span class="n">algorithm</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NodePathList</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes shortest paths from a single source to multiple targets.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            source: Source node identifier</span>
+<span class="sd">            targets: List of target node identifiers</span>
+<span class="sd">            algorithm: Algorithm to use for computation</span>
+<span class="sd">            kwargs: Additional algorithm-specific parameters</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            List of paths from the source to each target</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_pairwise_shortest_path</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">sources</span><span class="p">:</span> <span class="n">NodeList</span><span class="p">,</span>
+            <span class="n">targets</span><span class="p">:</span> <span class="n">NodeList</span><span class="p">,</span>
+            <span class="n">algorithm</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NodePathList</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Default implementation for pairwise shortest path computation.</span>
+<span class="sd">        Subclasses can override this for library-specific optimizations.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            sources: List of source node identifiers</span>
+<span class="sd">            targets: List of target node identifiers</span>
+<span class="sd">            algorithm: Algorithm to use for computation</span>
+<span class="sd">            kwargs: Additional algorithm-specific parameters</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            List of paths, each connecting corresponding source-target pairs</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">source</span><span class="p">,</span> <span class="n">target</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">sources</span><span class="p">,</span> <span class="n">targets</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_path</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">NoPathFoundError</span><span class="p">:</span>
+                <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+        <span class="k">return</span> <span class="n">paths</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_all_pairs_shortest_paths</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">sources</span><span class="p">:</span> <span class="n">NodeList</span><span class="p">,</span>
+            <span class="n">targets</span><span class="p">:</span> <span class="n">NodeList</span><span class="p">,</span>
+            <span class="n">algorithm</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NodePathList</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes paths individually for each source-target pair using the specified</span>
+<span class="sd">        algorithm. Returns empty paths for unreachable targets.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            sources: List of source node identifiers</span>
+<span class="sd">            targets: List of target node identifiers</span>
+<span class="sd">            algorithm: Algorithm to use for computation</span>
+<span class="sd">            kwargs: Additional algorithm-specific parameters</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            List of paths for all source-target combinations</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">source</span> <span class="ow">in</span> <span class="n">sources</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">target</span> <span class="ow">in</span> <span class="n">targets</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_single_path</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">,</span>
+                                                     <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                    <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+                <span class="k">except</span> <span class="n">NoPathFoundError</span><span class="p">:</span>
+                    <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">([])</span>
+        <span class="k">return</span> <span class="n">paths</span>
+
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_all_pairs_shortest_path</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">sources</span><span class="p">:</span> <span class="n">NodeList</span><span class="p">,</span>
+            <span class="n">targets</span><span class="p">:</span> <span class="n">NodeList</span><span class="p">,</span>
+            <span class="n">algorithm</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NodePathList</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes shortest paths between all pairs of sources and targets.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            sources: List of source node identifiers</span>
+<span class="sd">            targets: List of target node identifiers</span>
+<span class="sd">            algorithm: Algorithm to use for computation.</span>
+<span class="sd">            kwargs: Additional algorithm-specific parameters</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            List of paths for all source-target combinations</span>
+<span class="sd">        &quot;&quot;&quot;</span>
 
 <div class="viewcode-block" id="GraphLibraryAPI.get_a_star_heuristic">
-<a class="viewcode-back" href="../../../../pyorps.graph.api.html#pyorps.graph.GraphLibraryAPI.get_a_star_heuristic">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">get_a_star_heuristic</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">target</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="nb">float</span><span class="p">]]:</span>
+<a class="viewcode-back" href="../../../../generated/pyorps.graph.api.graph_library_api.html#pyorps.graph.GraphLibraryAPI.get_a_star_heuristic">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_a_star_heuristic</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">target</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span>
+            <span class="n">source</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Node</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Calculate the A* heuristic based on the Euclidean distance from the target node.</span>
 
-<span class="sd">        :param target: int</span>
-<span class="sd">            The index of the target node in the raster data.</span>
+<span class="sd">        Parameters:</span>
+<span class="sd">            target: The index of the target node in the raster data</span>
+<span class="sd">            source: Optional source node for calculating area-specific minimum values</span>
+<span class="sd">            kwargs: Additional parameters, including optional heu_weight for scaling</span>
 
-<span class="sd">        :return: tuple[np.ndarray[int], np.ndarray[float]]</span>
-<span class="sd">            A tuple containing:</span>
-<span class="sd">            - An array of node indices (nodes) in the graph.</span>
-<span class="sd">            - An array of heuristic values corresponding to each node, calculated as the</span>
-<span class="sd">              Euclidean distance to the target node multiplied by the minimum value in the raster data.</span>
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple containing:</span>
+<span class="sd">            - An array of node indices in the graph</span>
+<span class="sd">            - An array of heuristic values corresponding to each node</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c1"># Retrieve the current nodes in the graph</span>
         <span class="n">nodes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_nodes</span><span class="p">()</span>
@@ -205,19 +435,204 @@
         <span class="n">x_target</span><span class="p">,</span> <span class="n">y_target</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unravel_index</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
 
         <span class="c1"># Calculate the Euclidean distance from each node to the target node</span>
-        <span class="n">euclidean_distance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">x_target</span> <span class="o">-</span> <span class="n">x_nodes</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">y_target</span> <span class="o">-</span> <span class="n">y_nodes</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+        <span class="n">x_square</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">x_target</span> <span class="o">-</span> <span class="n">x_nodes</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">y_square</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">y_target</span> <span class="o">-</span> <span class="n">y_nodes</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">euclidean_distance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">x_square</span> <span class="o">+</span> <span class="n">y_square</span><span class="p">)</span>
 
-        <span class="c1"># Get the minimum value from the raster data for scaling the heuristic</span>
-        <span class="n">min_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+        <span class="c1"># Use localized min value between source and target</span>
+        <span class="k">if</span> <span class="n">source</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">buffer_radius</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;buffer_radius&#39;</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
+            <span class="c1"># Convert the source index to its 2D coordinates</span>
+            <span class="n">x_source</span><span class="p">,</span> <span class="n">y_source</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unravel_index</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+            <span class="c1"># Create a bounding box around the source-target line with buffer</span>
+            <span class="n">min_x</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">x_source</span><span class="p">,</span> <span class="n">x_target</span><span class="p">)</span> <span class="o">-</span> <span class="n">buffer_radius</span><span class="p">)</span>
+            <span class="n">max_x</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span>
+                        <span class="nb">max</span><span class="p">(</span><span class="n">x_source</span><span class="p">,</span> <span class="n">x_target</span><span class="p">)</span> <span class="o">+</span> <span class="n">buffer_radius</span><span class="p">)</span>
+            <span class="n">min_y</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">y_source</span><span class="p">,</span> <span class="n">y_target</span><span class="p">)</span> <span class="o">-</span> <span class="n">buffer_radius</span><span class="p">)</span>
+            <span class="n">max_y</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span>
+                        <span class="nb">max</span><span class="p">(</span><span class="n">y_source</span><span class="p">,</span> <span class="n">y_target</span><span class="p">)</span> <span class="o">+</span> <span class="n">buffer_radius</span><span class="p">)</span>
+
+            <span class="c1"># Extract the subset of raster data within the bounding box</span>
+            <span class="n">subset_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="p">[</span><span class="n">min_x</span><span class="p">:</span><span class="n">max_x</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">min_y</span><span class="p">:</span><span class="n">max_y</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+
+            <span class="c1"># Use minimum value in the area</span>
+            <span class="n">min_value</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">subset_data</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">min_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
 
         <span class="c1"># Calculate the heuristic by scaling the Euclidean distance</span>
         <span class="n">heuristic</span> <span class="o">=</span> <span class="n">euclidean_distance</span> <span class="o">*</span> <span class="n">min_value</span>
 
+        <span class="c1"># Apply any heuristic weight scaling</span>
         <span class="k">if</span> <span class="s1">&#39;heu_weight&#39;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
             <span class="n">heuristic</span> <span class="o">*=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;heu_weight&#39;</span><span class="p">]</span>
-        <span class="k">return</span> <span class="n">nodes</span><span class="p">,</span> <span class="n">heuristic</span></div>
-</div>
 
+        <span class="k">return</span> <span class="n">nodes</span><span class="p">,</span> <span class="n">heuristic</span></div>
+
+
+<div class="viewcode-block" id="GraphLibraryAPI.get_advanced_a_star_heuristic">
+<a class="viewcode-back" href="../../../../generated/pyorps.graph.api.graph_library_api.html#pyorps.graph.GraphLibraryAPI.get_advanced_a_star_heuristic">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_advanced_a_star_heuristic</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">target</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span>
+            <span class="n">source</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Node</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the A* heuristic based on the Euclidean distance from the target node.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            target: The index of the target node in the raster data</span>
+<span class="sd">            source: Optional source node for calculating area-specific minimum values</span>
+<span class="sd">            kwargs: Additional parameters, including optional heu_weight for scaling</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            tuple containing:</span>
+<span class="sd">            - An array of node indices in the graph</span>
+<span class="sd">            - An array of heuristic values corresponding to each node</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Retrieve the current nodes in the graph</span>
+        <span class="n">nodes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_nodes</span><span class="p">()</span>
+
+        <span class="c1"># Convert node indices to 2D coordinates (x, y) based on the raster data shape</span>
+        <span class="n">x_nodes</span><span class="p">,</span> <span class="n">y_nodes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unravel_index</span><span class="p">(</span><span class="n">nodes</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+        <span class="c1"># Convert the target index to its corresponding 2D coordinates</span>
+        <span class="n">x_target</span><span class="p">,</span> <span class="n">y_target</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unravel_index</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+        <span class="c1"># Calculate the Euclidean distance from each node to the target node</span>
+        <span class="n">euclidean_distance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">x_target</span> <span class="o">-</span> <span class="n">x_nodes</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">y_target</span> <span class="o">-</span> <span class="n">y_nodes</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="n">min_value</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="c1"># Use Bresenham&#39;s algorithm to find cells along the source-target line</span>
+        <span class="k">if</span> <span class="n">source</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Convert the source index to its 2D coordinates</span>
+            <span class="n">x_source</span><span class="p">,</span> <span class="n">y_source</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unravel_index</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+            <span class="c1"># Get line coordinates using optimized Bresenham implementation</span>
+            <span class="n">line_coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_vectorized_bresenham</span><span class="p">(</span><span class="n">x_source</span><span class="p">,</span> <span class="n">y_source</span><span class="p">,</span> <span class="n">x_target</span><span class="p">,</span>
+                                                     <span class="n">y_target</span><span class="p">)</span>
+
+            <span class="c1"># If buffer is requested, expand the line cells</span>
+            <span class="k">if</span> <span class="n">buffer_radius</span> <span class="o">:=</span>  <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;buffer_radius&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">):</span>
+                <span class="c1"># Create a mask of the entire raster to track which pixels are in the</span>
+                <span class="c1"># buffer. This avoids duplicates without needing to use np.unique</span>
+                <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+
+                <span class="c1"># Extract x and y coordinates from line_coords</span>
+                <span class="n">x_line</span><span class="p">,</span> <span class="n">y_line</span> <span class="o">=</span> <span class="n">line_coords</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">line_coords</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span>
+
+                <span class="c1"># Create buffer offsets using meshgrid</span>
+                <span class="n">y_offsets</span><span class="p">,</span> <span class="n">x_offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">(</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="n">buffer_radius</span><span class="p">,</span> <span class="n">buffer_radius</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="n">buffer_radius</span><span class="p">,</span> <span class="n">buffer_radius</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="p">)</span>
+
+                <span class="c1"># Reshape to 1D arrays</span>
+                <span class="n">x_offsets</span> <span class="o">=</span> <span class="n">x_offsets</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+                <span class="n">y_offsets</span> <span class="o">=</span> <span class="n">y_offsets</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+
+                <span class="c1"># For each line point, add a buffer around it</span>
+                <span class="k">for</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">x_line</span><span class="p">,</span> <span class="n">y_line</span><span class="p">):</span>
+                    <span class="c1"># Calculate all buffer coordinates at once</span>
+                    <span class="n">buffer_x</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="n">x_offsets</span>
+                    <span class="n">buffer_y</span> <span class="o">=</span> <span class="n">y</span> <span class="o">+</span> <span class="n">y_offsets</span>
+
+                    <span class="c1"># Filter out coordinates outside the raster bounds</span>
+                    <span class="n">valid_indices</span> <span class="o">=</span> <span class="p">(</span>
+                            <span class="p">(</span><span class="n">buffer_x</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">buffer_x</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&amp;</span>
+                            <span class="p">(</span><span class="n">buffer_y</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">buffer_y</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                    <span class="p">)</span>
+
+                    <span class="c1"># Mark valid buffer pixels in the mask</span>
+                    <span class="n">mask</span><span class="p">[</span><span class="n">buffer_x</span><span class="p">[</span><span class="n">valid_indices</span><span class="p">],</span> <span class="n">buffer_y</span><span class="p">[</span><span class="n">valid_indices</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
+
+                <span class="c1"># Get coordinates of all marked pixels</span>
+                <span class="n">buffer_coords</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">mask</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">buffer_coords</span> <span class="o">=</span> <span class="n">line_coords</span>
+
+            <span class="c1"># Extract values from the raster data</span>
+            <span class="n">cell_values</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="p">[</span><span class="n">buffer_coords</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">buffer_coords</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]]</span>
+
+            <span class="c1"># Otherwise just use minimum value in the area</span>
+            <span class="n">min_value</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">cell_values</span><span class="p">)</span>
+
+        <span class="c1"># If no source provided or no valid min_value was calculated, fall back to</span>
+        <span class="c1"># global minimum</span>
+        <span class="k">if</span> <span class="n">min_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">min_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">raster_data</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+
+        <span class="c1"># Calculate the heuristic by scaling the Euclidean distance</span>
+        <span class="n">heuristic</span> <span class="o">=</span> <span class="n">euclidean_distance</span> <span class="o">*</span> <span class="n">min_value</span>
+
+        <span class="c1"># Apply any heuristic weight scaling</span>
+        <span class="k">if</span> <span class="s1">&#39;heu_weight&#39;</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+            <span class="n">heuristic</span> <span class="o">*=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;heu_weight&#39;</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">nodes</span><span class="p">,</span> <span class="n">heuristic</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_vectorized_bresenham</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x0</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">y0</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">x1</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">y1</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Optimized implementation of Bresenham&#39;s line algorithm that avoids generating</span>
+<span class="sd">        duplicate coordinates.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            x0: x-coordinate of the first point</span>
+<span class="sd">            y0: y-coordinate of the first point</span>
+<span class="sd">            x1: x-coordinate of the second point</span>
+<span class="sd">            y1: y-coordinate of the second point</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Array of (x,y) coordinates of cells that the line passes through</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Determine if the line is steep (more vertical than horizontal)</span>
+        <span class="n">steep</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">y1</span> <span class="o">-</span> <span class="n">y0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="nb">abs</span><span class="p">(</span><span class="n">x1</span> <span class="o">-</span> <span class="n">x0</span><span class="p">)</span>
+
+        <span class="c1"># If steep, swap x and y coordinates to ensure we step along the longer</span>
+        <span class="c1"># dimension</span>
+        <span class="k">if</span> <span class="n">steep</span><span class="p">:</span>
+            <span class="n">x0</span><span class="p">,</span> <span class="n">y0</span> <span class="o">=</span> <span class="n">y0</span><span class="p">,</span> <span class="n">x0</span>
+            <span class="n">x1</span><span class="p">,</span> <span class="n">y1</span> <span class="o">=</span> <span class="n">y1</span><span class="p">,</span> <span class="n">x1</span>
+
+        <span class="c1"># Ensure we always iterate from left to right</span>
+        <span class="k">if</span> <span class="n">x0</span> <span class="o">&gt;</span> <span class="n">x1</span><span class="p">:</span>
+            <span class="n">x0</span><span class="p">,</span> <span class="n">x1</span> <span class="o">=</span> <span class="n">x1</span><span class="p">,</span> <span class="n">x0</span>
+            <span class="n">y0</span><span class="p">,</span> <span class="n">y1</span> <span class="o">=</span> <span class="n">y1</span><span class="p">,</span> <span class="n">y0</span>
+
+        <span class="c1"># Calculate differences and step direction</span>
+        <span class="n">dx</span> <span class="o">=</span> <span class="n">x1</span> <span class="o">-</span> <span class="n">x0</span>
+        <span class="n">dy</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">y1</span> <span class="o">-</span> <span class="n">y0</span><span class="p">)</span>
+        <span class="n">y_step</span> <span class="o">=</span> <span class="mi">1</span> <span class="k">if</span> <span class="n">y0</span> <span class="o">&lt;</span> <span class="n">y1</span> <span class="k">else</span> <span class="o">-</span><span class="mi">1</span>
+
+        <span class="c1"># Calculate points along the line using the Bresenham algorithm</span>
+        <span class="c1"># Pre-allocate arrays for the coordinates (one point per x step guarantees no</span>
+        <span class="c1"># duplicates)</span>
+        <span class="n">n_points</span> <span class="o">=</span> <span class="n">dx</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="n">x_coords</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">x1</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+        <span class="n">y_coords</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_points</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+
+        <span class="c1"># Calculate y-coordinates based on error terms</span>
+        <span class="n">error</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">y0</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_points</span><span class="p">):</span>
+            <span class="n">y_coords</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">y</span>
+            <span class="n">error</span> <span class="o">+=</span> <span class="n">dy</span>
+            <span class="k">if</span> <span class="n">error</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">&gt;=</span> <span class="n">dx</span><span class="p">:</span>
+                <span class="n">y</span> <span class="o">+=</span> <span class="n">y_step</span>
+                <span class="n">error</span> <span class="o">-=</span> <span class="n">dx</span>
+
+        <span class="c1"># Combine into coordinate pairs and handle the steep case</span>
+        <span class="k">if</span> <span class="n">steep</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">y_coords</span><span class="p">,</span> <span class="n">x_coords</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">x_coords</span><span class="p">,</span> <span class="n">y_coords</span><span class="p">))</span></div>
 
 </pre></div>
 
@@ -226,28 +641,7 @@
         </div>
       </div>
       <div class="sphinxsidebar" role="navigation" aria-label="Main">
-        <div class="sphinxsidebarwrapper">
-<h1 class="logo"><a href="../../../../index.html">PYORPS</a></h1>
-
-
-
-
-
-
-
-
-
-<search id="searchbox" style="display: none" role="search">
-    <div class="searchformwrapper">
-    <form class="search" action="../../../../search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
-      <input type="submit" value="Go" />
-    </form>
-    </div>
-</search>
-<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
-
-<div class="relations">
+        <div class="sphinxsidebarwrapper"><div class="relations">
 <h3>Related Topics</h3>
 <ul>
   <li><a href="../../../../index.html">Documentation overview</a><ul>
@@ -256,13 +650,32 @@
   </ul></li>
 </ul>
 </div>
-
-
-
-
-
-
-
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+<h3><a href="../../../../index.html">Table of Contents</a></h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../generated/pyorps.core.html">pyorps.core</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../generated/pyorps.io.html">pyorps.io</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../generated/pyorps.graph.html">pyorps.graph</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../generated/pyorps.raster.html">pyorps.raster</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../generated/pyorps.utils.html">pyorps.utils</a></li>
+</ul>
 
         </div>
       </div>
