@@ -64,16 +64,24 @@ class CythonAPI(GraphAPI):
             return self._multi_to_multi(sources, targets, algo, **kwargs)
 
     def _to_array(self, indices):
-        """Convert input to numpy array."""
+        """
+        Convert input to numpy array, using uint64 if values would overflow uint32.
+        """
+        UINT32_MAX = np.iinfo(np.uint32).max  # 4294967295
+
+        # Convert to numpy array first
         if isinstance(indices, (int, np.integer)):
-            return array([indices], dtype=uint32)
+            arr = array([indices])
         elif isinstance(indices, list):
-            return array(indices, dtype=uint32)
+            arr = array(indices)
         elif isinstance(indices, ndarray):
-            return indices.astype(uint32) if indices.ndim > 0 else array(
-                [indices.item()], dtype=uint32)
+            arr = indices if indices.ndim > 0 else array([indices.item()])
         else:
             raise TypeError(f"Unsupported type for indices: {type(indices)}")
+
+        # Choose appropriate dtype based on maximum value
+        dtype = uint64 if arr.max() > UINT32_MAX else uint32
+        return arr.astype(dtype)
 
     def _single_path(self, source, target, algo, **kwargs):
         """Single source to single target."""
