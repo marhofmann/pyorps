@@ -1,5 +1,5 @@
 
-from os.path import join
+from os.path import join, exists
 import geopandas as gpd
 
 from pyorps import PathFinder
@@ -12,7 +12,7 @@ def set_street_bez(gdf):
     gdf.loc[all_streets & gdf['name'].str.contains('B '), 'bez'] = "Bundesstr."
 
 
-def fancy_function(gdf, conditions_dict, buffer_distance):
+def fancy_function(gdf, conditions_dict=None, buffer_distance=None):
     set_street_bez(gdf)
 
 
@@ -20,19 +20,19 @@ agrar_factor = 1.5
 oberflaechennutzung_kosten = {
     ('nutzart', 'bez'): {
         # Wald - unverändert lassen wie gewünscht
-        "Wald": {"Nadelholz": 365, "Laub- und Nadelholz": 402, "Laubholz": 438,
-                 "": 365},
+        "Wald": {"Nadelholz": 530, "Laub- und Nadelholz": 550, "Laubholz": 590,
+                 "": 530},
 
         # Straßenverkehr - gestaffelt nach Straßentyp
         "Straßenverkehr": {
             "Landesstr.": 378,
             "Bundesstr.": 400,
-            "Autobahn": 430,
+            "Autobahn": 720,
             "": 378
         },
 
         # Wege
-        "Weg": {"Fußweg": 300, "Rad- und Fußweg": 300, "": 300},
+        "Weg": {"Fußweg": 330, "Rad- und Fußweg": 330, "": 330},
         # Asphalt Gehweg vs. Verbundpflaster [[11]]
 
         # Landwirtschaft - Pflug nicht berücksichtigt, Mindestkosten "ohne Oberfläche"
@@ -53,33 +53,33 @@ oberflaechennutzung_kosten = {
 
         # Gewässer - gestaffelt: Graben < Bach < Kanal < Fluss
         "Fließgewässer": {
-            "Graben": 125,
-            "Bach": 211,
-            "Kanal": 295,
-            "Fluss": 590,
-            "": 295
+            "Graben": 320,
+            "Bach": 380,
+            "Kanal": 480,
+            "Fluss": 500,
+            "": 300
         },
 
         "Stehendes Gewässer": {
-            "Teich": 295,
+            "Teich": 380,
             "Speicherbecken": 590,
             "Stausee": 590,
             "Baggersee": 590,
-            "": 295
+            "": 380
         },
 
         # Weitere Kategorien - Mindestkosten 125€
-        "Sport-, Freizeit- und Erholungsfläche": {"Grünanlage": 125, "": 125},
+        "Sport-, Freizeit- und Erholungsfläche": {"": 420},
         # Ohne Oberfläche [[11]]
-        "Gehölz": {"": 180},  # Bodenklasse 7 ohne Oberfläche [[11]]
+        "Gehölz": {"": 450},  # Bodenklasse 7 ohne Oberfläche [[11]]
 
-        "Platz": {"Parkplatz": 300, "Rastplatz": 300, "": 211},
+        "Platz": {"Parkplatz": 300, "Rastplatz": 300, "": 240},
 
-        "Flugverkehr": {"Segelfluggelände": 125, "Sonderlandeplatz": 125, "": 125},
+        "Flugverkehr": {"Segelfluggelände": 220, "Sonderlandeplatz": 220, "": 220},
         # Ohne Oberfläche [[11]]
-        "Bahnverkehr": {"": 480},  # Spülbohrung für Kreuzung [[11]]
-        "Heide": {"": 125},  # Ohne Oberfläche [[11]]
-        "Unland/Vegetationslose Fläche": {"": 125},  # Ohne Oberfläche [[11]]
+        "Bahnverkehr": {"": 750},  # Spülbohrung für Kreuzung [[11]]
+        "Heide": {"": 200},  # Ohne Oberfläche [[11]]
+        "Unland/Vegetationslose Fläche": {"": 200},  # Ohne Oberfläche [[11]]
 
         # Verbotene Flächen - unverändert
         "Fläche gemischter Nutzung": {"": 65535},
@@ -140,17 +140,17 @@ water_protection_cost_assumptions = {
         # Innermost protection zone (effectively forbidden)
         'Schutzzone I': 100,
         # High protection zone
-        'Schutzzone II': 1.1,
+        'Schutzzone II': 3,
         # Qualitative protection zone I (effectively forbidden)
         'Qualitative Schutzzone I': 100,
         # Qualitative protection zone II
-        'Qualitative Schutzzone II': 1.1,
+        'Qualitative Schutzzone II': 3,
         # Quantitative protection zone A (effectively forbidden)
         'Quantitative Schutzzone A': 100,
         # Quantitative protection zone B
-        'Quantitative Schutzzone B': 1.1,
+        'Quantitative Schutzzone B': 3,
         # Default value for unspecified zones
-        '': 1.05
+        '': 1.5
     }
 }
 
@@ -164,23 +164,24 @@ base_file = {
 
 local_directory = r"data/shapes"
 
-mask_path = join(local_directory, r"praeferenzraum\masked.shp")
+mask_path = join(local_directory, r"praeferenzraum/masked.shp")
 
 soil_classes = join(local_directory,
-                    r"additional_data\Bodeneinheiten_Bodenuebersicht_500000.shp",)
+                    r"additional_data/Bodeneinheiten_Bodenuebersicht_500000.shp",)
 nature_reserves = join(local_directory,
-                       r"additional_data\Natura2000_end2021_rev1_epsg3035.shp")
+                       r"additional_data/Natura2000_end2021_rev1_epsg3035.shp")
 drinking_water_protection = join(local_directory, "additional_data/TWS_HQS_TK25.shp")
-wind_energy_area = join(local_directory, r"additional_data\RTW_WINDENERGIE16_F.shp")
+wind_energy_area = join(local_directory, r"additional_data/RTW_WINDENERGIE16_F.shp")
 
-source_path = join(local_directory, r"source_and_target\sources_HE.shp")
-target_path = join(local_directory, r"source_and_target\targets_HE.shp")
+source_path = join(local_directory, r"source_and_target/sources_HE.shp")
+target_path = join(local_directory, r"source_and_target/targets_HE.shp")
 
 source = gpd.read_file(source_path).loc[[0]]
-target = gpd.read_file(target_path).loc[[5]]
+#target = gpd.read_file(target_path).loc[[5]] # (13466872162 cells)
+target = gpd.read_file(target_path).loc[[0]]
 
 mask = gpd.read_file(mask_path)
-buffers = [0, 20, 40, 60, 80, 100, 125]
+buffers = [38, 50, 75, 100, 125]
 for geometry_buffer_m in buffers:
     # Create a list with dictionaries for the datasets which should be used to modify
     # the base data
@@ -192,7 +193,7 @@ for geometry_buffer_m in buffers:
         },
         {
             "input_data": nature_reserves,
-            "cost_assumptions": 1.25,
+            "cost_assumptions": 10,
             "geometry_buffer_m": geometry_buffer_m,
             "multiply": True,
         },
@@ -209,24 +210,36 @@ for geometry_buffer_m in buffers:
             "multiply": True,
         },
     ]
-    raster_path = join("data/raster", f"RML_buffer_{geometry_buffer_m}_m.tiff")
-    path_finder = PathFinder(
-        source_coords=source,
-        target_coords=target,
-        dataset_source=base_file,
-        graph_api='cython',
-        ignore_max_cost=True,
-        datasets_to_modify=datasets_to_modify,
-        cost_assumptions=oberflaechennutzung_kosten,
-        search_space_buffer_m=25_000,
-        mask=mask,
-        raster_save_path=raster_path,
-        fancy_function=fancy_function,
-        #fancy_function_kwargs=fancy_function_kwargs
-    )
-    #path_finder.find_route()
-    #path_finder.save_paths(f"RML_buffer_{geometry_buffer_m}_m.geojson")
+    raster_path = join("data/raster", f"RML_bufferd_m.tiff")
+    if exists(raster_path):
+        path_finder = PathFinder(
+            source_coords=source,
+            target_coords=target,
+            dataset_source=raster_path,
+            graph_api='cython',
+            ignore_max_cost=True,
+            search_space_buffer_m=50_000,
+            mask=mask
+        )
+    else:
+        path_finder = PathFinder(
+            source_coords=source,
+            target_coords=target,
+            dataset_source=base_file,
+            graph_api='cython',
+            ignore_max_cost=True,
+            datasets_to_modify=datasets_to_modify,
+            cost_assumptions=oberflaechennutzung_kosten,
+            search_space_buffer_m=50_000,
+            mask=mask,
+            geometry_buffer_m=geometry_buffer_m,
+            #raster_save_path=raster_path,
+            preprocessing_function=fancy_function,
+        )
+
+    path_finder.find_route(algorithm="delta-stepping", num_threads=8, delta=500, margin=1.1)
+    path_finder.save_paths(f"RML_buffer_{geometry_buffer_m}_m.geojson")
     print("Trassenplanung abgeschlossen:")
-    #print(path_finder.paths)
+    print(path_finder.paths)
     print("\n\n")
-    break
+
