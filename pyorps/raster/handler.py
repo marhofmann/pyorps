@@ -454,6 +454,9 @@ class RasterHandler:
         """
         Convert pixel indices to geographic coordinates.
 
+        Indices are window-local (row, col) pairs. The returned coordinates
+        are pixel centers in the raster's CRS.
+
         Parameters:
             indices: List of (row, col) pixel indices
 
@@ -471,25 +474,11 @@ class RasterHandler:
             rows = indices[0]
             cols = indices[1]
 
-        # Adjust indices to the full raster coordinate system
-        rows = np.array(rows) + self.window.row_off
-        cols = np.array(cols) + self.window.col_off
+        # Use window_transform with local indices. rasterio's transform_xy
+        # uses offset='center' by default, which adds 0.5 to get pixel centers.
+        xs, ys = transform_xy(self.window_transform, rows, cols)
 
-        # Add 0.5 to convert integer indices to pixel centers
-        rows = rows + 0.5
-        cols = cols + 0.5
-
-        # Get coordinates using rasterio's transform
-        xs, ys = transform_xy(self.raster_dataset.transform, rows, cols)
-
-        # Apply correction based on the observed pixel offset
-        pixel_width = abs(self.raster_dataset.transform.a)
-        pixel_height = abs(self.raster_dataset.transform.e)
-
-        xs_corrected = np.array(xs) - pixel_width
-        ys_corrected = np.array(ys) + pixel_height
-
-        return np.array(list(zip(xs_corrected, ys_corrected)))
+        return np.array(list(zip(xs, ys)))
 
     def save_section_as_raster(self, output_path: str):
         """

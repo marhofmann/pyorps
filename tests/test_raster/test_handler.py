@@ -151,7 +151,12 @@ class TestRasterHandler(unittest.TestCase):
             np.testing.assert_array_equal(indices, expected)
 
     def test_indices_to_coords(self):
-        """Test the indices_to_coords method."""
+        """Test the indices_to_coords method with mocked transform_xy.
+
+        The method should pass window-local indices to transform_xy using
+        the window_transform, and return the coordinates unchanged (no
+        additional pixel correction).
+        """
         # Create handler with a simple window offset
         handler = RasterHandler(
             self.raster_dataset,
@@ -171,8 +176,9 @@ class TestRasterHandler(unittest.TestCase):
             indices = [(0, 0), (1, 1)]
             coords = handler.indices_to_coords(indices)
 
-            # Update expected values to match actual behavior
-            expected = np.array([[500040, 5599960], [500060, 5599940]])
+            # The method should return transform_xy output directly
+            # (no pixel-width/height correction applied)
+            expected = np.array([[500050, 5599950], [500070, 5599930]])
             np.testing.assert_array_almost_equal(coords, expected)
 
     def test_apply_geometry_mask(self):
@@ -528,3 +534,166 @@ class TestRasterHandler(unittest.TestCase):
                 self.source_coords,
                 self.target_coords
             )
+
+
+class TestMaxDistancePair(unittest.TestCase):
+    """Test RasterHandler.max_distance_pair static method."""
+
+    def test_single_pair(self):
+        """Single source, single target."""
+        pair, dist = RasterHandler.max_distance_pair((0, 0), (3, 4))
+        self.assertEqual(pair, ((0, 0), (3, 4)))
+        self.assertAlmostEqual(dist, 5.0)
+
+    def test_multiple_pairs(self):
+        """List of sources and targets, picks max distance pair."""
+        sources = [(0, 0), (1, 1)]
+        targets = [(10, 0), (0, 10)]
+        pair, dist = RasterHandler.max_distance_pair(sources, targets)
+        # Max distance should be from (0,0) to (10,0) = 10 or (0,0) to (0,10) = 10
+        # or (1,1) to (0,10) ≈ 9.06 or (1,1) to (10,0) ≈ 9.06
+        self.assertAlmostEqual(dist, 10.0)
+
+    def test_empty_input(self):
+        """Empty lists return None."""
+        result = RasterHandler.max_distance_pair([], [(1, 2)])
+        self.assertIsNone(result)
+
+
+class TestCoordinateRoundTrip(unittest.TestCase):
+    """Test coordinate conversion correctness WITHOUT mocks.
+
+    These tests verify that indices_to_coords and coords_to_indices produce
+    geometrically correct results by using known transforms and computing
+    expected pixel center coordinates analytically.
+    """
+
+    def setUp(self):
+        """Set up a raster with a known transform."""
+        # 100x100 raster, 10m pixel size, origin at (500000, 5600000)
+        self.raster_data = np.ones((1, 100, 100), dtype=np.uint16)
+        self.transform = from_origin(500000, 5600000, 10, 10)
+        self.crs = "EPSG:32632"
+        self.raster_dataset = InMemoryRasterDataset(
+            self.raster_data, self.crs, self.transform
+        )
+        # Source and target well inside the raster
+        self.source_coords = (500200, 5599800)
+        self.target_coords = (500700, 5599300)
+
+    def _make_handler(self):
+        return RasterHandler(
+            self.raster_dataset,
+            self.source_coords,
+            self.target_coords,
+            search_space_buffer_m=200
+        )
+
+    def test_indices_to_coords_pixel_center_accuracy(self):
+        """indices_to_coords must return pixel centers within 0.01m tolerance.
+
+        For a 10m pixel raster with origin (500000, 5600000):
+        - Pixel (row=0, col=0) of the FULL raster has center (500005, 5599995)
+        - Pixel (row=r, col=c) has center (500000 + (c+0.5)*10, 5600000 - (r+0.5)*10)
+
+        When using a window, the handler works with local indices that map to
+        a sub-region of the full raster. The local pixel (0,0) maps to the
+        full-raster pixel at (window.row_off, window.col_off).
+        """
+        handler = self._make_handler()
+
+        # Pick a few local pixel indices
+        local_indices = [(0, 0), (5, 3), (10, 10)]
+
+        coords = handler.indices_to_coords(local_indices)
+
+        for i, (local_row, local_col) in enumerate(local_indices):
+            # Compute expected pixel center in the full raster CRS
+            full_row = local_row + handler.window.row_off
+            full_col = local_col + handler.window.col_off
+            expected_x = 500000 + (full_col + 0.5) * 10
+            expected_y = 5600000 - (full_row + 0.5) * 10
+
+            actual_x, actual_y = coords[i]
+            self.assertAlmostEqual(
+                actual_x, expected_x, places=2,
+                msg=f"X mismatch for local pixel ({local_row},{local_col}): "
+                    f"expected {expected_x}, got {actual_x}"
+            )
+            self.assertAlmostEqual(
+                actual_y, expected_y, places=2,
+                msg=f"Y mismatch for local pixel ({local_row},{local_col}): "
+                    f"expected {expected_y}, got {actual_y}"
+            )
+
+    def test_coords_to_indices_then_back(self):
+        """Round-trip: coords -> indices -> coords must return to the same
+        pixel center (within pixel_size/2 tolerance)."""
+        handler = self._make_handler()
+
+        # Use the source coordinate (which is inside the window)
+        original_coords = [self.source_coords, self.target_coords]
+        indices = handler.coords_to_indices(original_coords)
+
+        # Convert back
+        recovered_coords = handler.indices_to_coords(indices)
+
+        for i, (orig_x, orig_y) in enumerate(original_coords):
+            rec_x, rec_y = recovered_coords[i]
+            # Should be within half a pixel (5m for 10m pixels)
+            self.assertAlmostEqual(rec_x, orig_x, delta=5.0,
+                msg=f"X round-trip error: {orig_x} -> {rec_x}")
+            self.assertAlmostEqual(rec_y, orig_y, delta=5.0,
+                msg=f"Y round-trip error: {orig_y} -> {rec_y}")
+
+    def test_indices_to_coords_consistency_with_window_transform(self):
+        """indices_to_coords must produce coordinates consistent with the
+        window_transform applied to local indices."""
+        from rasterio.transform import xy as rasterio_xy
+        handler = self._make_handler()
+
+        local_indices = [(2, 4), (7, 8)]
+        coords = handler.indices_to_coords(local_indices)
+
+        for i, (local_row, local_col) in enumerate(local_indices):
+            # rasterio xy with window_transform and default offset='center'
+            expected_x, expected_y = rasterio_xy(
+                handler.window_transform, local_row, local_col
+            )
+            actual_x, actual_y = coords[i]
+            self.assertAlmostEqual(actual_x, expected_x, places=2,
+                msg=f"X doesn't match window_transform.xy for ({local_row},{local_col})")
+            self.assertAlmostEqual(actual_y, expected_y, places=2,
+                msg=f"Y doesn't match window_transform.xy for ({local_row},{local_col})")
+
+
+class TestTransformCoords(unittest.TestCase):
+    """Test RasterHandler._transform_coords static method."""
+
+    def test_none_crs_passthrough(self):
+        """None input_crs returns coords unchanged."""
+        coords = (500000, 5600000)
+        result = RasterHandler._transform_coords(coords, None, "EPSG:32632")
+        self.assertEqual(result, coords)
+
+    def test_same_crs_passthrough(self):
+        """Same input/target CRS returns coords unchanged."""
+        coords = (500000, 5600000)
+        result = RasterHandler._transform_coords(coords, "EPSG:32632", "EPSG:32632")
+        self.assertEqual(result, coords)
+
+    def test_different_crs_transforms(self):
+        """Different CRS actually transforms coordinates."""
+        coords = (9.0, 50.0)  # lon, lat in WGS84
+        result = RasterHandler._transform_coords(coords, "EPSG:4326", "EPSG:32632")
+        # Should be different from input (transformed to UTM)
+        self.assertNotEqual(result, coords)
+        # UTM zone 32 x should be around 500000
+        self.assertAlmostEqual(result[0], 500000, delta=10000)
+
+    def test_list_of_coords_transforms(self):
+        """List of coords transformed correctly."""
+        coords = [(9.0, 50.0), (9.1, 50.1)]
+        result = RasterHandler._transform_coords(coords, "EPSG:4326", "EPSG:32632")
+        self.assertEqual(len(result), 2)
+        self.assertIsInstance(result[0], tuple)
