@@ -343,18 +343,9 @@ class PathPlotter:
             self.raster_handler.window,
             self.raster_handler.raster_dataset.transform)
 
-        # Apply coordinate correction used in indices_to_coords
-        # This ensures the raster is properly aligned with vector data
-        pixel_width = abs(self.raster_handler.raster_dataset.transform.a)
-        pixel_height = abs(self.raster_handler.raster_dataset.transform.e)
-
         # Define the extent of the raster plot (left, right, bottom, top)
-        extent = (
-            bounds[0] - pixel_width,  # left
-            bounds[2] - pixel_width,  # right
-            bounds[1] + pixel_height,  # bottom
-            bounds[3] + pixel_height  # top
-        )
+        # window_bounds returns (left, bottom, right, top)
+        extent = (bounds[0], bounds[2], bounds[1], bounds[3])
 
         # Identify unique values in the raster (ignoring NaNs)
         valid_data = raster_data[~mask]
