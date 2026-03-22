@@ -181,7 +181,11 @@ static inline void thread_barrier_wait(
         }
 #else
         while (__atomic_load_n(sense, __ATOMIC_SEQ_CST) != *local_sense) {
+#if defined(__aarch64__) || defined(__arm64__)
+            __asm__ __volatile__("yield" ::: "memory");
+#else
             __asm__ __volatile__("pause" ::: "memory");
+#endif
         }
 #endif
     }
