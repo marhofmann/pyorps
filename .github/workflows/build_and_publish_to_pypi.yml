@@ -61,6 +61,7 @@ jobs:
           CIBW_BUILD: "cp311-* cp312-* cp313-*"
           CIBW_ARCHS_MACOS: ${{ matrix.CIBW_ARCHS_MACOS }}
           CIBW_BEFORE_BUILD: "brew install libomp && python -m pip install --upgrade pip setuptools>=77 wheel packaging>=24.2 numpy>=2.0.0 cython>=3.0.0"
+          CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=14.0"
           CIBW_BUILD_VERBOSITY: 2
         run: python -m cibuildwheel --output-dir wheelhouse
 
