@@ -53,11 +53,10 @@ static inline uint32_t unpack_pred(uint64_t packed) {
 /*  but we use compiler intrinsics for portability)                     */
 /* ------------------------------------------------------------------ */
 
-static inline uint64_t atomic_load_u64(volatile uint64_t* addr) {
+static inline uint64_t atomic_load_u64(void* raw_addr) {
+    volatile uint64_t* addr = (volatile uint64_t*)raw_addr;
 #ifdef _MSC_VER
-    /* MSVC: _InterlockedCompareExchange64 with expected=0 is a full-
-       barrier load if the value happens to be 0; for a true atomic load
-       we just do a volatile read which is fine on x86-64. */
+    /* MSVC: volatile read is fine on x86-64 for atomic load. */
     return *addr;
 #else
     return __atomic_load_n(addr, __ATOMIC_SEQ_CST);
@@ -72,11 +71,12 @@ static inline uint64_t atomic_load_u64(volatile uint64_t* addr) {
 /* ------------------------------------------------------------------ */
 
 static inline int atomic_try_update_dist_pred(
-        volatile uint64_t* dist_pred,
+        void* raw_dist_pred,
         uint64_t v_idx,
         float new_dist,
         uint32_t new_pred) {
 
+    volatile uint64_t* dist_pred = (volatile uint64_t*)raw_dist_pred;
     uint64_t new_packed = pack_dist_pred(new_dist, new_pred);
     uint64_t old_packed = dist_pred[v_idx];
     int updated = 0;
