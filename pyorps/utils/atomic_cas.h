@@ -53,7 +53,7 @@ static inline uint32_t unpack_pred(uint64_t packed) {
 /*  but we use compiler intrinsics for portability)                     */
 /* ------------------------------------------------------------------ */
 
-static inline uint64_t atomic_load_u64(void* raw_addr) {
+static inline uint64_t atomic_load_u64(volatile void* raw_addr) {
     volatile uint64_t* addr = (volatile uint64_t*)raw_addr;
 #ifdef _MSC_VER
     /* MSVC: volatile read is fine on x86-64 for atomic load. */
@@ -71,7 +71,7 @@ static inline uint64_t atomic_load_u64(void* raw_addr) {
 /* ------------------------------------------------------------------ */
 
 static inline int atomic_try_update_dist_pred(
-        void* raw_dist_pred,
+        volatile void* raw_dist_pred,
         uint64_t v_idx,
         float new_dist,
         uint32_t new_pred) {
