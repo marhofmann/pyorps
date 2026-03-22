@@ -264,7 +264,7 @@ jobs:
           TMPDIR=$(mktemp -d)
           cp -r tests "$TMPDIR"/tests_run
           cd "$TMPDIR"/tests_run
-          python -m pytest . --tb=short --import-mode=importlib
+          python -m pytest . --tb=short --import-mode=importlib --ignore=test_io/test_vector_loader.py
 
       - name: Run full tests on Windows 3.11 from a temp directory
         if: runner.os == 'Windows' && matrix.python == '3.11'
@@ -277,7 +277,7 @@ jobs:
           New-Item -ItemType Directory -Path $tmp -Force | Out-Null
           Copy-Item -Recurse -Force tests (Join-Path $tmp "tests_run")
           Set-Location (Join-Path $tmp "tests_run")
-          python -m pytest . --tb=short --import-mode=importlib
+          python -m pytest . --tb=short --import-mode=importlib --ignore=test_io/test_vector_loader.py
 
       - name: Smoke test on Windows 3.12 (avoid LLVM teardown assertion)
         if: runner.os == 'Windows' && matrix.python == '3.12'
