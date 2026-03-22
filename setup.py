@@ -65,6 +65,24 @@ def make_extensions():
         extra_link_args = []
         libraries = []
 
+        # OpenMP via Homebrew libomp (required for _delta_stepping)
+        try:
+            import subprocess
+            libomp_prefix = subprocess.check_output(
+                ["brew", "--prefix", "libomp"], text=True
+            ).strip()
+            extra_compile_args.extend([
+                "-Xpreprocessor", "-fopenmp",
+                f"-I{libomp_prefix}/include",
+            ])
+            extra_link_args.extend([
+                f"-L{libomp_prefix}/lib",
+                "-lomp",
+            ])
+            print(f"Found libomp at {libomp_prefix}")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            print("WARNING: libomp not found. Install with: brew install libomp")
+
     else:  # Linux
         extra_compile_args = [
             "-O3",
