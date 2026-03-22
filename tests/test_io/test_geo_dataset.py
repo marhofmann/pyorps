@@ -56,6 +56,14 @@ class TestVectorDatasetAbstractBase(unittest.TestCase):
         # Check that load_data is in the abstract methods
         self.assertIn('load_data', abstract_methods)
 
+    def test_class_attribute_defaults_are_none_not_tuple(self):
+        """Regression: trailing commas on class attributes must not create tuples."""
+        # Class-level defaults should be None, not (None,)
+        self.assertIsNone(VectorDataset.bbox,
+                          "VectorDataset.bbox class default should be None, not a tuple")
+        self.assertIsNone(VectorDataset.mask,
+                          "VectorDataset.mask class default should be None, not a tuple")
+
 
 class TestInMemoryVectorDataset(GeoTestCase):
     """Test cases for the InMemoryVectorDataset class."""
@@ -195,8 +203,9 @@ class TestLocalVectorDataset(GeoTestCase):
         # Check that data was loaded
         self.assertIsNotNone(dataset.data)
 
-    def test_apply_bbox_with_crs_mismatch(self):
-        """Test that apply_bbox raises an error with CRS mismatch."""
+    def test_apply_bbox_with_crs_mismatch_auto_reprojects(self):
+        """Test that apply_bbox auto-reprojects bbox on CRS mismatch."""
+        import warnings
         # Create GDF with one CRS
         geometry = [Point(0, 0), Point(1, 1)]
         data = {'id': [1, 2], 'geometry': geometry}
@@ -210,12 +219,18 @@ class TestLocalVectorDataset(GeoTestCase):
         dataset = LocalVectorDataset("test.shp", bbox=bbox)
         dataset.data = gdf
 
-        # Apply bbox should raise ValueError
-        with self.assertRaises(ValueError):
+        # Apply bbox should warn and reproject, not raise
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
             dataset.apply_bbox()
+            crs_warnings = [x for x in w if "CRS mismatch" in str(x.message)]
+            self.assertEqual(len(crs_warnings), 1)
+        # bbox should now be in data CRS
+        self.assertEqual(dataset.bbox.crs, gdf.crs)
 
-    def test_apply_mask_with_crs_mismatch(self):
-        """Test that apply_mask raises an error with CRS mismatch when bbox is None."""
+    def test_apply_mask_with_crs_mismatch_auto_reprojects(self):
+        """Test that apply_mask auto-reprojects mask on CRS mismatch."""
+        import warnings
         # Create GDF with one CRS
         geometry = [Point(0, 0), Point(1, 1)]
         data = {'id': [1, 2], 'geometry': geometry}
@@ -230,9 +245,12 @@ class TestLocalVectorDataset(GeoTestCase):
         dataset.data = gdf
         dataset.bbox = None
 
-        # Apply mask should raise ValueError
-        with self.assertRaises(ValueError):
+        # Apply mask should warn and reproject, not raise
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
             dataset.apply_mask()
+            crs_warnings = [x for x in w if "CRS mismatch" in str(x.message)]
+            self.assertEqual(len(crs_warnings), 1)
 
 
 class TestWFSVectorDataset(TestLocalVectorDataset):

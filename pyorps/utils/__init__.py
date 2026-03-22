@@ -7,6 +7,7 @@ This module provides:
 3. Utilities for working with raster indices and graph construction
 4. Cython-optimized pathfinding algorithms (Dijkstra and Delta-stepping)
 """
+import warnings
 
 # Import traversal functions
 from .traversal import (
@@ -44,21 +45,28 @@ try:
         dijkstra_some_pairs_shortest_paths,
         dijkstra_multiple_sources_multiple_targets,
 
-        # Delta-stepping algorithms
-        delta_stepping_2d,
-        delta_stepping_single_source_multiple_targets,
-        delta_stepping_some_pairs_shortest_paths,
-        delta_stepping_multiple_sources_multiple_targets,
+        # Delta-stepping algorithms (persistent thread pool — fastest)
+        delta_stepping_2d_persistent as delta_stepping_2d,
+        delta_stepping_single_source_multiple_targets_persistent
+            as delta_stepping_single_source_multiple_targets,
+        delta_stepping_some_pairs_shortest_paths_persistent
+            as delta_stepping_some_pairs_shortest_paths,
+        delta_stepping_multiple_sources_multiple_targets_persistent
+            as delta_stepping_multiple_sources_multiple_targets,
 
         # Utility functions
         group_by_proximity,
     )
-    from .path_core import create_exclude_mask, path_cost_uint32, path_cost
+    from .path_core import create_exclude_mask, path_cost
 
     CYTHON_AVAILABLE = True
 except ImportError as e:
     CYTHON_AVAILABLE = False
-    print(f"⚠ Cython extensions not available: {e}")
+    warnings.warn(
+        f"Cython extensions not available: {e}",
+        ImportWarning,
+        stacklevel=2
+    )
 
     # Provide informative error functions for all algorithms
     def _cython_not_available(*args, **kwargs):
@@ -85,8 +93,9 @@ except ImportError as e:
     path_cost_f32 = _cython_not_available
     create_exclude_mask = _cython_not_available
 
+
 __all__ = [
-    # Availability flag
+    # Availability flags
     'CYTHON_AVAILABLE',
 
     # Dijkstra algorithms

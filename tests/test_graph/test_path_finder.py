@@ -5,7 +5,7 @@ from rasterio.transform import from_origin
 from shapely.geometry import LineString, Point, MultiPoint
 from geopandas import GeoDataFrame, GeoSeries
 
-from pyorps.graph.path_finder import PathFinder
+from pyorps.graph.path_finder import PathFinder, timed, get_graph_api_class
 from pyorps.core.path import Path, PathCollection
 from pyorps.io.geo_dataset import RasterDataset, VectorDataset
 
@@ -1576,3 +1576,192 @@ class TestPathFinder(unittest.TestCase):
         self.assertIsInstance(PathFinder.normalize_coordinates(MultiPoint([(1.0, 2.0), (3.0, 4.0)])), list)
         self.assertIsInstance(PathFinder.normalize_coordinates([Point(1.0, 2.0), Point(3.0, 4.0)]), list)
 
+
+class TestTimed(unittest.TestCase):
+    """Test the timed context manager."""
+
+    def test_normal_execution(self):
+        """Normal execution records timing."""
+        timings = {}
+        with timed("test_block", timings):
+            _ = sum(range(100))
+        self.assertIn("test_block", timings)
+        self.assertGreaterEqual(timings["test_block"], 0)
+
+    def test_exception_still_records_time(self):
+        """Even if an exception occurs, timing is recorded in the finally block."""
+        timings = {}
+        with self.assertRaises(ValueError):
+            with timed("fail_block", timings):
+                raise ValueError("test error")
+        self.assertIn("fail_block", timings)
+        self.assertGreaterEqual(timings["fail_block"], 0)
+
+
+class TestGetGraphApiClass(unittest.TestCase):
+    """Test get_graph_api_class function."""
+
+    def test_cython(self):
+        from pyorps.graph.api.cython_api import CythonAPI
+        self.assertEqual(get_graph_api_class("cython"), CythonAPI)
+
+    def test_networkx(self):
+        try:
+            from pyorps.graph.api.networkx_api import NetworkxAPI
+        except ImportError:
+            self.skipTest("networkx not installed")
+        self.assertEqual(get_graph_api_class("networkx"), NetworkxAPI)
+
+    def test_case_insensitivity(self):
+        from pyorps.graph.api.cython_api import CythonAPI
+        self.assertEqual(get_graph_api_class("Cython"), CythonAPI)
+        self.assertEqual(get_graph_api_class("CYTHON"), CythonAPI)
+
+    def test_unknown_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            get_graph_api_class("nonexistent_api")
+
+
+class TestPathFinderDEM(unittest.TestCase):
+    """Test PathFinder initialization with DEM dataset."""
+
+    @patch("pyorps.graph.path_finder.initialize_geo_dataset")
+    @patch("pyorps.graph.path_finder.RasterHandler")
+    def test_dem_dataset_initialization(self, mock_raster_handler,
+                                         mock_initialize_geo_dataset):
+        """Test that DEM dataset is stored when provided."""
+        # Create mock raster dataset
+        mock_raster_dataset = MagicMock(spec=RasterDataset)
+        mock_raster_dataset.data = np.ones((1, 10, 10), dtype=np.uint16)
+        mock_raster_dataset.transform = from_origin(500000, 5600000, 1, 1)
+        mock_raster_dataset.crs = "EPSG:32632"
+        mock_raster_dataset.shape = (10, 10)
+        mock_raster_dataset.count = 1
+        mock_raster_dataset.dtype = np.uint16
+
+        mock_initialize_geo_dataset.return_value = mock_raster_dataset
+
+        # Create mock DEM dataset
+        mock_dem = MagicMock(spec=RasterDataset)
+        mock_dem.data = np.ones((1, 10, 10), dtype=np.float32)
+        mock_dem.transform = from_origin(500000, 5600000, 1, 1)
+        mock_dem.crs = "EPSG:32632"
+        mock_dem.shape = (10, 10)
+
+        pf = PathFinder(
+            mock_raster_dataset,
+            (500005, 5599995),
+            (500008, 5599992),
+            graph_api="cython",
+            dem=mock_dem
+        )
+
+        self.assertIsNotNone(pf.dem_dataset)
+
+
+class TestFindRouteRasterParametersNone(unittest.TestCase):
+    """P2.1: find_route crashes when raster_parameters=None."""
+
+    @patch("pyorps.graph.path_finder.initialize_geo_dataset")
+    def test_find_route_none_raster_parameters(
+            self, mock_initialize_geo_dataset):
+        """find_route should default to {} when raster_parameters is None.
+
+        When raster_handler is None and raster_parameters is None, the line
+        ``self.create_raster_handler(**raster_parameters)`` becomes
+        ``self.create_raster_handler(**None)`` which raises TypeError.
+        """
+        mock_raster_dataset = MagicMock(spec=RasterDataset)
+        mock_raster_dataset.crs = "EPSG:32632"
+        mock_initialize_geo_dataset.return_value = mock_raster_dataset
+
+        pf = PathFinder(
+            mock_raster_dataset,
+            source_coords=None,
+            target_coords=None,
+            graph_api="cython",
+        )
+        self.assertIsNone(pf.raster_handler)
+
+        # Patch create_raster_handler so we can observe how it is called
+        with patch.object(pf, 'create_raster_handler') as mock_crh:
+            mock_rh = MagicMock()
+            mock_rh.data = np.ones((1, 10, 10), dtype=np.uint16)
+
+            def side_effect(**kwargs):
+                pf.raster_handler = mock_rh
+            mock_crh.side_effect = side_effect
+
+            with patch.object(pf, 'get_node_indices_from_coords',
+                              return_value=np.array([0])):
+                # Mock graph_api so we don't need a real graph
+                mock_graph_api = MagicMock()
+                mock_graph_api.shortest_path.return_value = [0, 5, 10]
+                pf._graph_api = mock_graph_api
+
+                with patch.object(pf, '_create_path_result',
+                                  return_value=MagicMock()):
+                    try:
+                        pf.find_route(
+                            source=(500005, 5599995),
+                            target=(500008, 5599992),
+                            raster_parameters=None,
+                        )
+                    except TypeError as e:
+                        if "NoneType" in str(e):
+                            self.fail(
+                                f"find_route crashed with "
+                                f"raster_parameters=None: {e}"
+                            )
+                        raise
+
+            # create_raster_handler should have been called with **{}
+            mock_crh.assert_called_once_with()
+
+
+class TestGetCoordsFromNodeIndices2D(unittest.TestCase):
+    """P2.2: get_coords_from_node_indices crashes on 2D raster."""
+
+    @patch("pyorps.graph.path_finder.initialize_geo_dataset")
+    @patch("pyorps.graph.path_finder.RasterHandler")
+    def test_2d_raster_shape(self, mock_raster_handler_cls,
+                              mock_initialize_geo_dataset):
+        """get_coords_from_node_indices should work with 2D raster data."""
+        raster_data_2d = np.ones((10, 10), dtype=np.uint16)
+        transform = from_origin(500000, 5600000, 1, 1)
+        crs = "EPSG:32632"
+
+        mock_raster_dataset = MagicMock(spec=RasterDataset)
+        mock_raster_dataset.data = raster_data_2d
+        mock_raster_dataset.transform = transform
+        mock_raster_dataset.crs = crs
+        mock_raster_dataset.shape = (10, 10)
+        mock_raster_dataset.count = 1
+        mock_raster_dataset.dtype = np.uint16
+        mock_initialize_geo_dataset.return_value = mock_raster_dataset
+
+        pf = PathFinder(
+            mock_raster_dataset,
+            source_coords=None,
+            target_coords=None,
+            graph_api="cython",
+        )
+
+        # Set up a mock raster_handler with 2D data
+        mock_rh = MagicMock()
+        mock_rh.data = raster_data_2d  # 2D, not 3D
+        mock_rh.indices_to_coords = MagicMock(
+            return_value=[(500005.0, 5599995.0)])
+        pf.raster_handler = mock_rh
+
+        # This should not crash with "not enough values to unpack"
+        try:
+            result = pf.get_coords_from_node_indices([55])
+        except ValueError as e:
+            if "not enough values to unpack" in str(e):
+                self.fail(
+                    f"get_coords_from_node_indices crashed on 2D raster: {e}"
+                )
+            raise
+
+        mock_rh.indices_to_coords.assert_called_once()

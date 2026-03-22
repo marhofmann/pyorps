@@ -1,6 +1,15 @@
 """PYORPS - Python for Optimal Routes in Power Systems."""
 
-__version__ = "0.2.3"
+__version__ = "0.3.0"
+
+# Suppress third-party deprecation warnings triggered during import
+import warnings as _warnings
+_warnings.filterwarnings(
+    "ignore",
+    message="The 'shapely.geos' module is deprecated",
+    category=DeprecationWarning,
+)
+del _warnings
 
 # Import key components for easy access
 from .io.geo_dataset import (
@@ -14,6 +23,11 @@ from .graph.path_finder import PathFinder
 from .core.path import Path, PathCollection  # Fixed: import from core.path instead of graph
 from .core.cost_assumptions import (CostAssumptions, get_zero_cost_assumptions, detect_feature_columns,
                                     save_empty_cost_assumptions)
+from .core.exceptions import (
+    PyorpsError, NoPathFoundError, RasterShapeError,
+    AlgorithmNotImplementedError, PairwiseError,
+    CostAssumptionsError, WFSError
+)
 
 __all__ = [
     # Core dataset classes
@@ -31,4 +45,9 @@ __all__ = [
     # Cost assumptions
     "CostAssumptions", "get_zero_cost_assumptions", "detect_feature_columns",
     "save_empty_cost_assumptions",
+
+    # Exceptions
+    "PyorpsError", "NoPathFoundError", "RasterShapeError",
+    "AlgorithmNotImplementedError", "PairwiseError",
+    "CostAssumptionsError", "WFSError",
 ]

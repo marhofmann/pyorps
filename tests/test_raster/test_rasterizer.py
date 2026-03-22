@@ -433,3 +433,331 @@ class TestGeoRasterizer(unittest.TestCase):
         # Check that the transform was updated
         self.assertNotEqual(rasterizer.transform, self.transform)
 
+
+class TestGetRowsAndColumns(unittest.TestCase):
+    """Test GeoRasterizer._get_rows_and_columns static method."""
+
+    def test_square_area(self):
+        """Square area with 1m resolution."""
+        rows, cols = GeoRasterizer._get_rows_and_columns(
+            width=100, height=100, resolution_in_m=1.0, total_area_m2=10000)
+        self.assertEqual(rows, 100)
+        self.assertEqual(cols, 100)
+
+    def test_rectangular_area(self):
+        """Rectangular area preserves aspect ratio."""
+        rows, cols = GeoRasterizer._get_rows_and_columns(
+            width=200, height=100, resolution_in_m=1.0, total_area_m2=20000)
+        # aspect_ratio = 2, so width ≈ 2*height
+        self.assertAlmostEqual(cols / rows, 2.0, delta=0.1)
+
+    def test_zero_height(self):
+        """Zero height defaults aspect_ratio to 1.0."""
+        rows, cols = GeoRasterizer._get_rows_and_columns(
+            width=100, height=0, resolution_in_m=1.0, total_area_m2=100)
+        # With aspect_ratio=1.0, rows and cols should be equal
+        self.assertEqual(rows, cols)
+
+    def test_adjustment_increases_if_needed(self):
+        """When rows*cols < total_pixels, one is incremented."""
+        # Use values that force an adjustment
+        rows, cols = GeoRasterizer._get_rows_and_columns(
+            width=3, height=2, resolution_in_m=1.0, total_area_m2=6)
+        self.assertGreaterEqual(rows * cols, 6)
+
+
+class TestResolutionFormula(unittest.TestCase):
+    """P1.9: resolution parameter is linear meters, not square meters.
+
+    A 1000 m x 1000 m area at 10 m resolution should produce a 100 x 100
+    raster (width / resolution = columns, height / resolution = rows).
+    Before the fix, pixel_area = resolution_in_m (linear) instead of
+    resolution_in_m ** 2 (area), so the raster was ~sqrt(10) times too large
+    in each dimension.
+    """
+
+    def test_square_area_10m_resolution(self):
+        """1000 m x 1000 m at 10 m resolution -> 100 x 100."""
+        rows, cols = GeoRasterizer._get_rows_and_columns(
+            width=1000, height=1000,
+            resolution_in_m=10.0,
+            total_area_m2=1_000_000
+        )
+        self.assertEqual(rows, 100)
+        self.assertEqual(cols, 100)
+
+    def test_rectangular_area_5m_resolution(self):
+        """2000 m x 1000 m at 5 m resolution -> 200 x 400."""
+        rows, cols = GeoRasterizer._get_rows_and_columns(
+            width=2000, height=1000,
+            resolution_in_m=5.0,
+            total_area_m2=2_000_000
+        )
+        self.assertEqual(rows, 200)
+        self.assertEqual(cols, 400)
+
+    def test_1m_resolution_unchanged(self):
+        """1 m resolution: pixel_area = 1**2 = 1, same as before the fix."""
+        rows, cols = GeoRasterizer._get_rows_and_columns(
+            width=100, height=100,
+            resolution_in_m=1.0,
+            total_area_m2=10_000
+        )
+        self.assertEqual(rows, 100)
+        self.assertEqual(cols, 100)
+
+    def test_calculate_out_shape_from_geodataframe(self):
+        """End-to-end: _calculate_out_shape_from_geodataframe with 10 m res.
+
+        A 1 km x 1 km box at 10 m resolution should give ~100 x 100.
+        """
+        # Create a 1000 m x 1000 m box in a projected CRS
+        geom = box(500_000, 5_600_000, 501_000, 5_601_000)
+        gdf = gpd.GeoDataFrame(
+            {'val': [1]}, geometry=[geom], crs="EPSG:32632"
+        )
+        cost_assumptions = {'category': {'road': 10}}
+        vector_dataset = InMemoryVectorDataset(gdf, crs="EPSG:32632")
+        rasterizer = GeoRasterizer(vector_dataset, cost_assumptions)
+
+        rows, cols = rasterizer._calculate_out_shape_from_geodataframe(
+            gdf, resolution_in_m=10.0
+        )
+        self.assertEqual(rows, 100)
+        self.assertEqual(cols, 100)
+
+    def test_calculate_out_shape_from_bounding_box(self):
+        """End-to-end: _calculate_out_shape_from_bounding_box with 10 m res."""
+        bbox_poly = box(500_000, 5_600_000, 501_000, 5_601_000)
+        gdf = gpd.GeoDataFrame(
+            {'val': [1]},
+            geometry=[box(500_000, 5_600_000, 501_000, 5_601_000)],
+            crs="EPSG:32632"
+        )
+        cost_assumptions = {'category': {'road': 10}}
+        vector_dataset = InMemoryVectorDataset(gdf, crs="EPSG:32632")
+        rasterizer = GeoRasterizer(vector_dataset, cost_assumptions)
+
+        rows, cols = rasterizer._calculate_out_shape_from_bounding_box(
+            bbox_poly, resolution_in_m=10.0
+        )
+        self.assertEqual(rows, 100)
+        self.assertEqual(cols, 100)
+
+
+class TestModifyRasterSimpleCostAssumptions(unittest.TestCase):
+    """Test _modify_raster_from_dataset_simple_cost_assumptions."""
+
+    def setUp(self):
+        self.raster_data = np.ones((10, 10), dtype=np.uint16) * 100
+        self.transform = from_origin(500000, 5600000, 10, 10)
+        self.crs = "EPSG:32632"
+        self.raster_dataset = InMemoryRasterDataset(
+            self.raster_data, self.crs, self.transform)
+        self.cost_assumptions = {'category': {'road': 10}}
+
+    def _make_rasterizer(self):
+        rasterizer = GeoRasterizer(self.raster_dataset, self.cost_assumptions)
+        return rasterizer
+
+    def test_no_zoning(self):
+        """Without zone_field, calls modify_raster_with_geodataframe once."""
+        rasterizer = self._make_rasterizer()
+        gdf = gpd.GeoDataFrame(
+            {'val': [1]},
+            geometry=[Polygon([(0, 0), (0, 1), (1, 1), (1, 0)])],
+            crs=self.crs
+        )
+        with patch.object(rasterizer, 'modify_raster_with_geodataframe') as mock_mod:
+            mock_mod.return_value = rasterizer.raster
+            rasterizer._modify_raster_from_dataset_simple_cost_assumptions(
+                gdf, cost_assumptions=5, ignore_value=65535, multiply=False
+            )
+            mock_mod.assert_called_once_with(
+                gdf=gdf, value=5, ignore_value=65535, multiply=False)
+
+    def test_zone_field_and_forbidden_zone(self):
+        """With zone_field + forbidden_zone, calls modify twice."""
+        rasterizer = self._make_rasterizer()
+        gdf = gpd.GeoDataFrame(
+            {'zone': ['regular', 'forbidden']},
+            geometry=[
+                Polygon([(0, 0), (0, 1), (1, 1), (1, 0)]),
+                Polygon([(1, 1), (1, 2), (2, 2), (2, 1)])
+            ],
+            crs=self.crs
+        )
+        with patch.object(rasterizer, 'modify_raster_with_geodataframe') as mock_mod:
+            mock_mod.return_value = rasterizer.raster
+            rasterizer._modify_raster_from_dataset_simple_cost_assumptions(
+                gdf, cost_assumptions=5, ignore_value=65535, multiply=True,
+                zone_field='zone', forbidden_zone='forbidden',
+                forbidden_value=65535
+            )
+            self.assertEqual(mock_mod.call_count, 2)
+
+    def test_empty_forbidden_areas(self):
+        """If no rows match forbidden_zone, only one call for non-forbidden."""
+        rasterizer = self._make_rasterizer()
+        gdf = gpd.GeoDataFrame(
+            {'zone': ['regular']},
+            geometry=[Polygon([(0, 0), (0, 1), (1, 1), (1, 0)])],
+            crs=self.crs
+        )
+        with patch.object(rasterizer, 'modify_raster_with_geodataframe') as mock_mod:
+            mock_mod.return_value = rasterizer.raster
+            rasterizer._modify_raster_from_dataset_simple_cost_assumptions(
+                gdf, cost_assumptions=2, ignore_value=65535, multiply=True,
+                zone_field='zone', forbidden_zone='forbidden',
+                forbidden_value=65535
+            )
+            # Only the "other_areas" call should happen
+            self.assertEqual(mock_mod.call_count, 1)
+
+    def test_multiply_flag(self):
+        """When multiply=True, the call passes multiply=True for non-forbidden."""
+        rasterizer = self._make_rasterizer()
+        gdf = gpd.GeoDataFrame(
+            {'val': [1]},
+            geometry=[Polygon([(0, 0), (0, 1), (1, 1), (1, 0)])],
+            crs=self.crs
+        )
+        with patch.object(rasterizer, 'modify_raster_with_geodataframe') as mock_mod:
+            mock_mod.return_value = rasterizer.raster
+            rasterizer._modify_raster_from_dataset_simple_cost_assumptions(
+                gdf, cost_assumptions=3, ignore_value=None, multiply=True
+            )
+            _, kwargs = mock_mod.call_args
+            self.assertTrue(kwargs['multiply'])
+
+
+class TestModifyRasterFromDatasetCostAssumptionsGeometryMask(unittest.TestCase):
+    """P2.3: geometry_mask receives (geometry, value) tuples instead of bare
+    geometries when modify_raster_from_dataset uses CostAssumptions."""
+
+    def setUp(self):
+        self.raster_data = np.ones((10, 10), dtype=np.uint16) * 100
+        self.transform = from_origin(500000, 5600000, 10, 10)
+        self.crs = "EPSG:32632"
+        self.raster_dataset = InMemoryRasterDataset(
+            self.raster_data, self.crs, self.transform)
+
+    def test_geometry_mask_receives_bare_geometries(self):
+        """geometry_mask should receive bare geometries, not (geom, value)
+        tuples.
+
+        The bug is in the CostAssumptions branch of
+        modify_raster_from_dataset: it builds (geom, value) tuples and
+        passes them to geometry_mask, which expects bare geometries.
+        """
+        rasterizer = GeoRasterizer(self.raster_dataset, {'cat': {'a': 10}})
+
+        # Create a GeoDataFrame that already has a 'cost' column
+        geom = Polygon([
+            (500000, 5599900), (500000, 5600000),
+            (500100, 5600000), (500100, 5599900)
+        ])
+        gdf = gpd.GeoDataFrame(
+            {'cost': [50]},
+            geometry=[geom],
+            crs=self.crs
+        )
+
+        # Mock ca.apply_to_geodataframe to be a no-op (cost col already set)
+        mock_ca = MagicMock(spec=CostAssumptions)
+        mock_ca.apply_to_geodataframe = MagicMock()
+
+        captured_shapes = []
+
+        def capturing_geometry_mask(geometries, **kwargs):
+            geom_list = list(geometries)
+            captured_shapes.extend(geom_list)
+            for item in geom_list:
+                if isinstance(item, tuple):
+                    raise TypeError(
+                        f"geometry_mask received a tuple {type(item)} "
+                        f"instead of a bare geometry. This is the bug!"
+                    )
+            return np.zeros((10, 10), dtype=bool)
+
+        with patch('pyorps.raster.rasterizer.geometry_mask',
+                   side_effect=capturing_geometry_mask):
+            with patch('pyorps.raster.rasterizer.initialize_geo_dataset') as mock_init:
+                mock_dataset = MagicMock()
+                mock_dataset.data = gdf
+                mock_dataset.load_data = MagicMock()
+                mock_init.return_value = mock_dataset
+
+                mock_bounds_gdf = gpd.GeoDataFrame(
+                    geometry=[Polygon([
+                        (500000, 5599900), (500000, 5600000),
+                        (500100, 5600000), (500100, 5599900)
+                    ])],
+                    crs=self.crs
+                )
+
+                with patch.object(rasterizer, 'create_bounds_geodataframe',
+                                  return_value=mock_bounds_gdf):
+                    try:
+                        rasterizer.modify_raster_from_dataset(
+                            'test.shp',
+                            cost_assumptions=mock_ca
+                        )
+                    except TypeError as e:
+                        if "tuple" in str(e).lower():
+                            self.fail(
+                                f"geometry_mask received tuples instead of "
+                                f"bare geometries: {e}"
+                            )
+                        raise
+
+        self.assertGreater(len(captured_shapes), 0,
+                           "geometry_mask was not called with any shapes")
+
+
+class TestShrinkRasterUpdatesDataset(unittest.TestCase):
+    """Test that shrink_raster updates raster_dataset (P4.9)."""
+
+    def test_shrink_raster_updates_raster_dataset(self):
+        """After shrinking, raster_dataset should reflect the new shape."""
+        raster_data = np.ones((10, 10), dtype=np.uint16)
+        raster_data[:2, :] = 65535
+        raster_data[-2:, :] = 65535
+        raster_data[:, :2] = 65535
+        raster_data[:, -2:] = 65535
+
+        transform = from_origin(500000, 5600000, 10, 10)
+        raster_dataset = InMemoryRasterDataset(raster_data, "EPSG:32632", transform)
+        rasterizer = GeoRasterizer(raster_dataset, {'category': {'road': 10}})
+
+        rasterizer.shrink_raster(exclude_value=65535)
+
+        # raster_dataset should be updated, not stale
+        self.assertIsNotNone(rasterizer.raster_dataset)
+        self.assertEqual(rasterizer.raster_dataset.shape, (6, 6))
+        self.assertEqual(rasterizer.raster_dataset.transform, rasterizer.transform)
+
+
+class TestInit3DRasterNormalization(unittest.TestCase):
+    """Test that 3D rasters are normalized to 2D on init (P4.14)."""
+
+    def test_3d_raster_normalized_to_2d(self):
+        """A 3D raster (bands, h, w) should be squeezed to 2D (h, w)."""
+        raster_3d = np.ones((1, 10, 10), dtype=np.uint16) * 5
+        transform = from_origin(500000, 5600000, 10, 10)
+        raster_dataset = InMemoryRasterDataset(raster_3d, "EPSG:32632", transform)
+        rasterizer = GeoRasterizer(raster_dataset, {'category': {'road': 10}})
+
+        self.assertEqual(rasterizer.raster.ndim, 2)
+        self.assertEqual(rasterizer.raster.shape, (10, 10))
+
+    def test_2d_raster_unchanged(self):
+        """A 2D raster should remain 2D."""
+        raster_2d = np.ones((10, 10), dtype=np.uint16) * 5
+        transform = from_origin(500000, 5600000, 10, 10)
+        raster_dataset = InMemoryRasterDataset(raster_2d, "EPSG:32632", transform)
+        rasterizer = GeoRasterizer(raster_dataset, {'category': {'road': 10}})
+
+        self.assertEqual(rasterizer.raster.ndim, 2)
+        self.assertEqual(rasterizer.raster.shape, (10, 10))
+

@@ -8,7 +8,7 @@ Reference:
 """
 # Third party
 import rustworkx as rx
-from numpy import where, ndarray, ravel_multi_index, max as np_max
+from numpy import ndarray, max as np_max
 from typing import Optional
 
 # Project files
@@ -99,9 +99,11 @@ class RustworkxAPI(GraphLibraryAPI):
         Returns:
             None
         """
-        indices_max_values = where(self.raster_data == 65535)
-        nodes_max_values = ravel_multi_index(indices_max_values, self.raster_data.shape)
-        self.graph.remove_nodes_from(nodes_max_values)
+        isolated_nodes = [
+            node for node in self.graph.node_indices()
+            if self.graph.degree(node) == 0
+        ]
+        self.graph.remove_nodes_from(isolated_nodes)
 
     def _compute_single_path(
             self,
@@ -132,7 +134,7 @@ class RustworkxAPI(GraphLibraryAPI):
                 path = list(path[target])
             elif algorithm == "astar":
                 # Get heuristic function or use default as heuristic
-                heuristic_function = kwargs.get('heu', None)
+                heuristic_function = kwargs.get('heuristic', kwargs.get('heu', None))
 
                 if heuristic_function is None:
                     nodes, heuristic = self.get_a_star_heuristic(target,

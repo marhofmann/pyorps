@@ -6,13 +6,18 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
-from typing import Optional, Any
-from dataclasses import dataclass
+from __future__ import annotations
+
+from typing import Optional, Any, TYPE_CHECKING
+from dataclasses import dataclass, field
 
 from numpy import ndarray
 from shapely.geometry import LineString
 
 from pyorps.core.types import CoordinateTuple, NodeList, CoordinateList
+
+if TYPE_CHECKING:
+    from pyorps.core.cost_assumptions import CostAssumptions
 
 
 @dataclass
@@ -37,8 +42,85 @@ class Path:
     # Optional metrics that may be calculated
     total_length: Optional[float] = None
     total_cost: Optional[float] = None
+    total_cell_cost: Optional[float] = None
     length_by_category: Optional[dict[float, float]] = None
     length_by_category_percent: Optional[dict[float, float]] = None
+
+    # Optional mapping from cost values to terrain type names
+    cost_labels: Optional[dict[int, str]] = field(default=None, repr=False)
+
+    def analyze(
+            self,
+            cost_assumptions: Optional[CostAssumptions] = None,
+            cost_labels: Optional[dict[int, str]] = None,
+    ) -> str:
+        """
+        Return a human-readable breakdown of the path by terrain category.
+
+        Labels are resolved in this order:
+        1. Explicit *cost_labels* dict passed to this call
+        2. Labels built from a *cost_assumptions* object passed to this call
+        3. ``self.cost_labels`` (set automatically when the PathFinder had
+           cost assumptions available)
+        4. Falls back to the raw cost value
+
+        Parameters:
+            cost_assumptions: Optional CostAssumptions instance to derive
+                labels from.
+            cost_labels: Optional dict mapping cost values to terrain names.
+
+        Returns:
+            Formatted string with path analysis.
+        """
+        # Resolve labels
+        labels = cost_labels
+        if labels is None and cost_assumptions is not None:
+            labels = cost_assumptions.build_cost_labels()
+        if labels is None:
+            labels = self.cost_labels
+        if labels is None:
+            labels = {}
+
+        lines = []
+        lines.append(f"Path Analysis (ID={self.path_id})")
+        lines.append("=" * 60)
+        lines.append(f"  Source:             {self.source}")
+        lines.append(f"  Target:             {self.target}")
+        lines.append(f"  Neighborhood:       {self.neighborhood}")
+
+        if self.total_length is not None:
+            lines.append(f"  Total length:       {self.total_length:,.1f} m")
+        if self.total_cost is not None:
+            lines.append(f"  Total cost:         {self.total_cost:,.1f} EUR")
+        if self.euclidean_distance:
+            lines.append(
+                f"  Euclidean distance: {self.euclidean_distance:,.1f} m")
+        if self.total_length and self.euclidean_distance:
+            detour = self.total_length / self.euclidean_distance
+            lines.append(f"  Detour factor:      {detour:.2f}x")
+
+        if self.length_by_category:
+            lines.append("")
+            lines.append("  Terrain breakdown:")
+            lines.append(
+                f"  {'Terrain':<35} {'Length [m]':>10}  {'Share':>6}  "
+                f"{'Cost [EUR/m]':>12}")
+            lines.append("  " + "-" * 67)
+
+            for cost_val in sorted(self.length_by_category.keys()):
+                length_m = self.length_by_category[cost_val]
+                pct = self.length_by_category_percent.get(cost_val, 0)
+                label = labels.get(int(cost_val), f"Cost {int(cost_val)}")
+                # Truncate long labels
+                if len(label) > 35:
+                    label = label[:32] + "..."
+                lines.append(
+                    f"  {label:<35} {length_m:>10,.1f}  {pct:>5.1f}%  "
+                    f"{int(cost_val):>12}")
+
+        result = "\n".join(lines)
+        print(result)
+        return result
 
     def to_geodataframe_dict(self) -> dict:
         """
@@ -67,6 +149,7 @@ class Path:
         if self.total_length is not None:
             result["path_length"] = self.total_length
             result["path_cost"] = self.total_cost
+            result["path_cell_cost"] = self.total_cell_cost
 
             # Add length by category columns if available
             if self.length_by_category:
@@ -91,7 +174,7 @@ class Path:
         if self.total_cost is not None:
             result += f", cost={self.total_cost:.2f}"
         if "runtime_total" in self.runtimes:
-            result += f", runtime_total={self.total_cost:.2f}"
+            result += f", runtime_total={self.runtimes['runtime_total']:.2f}"
 
         result += ")"
         return result
@@ -233,7 +316,7 @@ class PathCollection:
         """
         if len(self._paths) <= 5:
             paths_str = ""
-            for path in self._paths:
+            for path in self._paths.values():
                 if paths_str != "":
                     paths_str += ",\n"
                 paths_str += str(path)
@@ -252,7 +335,7 @@ class PathCollection:
         """
         if len(self._paths) <= 5:
             paths_repr = ""
-            for path in self._paths:
+            for path in self._paths.values():
                 if paths_repr != "":
                     paths_repr += ",\n"
                 paths_repr += repr(path)

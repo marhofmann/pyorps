@@ -33,6 +33,11 @@ from pyorps.utils.traversal import (calculate_path_metrics_numba,
                                     find_nearest_valid_positions_numba,
                                     check_max_values)
 
+# Maximum number of cells that can be safely indexed with uint32.
+# Rasters exceeding this limit would cause silent index overflow in the
+# Cython shortest-path kernels.
+MAX_SAFE_CELLS = iinfo(uint32).max  # 2**32 - 1 = 4_294_967_295
+
 
 @contextmanager
 def timed(name: str, timings_dict: Optional[dict[str, float]]) -> Generator:
@@ -87,6 +92,12 @@ def get_graph_api_class(graph_api: str) -> type:
         case "cython":
             from pyorps.graph.api.cython_api import CythonAPI
             return CythonAPI
+        case "cugraph":
+            from pyorps.graph.api.cugraph_api import CuGraphAPI
+            return CuGraphAPI
+        case "raster_gpu":
+            from pyorps.graph.api.raster_gpu_api import RasterGPUAPI
+            return RasterGPUAPI
         case _:
             raise ValueError(f"Unsupported graph API: {graph_api}")
 
@@ -123,6 +134,9 @@ class PathFinder:
             mask: Optional[GeometryMaskType] = None,
             transform: Optional[Affine] = None,
             raster_save_path: Optional[str] = None,
+            dem: Optional[InputDataType] = None,
+            dem_kwargs: Optional[dict[str, Any]] = None,
+            use_gpu: bool = False,
             **kwargs
     ):
         """
@@ -142,6 +156,9 @@ class PathFinder:
                 shapely MultiPoint, GeoSeries of points, or GeoDataFrame of points.
             search_space_buffer_m: Buffer around the source and target coordinates in
                 meters. If set to 0, the entire Raster will be considered!
+                WARNING: Setting to None uses the full raster which can cause
+                excessive memory usage and long computation times for large rasters.
+                Always set an appropriate buffer for production use.
             neighborhood_str: Neighborhood type. Defaults to "r2".
             steps: Steps which define the neighborhood. If None,
                 will be created from neighborhood_str.
@@ -149,7 +166,7 @@ class PathFinder:
                 which have the maximum cost value or not
             graph_api: Graph API to use.
                 Available graph libraries:
-                    "networkit" (default), "rustworkx", "igraph", "networkx"
+                    "cython" (default), "networkit", "rustworkx", "igraph", "networkx"
             cost_assumptions: Cost assumptions to use for rasterization.
                 Required if dataset_source is vector data.
             datasets_to_modify: List of datasets to use to modify the raster using
@@ -166,6 +183,10 @@ class PathFinder:
                 RasterDataset. Can be used ia a raster dataset is passed directly to
                 dataset_source.
             raster_save_path: Path to save the raster dataset to.
+            use_gpu: If True, use GPU-accelerated edge construction for graph
+                library backends (networkit, rustworkx, igraph, networkx). Requires
+                CuPy and an NVIDIA GPU. Falls back to CPU automatically if
+                unavailable. Has no effect on cython or cugraph backends.
             **kwargs: Additional keyword arguments to pass to the rasterize function
                 of the RasterHandler (if a VectorDataset or a source to a VectorDataset
                 has been provided with dataset_source) or to the load function of the
@@ -193,9 +214,10 @@ class PathFinder:
         self.neighborhood_str = neighborhood_str
         self.graph_api_name = graph_api
         self.ignore_max_cost = ignore_max_cost
+        self.use_gpu = use_gpu
 
         if steps is None and neighborhood_str:
-            directed = True if self.graph_api_name == "cython" else False
+            directed = self.graph_api_name in ("cython", "raster_gpu", "raster_gpu_v3", "cugraph")
             self.steps = get_neighborhood_steps(neighborhood_str, directed=directed)
         else:
             self.steps = steps
@@ -208,13 +230,26 @@ class PathFinder:
         self.geo_rasterizer = None
         self._graph_api = None
         self.path_gdf = None
+        self.dem_dataset = None
+        self.dem_raster_handler = None
+        self.dem_kwargs = dem_kwargs
 
         # Load the dataset
         self.dataset = initialize_geo_dataset(dataset_source, crs, bbox, mask,
                                               transform)
+        # Initialize DEM dataset if provided
+        if dem is not None:
+            self.dem_dataset = initialize_geo_dataset(
+                dem,
+                crs=self.dataset.crs,  # Use same CRS as main dataset
+                bbox=bbox,
+                mask=mask,
+                transform=transform
+            )
+
         if self.source_coords is not None and self.target_coords is not None:
             self.create_raster_handler(cost_assumptions, datasets_to_modify,
-                                       raster_save_path, **kwargs)
+                                       raster_save_path, dem_kwargs, **kwargs)
 
     @staticmethod
     def normalize_coordinates(
@@ -326,6 +361,7 @@ class PathFinder:
             cost_assumptions: Optional[CostAssumptionsType] = None,
             datasets_to_modify: Optional[list[dict[str, Any]]] = None,
             raster_save_path: Optional[str] = None,
+            dem_kwargs: Optional[dict[str, Any]] = None,
             **kwargs
     ) -> RasterHandler:
         """
@@ -406,6 +442,37 @@ class PathFinder:
                 raise ValueError(f"Unsupported dataset type: {type(self.dataset)}")
         if self.search_space_buffer_m is None:
             self.search_space_buffer_m = self.raster_handler.search_space_buffer_m
+            shape = getattr(self.raster_handler, 'data', None)
+            if shape is not None:
+                shape = getattr(shape, 'shape', None)
+            if shape is not None and len(shape) >= 2 and shape[0] * shape[1] > 1_000_000:
+                rows, cols = shape[:2]
+                import warnings
+                warnings.warn(
+                    f"No search_space_buffer_m set — using full raster "
+                    f"({rows}x{cols} = {rows*cols:,} cells). This may cause "
+                    f"excessive memory usage. Set search_space_buffer_m for "
+                    f"production use.",
+                    ResourceWarning,
+                    stacklevel=2
+                )
+        # Create DEM raster handler if DEM dataset exists
+        if self.dem_dataset is not None and isinstance(self.dem_dataset, RasterDataset):
+            if dem_kwargs is None:
+                dem_kwargs = {}
+
+            # Load DEM data
+            self.dem_dataset.load_data(**dem_kwargs)
+
+            # Create DEM RasterHandler with same parameters
+            self.dem_raster_handler = RasterHandler(
+                self.dem_dataset,
+                self.source_coords,
+                self.target_coords,
+                self.search_space_buffer_m,
+                apply_mask=False
+            )
+
         return self.raster_handler
 
     def create_graph(self, band_index: int = 0) -> Any:
@@ -425,10 +492,40 @@ class PathFinder:
         # Get raster data for the specified band
         raster_data = self.raster_handler.data[band_index]
 
+        # Validate raster size to prevent uint32 index overflow in Cython
+        rows, cols = raster_data.shape[:2]
+        total_cells = rows * cols
+        if total_cells > MAX_SAFE_CELLS:
+            raise ValueError(
+                f"Raster has {total_cells:,} cells ({rows} x {cols}), which "
+                f"exceeds the maximum of {MAX_SAFE_CELLS:,} cells supported "
+                f"by uint32 indexing. Use a coarser resolution or a smaller "
+                f"search area."
+            )
+
+        # Get DEM data if available
+        if self.dem_raster_handler is not None:
+            if len(self.dem_raster_handler.data.shape) > 2:
+                dem_data = self.dem_raster_handler.data[0]
+            else:
+                dem_data = self.dem_raster_handler.data
+        else:
+            dem_data = None
+
+        # Build extra kwargs for backends that support them
+        extra_kwargs = {}
+        if self.graph_api_name == "cugraph":
+            extra_kwargs["dem_kwargs"] = self.dem_kwargs
+        elif self.graph_api_name not in ("cython",):
+            extra_kwargs["use_gpu"] = self.use_gpu
+            extra_kwargs["dem_kwargs"] = self.dem_kwargs
+
         # Create graph using the graph API
         self._graph_api = graph_api_class_constructor(raster_data,
                                                       self.steps,
-                                                      ignore_max=self.ignore_max_cost)
+                                                      ignore_max=self.ignore_max_cost,
+                                                      dem_data=dem_data,
+                                                      **extra_kwargs)
 
         # Save edge construction and graph creation times
         if (hasattr(self._graph_api, 'edge_construction_time') and
@@ -542,7 +639,8 @@ class PathFinder:
         # Create corrected indices array
         corrected_indices = indices_2d.copy()
 
-        # Update the corrected positions and print warnings
+        # Collect corrections and emit a single summary warning
+        corrections = []
         invalid_idx = 0
         for i in range(len(indices_2d)):
             if invalid_mask[i]:
@@ -550,7 +648,6 @@ class PathFinder:
                 new_row, new_col = corrected_positions[invalid_idx]
 
                 if new_row != original_row or new_col != original_col:
-                    # Convert back to coordinates for warning message
                     original_coords = self.raster_handler.indices_to_coords(
                         [(original_row, original_col)]
                     )[0]
@@ -558,16 +655,34 @@ class PathFinder:
                         [(new_row, new_col)]
                     )[0]
 
-                    warning_msg = (f"Position at coordinates {original_coords} "
-                                   f"(indices [{original_row}, {original_col}]) has "
-                                   f"maximum cost value ({max_value}). Correcting to "
-                                   f"nearest valid position at {corrected_coords} "
-                                   f"(indices [{new_row}, {new_col}]).")
-                    warn(warning_msg, UserWarning)
-
+                    corrections.append((
+                        original_coords, original_row, original_col,
+                        corrected_coords, new_row, new_col,
+                    ))
                     corrected_indices[i] = [new_row, new_col]
 
                 invalid_idx += 1
+
+        if corrections:
+            header = (
+                f"{len(corrections)} position(s) had maximum cost value "
+                f"({max_value}) and were corrected:\n"
+            )
+            col_w = [14, 14, 14, 14]  # widths for table columns
+            table = (
+                f"  {'Orig Coords':>{col_w[0]}}  {'Orig Idx':>{col_w[1]}}  "
+                f"{'Corr Coords':>{col_w[2]}}  {'Corr Idx':>{col_w[3]}}\n"
+            )
+            for (oc, or_, oc_, cc, nr, nc) in corrections:
+                oc_str = f"({oc[0]:.1f}, {oc[1]:.1f})"
+                cc_str = f"({cc[0]:.1f}, {cc[1]:.1f})"
+                oi_str = f"[{or_}, {oc_}]"
+                ci_str = f"[{nr}, {nc}]"
+                table += (
+                    f"  {oc_str:>{col_w[0]}}  {oi_str:>{col_w[1]}}  "
+                    f"  ->  {cc_str:>{col_w[2]}}  {ci_str:>{col_w[3]}}\n"
+                )
+            warn(header + table, UserWarning, stacklevel=2)
 
         return corrected_indices
 
@@ -585,7 +700,12 @@ class PathFinder:
             List of coordinates (x, y).
         """
         # Get shape of raster
-        _, rows, cols = self.raster_handler.data.shape
+        if len(self.raster_handler.data.shape) == 3:
+            _, rows, cols = self.raster_handler.data.shape
+        elif len(self.raster_handler.data.shape) == 2:
+            rows, cols = self.raster_handler.data.shape
+        else:
+            raise RasterShapeError(self.raster_handler.data.shape)
 
         # Convert 1D indices to 2D indices using unravel_index
         indices_2d = array(unravel_index(node_indices, (rows, cols))).T
@@ -620,7 +740,9 @@ class PathFinder:
             pairwise: Whether to calculate paths pairwise (requires equal number of
                 sources and targets). Default is False.
         Returns:
-            Dictionary or list of dictionaries containing path information
+            Path: When a single source-target pair is provided.
+            PathCollection: When multiple source-target pairs or a single
+                source with multiple targets are provided.
         """
         # Get source and target coords
         if source is None:
@@ -634,10 +756,10 @@ class PathFinder:
             target = PathFinder.normalize_coordinates(target)
 
         if source is None or target is None:
-            raise ValueError(f"Source and target coordinates must not be None!")
+            raise ValueError("Source and target coordinates must not be None!")
 
         if self.raster_handler is None:
-            self.create_raster_handler(**raster_parameters)
+            self.create_raster_handler(**(raster_parameters or {}))
 
         # Convert coordinates to node indices
         source_indices = self.get_node_indices_from_coords(source)
@@ -657,11 +779,11 @@ class PathFinder:
             )
 
         if len(path_indices) == 0:
-            msg = (f" In some cases, this happens if source or target are within a "
-                   f"pixel with max cost and ignore_max is set to True! "
-                   f"Either change the coordinates of source or target, change the "
-                   f"cost value to a vlue smaller than the maximum or set ignore_max "
-                   f"to False!")
+            msg = (" In some cases, this happens if source or target are within a "
+                   "pixel with max cost and ignore_max is set to True! "
+                   "Either change the coordinates of source or target, change the "
+                   "cost value to a vlue smaller than the maximum or set ignore_max "
+                   "to False!")
             raise NoPathFoundError(source_indices, target_indices, msg)
 
         # Case 1: Single source, single target -> single path
@@ -742,6 +864,12 @@ class PathFinder:
             neighborhood=self.neighborhood_str
         )
 
+        # Attach cost labels if cost assumptions are available
+        if self.geo_rasterizer is not None:
+            path.cost_labels = (
+                self.geo_rasterizer.cost_manager.build_cost_labels()
+            )
+
         # Calculate path metrics if requested
         if calculate_metrics:
             with timed("path_metrics", self.runtimes):
@@ -778,8 +906,14 @@ class PathFinder:
         path.length_by_category_percent = {k: (v / tot) * 100 if tot > 0 else 0
                                            for k, v in l_by_cat}
 
-        # Calculate total cost
+        # Calculate total cost (distance-weighted: category × length in category)
         path.total_cost = sum(cat * length for cat, length in l_by_cat)
+
+        # Calculate raw cell cost (sum of raster values along path)
+        cols = raster_data.shape[1]
+        rows_idx = path_indices // cols
+        cols_idx = path_indices % cols
+        path.total_cell_cost = float(raster_data[rows_idx, cols_idx].sum())
 
     def get_path(self, path_id=None, source=None, target=None):
         """

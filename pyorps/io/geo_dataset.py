@@ -9,6 +9,7 @@ Reference:
 from abc import ABC, abstractmethod
 from os.path import splitext, isfile
 from typing import Union, Optional, Any
+import warnings
 
 import geopandas as gpd
 from numpy import ndarray, dtype
@@ -39,8 +40,8 @@ class GeoDataset(ABC):
 
 
 class VectorDataset(GeoDataset, ABC):
-    bbox: Optional[BboxType] = None,
-    mask: Optional[GeometryMaskType] = None,
+    bbox: Optional[BboxType] = None
+    mask: Optional[GeometryMaskType] = None
 
     def __init__(self,
                  file_source: Any,
@@ -114,32 +115,26 @@ class LocalVectorDataset(InMemoryVectorDataset):
     def apply_bbox(self):
         if self.bbox is not None:
             if hasattr(self.bbox, 'crs') and self.bbox.crs != self.data.crs:
-                raise ValueError(f"CRS-Missmatch: The CRS of the vector source and the "
-                                 f"bbox are different!\n"
-                                 f"CRS of vector source:\n{self.data.crs}\n"
-                                 f"CRS of bbox:\n{self.bbox.crs}\n"
-                                 f"\nWhen reading a {self.__class__.__name__} "
-                                 f"'bbox' needs to have  the same CRS then "
-                                 f"the Vector file! A CRS-Missmatch may lead to empty "
-                                 f"datasets!")
+                warnings.warn(
+                    f"CRS mismatch between bbox ({self.bbox.crs}) and vector "
+                    f"data ({self.data.crs}). Auto-reprojecting bbox to match "
+                    f"data CRS.",
+                    UserWarning, stacklevel=2
+                )
+                self.bbox = self.bbox.to_crs(self.data.crs)
 
     # noinspection PyUnresolvedReferences
     def apply_mask(self):
-        if self.bbox is None and self.mask is not None:
+        if self.mask is not None:
             if hasattr(self.mask, 'crs') and self.mask.crs != self.data.crs:
-                raise ValueError(f"CRS-Missmatch: The CRS of the vector source and the "
-                                 f"mask are different!\n"
-                                 f"CRS of vector source:\n{self.data.crs}\n"
-                                 f"CRS of mask:\n{self.mask.crs}\n"
-                                 f"\nWhen reading a {self.__class__.__name__} "
-                                 f"'mask' needs to have  the same CRS then "
-                                 f"the Vector file! A CRS-Missmatch may lead to empty "
-                                 f"datasets!")
-        else:
-            if self.mask is not None:
-                if hasattr(self.mask, 'crs') and self.mask.crs != self.data.crs:
-                    self.mask = self.mask.to_crs(self.data.crs)
-                self.data = self.data.clip(self.mask, keep_geom_type=True)
+                warnings.warn(
+                    f"CRS mismatch between mask ({self.mask.crs}) and vector "
+                    f"data ({self.data.crs}). Auto-reprojecting mask to match "
+                    f"data CRS.",
+                    UserWarning, stacklevel=2
+                )
+                self.mask = self.mask.to_crs(self.data.crs)
+            self.data = self.data.clip(self.mask, keep_geom_type=True)
 
 
 class WFSVectorDataset(LocalVectorDataset):

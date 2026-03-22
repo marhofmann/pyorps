@@ -10,7 +10,11 @@ Exceptions for CostAssumptions
 """
 
 
-class CostAssumptionsError(Exception):
+class PyorpsError(Exception):
+    """Base exception for all pyorps errors."""
+
+
+class CostAssumptionsError(PyorpsError):
     """
     Base exception for CostAssumptions class.
     """
@@ -34,7 +38,7 @@ class FormatError(CostAssumptionsError):
     """
     
 
-class FeatureColumnError(Exception):
+class FeatureColumnError(PyorpsError):
     """
     Base exception for feature column detection errors
     """
@@ -57,7 +61,7 @@ Exceptions for vector_loader
 """
 
 
-class WFSError(Exception):
+class WFSError(PyorpsError):
     """
     Base exception for WFS-related errors.
     """
@@ -86,7 +90,7 @@ Exceptions for graph library API
 """
 
 
-class RasterShapeError(Exception):
+class RasterShapeError(PyorpsError):
     """
     Custom exception if the raster shape is not supported
     """
@@ -96,7 +100,7 @@ class RasterShapeError(Exception):
         super().__init__(message)
 
 
-class NoPathFoundError(Exception):
+class NoPathFoundError(PyorpsError):
     """
     Custom exception if no path can be found in the graph for source and target
     """
@@ -107,7 +111,7 @@ class NoPathFoundError(Exception):
         super().__init__(message)
 
 
-class AlgorithmNotImplementedError(Exception):
+class AlgorithmNotImplementedError(PyorpsError):
     """
     Custom exception if a specific algorithm is not implemented in the API or the graph
     library
@@ -117,11 +121,11 @@ class AlgorithmNotImplementedError(Exception):
         super().__init__(message)
 
 
-class PairwiseError(Exception):
+class PairwiseError(PyorpsError):
     """
     Custom exception if pairwise computation fails
     """
     def __init__(self) -> None:
-        message = (f"Pairwise computation failed! Source and target lists must have "
-                   f"the same length for pairwise computation!")
+        message = ("Pairwise computation failed! Source and target lists must have "
+                   "the same length for pairwise computation!")
         super().__init__(message)

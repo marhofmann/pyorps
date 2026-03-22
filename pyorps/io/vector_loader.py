@@ -12,7 +12,12 @@ import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 from defusedxml import ElementTree as et
+import functools
+import ipaddress
+import logging
 import tempfile
+from urllib.parse import urlparse
+from xml.etree.ElementTree import Element as _Element
 
 import requests
 import geopandas as gpd
@@ -24,6 +29,142 @@ from ..core.types import BboxType, GeometryMaskType
 from ..core.exceptions import (WFSLayerNotFoundError, WFSConnectionError,
                                WFSResponseParsingError, WFSError)
 
+logger = logging.getLogger(__name__)
+
+# Allowed URL schemes for WFS requests (SSRF prevention)
+_ALLOWED_WFS_SCHEMES = {"http", "https"}
+
+# Private/reserved IP networks that should be blocked for WFS requests
+_PRIVATE_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+]
+
+# Allowlisted WFS GetFeature parameter keys (case-insensitive comparison).
+# Parameters not in this set but also not in _RESERVED_WFS_KEYS are passed
+# through with a warning.
+_ALLOWED_FILTER_PARAMS = {
+    "CQL_FILTER", "FILTER", "PROPERTYNAME", "MAXFEATURES", "COUNT",
+    "SORTBY", "STARTINDEX", "RESULTTYPE", "OUTPUTFORMAT", "SRSNAME",
+    "BBOX", "NAMESPACES", "TYPENAMES", "TYPENAME",
+}
+
+# Reserved WFS keys that filter_params must NEVER override, because they
+# change fundamental request semantics.
+_RESERVED_WFS_KEYS = {"SERVICE", "REQUEST", "VERSION"}
+
+
+def _validate_wfs_url(url: str, block_private: bool = True) -> None:
+    """
+    Validate a WFS URL to prevent SSRF attacks.
+
+    Only http:// and https:// schemes are allowed.  Optionally rejects URLs
+    that resolve to private/loopback IP ranges.
+
+    Args:
+        url: The URL to validate
+        block_private: If True, reject URLs whose hostname is a
+            private or loopback IP address
+
+    Raises:
+        ValueError: If the URL scheme is not allowed or the host is a
+            private IP address
+    """
+    parsed = urlparse(url)
+
+    if parsed.scheme not in _ALLOWED_WFS_SCHEMES:
+        raise ValueError(
+            f"Invalid WFS URL scheme '{parsed.scheme}'. "
+            f"Only {sorted(_ALLOWED_WFS_SCHEMES)} are allowed."
+        )
+
+    if not parsed.hostname:
+        raise ValueError("WFS URL must include a hostname.")
+
+    if block_private:
+        # Check if hostname is a literal IP address in a private range
+        try:
+            ip = ipaddress.ip_address(parsed.hostname)
+            for network in _PRIVATE_NETWORKS:
+                if ip in network:
+                    raise ValueError(
+                        f"WFS URL points to a private/reserved IP address "
+                        f"({parsed.hostname}). This is not allowed for "
+                        f"security reasons."
+                    )
+        except ValueError as e:
+            # Re-raise our own ValueErrors (private/reserved IP)
+            if "private" in str(e).lower() or "reserved" in str(e).lower():
+                raise
+            # If it's not a valid IP literal, it's a hostname -- that's fine
+
+
+def _sanitize_filter_params(filter_params: Optional[dict]) -> Optional[dict]:
+    """
+    Sanitize WFS filter parameters.
+
+    Rejects reserved WFS keys (SERVICE, REQUEST, VERSION) that could change
+    request semantics.  Logs a warning for unrecognised parameter names but
+    still passes them through.
+
+    Args:
+        filter_params: Dictionary of additional WFS parameters
+
+    Returns:
+        Sanitized copy of filter_params (or None)
+
+    Raises:
+        ValueError: If filter_params contains reserved WFS keys
+    """
+    if not filter_params:
+        return filter_params
+
+    sanitized = {}
+    for key, value in filter_params.items():
+        upper_key = key.upper()
+
+        if upper_key in _RESERVED_WFS_KEYS:
+            raise ValueError(
+                f"filter_params must not contain the reserved WFS key "
+                f"'{key}'. Reserved keys ({sorted(_RESERVED_WFS_KEYS)}) "
+                f"are managed internally and cannot be overridden."
+            )
+
+        if upper_key not in {k.upper() for k in _ALLOWED_FILTER_PARAMS}:
+            logger.warning(
+                "Unrecognised WFS filter parameter '%s'. "
+                "Passing through, but verify this is intentional.", key
+            )
+
+        sanitized[key] = value
+
+    return sanitized
+
+
+# Standard OGC namespace URIs used in WFS GetCapabilities responses.
+# These MUST use http:// (not https://) per OGC specification.
+_WFS_NAMESPACES = {
+    'wfs': 'http://www.opengis.net/wfs/2.0',
+    'wfs1': 'http://www.opengis.net/wfs',
+    'ows': 'http://www.opengis.net/ows/1.1'
+}
+
+# Maximum number of chunk subdivision levels before giving up.
+# Each level quadruples the number of chunks (2x2 split), so depth 8
+# means up to 4^8 = 65536 chunks — well beyond any reasonable need.
+MAX_CHUNK_DEPTH = 8
+
+# Minimum chunk area (in squared CRS units) below which further
+# subdivision is pointless. For EPSG:25832 (metres) this is 1 m^2;
+# for degree-based CRS it is ~1e-6 sq degrees (~0.01 m^2 at equator).
+MIN_CHUNK_AREA = 1e-6
+
 
 def load_from_wfs(
         url: str,
@@ -32,7 +173,8 @@ def load_from_wfs(
         mask: Optional[GeometryMaskType] = None,
         filter_params: Optional[dict] = None,
         auto_match: bool = True,
-        max_workers: int = 4
+        max_workers: int = 4,
+        crs: Optional[str] = None
 ) -> Optional[gpd.GeoDataFrame]:
     """
     Load data from a Web Feature Service (WFS) using chunked loading.
@@ -47,13 +189,26 @@ def load_from_wfs(
         auto_match: Whether to attempt finding similar layer names if exact match not
                 found
         max_workers: Maximum number of parallel threads to use
+        crs: Spatial reference system for WFS requests (e.g. "EPSG:4326").
+            Defaults to "EPSG:25832" if not provided.
 
     Returns:
         Loaded GeoDataFrame or None if no data could be loaded
 
     Raises:
         WFSLayerNotFoundError: If the layer cannot be found and auto_match is False
+        ValueError: If the URL scheme is invalid or filter_params contain
+            reserved WFS keys
     """
+    # Security: validate URL scheme and block private IPs
+    _validate_wfs_url(url)
+
+    # Security: sanitize filter parameters
+    filter_params = _sanitize_filter_params(filter_params)
+
+    # Derive SRS from the crs argument, falling back to EPSG:25832
+    srs = crs if crs is not None else 'EPSG:25832'
+
     # Find the correct layer name
     if auto_match:
         layer = _resolve_layer(url, layer)
@@ -65,7 +220,8 @@ def load_from_wfs(
     # If no bounding box is provided, try to load the entire dataset directly
     if bbox is None:
         # Try to load the entire dataset first
-        gdf, limit_reached = _try_direct_load(url, layer, filter_params, mask)
+        gdf, limit_reached = _try_direct_load(url, layer, filter_params,
+                                              mask, srs=srs)
 
         # If we successfully loaded the entire dataset without hitting limits
         if gdf is not None and not limit_reached:
@@ -83,7 +239,8 @@ def load_from_wfs(
             raise WFSError("Could not determine data extent for chunked loading.")
 
     # Load data using parallel chunked approach
-    return _load_data_in_parallel(url, layer, bbox, filter_params, max_workers, mask)
+    return _load_data_in_parallel(url, layer, bbox, filter_params, max_workers,
+                                 mask, srs=srs)
 
 
 def _get_bbox_from_mask(mask) -> tuple[float, float, float, float]:
@@ -178,7 +335,8 @@ def _try_direct_load(
         url: str,
         layer: str,
         filter_params: Optional[dict] = None,
-        mask=None
+        mask=None,
+        srs: str = 'EPSG:25832'
 ) -> tuple[Optional[gpd.GeoDataFrame], bool]:
     """
     Try to load the entire dataset directly without chunking.
@@ -188,6 +346,8 @@ def _try_direct_load(
         layer: Name of the layer to retrieve
         filter_params: Additional WFS parameters to filter results
         mask: Optional geometry mask to limit the query
+        srs: Spatial reference system for the SRSNAME parameter
+            (default: "EPSG:25832")
 
     Returns:
         tuple of (GeoDataFrame or None, boolean indicating if a server limit was
@@ -208,7 +368,7 @@ def _try_direct_load(
             'VERSION': version,
             'REQUEST': 'GetFeature',
             type_param: layer,
-            'SRSNAME': 'EPSG:25832'
+            'SRSNAME': srs
         }
 
         # Add namespace parameter if needed
@@ -286,19 +446,24 @@ def _resolve_layer(url: str, requested_layer: str) -> str:
                                 f"\n{available_layers}")
 
 
-def _get_available_layers(url: str) -> list[str]:
+@functools.lru_cache(maxsize=16)
+def _fetch_capabilities_xml(url: str) -> _Element:
     """
-    Get available layers from a WFS service.
+    Fetch and cache the parsed WFS GetCapabilities XML tree.
+
+    The result is cached per URL so that multiple callers
+    (e.g. ``_get_available_layers`` and ``_get_extent_from_capabilities``)
+    do not issue redundant HTTP requests for the same service.
 
     Args:
         url: The base URL of the WFS service
 
     Returns:
-        list of available layer names from the WFS service
+        Parsed XML Element tree root
 
     Raises:
         WFSConnectionError: If connection to the WFS service fails
-        WFSResponseParsingError: If the WFS response cannot be parsed correctly
+        WFSResponseParsingError: If the XML response cannot be parsed
     """
     capabilities_params = {
         'SERVICE': 'WFS',
@@ -313,14 +478,37 @@ def _get_available_layers(url: str) -> list[str]:
         raise WFSConnectionError(f"Failed to connect to WFS service: {e}")
 
     try:
-        # Parse the XML response
-        root = et.fromstring(response.content)
+        return et.fromstring(response.content)
+    except et.ParseError as e:
+        raise WFSResponseParsingError(f"Failed to parse WFS capabilities: {e}")
+
+
+def _get_available_layers(url: str,
+                          capabilities_xml: Optional[_Element] = None
+                          ) -> list[str]:
+    """
+    Get available layers from a WFS service.
+
+    Args:
+        url: The base URL of the WFS service
+        capabilities_xml: Optional pre-fetched capabilities XML root element.
+            If not provided, the capabilities will be fetched (and cached).
+
+    Returns:
+        list of available layer names from the WFS service
+
+    Raises:
+        WFSConnectionError: If connection to the WFS service fails
+        WFSResponseParsingError: If the WFS response cannot be parsed correctly
+    """
+    if capabilities_xml is None:
+        capabilities_xml = _fetch_capabilities_xml(url)
+
+    try:
+        root = capabilities_xml
 
         # Handle different namespace possibilities
-        namespaces = {
-            'wfs': 'http://www.opengis.net/wfs/2.0',
-            'wfs1': 'http://www.opengis.net/wfs'
-        }
+        namespaces = _WFS_NAMESPACES
 
         # Try different paths to find feature types
         for namespace_prefix in ['wfs:', 'wfs1:', '']:
@@ -341,8 +529,6 @@ def _get_available_layers(url: str) -> list[str]:
 
         return layers
 
-    except et.ParseError as e:
-        raise WFSResponseParsingError(f"Failed to parse WFS capabilities: {e}")
     except Exception as e:
         raise WFSResponseParsingError(f"Unexpected error parsing WFS capabilities: "
                                       f"{str(e)}")
@@ -378,17 +564,19 @@ def _find_best_matching_layer(target_name: str,
     return best_match if score > 0.3 else None
 
 
-def _get_extent_from_capabilities(url: str,
-                                  layer: str) -> Optional[tuple[float,
-                                                                float,
-                                                                float,
-                                                                float]]:
+def _get_extent_from_capabilities(
+        url: str,
+        layer: str,
+        capabilities_xml: Optional[_Element] = None
+) -> Optional[tuple[float, float, float, float]]:
     """
     Extract layer extent from WFS GetCapabilities response.
 
     Args:
         url: The base URL of the WFS service
         layer: Name of the layer
+        capabilities_xml: Optional pre-fetched capabilities XML root element.
+            If not provided, the capabilities will be fetched (and cached).
 
     Returns:
         Bounding box as (minx, miny, maxx, maxy) or None if extent not found
@@ -397,28 +585,14 @@ def _get_extent_from_capabilities(url: str,
         WFSConnectionError: If connection to the WFS service fails
         WFSResponseParsingError: If the WFS response cannot be parsed correctly
     """
-    capabilities_params = {
-        'SERVICE': 'WFS',
-        'VERSION': '2.0.0',
-        'REQUEST': 'GetCapabilities'
-    }
+    if capabilities_xml is None:
+        capabilities_xml = _fetch_capabilities_xml(url)
 
     try:
-        response = requests.get(url, params=capabilities_params, timeout=30)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        raise WFSConnectionError(f"Failed to connect to WFS service: {e}")
-
-    try:
-        # Parse the XML response
-        root = et.fromstring(response.content)
+        root = capabilities_xml
 
         # Define namespaces
-        namespaces = {
-            'wfs': 'https://www.opengis.net/wfs/2.0',
-            'wfs1': 'https://www.opengis.net/wfs',
-            'ows': 'https://www.opengis.net/ows/1.1'
-        }
+        namespaces = _WFS_NAMESPACES
 
         # Find feature types with different namespace options
         for ns_prefix in ['wfs:', 'wfs1:', '']:
@@ -446,10 +620,15 @@ def _get_extent_from_capabilities(url: str,
 
                 if bbox_elem is not None:
                     # Get lower and upper corners
-                    lower_corner = (bbox_elem.find('./ows:LowerCorner', namespaces)
-                                    or bbox_elem.find('./LowerCorner'))
-                    upper_corner = (bbox_elem.find('./ows:UpperCorner', namespaces)
-                                    or bbox_elem.find('./UpperCorner'))
+                    # Note: do NOT use `elem or fallback` with XML Elements,
+                    # because an Element with no child elements evaluates as
+                    # falsy even when it exists and has text content.
+                    lower_corner = bbox_elem.find('./ows:LowerCorner', namespaces)
+                    if lower_corner is None:
+                        lower_corner = bbox_elem.find('./LowerCorner')
+                    upper_corner = bbox_elem.find('./ows:UpperCorner', namespaces)
+                    if upper_corner is None:
+                        upper_corner = bbox_elem.find('./UpperCorner')
 
                     if lower_corner is not None and upper_corner is not None:
                         # Parse coordinates
@@ -525,16 +704,33 @@ def _create_grid(
     return chunks
 
 
+def _chunk_area(chunk: tuple[float, float, float, float]) -> float:
+    """Return the area of a bounding-box chunk."""
+    minx, miny, maxx, maxy = chunk
+    return abs((maxx - minx) * (maxy - miny))
+
+
 def _load_data_in_parallel(
         url: str,
         layer: str,
         bbox: tuple[float, float, float, float],
         filter_params: Optional[dict] = None,
         max_workers: int = 4,
-        mask=None
+        mask=None,
+        srs: str = 'EPSG:25832'
 ) -> Optional[gpd.GeoDataFrame]:
     """
     Load WFS data in chunks using parallel processing.
+
+    Chunks are subdivided when the WFS server appears to have hit a
+    feature-count limit.  To prevent infinite subdivision (e.g. when the
+    server *always* returns exactly the limit), two safeguards are in
+    place:
+
+    * **MAX_CHUNK_DEPTH** -- the maximum number of subdivision levels
+      (each level splits every chunk into a 2x2 grid).
+    * **MIN_CHUNK_AREA** -- the smallest chunk area (in squared CRS
+      units) below which further subdivision is skipped.
 
     Args:
         url: The base URL of the WFS service
@@ -543,6 +739,8 @@ def _load_data_in_parallel(
         filter_params: Additional WFS parameters to filter results
         max_workers: Maximum number of parallel threads to use
         mask: Optional geometry mask to limit the query
+        srs: Spatial reference system for SRSNAME and BBOX parameters
+            (default: "EPSG:25832")
 
     Returns:
         Combined GeoDataFrame with all data or None if no data found
@@ -558,7 +756,8 @@ def _load_data_in_parallel(
                           if _chunk_intersects_mask(chunk, mask)]
 
     # Track chunks to process and processed chunks
-    chunks_to_process = [(chunk, 2, 2) for chunk in initial_chunks]
+    # Each entry is (chunk_bbox, x_div, y_div, depth)
+    chunks_to_process = [(chunk, 2, 2, 0) for chunk in initial_chunks]
     processed_chunks = set()
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -585,13 +784,13 @@ def _load_data_in_parallel(
             for chunk_info in filtered_batch:
                 chunk = chunk_info[0]
                 future = executor.submit(_fetch_wfs_data, url, layer,
-                                         chunk, filter_params)
+                                         chunk, filter_params, srs)
                 future_to_chunk_info[future] = chunk_info
 
             # Process results as they complete
             for future in concurrent.futures.as_completed(future_to_chunk_info):
                 chunk_info = future_to_chunk_info[future]
-                chunk, x_div, y_div = chunk_info
+                chunk, x_div, y_div, depth = chunk_info
 
                 try:
                     gdf = future.result()
@@ -610,6 +809,23 @@ def _load_data_in_parallel(
 
                     # Check if we likely hit a feature limit
                     if len(gdf) in (10_000, 100_000, 1_000, 5_000, 50_000):
+                        # Guard: stop subdividing if max depth reached
+                        if depth >= MAX_CHUNK_DEPTH:
+                            logger.warning(
+                                "WFS chunk subdivision reached maximum "
+                                "depth %d for chunk %s -- returning "
+                                "partial data.", MAX_CHUNK_DEPTH, chunk)
+                            continue
+
+                        # Guard: stop subdividing if chunk is too small
+                        if _chunk_area(chunk) < MIN_CHUNK_AREA:
+                            logger.warning(
+                                "WFS chunk area (%.2e) below minimum "
+                                "(%.2e) for chunk %s -- returning "
+                                "partial data.",
+                                _chunk_area(chunk), MIN_CHUNK_AREA, chunk)
+                            continue
+
                         # Create subchunks
                         new_x_div, new_y_div = x_div * 2, y_div * 2
                         sub_chunks = _create_grid(chunk, 2, 2)
@@ -623,11 +839,27 @@ def _load_data_in_parallel(
 
                         # Add new sub-chunks to queue
                         chunks_to_process.extend(
-                            [(sub_chunk, new_x_div, new_y_div)
+                            [(sub_chunk, new_x_div, new_y_div, depth + 1)
                              for sub_chunk in sub_chunks]
                         )
 
                 except (WFSError, requests.RequestException):
+                    # Guard: don't subdivide on error if depth exceeded
+                    if depth >= MAX_CHUNK_DEPTH:
+                        logger.warning(
+                            "WFS chunk failed and max subdivision "
+                            "depth %d reached for chunk %s -- skipping.",
+                            MAX_CHUNK_DEPTH, chunk)
+                        continue
+
+                    # Guard: don't subdivide on error if chunk is too small
+                    if _chunk_area(chunk) < MIN_CHUNK_AREA:
+                        logger.warning(
+                            "WFS chunk failed and area (%.2e) below "
+                            "minimum (%.2e) for chunk %s -- skipping.",
+                            _chunk_area(chunk), MIN_CHUNK_AREA, chunk)
+                        continue
+
                     # If a chunk fails, try to subdivide it
                     sub_chunks = _create_grid(chunk, 2, 2)
 
@@ -639,7 +871,7 @@ def _load_data_in_parallel(
                         ]
 
                     chunks_to_process.extend(
-                        [(sub_chunk, x_div * 2, y_div * 2)
+                        [(sub_chunk, x_div * 2, y_div * 2, depth + 1)
                          for sub_chunk in sub_chunks]
                     )
 
@@ -664,7 +896,8 @@ def _fetch_wfs_data(
         url: str,
         layer: str,
         bbox: tuple[float, float, float, float],
-        filter_params: Optional[dict] = None
+        filter_params: Optional[dict] = None,
+        srs: str = 'EPSG:25832'
 ) -> Optional[gpd.GeoDataFrame]:
     """
     Fetch WFS data for a specific bounding box.
@@ -674,6 +907,8 @@ def _fetch_wfs_data(
         layer: Name of the layer
         bbox: Bounding box to query as (minx, miny, maxx, maxy)
         filter_params: Additional WFS parameters to filter results
+        srs: Spatial reference system for SRSNAME and BBOX parameters
+            (default: "EPSG:25832")
 
     Returns:
         GeoDataFrame with data or None if no data found or error occurred
@@ -693,8 +928,8 @@ def _fetch_wfs_data(
             'VERSION': version,
             'REQUEST': 'GetFeature',
             type_param: layer,
-            'SRSNAME': 'EPSG:25832',
-            'BBOX': f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]},EPSG:25832"
+            'SRSNAME': srs,
+            'BBOX': f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]},{srs}"
         }
 
         # Add namespace parameter if needed
@@ -772,8 +1007,16 @@ def _combine_geodataframes(gdfs: list[gpd.GeoDataFrame]) -> Optional[gpd.GeoData
     if not gdfs:
         return None
 
+    # Drop duplicate columns in each chunk (some WFS/GML responses
+    # return the same attribute under multiple namespace prefixes)
+    cleaned = []
+    for gdf in gdfs:
+        if gdf.columns.duplicated().any():
+            gdf = gdf.loc[:, ~gdf.columns.duplicated()]
+        cleaned.append(gdf)
+
     # Concatenate all GeoDataFrames
-    combined_gdf = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True))
+    combined_gdf = gpd.GeoDataFrame(pd.concat(cleaned, ignore_index=True))
 
     # Remove duplicates by geometry
     combined_gdf = combined_gdf.drop_duplicates(subset=['geometry'])

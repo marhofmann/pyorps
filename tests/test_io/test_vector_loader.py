@@ -16,7 +16,8 @@ from pyorps.io.vector_loader import (
     _get_extent_from_capabilities, _add_buffer_to_bbox,
     _create_grid, _load_data_in_parallel, _chunk_to_key,
     _fetch_wfs_data, _parse_geojson_response, _parse_xml_response,
-    _combine_geodataframes
+    _combine_geodataframes, _fetch_capabilities_xml, _chunk_area,
+    MAX_CHUNK_DEPTH, MIN_CHUNK_AREA
 )
 
 from pyorps.core.exceptions import (
@@ -961,6 +962,102 @@ class TestWFSFunctions(GeoTestCase):
             # Restore original function
             vector_loader._load_data_in_parallel = original_function
 
+    @patch('requests.get')
+    def test_get_extent_from_capabilities_wfs20_bbox(self, mock_get):
+        """Test _get_extent_from_capabilities extracts bbox from real WFS 2.0
+        Capabilities XML that uses standard http:// namespace URIs."""
+        mock_response = MagicMock()
+        mock_response.content = b'''\
+<wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0"
+                      xmlns:ows="http://www.opengis.net/ows/1.1">
+  <wfs:FeatureTypeList>
+    <wfs:FeatureType>
+      <wfs:Name>my_layer</wfs:Name>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>6.5 49.0</ows:LowerCorner>
+        <ows:UpperCorner>10.5 52.5</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+    </wfs:FeatureType>
+    <wfs:FeatureType>
+      <wfs:Name>other_layer</wfs:Name>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>0.0 0.0</ows:LowerCorner>
+        <ows:UpperCorner>1.0 1.0</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+    </wfs:FeatureType>
+  </wfs:FeatureTypeList>
+</wfs:WFS_Capabilities>'''
+        mock_get.return_value = mock_response
+
+        result = _get_extent_from_capabilities(
+            "https://example.com/wfs", "my_layer"
+        )
+
+        self.assertIsNotNone(result, "bbox should not be None for a matching layer")
+        self.assertAlmostEqual(result[0], 6.5)
+        self.assertAlmostEqual(result[1], 49.0)
+        self.assertAlmostEqual(result[2], 10.5)
+        self.assertAlmostEqual(result[3], 52.5)
+
+    @patch('requests.get')
+    def test_get_extent_from_capabilities_wfs11_bbox(self, mock_get):
+        """Test _get_extent_from_capabilities with WFS 1.1 namespace."""
+        mock_response = MagicMock()
+        mock_response.content = b'''\
+<WFS_Capabilities xmlns="http://www.opengis.net/wfs"
+                  xmlns:ows="http://www.opengis.net/ows/1.1">
+  <FeatureTypeList>
+    <FeatureType>
+      <Name>test_layer</Name>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>8.0 50.0</ows:LowerCorner>
+        <ows:UpperCorner>9.0 51.0</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+    </FeatureType>
+  </FeatureTypeList>
+</WFS_Capabilities>'''
+        mock_get.return_value = mock_response
+
+        result = _get_extent_from_capabilities(
+            "https://example.com/wfs", "test_layer"
+        )
+
+        self.assertIsNotNone(result, "bbox should not be None for WFS 1.1 layer")
+        self.assertAlmostEqual(result[0], 8.0)
+        self.assertAlmostEqual(result[1], 50.0)
+        self.assertAlmostEqual(result[2], 9.0)
+        self.assertAlmostEqual(result[3], 51.0)
+
+    @patch('requests.get')
+    def test_get_available_layers_and_extent_use_same_namespaces(self, mock_get):
+        """Both _get_available_layers and _get_extent_from_capabilities must
+        parse the same standard WFS 2.0 XML (http:// namespaces) correctly."""
+        xml = b'''\
+<wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0"
+                      xmlns:ows="http://www.opengis.net/ows/1.1">
+  <wfs:FeatureTypeList>
+    <wfs:FeatureType>
+      <wfs:Name>unified_layer</wfs:Name>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>7.0 50.0</ows:LowerCorner>
+        <ows:UpperCorner>8.0 51.0</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+    </wfs:FeatureType>
+  </wfs:FeatureTypeList>
+</wfs:WFS_Capabilities>'''
+        mock_response = MagicMock()
+        mock_response.content = xml
+        mock_get.return_value = mock_response
+
+        layers = _get_available_layers("https://example.com/wfs")
+        self.assertIn("unified_layer", layers)
+
+        bbox = _get_extent_from_capabilities(
+            "https://example.com/wfs", "unified_layer"
+        )
+        self.assertIsNotNone(bbox, "Both functions must handle http:// namespaces")
+        self.assertEqual(bbox, (7.0, 50.0, 8.0, 51.0))
+
     @patch('concurrent.futures.ThreadPoolExecutor')
     def test_load_data_in_parallel_exception(self, mock_executor):
         """Test _load_data_in_parallel with exceptions."""
@@ -1019,4 +1116,429 @@ class TestWFSFunctions(GeoTestCase):
             # Should get 4 points (one for each chunk)
             self.assertIsInstance(result, gpd.GeoDataFrame)
             self.assertEqual(len(result), 4)
+
+
+class TestWFSCRSParameter(unittest.TestCase):
+    """P1.7: Hardcoded EPSG:25832 in WFS requests should be configurable."""
+
+    @patch('requests.get')
+    def test_try_direct_load_uses_default_srs(self, mock_get):
+        """_try_direct_load defaults to EPSG:25832 when no srs is given."""
+        mock_response = MagicMock()
+        mock_response.headers = {"Content-Type": "application/json"}
+        mock_response.json.return_value = {"features": []}
+        mock_get.return_value = mock_response
+
+        _try_direct_load("https://example.com/wfs", "layer1")
+
+        # Inspect the SRSNAME in the first call
+        args, kwargs = mock_get.call_args_list[0]
+        self.assertEqual(kwargs['params']['SRSNAME'], 'EPSG:25832')
+
+    @patch('requests.get')
+    def test_try_direct_load_uses_custom_srs(self, mock_get):
+        """_try_direct_load should honour a custom srs parameter."""
+        mock_response = MagicMock()
+        mock_response.headers = {"Content-Type": "application/json"}
+        mock_response.json.return_value = {"features": []}
+        mock_get.return_value = mock_response
+
+        _try_direct_load("https://example.com/wfs", "layer1", srs="EPSG:4326")
+
+        # Every version attempt should use the custom CRS
+        for call in mock_get.call_args_list:
+            _, kw = call
+            self.assertEqual(kw['params']['SRSNAME'], 'EPSG:4326')
+
+    @patch('requests.get')
+    def test_fetch_wfs_data_uses_default_srs(self, mock_get):
+        """_fetch_wfs_data defaults to EPSG:25832 when no srs is given."""
+        mock_response = MagicMock()
+        mock_response.headers = {"Content-Type": "application/json"}
+        mock_response.json.return_value = {"features": []}
+        mock_get.return_value = mock_response
+
+        _fetch_wfs_data("https://example.com/wfs", "layer1", (0, 0, 10, 10))
+
+        args, kwargs = mock_get.call_args_list[0]
+        self.assertEqual(kwargs['params']['SRSNAME'], 'EPSG:25832')
+        self.assertIn('EPSG:25832', kwargs['params']['BBOX'])
+
+    @patch('requests.get')
+    def test_fetch_wfs_data_uses_custom_srs(self, mock_get):
+        """_fetch_wfs_data should honour a custom srs parameter."""
+        mock_response = MagicMock()
+        mock_response.headers = {"Content-Type": "application/json"}
+        mock_response.json.return_value = {"features": []}
+        mock_get.return_value = mock_response
+
+        _fetch_wfs_data("https://example.com/wfs", "layer1", (0, 0, 10, 10),
+                        srs="EPSG:4326")
+
+        for call in mock_get.call_args_list:
+            _, kw = call
+            self.assertEqual(kw['params']['SRSNAME'], 'EPSG:4326')
+            self.assertIn('EPSG:4326', kw['params']['BBOX'])
+            self.assertNotIn('EPSG:25832', kw['params']['BBOX'])
+
+    @patch('pyorps.io.vector_loader._resolve_layer')
+    @patch('pyorps.io.vector_loader._try_direct_load')
+    @patch('pyorps.io.vector_loader._load_data_in_parallel')
+    def test_load_from_wfs_threads_crs_to_internal_functions(
+            self, mock_parallel, mock_direct, mock_resolve):
+        """load_from_wfs should derive srs from 'crs' argument and pass it
+        through to _try_direct_load and _load_data_in_parallel."""
+        mock_resolve.return_value = "layer1"
+        # Direct load returns data without hitting a limit
+        test_gdf = gpd.GeoDataFrame(
+            {'id': [1]}, geometry=[Point(0, 0)], crs="EPSG:4326")
+        mock_direct.return_value = (test_gdf, False)
+
+        load_from_wfs("https://example.com/wfs", "layer1", crs="EPSG:4326")
+
+        # _try_direct_load should have received srs="EPSG:4326"
+        _, kwargs = mock_direct.call_args
+        self.assertEqual(kwargs.get('srs'), 'EPSG:4326')
+
+
+class TestChunkSubdivisionDepthLimit(unittest.TestCase):
+    """P3.1: Verify that chunk subdivision has a depth limit and minimum area
+    guard to prevent infinite recursion when a WFS server always returns
+    exactly the feature-count limit."""
+
+    def test_chunk_area_computation(self):
+        """_chunk_area returns correct area for a simple bbox."""
+        self.assertAlmostEqual(_chunk_area((0, 0, 10, 10)), 100.0)
+        self.assertAlmostEqual(_chunk_area((0, 0, 0.001, 0.001)), 1e-6)
+        self.assertAlmostEqual(_chunk_area((5, 5, 5, 5)), 0.0)
+
+    def test_max_chunk_depth_constant(self):
+        """MAX_CHUNK_DEPTH is a reasonable positive integer."""
+        self.assertIsInstance(MAX_CHUNK_DEPTH, int)
+        self.assertGreater(MAX_CHUNK_DEPTH, 0)
+        self.assertEqual(MAX_CHUNK_DEPTH, 8)
+
+    def test_min_chunk_area_constant(self):
+        """MIN_CHUNK_AREA is a small positive float."""
+        self.assertIsInstance(MIN_CHUNK_AREA, float)
+        self.assertGreater(MIN_CHUNK_AREA, 0)
+        self.assertEqual(MIN_CHUNK_AREA, 1e-6)
+
+    @patch('pyorps.io.vector_loader._fetch_wfs_data')
+    def test_subdivision_stops_at_max_depth(self, mock_fetch):
+        """When a mock WFS always returns exactly 1000 features, the
+        subdivision must stop after MAX_CHUNK_DEPTH levels and not
+        loop forever."""
+        call_count = 0
+
+        def always_returns_1000(url, layer, bbox, filter_params=None, srs=None):
+            nonlocal call_count
+            call_count += 1
+            # Generate 1000 distinct points within the bbox
+            minx, miny, maxx, maxy = bbox
+            cx = (minx + maxx) / 2
+            cy = (miny + maxy) / 2
+            points = [Point(cx + i * 0.0001, cy) for i in range(1000)]
+            return gpd.GeoDataFrame(
+                {'id': list(range(1000))},
+                geometry=points,
+                crs="EPSG:25832"
+            )
+
+        mock_fetch.side_effect = always_returns_1000
+
+        # Use a bbox that is large enough so MIN_CHUNK_AREA won't trigger
+        # before MAX_CHUNK_DEPTH does
+        result = _load_data_in_parallel(
+            "https://example.com/wfs",
+            "layer1",
+            (0, 0, 1000, 1000),
+            max_workers=1
+        )
+
+        # The function should have terminated (not hung forever)
+        self.assertIsNotNone(result)
+
+        # Verify depth limiting: with initial 4 chunks at depth 0 and
+        # each subdividing into 4 sub-chunks, the maximum theoretical
+        # call count without depth limiting is 4^(MAX_CHUNK_DEPTH+1) which
+        # for depth=8 is 4^9 = 262144. With the limit, it should be
+        # significantly less. The exact count depends on dedup logic but
+        # must be bounded.
+        max_possible_chunks = sum(4 ** d for d in range(MAX_CHUNK_DEPTH + 1))
+        self.assertLessEqual(call_count, max_possible_chunks)
+
+    @patch('pyorps.io.vector_loader._fetch_wfs_data')
+    def test_subdivision_stops_at_min_chunk_area(self, mock_fetch):
+        """When the bbox is tiny, subdivision stops due to MIN_CHUNK_AREA."""
+        call_count = 0
+
+        def always_returns_1000(url, layer, bbox, filter_params=None, srs=None):
+            nonlocal call_count
+            call_count += 1
+            minx, miny, maxx, maxy = bbox
+            cx = (minx + maxx) / 2
+            cy = (miny + maxy) / 2
+            points = [Point(cx + i * 1e-9, cy) for i in range(1000)]
+            return gpd.GeoDataFrame(
+                {'id': list(range(1000))},
+                geometry=points,
+                crs="EPSG:25832"
+            )
+
+        mock_fetch.side_effect = always_returns_1000
+
+        # Use a tiny bbox so that after a couple of subdivisions
+        # the chunk area drops below MIN_CHUNK_AREA
+        tiny_size = 0.01  # 0.01 x 0.01 = 1e-4, initial chunks = 1e-4/4
+        result = _load_data_in_parallel(
+            "https://example.com/wfs",
+            "layer1",
+            (0, 0, tiny_size, tiny_size),
+            max_workers=1
+        )
+
+        # Should terminate and return data
+        self.assertIsNotNone(result)
+
+        # With a tiny bbox, subdivision should stop early -- well before
+        # the theoretical max for depth 8
+        self.assertLess(call_count, 100)
+
+    @patch('pyorps.io.vector_loader._fetch_wfs_data')
+    def test_error_subdivision_stops_at_max_depth(self, mock_fetch):
+        """When WFS requests keep failing, the error-path subdivision also
+        respects the depth limit."""
+        call_count = 0
+
+        def always_fails(url, layer, bbox, filter_params=None, srs=None):
+            nonlocal call_count
+            call_count += 1
+            raise WFSError("Simulated server error")
+
+        mock_fetch.side_effect = always_fails
+
+        result = _load_data_in_parallel(
+            "https://example.com/wfs",
+            "layer1",
+            (0, 0, 1000, 1000),
+            max_workers=1
+        )
+
+        # No data should be returned (all chunks failed)
+        self.assertIsNone(result)
+
+        # Verify the loop terminates and doesn't make excessive calls
+        max_possible_chunks = sum(4 ** d for d in range(MAX_CHUNK_DEPTH + 1))
+        self.assertLessEqual(call_count, max_possible_chunks)
+
+    @patch('pyorps.io.vector_loader._fetch_wfs_data')
+    def test_normal_responses_not_affected_by_guards(self, mock_fetch):
+        """Responses that don't hit a feature limit should not trigger
+        subdivision at all, regardless of depth tracking."""
+        def returns_500(url, layer, bbox, filter_params=None, srs=None):
+            minx, miny, maxx, maxy = bbox
+            cx = (minx + maxx) / 2
+            cy = (miny + maxy) / 2
+            return gpd.GeoDataFrame(
+                {'id': [1]},
+                geometry=[Point(cx, cy)],
+                crs="EPSG:25832"
+            )
+
+        mock_fetch.side_effect = returns_500
+
+        result = _load_data_in_parallel(
+            "https://example.com/wfs",
+            "layer1",
+            (0, 0, 10, 10),
+            max_workers=1
+        )
+
+        # Should get exactly 4 results (one per initial chunk, no subdivision)
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), 4)
+        # Only 4 calls should have been made (initial 2x2 grid)
+        self.assertEqual(mock_fetch.call_count, 4)
+
+
+class TestCapabilitiesCaching(unittest.TestCase):
+    """P3.2: Verify that _get_available_layers and
+    _get_extent_from_capabilities share a cached capabilities response
+    rather than making redundant HTTP requests."""
+
+    def setUp(self):
+        """Clear the LRU cache before each test to ensure isolation."""
+        _fetch_capabilities_xml.cache_clear()
+
+    def tearDown(self):
+        """Clear the cache after each test."""
+        _fetch_capabilities_xml.cache_clear()
+
+    @patch('requests.get')
+    def test_fetch_capabilities_xml_caches_result(self, mock_get):
+        """Calling _fetch_capabilities_xml twice with the same URL should
+        only make one HTTP request."""
+        mock_response = MagicMock()
+        mock_response.content = b'''\
+<wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0">
+  <wfs:FeatureTypeList>
+    <wfs:FeatureType>
+      <wfs:Name>test_layer</wfs:Name>
+    </wfs:FeatureType>
+  </wfs:FeatureTypeList>
+</wfs:WFS_Capabilities>'''
+        mock_get.return_value = mock_response
+
+        # First call
+        result1 = _fetch_capabilities_xml("https://example.com/wfs")
+        # Second call with same URL
+        result2 = _fetch_capabilities_xml("https://example.com/wfs")
+
+        # Only one HTTP request should have been made
+        self.assertEqual(mock_get.call_count, 1)
+        # Both results should be the same object (cached)
+        self.assertIs(result1, result2)
+
+    @patch('requests.get')
+    def test_fetch_capabilities_xml_different_urls_not_cached(self, mock_get):
+        """Different URLs should each get their own HTTP request."""
+        mock_response = MagicMock()
+        mock_response.content = b'''\
+<wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0">
+  <wfs:FeatureTypeList/>
+</wfs:WFS_Capabilities>'''
+        mock_get.return_value = mock_response
+
+        _fetch_capabilities_xml("https://example1.com/wfs")
+        _fetch_capabilities_xml("https://example2.com/wfs")
+
+        self.assertEqual(mock_get.call_count, 2)
+
+    @patch('requests.get')
+    def test_get_available_layers_uses_cache(self, mock_get):
+        """_get_available_layers should use the cached capabilities."""
+        mock_response = MagicMock()
+        mock_response.content = b'''\
+<wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0">
+  <wfs:FeatureTypeList>
+    <wfs:FeatureType>
+      <wfs:Name>cached_layer</wfs:Name>
+    </wfs:FeatureType>
+  </wfs:FeatureTypeList>
+</wfs:WFS_Capabilities>'''
+        mock_get.return_value = mock_response
+
+        url = "https://example.com/wfs"
+        layers1 = _get_available_layers(url)
+        layers2 = _get_available_layers(url)
+
+        # Both calls return the same result
+        self.assertEqual(layers1, ["cached_layer"])
+        self.assertEqual(layers2, ["cached_layer"])
+        # Only one HTTP request
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch('requests.get')
+    def test_get_extent_uses_cache(self, mock_get):
+        """_get_extent_from_capabilities should use the cached capabilities."""
+        mock_response = MagicMock()
+        mock_response.content = b'''\
+<wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0"
+                      xmlns:ows="http://www.opengis.net/ows/1.1">
+  <wfs:FeatureTypeList>
+    <wfs:FeatureType>
+      <wfs:Name>cached_layer</wfs:Name>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>6.5 49.0</ows:LowerCorner>
+        <ows:UpperCorner>10.5 52.5</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+    </wfs:FeatureType>
+  </wfs:FeatureTypeList>
+</wfs:WFS_Capabilities>'''
+        mock_get.return_value = mock_response
+
+        url = "https://example.com/wfs"
+        bbox1 = _get_extent_from_capabilities(url, "cached_layer")
+        bbox2 = _get_extent_from_capabilities(url, "cached_layer")
+
+        self.assertEqual(bbox1, (6.5, 49.0, 10.5, 52.5))
+        self.assertEqual(bbox2, (6.5, 49.0, 10.5, 52.5))
+        # Only one HTTP request
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch('requests.get')
+    def test_layers_and_extent_share_cache(self, mock_get):
+        """_get_available_layers and _get_extent_from_capabilities should
+        share the same cached capabilities, making only one HTTP request
+        total when called for the same URL."""
+        mock_response = MagicMock()
+        mock_response.content = b'''\
+<wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0"
+                      xmlns:ows="http://www.opengis.net/ows/1.1">
+  <wfs:FeatureTypeList>
+    <wfs:FeatureType>
+      <wfs:Name>shared_layer</wfs:Name>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>7.0 50.0</ows:LowerCorner>
+        <ows:UpperCorner>8.0 51.0</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+    </wfs:FeatureType>
+  </wfs:FeatureTypeList>
+</wfs:WFS_Capabilities>'''
+        mock_get.return_value = mock_response
+
+        url = "https://example.com/wfs"
+
+        # Call both functions
+        layers = _get_available_layers(url)
+        bbox = _get_extent_from_capabilities(url, "shared_layer")
+
+        self.assertIn("shared_layer", layers)
+        self.assertEqual(bbox, (7.0, 50.0, 8.0, 51.0))
+        # Only one HTTP request total
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch('requests.get')
+    def test_explicit_capabilities_xml_skips_cache(self, mock_get):
+        """When capabilities_xml is provided explicitly, no HTTP request
+        should be made."""
+        from defusedxml import ElementTree as et
+
+        xml_bytes = b'''\
+<wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0">
+  <wfs:FeatureTypeList>
+    <wfs:FeatureType>
+      <wfs:Name>explicit_layer</wfs:Name>
+    </wfs:FeatureType>
+  </wfs:FeatureTypeList>
+</wfs:WFS_Capabilities>'''
+        root = et.fromstring(xml_bytes)
+
+        layers = _get_available_layers("https://example.com/wfs",
+                                       capabilities_xml=root)
+
+        self.assertEqual(layers, ["explicit_layer"])
+        # No HTTP request made
+        mock_get.assert_not_called()
+
+    @patch('requests.get')
+    def test_fetch_capabilities_xml_connection_error(self, mock_get):
+        """_fetch_capabilities_xml should raise WFSConnectionError on
+        network failure."""
+        mock_get.side_effect = requests.RequestException("Connection failed")
+
+        with self.assertRaises(WFSConnectionError):
+            _fetch_capabilities_xml("https://example.com/wfs")
+
+    @patch('requests.get')
+    def test_fetch_capabilities_xml_parse_error(self, mock_get):
+        """_fetch_capabilities_xml should raise WFSResponseParsingError on
+        invalid XML."""
+        mock_response = MagicMock()
+        mock_response.content = b"this is not valid xml <><><>"
+        mock_get.return_value = mock_response
+
+        with self.assertRaises(WFSResponseParsingError):
+            _fetch_capabilities_xml("https://example.com/wfs")
 

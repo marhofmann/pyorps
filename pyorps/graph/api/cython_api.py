@@ -1,9 +1,20 @@
+import numpy as np
 from numpy import array, uint32, uint64, astype, ndarray
 from typing import Union, List
 
 from pyorps.core.exceptions import PairwiseError, AlgorithmNotImplementedError
+from pyorps.core.types import IMPASSABLE_CELL_COST
 from pyorps.graph.api.graph_api import GraphAPI
-from pyorps.utils.path_algorithms import *
+from pyorps.utils.path_algorithms import (
+    dijkstra_2d_cython,
+    dijkstra_single_source_multiple_targets,
+    dijkstra_some_pairs_shortest_paths,
+    dijkstra_multiple_sources_multiple_targets,
+    delta_stepping_2d_persistent,
+    delta_stepping_single_source_multiple_targets_persistent,
+    delta_stepping_some_pairs_shortest_paths_persistent,
+    delta_stepping_multiple_sources_multiple_targets_persistent,
+)
 
 
 class CythonAPI(GraphAPI):
@@ -11,9 +22,9 @@ class CythonAPI(GraphAPI):
     Graph API implementation that directly uses Cython algorithms on raster data.
     """
 
-    def __init__(self, raster_data, steps, ignore_max=False):
+    def __init__(self, raster_data, steps, ignore_max=True, dem_data=None):
         super().__init__(raster_data, steps, ignore_max)
-        self.max_value = 65535 if self.ignore_max else 0
+        self.max_value = IMPASSABLE_CELL_COST if self.ignore_max else 0
 
     def shortest_path(
             self,
@@ -92,7 +103,7 @@ class CythonAPI(GraphAPI):
                 max_value=self.max_value
             )
         else:
-            path = delta_stepping_2d(
+            path = delta_stepping_2d_persistent(
                 self.raster_data, self.steps,
                 uint64(source), uint64(target),
                 delta=kwargs.get("delta", 100),
@@ -112,7 +123,7 @@ class CythonAPI(GraphAPI):
             )
         else:  # delta-stepping
             # Convert to uint64 for delta-stepping
-            paths = delta_stepping_single_source_multiple_targets(
+            paths = delta_stepping_single_source_multiple_targets_persistent(
                 self.raster_data, self.steps,
                 uint64(sources[0]),
                 array(targets, dtype=uint64),
@@ -135,7 +146,7 @@ class CythonAPI(GraphAPI):
             )
         else:  # delta-stepping
             # Convert to uint64 for delta-stepping
-            paths = delta_stepping_some_pairs_shortest_paths(
+            paths = delta_stepping_some_pairs_shortest_paths_persistent(
                 self.raster_data, self.steps,
                 array(sources, dtype=uint64),
                 array(targets, dtype=uint64),
@@ -155,7 +166,7 @@ class CythonAPI(GraphAPI):
             )
         else:  # delta-stepping
             # Convert to uint64 for delta-stepping
-            paths = delta_stepping_multiple_sources_multiple_targets(
+            paths = delta_stepping_multiple_sources_multiple_targets_persistent(
                 self.raster_data, self.steps,
                 array(sources, dtype=uint64),
                 array(targets, dtype=uint64),

@@ -25,6 +25,7 @@ class NetworkxAPI(GraphLibraryAPI):
             from_nodes: NodeList,
             to_nodes: NodeList,
             cost: Optional[ndarray[int]] = None,
+            dem_data: Optional[ndarray] = None,
             **kwargs
     ) -> nx.Graph:
         """
@@ -119,7 +120,7 @@ class NetworkxAPI(GraphLibraryAPI):
                                                     weight='weight')
 
             elif algorithm == "astar":
-                heuristic_function = kwargs.get('heu', None)
+                heuristic_function = kwargs.get('heuristic', kwargs.get('heu', None))
 
                 if heuristic_function is None:
                     nodes, heuristic = self.get_a_star_heuristic(target, **kwargs)

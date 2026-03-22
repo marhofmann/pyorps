@@ -198,7 +198,7 @@ def prepare_raster_data(
             # Path
             'Weg': 97,
             # Agricultural land
-            'Landwirtschaft': 107,
+            'Landwirtschaft': 285,
             # Forest
             'Wald': 365,
             # Flowing water
@@ -406,7 +406,7 @@ def analyze_mv_oberrhein(
     for neighborhood in ['r0', 'r1', 'r2', 'r3']:
         best_lines.append(valid_options.loc[valid_options['Neighborhood'] == neighborhood, 'Line cost [€]'].idxmin())
     best_lines_gdf = valid_options.loc[best_lines]
-    best_lines_gdf.to_file(r"results\best_lines.geojson")
+    best_lines_gdf.to_file(r"results\best_lines_new.geojson")
 
     print_result = best_lines_gdf.loc[:, ['Neighborhood', 'Bus', 'Overall dV [p.u.]',
                                           'Line cost [€]', 'Line length [km]']]
@@ -508,8 +508,8 @@ if __name__ == "__main__":
         'url': url,
         'layer': layer
     }
-    result_path = r"results\all_paths.geojson"
-    raster_path = r"data\raster\mv_oberrhein.tiff"
+    result_path = r"results\all_paths_new.geojson"
+    raster_path = r"data\raster\mv_oberrhein_new.tiff"
     net_crs = "epsg:4326"
     gis_data_crs = "epsg:25832"
     source = gpd.read_file(r"data\shapes\sources.geojson")

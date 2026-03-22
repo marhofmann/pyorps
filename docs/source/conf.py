@@ -21,85 +21,63 @@ try:
     version = __version__
 except ImportError:
     print("Warning: Could not import pyorps.__version__, using fallback")
-    release = '0.2.1'
-    version = '0.2.1'
+    release = '0.3.0'
+    version = '0.3.0'
 
 # -- General configuration ---------------------------------------------------
 
-# Add any Sphinx extension module names here
 extensions = [
-    'sphinx.ext.autodoc',  # Core autodoc functionality
-    'sphinx.ext.autosummary',  # Generate summary tables
-    'sphinx.ext.napoleon',  # Support for NumPy and Google style docstrings
-    'sphinx.ext.viewcode',  # Add links to source code
-    'sphinx.ext.intersphinx',  # Link to other projects' documentation
-    'sphinx.ext.coverage',  # Check documentation coverage
-    'sphinx.ext.mathjax',  # Render math via JavaScript
-    'sphinx.ext.ifconfig',  # Include content based on configuration
-    'sphinx.ext.githubpages',  # Create .nojekyll file for GitHub Pages
-    'sphinx.ext.todo',  # Support for todo items
+    'sphinx.ext.autodoc',
+    'sphinx.ext.autosummary',
+    'sphinx.ext.napoleon',
+    'sphinx.ext.viewcode',
+    'sphinx.ext.intersphinx',
+    'sphinx.ext.coverage',
+    'sphinx.ext.mathjax',
+    'sphinx.ext.ifconfig',
+    'sphinx.ext.githubpages',
+    'sphinx.ext.todo',
+    'myst_parser',
+    'sphinx_copybutton',
+    'sphinx_design',
 ]
 
-# Try to add MyST parser if available
-try:
-    import myst_parser
+# -- MyST configuration ------------------------------------------------------
 
-    extensions.append('myst_parser')
-
-    # Configure MyST - removing linkify as it needs additional package
-    myst_enable_extensions = [
-        "deflist",
-        "tasklist",
-        "html_image",
-        "colon_fence",
-        "smartquotes",
-        "replacements",
-        "strikethrough",
-        # "linkify" removed - requires linkify-it-py package
-    ]
-    myst_heading_anchors = 3
-    myst_fence_as_directive = set()
-
-except ImportError:
-    print("Warning: myst_parser not installed. Markdown files will not be parsed.")
-    print("Install with: pip install myst-parser")
+myst_enable_extensions = [
+    "deflist",
+    "tasklist",
+    "html_image",
+    "colon_fence",
+    "smartquotes",
+    "replacements",
+    "strikethrough",
+]
+myst_heading_anchors = 3
+myst_fence_as_directive = set()
 
 # Add any paths that contain templates here, relative to this directory
 templates_path = ['_templates']
 
-# List of patterns, relative to source directory, that match files and
-# directories to ignore when looking for source files
+# List of patterns to ignore when looking for source files
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'tests', 'examples',
                     'case_studies']
 
 # The suffix(es) of source filenames
 source_suffix = {
     '.rst': 'restructuredtext',
+    '.md': 'markdown',
 }
-
-# Add markdown support if MyST is available
-try:
-    import myst_parser
-
-    source_suffix['.md'] = 'markdown'
-except ImportError:
-    pass
 
 # The master toctree document
 master_doc = 'index'
 
 # -- Options for autodoc -----------------------------------------------------
 
-# Automatically extract typehints when specified
 autodoc_typehints = 'description'
-
-# Sort members by source order
 autodoc_member_order = 'bysource'
-
-# Include both class and __init__ docstrings
 autoclass_content = 'both'
 
-# Include private members (those starting with _)
 autodoc_default_options = {
     'members': True,
     'member-order': 'bysource',
@@ -134,6 +112,9 @@ autodoc_mock_imports = [
     'contextily',
     'openpyxl',
     'notebook',
+    'cupy',
+    'cugraph',
+    'cudf',
 ]
 
 # -- Options for autosummary -------------------------------------------------
@@ -174,29 +155,20 @@ intersphinx_mapping = {
 
 # -- Options for HTML output -------------------------------------------------
 
-# The theme to use for HTML and HTML Help pages
-try:
-    import sphinx_rtd_theme
+html_theme = 'sphinx_rtd_theme'
+html_theme_options = {
+    'navigation_depth': 4,
+    'collapse_navigation': False,
+    'sticky_navigation': True,
+    'includehidden': True,
+    'titles_only': False,
+    'prev_next_buttons_location': 'bottom',
+    'style_external_links': True,
+}
 
-    html_theme = 'sphinx_rtd_theme'
-    html_theme_options = {
-        'navigation_depth': 4,
-        'collapse_navigation': False,
-        'sticky_navigation': True,
-        'includehidden': True,
-        'titles_only': False,
-        'display_version': True,
-        'prev_next_buttons_location': 'bottom',
-        'style_external_links': True,
-    }
-except ImportError:
-    print("Warning: sphinx_rtd_theme not installed. Using default theme.")
-    print("Install with: pip install sphinx-rtd-theme")
-    html_theme = 'alabaster'
-    html_theme_options = {}
+html_logo = '_static/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png'
 
-# Add any paths that contain custom static files (such as style sheets)
-# Create _static directory if it doesn't exist
+# Add any paths that contain custom static files
 static_dir = os.path.join(os.path.dirname(__file__), '_static')
 if not os.path.exists(static_dir):
     os.makedirs(static_dir)
@@ -261,21 +233,15 @@ suppress_warnings = [
 
 def setup(app):
     """Setup function for custom Sphinx configuration."""
+    app.add_css_file('css/custom.css')
 
     # Check if Cython extensions are available
     try:
         from pyorps.utils import path_algorithms
-        print("✓ Cython extensions detected and available for documentation")
+        print("Cython extensions detected and available for documentation")
     except ImportError:
-        print("""
-⚠️  Cython extensions not available for documentation.
-
-To include Cython modules in the documentation:
-1. Build the extensions first: python setup.py build_ext --inplace
-2. Then regenerate the documentation: make clean && make html
-
-Note: Documentation will still be generated without Cython modules.
-        """)
+        print("Cython extensions not available. Build with: "
+              "python setup.py build_ext --inplace")
 
     return {
         'version': '0.1',

@@ -74,6 +74,22 @@ class TestPath(unittest.TestCase):
         self.assertIn("length_m=5.00", repr_str)
         self.assertIn("cost=10.00", repr_str)
 
+    def test_path_str_shows_runtime_not_cost(self):
+        """P1.5: __str__ must show runtimes['runtime_total'], not total_cost."""
+        path = Path(
+            source=(0, 0), target=(1, 1), algorithm="dijkstra",
+            graph_api="cython", path_indices=np.array([0, 1]),
+            path_coords=np.array([[0, 0], [1, 1]]),
+            path_geometry=LineString([(0, 0), (1, 1)]),
+            euclidean_distance=1.41, path_id=0,
+            search_space_buffer_m=100, neighborhood="r2",
+            runtimes={"runtime_total": 1.23},
+            total_length=5.0, total_cost=99.0
+        )
+        s = str(path)
+        self.assertIn("runtime_total=1.23", s)
+        self.assertNotIn("runtime_total=99", s)
+
 
 class TestPathCollection(unittest.TestCase):
     def setUp(self):
@@ -226,6 +242,16 @@ class TestPathCollection(unittest.TestCase):
         self.assertIn("PathCollection(paths=[", repr_str)
         self.assertIn("count=2", repr_str)
 
+    def test_str_shows_path_objects_not_keys(self):
+        """P1.6: __str__ and __repr__ must iterate Path objects, not dict keys."""
+        self.collection.add(self.path1)
+        s = str(self.collection)
+        # Should contain Path representation, not bare integer "0"
+        self.assertIn("Path(", s)
+
+        r = repr(self.collection)
+        self.assertIn("Path(", r)
+
     def test_all_property(self):
         """Test the all property."""
         self.collection.add(self.path1)
@@ -235,6 +261,223 @@ class TestPathCollection(unittest.TestCase):
         self.assertEqual(len(all_paths), 2)
         self.assertIn(self.path1, all_paths)
         self.assertIn(self.path2, all_paths)
+
+
+class TestPathEquality(unittest.TestCase):
+    """Test Path.__eq__ edge cases."""
+
+    def setUp(self):
+        self.base_kwargs = dict(
+            algorithm="dijkstra", graph_api="networkx",
+            path_indices=np.array([1, 3, 5]),
+            path_coords=np.array([[0, 0], [1, 1], [2, 2]]),
+            path_geometry=LineString([(0, 0), (1, 1), (2, 2)]),
+            euclidean_distance=2.83, runtimes={}, path_id=0,
+            search_space_buffer_m=100, neighborhood="r2"
+        )
+
+    def test_equal_paths(self):
+        """Two paths with identical fields are equal."""
+        p1 = Path(source=(1, 2), target=(3, 4), **self.base_kwargs)
+        p2 = Path(source=(1, 2), target=(3, 4), **self.base_kwargs)
+        self.assertTrue(p1 == p2)
+
+    def test_numpy_array_source_target(self):
+        """Equality works when source/target are numpy arrays."""
+        p1 = Path(source=np.array([1, 2]), target=np.array([3, 4]),
+                   **self.base_kwargs)
+        p2 = Path(source=np.array([1, 2]), target=np.array([3, 4]),
+                   **self.base_kwargs)
+        self.assertTrue(p1 == p2)
+
+    def test_different_indices_not_equal(self):
+        """Paths with different path_indices are not equal."""
+        p1 = Path(source=(1, 2), target=(3, 4), **self.base_kwargs)
+        kwargs2 = {**self.base_kwargs, "path_indices": np.array([1, 99, 5])}
+        p2 = Path(source=(1, 2), target=(3, 4), **kwargs2)
+        self.assertFalse(p1 == p2)
+
+    def test_different_neighborhood_not_equal(self):
+        """Paths with different neighborhoods are not equal."""
+        p1 = Path(source=(1, 2), target=(3, 4), **self.base_kwargs)
+        kwargs2 = {**self.base_kwargs, "neighborhood": "r0"}
+        p2 = Path(source=(1, 2), target=(3, 4), **kwargs2)
+        self.assertFalse(p1 == p2)
+
+
+class TestPathCollectionEquality(unittest.TestCase):
+    """Test PathCollection.__eq__ edge cases."""
+
+    def _make_path(self, source, target, indices=None):
+        return Path(
+            source=source, target=target, algorithm="dijkstra",
+            graph_api="networkx",
+            path_indices=indices if indices is not None else np.array([0, 1]),
+            path_coords=np.array([[0, 0], [1, 1]]),
+            path_geometry=LineString([(0, 0), (1, 1)]),
+            euclidean_distance=1.0, runtimes={}, path_id=None,
+            search_space_buffer_m=100, neighborhood="r2"
+        )
+
+    def test_different_order_equal(self):
+        """Collections with same paths in different order are equal."""
+        c1 = PathCollection()
+        c2 = PathCollection()
+        p1 = self._make_path(1, 2)
+        p2 = self._make_path(3, 4, np.array([2, 3]))
+
+        c1.add(self._make_path(1, 2))
+        c1.add(self._make_path(3, 4, np.array([2, 3])))
+
+        c2.add(self._make_path(3, 4, np.array([2, 3])))
+        c2.add(self._make_path(1, 2))
+
+        self.assertTrue(c1 == c2)
+
+    def test_superset_asymmetry(self):
+        """A superset collection is equal to subset from subset's perspective but
+        the check is 'all of other in self', so superset==subset is True but
+        subset==superset would fail if superset has extra paths."""
+        c1 = PathCollection()
+        c2 = PathCollection()
+
+        c1.add(self._make_path(1, 2))
+        c1.add(self._make_path(3, 4, np.array([2, 3])))
+
+        c2.add(self._make_path(1, 2))
+
+        # c1 == c2 checks all of c2.all are in c1 → True
+        self.assertTrue(c1 == c2)
+        # c2 == c1 checks all of c1.all are in c2 → False (missing path 3→4)
+        self.assertFalse(c2 == c1)
+
+
+class TestPathCollectionStr(unittest.TestCase):
+    """Test PathCollection __str__ and __repr__ truncation."""
+
+    def _make_path(self, pid):
+        return Path(
+            source=pid, target=pid + 1, algorithm="dijkstra",
+            graph_api="networkx",
+            path_indices=np.array([pid]),
+            path_coords=np.array([[0, 0]]),
+            path_geometry=LineString([(0, 0), (1, 1)]),
+            euclidean_distance=1.0, runtimes={}, path_id=pid,
+            search_space_buffer_m=100, neighborhood="r2"
+        )
+
+    def test_empty_collection_str(self):
+        c = PathCollection()
+        s = str(c)
+        self.assertIn("count=0", s)
+
+    def test_small_collection_str(self):
+        c = PathCollection()
+        c.add(self._make_path(0), replace=True)
+        s = str(c)
+        self.assertIn("count=1", s)
+
+    def test_large_collection_str_truncation(self):
+        """Collections with >5 paths show first 2 and last."""
+        c = PathCollection()
+        for i in range(7):
+            c.add(self._make_path(i), replace=True)
+        s = str(c)
+        self.assertIn("...", s)
+        self.assertIn("count=7", s)
+
+    def test_large_collection_repr_truncation(self):
+        c = PathCollection()
+        for i in range(7):
+            c.add(self._make_path(i), replace=True)
+        r = repr(c)
+        self.assertIn("...", r)
+        self.assertIn("count=7", r)
+
+
+class TestPathCollectionAddReplace(unittest.TestCase):
+    """Test PathCollection.add with replace=True and _next_id tracking."""
+
+    def _make_path(self, pid):
+        return Path(
+            source=pid, target=pid + 1, algorithm="dijkstra",
+            graph_api="networkx",
+            path_indices=np.array([pid]),
+            path_coords=np.array([[0, 0]]),
+            path_geometry=LineString([(0, 0), (1, 1)]),
+            euclidean_distance=1.0, runtimes={}, path_id=pid,
+            search_space_buffer_m=100, neighborhood="r2"
+        )
+
+    def test_replace_true_keeps_id_and_updates_next_id(self):
+        c = PathCollection()
+        p = self._make_path(10)
+        c.add(p, replace=True)
+        self.assertEqual(p.path_id, 10)
+        self.assertEqual(c._next_id, 11)
+
+    def test_replace_false_overrides_id(self):
+        c = PathCollection()
+        p = self._make_path(10)
+        c.add(p, replace=False)
+        self.assertEqual(p.path_id, 0)
+        self.assertEqual(c._next_id, 1)
+
+    def test_replace_existing_path(self):
+        c = PathCollection()
+        p1 = self._make_path(0)
+        c.add(p1)
+
+        p2 = self._make_path(0)
+        p2.source = 99
+        c.add(p2, replace=True)
+
+        self.assertEqual(len(c), 1)
+        self.assertEqual(c[0].source, 99)
+
+
+class TestPathCostSemantics(unittest.TestCase):
+    """P4.11: total_cost (distance-weighted) and total_cell_cost (raw cell sum)."""
+
+    def test_total_cell_cost_field_exists(self):
+        """Path should have total_cell_cost field, defaulting to None."""
+        path = Path(
+            source=(0, 0), target=(1, 1), algorithm="dijkstra",
+            graph_api="cython", path_indices=np.array([0, 1]),
+            path_coords=[(0, 0), (1, 1)],
+            path_geometry=LineString([(0, 0), (1, 1)]),
+            euclidean_distance=1.41, runtimes={}, path_id=0,
+            search_space_buffer_m=100, neighborhood="r2"
+        )
+        self.assertIsNone(path.total_cell_cost)
+
+    def test_total_cell_cost_in_geodataframe_dict(self):
+        """total_cell_cost should appear in GeoDataFrame export."""
+        path = Path(
+            source=(0, 0), target=(1, 1), algorithm="dijkstra",
+            graph_api="cython", path_indices=np.array([0, 1]),
+            path_coords=[(0, 0), (1, 1)],
+            path_geometry=LineString([(0, 0), (1, 1)]),
+            euclidean_distance=1.41, runtimes={}, path_id=0,
+            search_space_buffer_m=100, neighborhood="r2",
+            total_length=1.41, total_cost=5.0, total_cell_cost=10.0,
+            length_by_category={5: 1.0}, length_by_category_percent={5: 100}
+        )
+        gdf_dict = path.to_geodataframe_dict()
+        self.assertEqual(gdf_dict["path_cell_cost"], 10.0)
+
+    def test_total_cost_and_cell_cost_differ(self):
+        """total_cost (weighted) and total_cell_cost (raw) should differ."""
+        path = Path(
+            source=(0, 0), target=(1, 1), algorithm="dijkstra",
+            graph_api="cython", path_indices=np.array([0, 1]),
+            path_coords=[(0, 0), (1, 1)],
+            path_geometry=LineString([(0, 0), (1, 1)]),
+            euclidean_distance=1.41, runtimes={}, path_id=0,
+            search_space_buffer_m=100, neighborhood="r2",
+            total_length=10.0, total_cost=50.0, total_cell_cost=10.0
+        )
+        self.assertNotEqual(path.total_cost, path.total_cell_cost)
 
 
 if __name__ == "__main__":

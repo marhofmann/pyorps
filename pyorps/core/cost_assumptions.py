@@ -483,12 +483,63 @@ class CostAssumptions:
                 combined_mask = main_mask & side_mask
                 gdf.loc[combined_mask, 'cost'] = cost
 
+    def build_cost_labels(self) -> dict[int, str]:
+        """
+        Build a reverse mapping from cost values to terrain type names.
+
+        Traverses the cost_assumptions dictionary and creates a mapping
+        ``{cost_value: "Terrain Name"}``.  When multiple terrain types share
+        the same cost value they are joined with ``" / "``.
+
+        Returns:
+            Dictionary mapping integer cost values to human-readable labels.
+        """
+        value_to_names: dict[int, list[str]] = {}
+        first_key = next(iter(self.cost_assumptions), None)
+
+        if isinstance(first_key, tuple):
+            # Tuple-keyed structure: {('Wald', 'Nadelholz'): 405, ...}
+            for keys, cost in self.cost_assumptions.items():
+                cost_int = int(cost)
+                label = " > ".join(str(k) for k in keys if k != "")
+                value_to_names.setdefault(cost_int, [])
+                if label and label not in value_to_names[cost_int]:
+                    value_to_names[cost_int].append(label)
+        elif isinstance(next(iter(self.cost_assumptions.values()), None), dict):
+            # Nested dict: {'Wald': {'Nadelholz': 405, ...}, ...}
+            for main_val, inner in self.cost_assumptions.items():
+                wildcard_cost = inner.get("", None)
+                for sub_val, cost in inner.items():
+                    cost_int = int(cost)
+                    # If a wildcard ("") exists at the same cost, use just
+                    # the main category name instead of "Main > Sub"
+                    if sub_val and wildcard_cost is not None \
+                            and int(wildcard_cost) == cost_int:
+                        label = str(main_val)
+                    elif sub_val:
+                        label = f"{main_val} > {sub_val}"
+                    else:
+                        label = str(main_val)
+                    value_to_names.setdefault(cost_int, [])
+                    if label not in value_to_names[cost_int]:
+                        value_to_names[cost_int].append(label)
+        else:
+            # Simple dict: {'Wald': 365, ...}
+            for name, cost in self.cost_assumptions.items():
+                cost_int = int(cost)
+                value_to_names.setdefault(cost_int, [])
+                label = str(name)
+                if label not in value_to_names[cost_int]:
+                    value_to_names[cost_int].append(label)
+
+        return {v: " / ".join(names) for v, names in value_to_names.items()}
+
     def to_csv(
             self,
             filepath: str,
             separator: str = ';',
             decimal: str = '.',
-            encoding: str = 'ISO-8859-1'
+            encoding: str = 'ISO-8859-15'
     ) -> None:
         """
         Save the cost assumptions to a CSV file.
@@ -515,7 +566,7 @@ class CostAssumptions:
             self,
             filepath: str,
             indent: int = 2,
-            encoding: str = 'ISO-8859-1'
+            encoding: str = 'ISO-8859-15'
     ) -> None:
         """
         Save the cost assumptions to a JSON file.
@@ -653,7 +704,7 @@ def save_empty_cost_assumptions(
         NoSuitableColumnsError: If no suitable columns can be detected in the dataset
 
     Returns:
-        None: This function saves to a file and doesn't return a value
+        dict: The generated cost assumptions dictionary
     """
     if main_feature is None or not side_features:
         # Detect main feature and side features from the GeoDataFrame
@@ -854,10 +905,10 @@ def get_zero_cost_assumptions(
         columns = [main_feature] + side_features
         keys = pd.MultiIndex.from_frame(gdf.loc[:, columns]).values
 
-        def key_valid(key):
+        def is_nan_key(key):
             return not isinstance(key, str) and np.isnan(key)
 
-        keys = [tuple(['' if key_valid(key) else key for key in row]) for row in keys]
+        keys = [tuple(['' if is_nan_key(key) else key for key in row]) for row in keys]
         cost_dict = {tuple(columns): dict(zip(keys, len(keys) * [0]))}
     return CostAssumptions(cost_dict)
 

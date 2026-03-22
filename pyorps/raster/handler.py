@@ -275,8 +275,8 @@ class RasterHandler:
 
         # Convert bounds to pixel coordinates
         height, width = self.raster_dataset.shape
-        x_samples = np.clip(rows, 0, width - 1)
-        y_samples = np.clip(cols, 0, height - 1)
+        x_samples = np.clip(rows, 0, height - 1)
+        y_samples = np.clip(cols, 0, width - 1)
 
         if len(self.raster_dataset.data.shape) == 3:
             raster_array = self.raster_dataset.data[0]

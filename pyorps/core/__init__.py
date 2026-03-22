@@ -3,16 +3,19 @@
 from .cost_assumptions import (CostAssumptions, get_zero_cost_assumptions, detect_feature_columns,
                                save_empty_cost_assumptions)
 from .types import (InputDataType, CostAssumptionsType, BboxType, GeometryMaskType, CoordinateTuple, CoordinateList, CoordinateInput,
-                    NormalizedCoordinate)
+                    NormalizedCoordinate, IMPASSABLE_CELL_COST)
 from .path import Path, PathCollection
 from .exceptions import (
+    # Base exception
+    PyorpsError,
     # Cost assumption exceptions
     CostAssumptionsError, FileLoadError, InvalidSourceError, FormatError,
     FeatureColumnError, NoSuitableColumnsError, ColumnAnalysisError,
     # WFS exceptions
     WFSError, WFSConnectionError, WFSResponseParsingError, WFSLayerNotFoundError,
     # Graph API exceptions
-    RasterShapeError, NoPathFoundError, AlgorithmNotImplementedError
+    RasterShapeError, NoPathFoundError, AlgorithmNotImplementedError,
+    PairwiseError
 )
 
 __all__ = [
@@ -22,10 +25,13 @@ __all__ = [
     # Types
     "InputDataType", "CostAssumptionsType", "BboxType", "GeometryMaskType",
     "CoordinateTuple", "CoordinateList", "CoordinateInput",
-    "NormalizedCoordinate",
+    "NormalizedCoordinate", "IMPASSABLE_CELL_COST",
 
     # Path classes
     "Path", "PathCollection",
+
+    # Exceptions - Base
+    "PyorpsError",
 
     # Exceptions - Cost assumptions
     "CostAssumptionsError", "FileLoadError", "InvalidSourceError", "FormatError",
@@ -35,5 +41,6 @@ __all__ = [
     "WFSError", "WFSConnectionError", "WFSResponseParsingError", "WFSLayerNotFoundError",
 
     # Exceptions - Graph API
-    "RasterShapeError", "NoPathFoundError", "AlgorithmNotImplementedError"
+    "RasterShapeError", "NoPathFoundError", "AlgorithmNotImplementedError",
+    "PairwiseError"
 ]

@@ -116,3 +116,6 @@ SourceTargetType: TypeAlias = Union[
 # A list of multiple NodeList type objects
 NodePathList: TypeAlias = list[NodeList]
 
+# Maximum cost value for uint16 rasters — cells with this value are impassable
+IMPASSABLE_CELL_COST: int = 65535
+

@@ -301,3 +301,5 @@ class TestNetworkxAPI(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 self.api.shortest_path(0, 4, algorithm="astar")
+
+

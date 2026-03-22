@@ -22,6 +22,7 @@ class GraphAPI(ABC):
             raster_data: ndarray[int],
             steps: ndarray[int],
             ignore_max: Optional[bool] = True,
+            dem_data: Optional[ndarray] = None,
     ):
         """
         Initialize the base graph API with raster data and neighborhood steps.
@@ -35,6 +36,7 @@ class GraphAPI(ABC):
         self.raster_data = raster_data
         self.steps = steps
         self.ignore_max = ignore_max
+        self.dem_data = dem_data
 
     @abstractmethod
     def shortest_path(

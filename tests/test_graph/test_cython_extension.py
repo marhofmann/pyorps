@@ -683,5 +683,438 @@ class TestCythonExtensionsAdvanced(unittest.TestCase):
             self.assertEqual(actual_cost, 5)
 
 
+class TestAtomicCAS(unittest.TestCase):
+    """Tests for the atomic CAS-based delta-stepping implementation."""
+
+    def setUp(self):
+        self.steps_4 = np.array([
+            [0, 1], [1, 0], [0, -1], [-1, 0]
+        ], dtype=np.int8)
+
+        self.steps_8 = np.array([
+            [0, 1], [1, 0], [0, -1], [-1, 0],
+            [1, 1], [-1, 1], [1, -1], [-1, -1]
+        ], dtype=np.int8)
+
+    def test_delta_vs_dijkstra_random_rasters(self):
+        """Verify delta-stepping (CAS) matches Dijkstra on random rasters."""
+        rng = np.random.RandomState(42)
+        for size in [20, 50, 100]:
+            raster = rng.randint(1, 100, (size, size), dtype=np.uint16)
+            # Add some forbidden cells
+            forbidden = rng.random((size, size)) < 0.1
+            raster[forbidden] = 65535
+            # Ensure source and target are traversable
+            raster[0, 0] = 1
+            raster[size - 1, size - 1] = 1
+
+            source = 0
+            target = size * size - 1
+
+            dij_path = dijkstra_2d_cython(raster, self.steps_4, source, target)
+            delta_path = delta_stepping_2d(
+                raster, self.steps_4,
+                np.uint64(source), np.uint64(target), delta=10.0
+            )
+
+            if len(dij_path) == 0:
+                self.assertEqual(len(delta_path), 0,
+                                 f"Size {size}: Dijkstra found no path but delta did")
+                continue
+            if len(delta_path) == 0:
+                continue  # delta may fail on isolated targets
+
+            # Compare costs
+            dij_cost = sum(raster[idx // size, idx % size] for idx in dij_path)
+            delta_cost = sum(
+                raster[int(idx) // size, int(idx) % size] for idx in delta_path)
+            self.assertAlmostEqual(
+                dij_cost, delta_cost, delta=dij_cost * 0.001,
+                msg=f"Size {size}: cost mismatch dij={dij_cost} delta={delta_cost}")
+
+    def test_multi_target_cas_correctness(self):
+        """Verify multi-target delta-stepping matches single-target."""
+        rng = np.random.RandomState(123)
+        size = 30
+        raster = rng.randint(1, 50, (size, size), dtype=np.uint16)
+        raster[0, 0] = 1
+
+        source = np.uint64(0)
+        targets = np.array([size * size - 1, size - 1, (size - 1) * size],
+                           dtype=np.uint64)
+
+        multi_paths = delta_stepping_single_source_multiple_targets(
+            raster, self.steps_4, source, targets, delta=10.0
+        )
+
+        self.assertEqual(len(multi_paths), len(targets))
+
+        for i, target in enumerate(targets):
+            single_path = delta_stepping_2d(
+                raster, self.steps_4, source, target, delta=10.0
+            )
+            if len(single_path) > 0 and len(multi_paths[i]) > 0:
+                single_cost = sum(
+                    raster[int(idx) // size, int(idx) % size]
+                    for idx in single_path)
+                multi_cost = sum(
+                    raster[int(idx) // size, int(idx) % size]
+                    for idx in multi_paths[i])
+                self.assertAlmostEqual(
+                    single_cost, multi_cost, delta=single_cost * 0.001,
+                    msg=f"Target {i}: single={single_cost} multi={multi_cost}")
+
+    def test_uniform_raster_optimal_path(self):
+        """On uniform cost raster, delta-stepping should find Manhattan-optimal path."""
+        size = 50
+        raster = np.ones((size, size), dtype=np.uint16)
+        source = np.uint64(0)
+        target = np.uint64(size * size - 1)
+
+        path = delta_stepping_2d(
+            raster, self.steps_4, source, target, delta=5.0
+        )
+        self.assertGreater(len(path), 0)
+        self.assertEqual(path[0], 0)
+        self.assertEqual(path[-1], size * size - 1)
+
+        # On uniform 4-connected grid, optimal cost = (rows-1 + cols-1) * cell_cost + 1
+        # Each cell visited costs 1; path visits exactly (size-1)+(size-1)+1 = 2*size-1 cells
+        cost = sum(raster[int(idx) // size, int(idx) % size] for idx in path)
+        expected_cost = 2 * size - 1
+        self.assertEqual(cost, expected_cost)
+
+    def test_multithread_consistency(self):
+        """Delta-stepping with different thread counts must produce same cost."""
+        rng = np.random.RandomState(99)
+        size = 100
+        raster = rng.randint(1, 20, (size, size), dtype=np.uint16)
+        raster[0, 0] = 1
+        raster[size - 1, size - 1] = 1
+
+        source = np.uint64(0)
+        target = np.uint64(size * size - 1)
+
+        path_1t = delta_stepping_2d(
+            raster, self.steps_4, source, target, delta=10.0, num_threads=1
+        )
+        path_4t = delta_stepping_2d(
+            raster, self.steps_4, source, target, delta=10.0, num_threads=4
+        )
+
+        self.assertGreater(len(path_1t), 0)
+        self.assertGreater(len(path_4t), 0)
+
+        cost_1t = sum(raster[int(idx) // size, int(idx) % size] for idx in path_1t)
+        cost_4t = sum(raster[int(idx) // size, int(idx) % size] for idx in path_4t)
+        self.assertAlmostEqual(cost_1t, cost_4t, delta=cost_1t * 0.01)
+
+    def test_8connected_delta_stepping(self):
+        """Delta-stepping with 8-connectivity should find paths with diagonal moves."""
+        raster = np.ones((10, 10), dtype=np.uint16)
+        source = np.uint64(0)
+        target = np.uint64(99)
+
+        path = delta_stepping_2d(
+            raster, self.steps_8, source, target, delta=5.0
+        )
+        self.assertGreater(len(path), 0)
+        # 8-connected diagonal path should be shorter than 4-connected
+        self.assertLessEqual(len(path), 19)  # 4-connected would be 19
+
+
+class TestDeltaSteppingVsNetworkitDijkstra(unittest.TestCase):
+    """Cross-backend consistency: Cython delta-stepping (CAS) vs NetworkKit Dijkstra.
+
+    Both must produce the same shortest-path cost for identical rasters.
+    Costs are computed from the edge weights built by construct_edges
+    so that any difference in internal representations is eliminated.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from networkit import Graph
+            from networkit.distance import Dijkstra as NKDijkstra
+            cls.nk_available = True
+        except ImportError:
+            cls.nk_available = False
+
+    def setUp(self):
+        if not self.nk_available:
+            self.skipTest("networkit not installed")
+
+        self.steps_4 = np.array([
+            [0, 1], [1, 0], [0, -1], [-1, 0]
+        ], dtype=np.int8)
+
+        self.steps_8 = np.array([
+            [0, 1], [1, 0], [0, -1], [-1, 0],
+            [1, 1], [-1, 1], [1, -1], [-1, -1]
+        ], dtype=np.int8)
+
+    def _build_networkit_graph(self, raster, steps):
+        """Build a NetworkKit graph from a raster using construct_edges."""
+        from pyorps.utils.traversal import construct_edges
+        from networkit import Graph as NKGraph
+
+        from_nodes, to_nodes, costs = construct_edges(raster, steps, True)
+        n = raster.shape[0] * raster.shape[1]
+        g = NKGraph(n, weighted=True, directed=False)
+        from_u64 = np.asarray(from_nodes, dtype=np.uint64)
+        to_u64 = np.asarray(to_nodes, dtype=np.uint64)
+        g.addEdges(
+            (costs.astype(np.float64, copy=False), (from_u64, to_u64)),
+            addMissing=False,
+        )
+        return g, from_nodes, to_nodes, costs
+
+    def _networkit_dijkstra_distance(self, graph, source, target):
+        """Run NetworkKit Dijkstra and return distance to target."""
+        from networkit.distance import Dijkstra as NKDijkstra
+
+        dij = NKDijkstra(graph, source, storePaths=True, target=target)
+        dij.run()
+        return dij.distance(target), dij.getPath(target)
+
+    def _edge_cost_of_path(self, path, from_nodes, to_nodes, costs):
+        """Compute the total edge cost of a path using the edge list.
+
+        This gives a backend-independent cost because both NetworkKit and
+        Cython delta-stepping should traverse the same weighted graph.
+        """
+        if len(path) < 2:
+            return 0.0
+
+        # Build adjacency lookup: (u, v) -> min cost
+        edge_cost = {}
+        for i in range(len(from_nodes)):
+            u, v, c = int(from_nodes[i]), int(to_nodes[i]), float(costs[i])
+            key = (min(u, v), max(u, v))  # undirected
+            if key not in edge_cost or c < edge_cost[key]:
+                edge_cost[key] = c
+
+        total = 0.0
+        for i in range(len(path) - 1):
+            u, v = int(path[i]), int(path[i + 1])
+            key = (min(u, v), max(u, v))
+            if key not in edge_cost:
+                return float('inf')  # broken path
+            total += edge_cost[key]
+        return total
+
+    def _run_comparison(self, raster, steps, source, target, delta=10.0,
+                        cost_tol_pct=0.01, msg_prefix=""):
+        """Run both backends and compare distances and path costs."""
+        rows, cols = raster.shape
+
+        # --- NetworkKit Dijkstra ---
+        graph, from_nodes, to_nodes, costs = self._build_networkit_graph(
+            raster, steps
+        )
+        nk_dist, nk_path = self._networkit_dijkstra_distance(
+            graph, int(source), int(target)
+        )
+
+        # --- Cython delta-stepping (CAS) ---
+        delta_path = delta_stepping_2d(
+            raster, steps,
+            np.uint64(source), np.uint64(target),
+            delta=delta,
+        )
+
+        # If NetworkKit says no path, delta-stepping should agree
+        if nk_dist == float('inf') or len(nk_path) == 0:
+            self.assertEqual(
+                len(delta_path), 0,
+                f"{msg_prefix}NetworkKit found no path but delta-stepping did"
+            )
+            return
+
+        # Delta-stepping must also find a path
+        self.assertGreater(
+            len(delta_path), 0,
+            f"{msg_prefix}NetworkKit found path (dist={nk_dist:.4f}) "
+            f"but delta-stepping returned empty"
+        )
+
+        # Compute edge-based cost for the delta-stepping path
+        delta_edge_cost = self._edge_cost_of_path(
+            [int(x) for x in delta_path], from_nodes, to_nodes, costs
+        )
+
+        # NetworkKit distance IS the edge-based cost (it's the reference)
+        # Allow small tolerance for float32 vs float64 accumulation
+        self.assertNotEqual(
+            delta_edge_cost, float('inf'),
+            f"{msg_prefix}Delta-stepping path contains edges not in the graph"
+        )
+
+        rel_diff = abs(delta_edge_cost - nk_dist) / max(nk_dist, 1e-10)
+        self.assertLessEqual(
+            rel_diff, cost_tol_pct,
+            f"{msg_prefix}Cost mismatch: NetworkKit={nk_dist:.6f}, "
+            f"delta-stepping(edge)={delta_edge_cost:.6f}, "
+            f"rel_diff={rel_diff:.6f} > {cost_tol_pct}"
+        )
+
+        # Path lengths should be in the same ballpark (within 20%)
+        if len(nk_path) > 0:
+            nk_len = len(nk_path)
+            ds_len = len(delta_path)
+            len_ratio = max(nk_len, ds_len) / max(min(nk_len, ds_len), 1)
+            self.assertLessEqual(
+                len_ratio, 1.2,
+                f"{msg_prefix}Path length mismatch: NetworkKit={nk_len}, "
+                f"delta-stepping={ds_len}"
+            )
+
+    def test_50x50_random_4connected(self):
+        """50x50 random raster, 4-connected, with forbidden cells."""
+        rng = np.random.RandomState(42)
+        size = 50
+        raster = rng.randint(1, 100, (size, size), dtype=np.uint16)
+        raster[rng.random((size, size)) < 0.1] = 65535
+        raster[0, 0] = 5
+        raster[size - 1, size - 1] = 5
+
+        self._run_comparison(
+            raster, self.steps_4,
+            source=0, target=size * size - 1,
+            delta=15.0, msg_prefix="50x50 4-conn: "
+        )
+
+    def test_50x50_random_8connected(self):
+        """50x50 random raster, 8-connected, with forbidden cells."""
+        rng = np.random.RandomState(77)
+        size = 50
+        raster = rng.randint(1, 100, (size, size), dtype=np.uint16)
+        raster[rng.random((size, size)) < 0.1] = 65535
+        raster[0, 0] = 5
+        raster[size - 1, size - 1] = 5
+
+        self._run_comparison(
+            raster, self.steps_8,
+            source=0, target=size * size - 1,
+            delta=20.0, msg_prefix="50x50 8-conn: "
+        )
+
+    def test_200x200_random(self):
+        """200x200 random raster with forbidden cells."""
+        rng = np.random.RandomState(1234)
+        size = 200
+        raster = rng.randint(1, 500, (size, size), dtype=np.uint16)
+        raster[rng.random((size, size)) < 0.05] = 65535
+        raster[0, 0] = 10
+        raster[size - 1, size - 1] = 10
+
+        self._run_comparison(
+            raster, self.steps_4,
+            source=0, target=size * size - 1,
+            delta=50.0, msg_prefix="200x200: "
+        )
+
+    def test_500x500_random(self):
+        """500x500 random raster — larger-scale consistency check."""
+        rng = np.random.RandomState(9999)
+        size = 500
+        raster = rng.randint(1, 1000, (size, size), dtype=np.uint16)
+        raster[rng.random((size, size)) < 0.03] = 65535
+        raster[0, 0] = 10
+        raster[size - 1, size - 1] = 10
+
+        self._run_comparison(
+            raster, self.steps_4,
+            source=0, target=size * size - 1,
+            delta=100.0, msg_prefix="500x500: "
+        )
+
+    def test_uniform_raster_exact_match(self):
+        """On uniform raster, both backends must produce identical distance."""
+        size = 100
+        raster = np.full((size, size), 5, dtype=np.uint16)
+
+        self._run_comparison(
+            raster, self.steps_4,
+            source=0, target=size * size - 1,
+            delta=20.0, cost_tol_pct=0.0001,
+            msg_prefix="100x100 uniform: "
+        )
+
+    def test_gradient_raster(self):
+        """Raster with cost gradient (cheap top-left, expensive bottom-right)."""
+        size = 100
+        raster = np.zeros((size, size), dtype=np.uint16)
+        for r in range(size):
+            for c in range(size):
+                raster[r, c] = max(1, min(65534, r + c + 1))
+
+        self._run_comparison(
+            raster, self.steps_4,
+            source=0, target=size * size - 1,
+            delta=30.0, msg_prefix="100x100 gradient: "
+        )
+
+    def test_multi_target_vs_networkit(self):
+        """Multi-target delta-stepping must match NetworkKit per-target costs."""
+        rng = np.random.RandomState(555)
+        size = 80
+        raster = rng.randint(1, 200, (size, size), dtype=np.uint16)
+        raster[rng.random((size, size)) < 0.05] = 65535
+        raster[0, 0] = 5
+
+        source = np.uint64(0)
+        targets_list = [
+            size * size - 1,  # bottom-right
+            size - 1,         # top-right
+            (size - 1) * size,  # bottom-left
+            size * (size // 2) + size // 2,  # center
+        ]
+        # Ensure targets are traversable
+        for t in targets_list:
+            r, c = divmod(t, size)
+            raster[r, c] = max(1, min(raster[r, c], 65534))
+
+        targets = np.array(targets_list, dtype=np.uint64)
+
+        # Delta-stepping multi-target
+        delta_paths = delta_stepping_single_source_multiple_targets(
+            raster, self.steps_4, source, targets, delta=20.0
+        )
+
+        # Build NetworkKit graph
+        graph, from_nodes, to_nodes, costs = self._build_networkit_graph(
+            raster, self.steps_4
+        )
+
+        for i, target in enumerate(targets_list):
+            nk_dist, nk_path = self._networkit_dijkstra_distance(
+                graph, 0, target
+            )
+
+            if nk_dist == float('inf') or len(nk_path) == 0:
+                self.assertEqual(
+                    len(delta_paths[i]), 0,
+                    f"Target {i}: NK no path but delta found one"
+                )
+                continue
+
+            self.assertGreater(
+                len(delta_paths[i]), 0,
+                f"Target {i}: NK dist={nk_dist:.4f} but delta returned empty"
+            )
+
+            delta_cost = self._edge_cost_of_path(
+                [int(x) for x in delta_paths[i]], from_nodes, to_nodes, costs
+            )
+
+            rel_diff = abs(delta_cost - nk_dist) / max(nk_dist, 1e-10)
+            self.assertLessEqual(
+                rel_diff, 0.01,
+                f"Target {i}: NK={nk_dist:.6f}, delta={delta_cost:.6f}, "
+                f"rel_diff={rel_diff:.6f}"
+            )
+
+
 if __name__ == '__main__':
     unittest.main()

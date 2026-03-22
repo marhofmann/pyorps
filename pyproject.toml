@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyorps"
-version = "0.2.3"
+version = "0.3.0"
 description = "PYORPS - (Python for Optimal Routes in Power Systems)"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -29,6 +29,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: GIS",
     "Topic :: Scientific/Engineering :: Physics",
 ]
@@ -72,6 +73,14 @@ case_studies = [
 ]
 additionals = [
     "openpyxl>=3.1.0",
+]
+gpu = [
+    "cupy-cuda12x>=13.0.0",
+]
+gpu-full = [
+    "cupy-cuda12x>=13.0.0",
+    "cugraph-cu12>=25.02",
+    "cudf-cu12>=25.02",
 ]
 full = [
     # graph

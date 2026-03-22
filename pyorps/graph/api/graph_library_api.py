@@ -24,13 +24,14 @@ Please see the specific interfaces to the specific graph libraries for more deta
 
 from typing import Optional, Any, Union, List
 from abc import abstractmethod
+from warnings import warn
 import numpy as np
 from time import time
 
 from .graph_api import GraphAPI
 from pyorps.core.exceptions import NoPathFoundError, PairwiseError
 from pyorps.core.types import SourceTargetType, Node, NodeList, NodePathList
-from pyorps.utils.traversal import construct_edges
+from pyorps.utils.traversal import construct_edges, construct_edges_3d
 
 
 class GraphLibraryAPI(GraphAPI):
@@ -46,9 +47,13 @@ class GraphLibraryAPI(GraphAPI):
                  raster_data: np.ndarray[int],
                  steps: np.ndarray[int],
                  ignore_max: Optional[bool] = True,
+                 dem_data: Optional[np.ndarray] = None,
                  from_nodes: Optional[np.ndarray] = None,
                  to_nodes: Optional[np.ndarray] = None,
-                 cost: Optional[np.ndarray] = None, **kwargs):
+                 cost: Optional[np.ndarray] = None,
+                 dem_kwargs: Optional[dict[str, Any]] = None,
+                 use_gpu: bool = False,
+                 **kwargs):
         """
         Initialize the graph library API.
 
@@ -60,23 +65,85 @@ class GraphLibraryAPI(GraphAPI):
             from_nodes: Source node indices for edges
             to_nodes: Target node indices for edges
             cost: Edge weights
+            dem_kwargs: Optional dict with gradient_function key for 3D/DEM
+            use_gpu: If True, use GPU-accelerated edge construction (requires
+                CuPy and NVIDIA GPU). Falls back to CPU if GPU unavailable.
 
         """
-        super().__init__(raster_data, steps, ignore_max)
+        super().__init__(raster_data, steps, ignore_max, dem_data)
 
         self.edge_construction_time = 0.0
         if from_nodes is None or to_nodes is None:
             before_constructing_edge_data = time()
-            from_nodes, to_nodes, cost = construct_edges(
-                self.raster_data,
-                self.steps,
-                self.ignore_max
-            )
+
+            # Try GPU edge construction if requested
+            if use_gpu:
+                from_nodes, to_nodes, cost = self._construct_edges_gpu(
+                    dem_kwargs
+                )
+
+            # Fall back to CPU edge construction
+            if from_nodes is None or to_nodes is None:
+                if self.dem_data is not None:
+                    if dem_kwargs is not None:
+                        gradient_function = dem_kwargs.get(
+                            "gradient_function", "exponential"
+                        )
+                    else:
+                        gradient_function = "exponential"
+                    from_nodes, to_nodes, cost = construct_edges_3d(
+                        self.raster_data,
+                        self.dem_data,
+                        self.steps,
+                        self.ignore_max,
+                        gradient_function
+                    )
+                else:
+                    from_nodes, to_nodes, cost = construct_edges(
+                        self.raster_data,
+                        self.steps,
+                        self.ignore_max
+                    )
             self.edge_construction_time = time() - before_constructing_edge_data
 
         before_graph_creation = time()
         self.graph = self.create_graph(from_nodes, to_nodes, cost, **kwargs)
         self.graph_creation_time = time() - before_graph_creation
+
+    def _construct_edges_gpu(self, dem_kwargs):
+        """
+        Attempt GPU edge construction, returning None tuple on failure.
+
+        Returns:
+            Tuple of (from_nodes, to_nodes, cost) as NumPy arrays,
+            or (None, None, None) if GPU is unavailable.
+        """
+        try:
+            from pyorps.utils.traversal_gpu import (
+                construct_edges_gpu, GPU_AVAILABLE
+            )
+        except ImportError:
+            warn("GPU edge construction unavailable (cupy not installed). "
+                 "Falling back to CPU.")
+            return None, None, None
+
+        if not GPU_AVAILABLE:
+            warn("GPU edge construction unavailable (no CUDA GPU detected). "
+                 "Falling back to CPU.")
+            return None, None, None
+
+        from_nodes, to_nodes, cost = construct_edges_gpu(
+            self.raster_data,
+            self.steps,
+            ignore_max=self.ignore_max,
+            dem_data=self.dem_data,
+            return_cupy=False,  # return NumPy for CPU graph libraries
+        )
+        # Ensure dtypes match CPU interface
+        from_nodes = from_nodes.astype(np.uint32)
+        to_nodes = to_nodes.astype(np.uint32)
+        cost = cost.astype(np.float64)
+        return from_nodes, to_nodes, cost
 
     @staticmethod
     def _ensure_path_endpoints(

@@ -156,15 +156,18 @@ water_protection_cost_assumptions = {
 
 
 # WFS-Request for base file
-base_file_url = "https://www.gds.hessen.de/wfs2/aaa-suite/cgi-bin/alkis/vereinf/wfs"
+base_file_url = "https://www.gds.hessen.de/wfs2/aaa-suite/cgi-bin/alkis/vereinf/wfs?"
 base_file = {
     "url": base_file_url,
     "layer": "ave_Nutzung",
 }
 
+base_file = r"<local-path>"
+
 local_directory = r"data/shapes"
 
-mask_path = join(local_directory, r"praeferenzraum/masked.shp")
+#mask_path = join(local_directory, r"praeferenzraum/masked.shp")
+mask_path = r"<local-path>"
 
 soil_classes = join(local_directory,
                     r"additional_data/Bodeneinheiten_Bodenuebersicht_500000.shp",)
@@ -210,7 +213,7 @@ for geometry_buffer_m in buffers:
             "multiply": True,
         },
     ]
-    raster_path = join("data/raster", f"RML_bufferd_m.tiff")
+    raster_path = join("data/raster", f"RML_bufferd_m{geometry_buffer_m}.tiff")
     if exists(raster_path):
         path_finder = PathFinder(
             source_coords=source,
@@ -233,10 +236,11 @@ for geometry_buffer_m in buffers:
             search_space_buffer_m=50_000,
             mask=mask,
             geometry_buffer_m=geometry_buffer_m,
-            #raster_save_path=raster_path,
+            raster_save_path=raster_path,
             preprocessing_function=fancy_function,
         )
 
+    continue
     path_finder.find_route(algorithm="delta-stepping", num_threads=8, delta=500, margin=1.1)
     path_finder.save_paths(f"RML_buffer_{geometry_buffer_m}_m.geojson")
     print("Trassenplanung abgeschlossen:")

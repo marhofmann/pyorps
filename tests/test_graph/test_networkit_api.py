@@ -300,3 +300,67 @@ class TestNetworkitAPI(unittest.TestCase):
             # Assert that ValueError is raised
             with self.assertRaises(ValueError):
                 self.api.shortest_path(0, 4, algorithm="astar")
+
+
+class TestAStarAdmissibility(unittest.TestCase):
+    """P1.2 regression: verify A* heuristic is admissible (A* cost == Dijkstra cost)."""
+
+    def test_astar_equals_dijkstra_on_varied_raster(self):
+        """A* with default heuristic must find same-cost path as Dijkstra."""
+        from pyorps.utils.neighborhood import get_neighborhood_steps
+        # 10x10 raster with varied costs, no impassable cells
+        rng = np.random.RandomState(42)
+        raster = rng.randint(1, 100, size=(10, 10)).astype(np.uint16)
+        steps = get_neighborhood_steps("r2", directed=True)
+
+        api = NetworkitAPI(raster, steps, ignore_max=True)
+
+        source = 0          # top-left
+        target = 99         # bottom-right
+
+        dijkstra_path = api.shortest_path(source, target, algorithm="dijkstra")
+        astar_path = api.shortest_path(source, target, algorithm="astar")
+
+        # Compute path costs by summing edge weights
+        dij_cost = sum(api.graph.weight(dijkstra_path[i], dijkstra_path[i + 1])
+                       for i in range(len(dijkstra_path) - 1))
+        ast_cost = sum(api.graph.weight(astar_path[i], astar_path[i + 1])
+                       for i in range(len(astar_path) - 1))
+
+        self.assertAlmostEqual(dij_cost, ast_cost, places=6,
+                               msg="A* found suboptimal path vs Dijkstra")
+
+
+class TestHeuristicKwargBackwardCompat(unittest.TestCase):
+    """P4.7: 'heuristic' kwarg should work, with 'heu' as fallback."""
+
+    def test_heuristic_kwarg_is_used(self):
+        """Passing heuristic= should be picked up in _compute_single_path."""
+        from pyorps.utils.neighborhood import get_neighborhood_steps
+        rng = np.random.RandomState(99)
+        raster = rng.randint(1, 50, size=(5, 5)).astype(np.uint16)
+        steps = get_neighborhood_steps("r2", directed=True)
+        api = NetworkitAPI(raster, steps, ignore_max=True)
+
+        # Provide a heuristic function via the new 'heuristic' kwarg
+        heuristic_list = [0.0] * api.graph.numberOfNodes()
+        path = api.shortest_path(0, 24, algorithm="astar",
+                                 heuristic=heuristic_list)
+        self.assertGreater(len(path), 0)
+        self.assertEqual(path[0], 0)
+        self.assertEqual(path[-1], 24)
+
+    def test_old_heu_kwarg_still_works(self):
+        """Passing heu= should still work for backward compatibility."""
+        from pyorps.utils.neighborhood import get_neighborhood_steps
+        rng = np.random.RandomState(99)
+        raster = rng.randint(1, 50, size=(5, 5)).astype(np.uint16)
+        steps = get_neighborhood_steps("r2", directed=True)
+        api = NetworkitAPI(raster, steps, ignore_max=True)
+
+        heuristic_list = [0.0] * api.graph.numberOfNodes()
+        path = api.shortest_path(0, 24, algorithm="astar",
+                                 heu=heuristic_list)
+        self.assertGreater(len(path), 0)
+        self.assertEqual(path[0], 0)
+        self.assertEqual(path[-1], 24)

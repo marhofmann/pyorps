@@ -1,0 +1,89 @@
+/* PYORPS Documentation Custom Styles */
+
+/* Experimental banner styling */
+.admonition.warning {
+    border-left-color: #e6a817;
+    background-color: #fff8e1;
+}
+
+.admonition.warning > .admonition-title {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+/* Sidebar emoji rendering */
+.wy-menu-vertical li span.toctree-expand,
+.wy-menu-vertical li a {
+    font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji",
+                 "Lato", "proxima-nova", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Badge row on landing page */
+.badges {
+    margin-bottom: 1.5em;
+}
+
+.badges a {
+    text-decoration: none;
+}
+
+.badges img {
+    margin-right: 4px;
+    vertical-align: middle;
+}
+
+/* Code block improvements */
+div.highlight {
+    border-radius: 4px;
+}
+
+div.highlight pre {
+    padding: 12px;
+    font-size: 0.85em;
+    line-height: 1.5;
+}
+
+/* Copy button positioning */
+.copybtn {
+    top: 0.5em !important;
+    right: 0.5em !important;
+}
+
+/* sphinx-design card styling within RTD theme */
+.sd-card {
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    transition: box-shadow 0.2s ease;
+}
+
+.sd-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.sd-card .sd-card-title {
+    font-size: 1.1em;
+    font-weight: 600;
+}
+
+/* Performance table styling */
+table.performance-table th {
+    background-color: #f0f0f0;
+    font-weight: 600;
+}
+
+/* Improve admonition note styling */
+.admonition.note {
+    border-radius: 4px;
+}
+
+.admonition.tip {
+    border-radius: 4px;
+}
+
+/* Hero image on landing page */
+.hero-image img {
+    max-width: 100%;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    margin: 1em 0;
+}

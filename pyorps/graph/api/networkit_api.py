@@ -46,6 +46,9 @@ class NetworkitAPI(GraphLibraryAPI):
         else:
             n = max([max(from_nodes), max(to_nodes)]) + 1
             self.graph = Graph(n=n, weighted=True, directed=False)
+        # networkit addEdges segfaults with uint32 index arrays — cast to uint64
+        from_nodes = np.asarray(from_nodes, dtype=np.uint64)
+        to_nodes = np.asarray(to_nodes, dtype=np.uint64)
         if cost is not None:
             self.graph.addEdges((cost.astype(np.float64, copy=False),
                                  (from_nodes, to_nodes)), addMissing=False)
@@ -127,7 +130,7 @@ class NetworkitAPI(GraphLibraryAPI):
 
         elif algorithm == "astar":
             # Use provided heuristic function or default to zero heuristic
-            heuristic_function = kwargs.get('heu', None)
+            heuristic_function = kwargs.get('heuristic', kwargs.get('heu', None))
             if heuristic_function is None:
                 _, heuristic = self.get_a_star_heuristic(target, source, **kwargs)
                 heuristic_function = list(heuristic)

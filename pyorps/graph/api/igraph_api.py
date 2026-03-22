@@ -143,7 +143,7 @@ class IGraphAPI(GraphLibraryAPI):
                                                  algorithm="bellman_ford")[0]
 
         elif algorithm == "astar":
-            heuristic_function = kwargs.get('heu', None)
+            heuristic_function = kwargs.get('heuristic', kwargs.get('heu', None))
 
             if heuristic_function is None:
                 _, heuristic = self.get_a_star_heuristic(target, **kwargs)

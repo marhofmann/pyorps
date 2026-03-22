@@ -1313,3 +1313,84 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
             value = path_finder.raster_handler.data[0, row, col]
             self.assertLess(value, max_cost,
                             "Corrected position should not be in barrier")
+
+
+class TestCrossBackendConsistency(unittest.TestCase):
+    """P6.1: Cross-backend consistency — same query should give same cost."""
+
+    def test_cython_vs_networkit_same_cost(self):
+        """CythonAPI and NetworKitAPI must find paths with equal cost."""
+        import numpy as np
+        from pyorps.utils.neighborhood import get_neighborhood_steps
+        from pyorps.graph.api.cython_api import CythonAPI
+        from pyorps.graph.api.networkit_api import NetworkitAPI
+
+        rng = np.random.RandomState(123)
+        raster = rng.randint(1, 100, size=(15, 15)).astype(np.uint16)
+        steps = get_neighborhood_steps("r2", directed=True)
+
+        cython_api = CythonAPI(raster, steps, ignore_max=True)
+        nk_api = NetworkitAPI(raster, steps, ignore_max=True)
+
+        source, target = 0, 224  # top-left to bottom-right
+
+        cy_path = cython_api.shortest_path(source, target, algorithm="dijkstra")
+        nk_path = nk_api.shortest_path(source, target, algorithm="dijkstra")
+
+        # Both should find a path
+        self.assertGreater(len(cy_path), 0)
+        self.assertGreater(len(nk_path), 0)
+
+        # Compute costs via edge weights for networkit
+        nk_cost = sum(nk_api.graph.weight(nk_path[i], nk_path[i + 1])
+                      for i in range(len(nk_path) - 1))
+
+        # For Cython, compute cost from raster data
+        from pyorps.utils.path_core import path_cost_uint32
+        cy_cost = path_cost_uint32(
+            np.array(cy_path, dtype=np.uint32), raster, raster.shape[1]
+        )
+
+        # Cython path_cost is raw cell sum, nk_cost is edge-weighted.
+        # We compare Cython path through networkit edges for consistency.
+        cy_nk_cost = sum(nk_api.graph.weight(cy_path[i], cy_path[i + 1])
+                         for i in range(len(cy_path) - 1))
+        self.assertAlmostEqual(nk_cost, cy_nk_cost, places=4,
+                               msg="Cython and NetworkIt find different-cost paths")
+
+
+class TestEndToEndIntegration(unittest.TestCase):
+    """P6.2: End-to-end integration test with no mocks."""
+
+    def test_in_memory_raster_pathfinding(self):
+        """Create raster file → PathFinder → find_route → verify path."""
+        import numpy as np
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = os.path.join(tmpdir, "test.tiff")
+            create_test_tiff(tmp_path)
+
+            # create_test_tiff default: origin=(500000,5600000), 1m pixels,
+            # 100x100 → X: 500000-500100, Y: 5599900-5600000, CRS: EPSG:32632
+            source = (500010, 5599990)
+            target = (500090, 5599910)
+
+            path_finder = PathFinder(
+                dataset_source=tmp_path,
+                source_coords=source,
+                target_coords=target,
+                graph_api="cython",
+                neighborhood_str="r2",
+            )
+
+            path = path_finder.find_route()
+
+            # Path should exist and have reasonable properties
+            self.assertIsNotNone(path)
+            self.assertGreater(len(path.path_indices), 1)
+            self.assertGreater(path.total_length, 0)
+            self.assertGreater(path.total_cost, 0)
+            self.assertEqual(path.source, source)
+            self.assertEqual(path.target, target)
+            self.assertEqual(path.algorithm, "dijkstra")
+            self.assertEqual(path.graph_api, "cython")

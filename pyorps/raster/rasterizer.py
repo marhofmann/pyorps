@@ -8,6 +8,7 @@ Reference:
 """
 from typing import Union, Optional, Callable, Any
 from copy import deepcopy
+import warnings
 
 import numpy as np
 from geopandas import GeoDataFrame
@@ -19,8 +20,8 @@ from shapely.geometry import Polygon, box
 # Changed to relative imports from other modules
 from pyorps.io.geo_dataset import (initialize_geo_dataset, VectorDataset, 
                                    RasterDataset, InMemoryRasterDataset, GeoDataset)
-from pyorps.core.types import (InputDataType, CostAssumptionsType, BboxType, 
-                               GeometryMaskType)
+from pyorps.core.types import (InputDataType, CostAssumptionsType, BboxType,
+                               GeometryMaskType, IMPASSABLE_CELL_COST)
 from pyorps.core.cost_assumptions import CostAssumptions
 
 
@@ -72,6 +73,9 @@ class GeoRasterizer:
 
         if isinstance(self.base_dataset, RasterDataset):
             self.raster = self.base_dataset.data
+            # Normalize 3D raster (bands, height, width) to 2D (first band)
+            if self.raster is not None and self.raster.ndim == 3:
+                self.raster = self.raster[0]
             self.transform = self.base_dataset.transform
             self.raster_dataset = self.base_dataset
         else:
@@ -196,7 +200,7 @@ class GeoRasterizer:
             self,
             field_name: str = 'cost',
             resolution_in_m: float = 1.0,
-            fill_value: int = 65535,
+            fill_value: int = IMPASSABLE_CELL_COST,
             save_path: Optional[str] = None,
             dtype: str = "uint16",
             geometry_buffer_m: float = 0,
@@ -294,8 +298,8 @@ class GeoRasterizer:
                 transform=self.transform
             )
 
-            # Override with dataset values
-            for unique_value in buffered[field_name].unique():
+            # Override with dataset values (sorted for deterministic rasterization)
+            for unique_value in sorted(buffered[field_name].unique()):
                 value_geoms = buffered.loc[buffered[field_name] == unique_value]
                 geoms_field_name = zip(value_geoms['geometry'], value_geoms[field_name])
                 shapes = ((geom, value) for geom, value in geoms_field_name)
@@ -319,7 +323,7 @@ class GeoRasterizer:
     def _calculate_out_shape_from_bounding_box(
             self,
             bounding_box: Polygon,
-            resolution_m2: float = 1.0
+            resolution_in_m: float = 1.0
     ) -> tuple[int, int]:
         """
         Calculate the output shape (rows, columns) based on a bounding box and
@@ -327,7 +331,7 @@ class GeoRasterizer:
 
         Parameters:
             bounding_box: The bounding box defining the output shape in a planar CRS
-            resolution_m2: The resolution in square meters
+            resolution_in_m: The linear resolution per pixel in meters
 
         Returns:
             tuple of (rows, columns) representing the output shape
@@ -340,12 +344,13 @@ class GeoRasterizer:
         # Calculate the total area of the bounding box in square meters
         total_area_m2 = width * height
 
-        return self._get_rows_and_columns(width, height, resolution_m2, total_area_m2)
+        return self._get_rows_and_columns(width, height, resolution_in_m,
+                                          total_area_m2)
 
     def _calculate_out_shape_from_geodataframe(
             self,
             gdf: GeoDataFrame,
-            resolution_m2: float = 1.0,
+            resolution_in_m: float = 1.0,
             bounding_box: Optional[Polygon] = None
     ) -> tuple[int, int]:
         """
@@ -354,7 +359,7 @@ class GeoRasterizer:
 
         Parameters:
             gdf: The GeoDataFrame containing the geometries to cover
-            resolution_m2: The resolution in square meters
+            resolution_in_m: The linear resolution per pixel in meters
             bounding_box: Optional bounding box defining the output shape
 
         Returns:
@@ -362,8 +367,13 @@ class GeoRasterizer:
         """
         # Ensure the GeoDataFrame is in a projected CRS that uses meters
         if gdf.crs.is_geographic:
-            # Transform to a planar CRS (e.g., Web Mercator)
-            gdf = gdf.to_crs(epsg=3857)
+            utm_crs = gdf.estimate_utm_crs()
+            warnings.warn(
+                f"Geographic CRS ({gdf.crs}) detected. Auto-reprojecting to "
+                f"{utm_crs} for accurate metric calculations.",
+                UserWarning, stacklevel=2
+            )
+            gdf = gdf.to_crs(utm_crs)
 
         # Calculate the bounding box of the GeoDataFrame
         bounds = gdf.total_bounds  # (minx, miny, maxx, maxy)
@@ -379,17 +389,18 @@ class GeoRasterizer:
             bbox_height = bounds_bbox[3] - bounds_bbox[1]
             total_area_m2 = bbox_width * bbox_height
 
-        return self._get_rows_and_columns(width, height, resolution_m2, total_area_m2)
+        return self._get_rows_and_columns(width, height, resolution_in_m,
+                                          total_area_m2)
 
     @staticmethod
-    def _get_rows_and_columns(width, height, resolution_m2, total_area_m2):
+    def _get_rows_and_columns(width, height, resolution_in_m, total_area_m2):
         """
         Calculate rows and columns based on width, height, and resolution.
 
         Parameters:
-            width: Width of the area
-            height: Height of the area
-            resolution_m2: Resolution in square meters
+            width: Width of the area in meters
+            height: Height of the area in meters
+            resolution_in_m: Linear resolution per pixel in meters
             total_area_m2: Total area in square meters
 
         Returns:
@@ -397,8 +408,8 @@ class GeoRasterizer:
         """
         # Calculate the aspect ratio
         aspect_ratio = width / height if height != 0 else 1.0
-        # Calculate the area of each pixel
-        pixel_area = resolution_m2
+        # Calculate the area of each pixel (linear resolution squared)
+        pixel_area = resolution_in_m ** 2
         # Calculate the total number of pixels needed
         total_pixels = total_area_m2 / pixel_area
         # Calculate the height and width based on the aspect ratio
@@ -420,7 +431,7 @@ class GeoRasterizer:
             self,
             gdf: GeoDataFrame,
             value: float,
-            ignore_value: Optional[float] = 65535,
+            ignore_value: Optional[float] = IMPASSABLE_CELL_COST,
             multiply: bool = False) -> np.ndarray:
         """
         Modifies the raster cells inside the polygons of a GeoDataFrame.
@@ -454,8 +465,13 @@ class GeoRasterizer:
 
         # Modify the raster values based on the specified parameters
         if multiply:
-            # Set the raster cells to a multiple of the existing values
-            self.raster[mask] = self.raster[mask] * value
+            # Use uint32 intermediate to prevent uint16 overflow, then clip
+            result = np.clip(
+                self.raster[mask].astype(np.uint32) * np.uint32(value),
+                0,
+                np.iinfo(np.uint16).max
+            ).astype(self.raster.dtype)
+            self.raster[mask] = result
         else:
             # Set the raster cells to the new value
             self.raster[mask] = value
@@ -470,11 +486,11 @@ class GeoRasterizer:
             mask: Optional[GeometryMaskType] = None,
             transform: Optional[Affine] = None,
             geometry_buffer_m: float = 0,
-            ignore_value: Optional[float] = 65535,
+            ignore_value: Optional[float] = IMPASSABLE_CELL_COST,
             multiply: bool = False,
             zone_field: Optional[str] = None,
             forbidden_zone: Optional[str] = None,
-            forbidden_value: int = 65535,
+            forbidden_value: int = IMPASSABLE_CELL_COST,
             **kwargs
     ) -> np.ndarray:
         """
@@ -537,12 +553,9 @@ class GeoRasterizer:
                 value_geoms = gdf.loc[gdf['cost'] == unique_value]
                 if value_geoms.empty:
                     continue
-                geometry_field_names = zip(value_geoms['geometry'], value_geoms['cost'])
-                shapes = ((geom, value) for geom, value in geometry_field_names)
-
                 # Create a mask from the geometries in the GeoDataFrame
                 mask_array = geometry_mask(
-                    shapes,
+                    value_geoms['geometry'].values,
                     transform=self.transform,
                     invert=True,  # Invert the mask to keep the area inside the polygons
                     out_shape=self.raster.shape
@@ -556,8 +569,14 @@ class GeoRasterizer:
 
                 # Modify the raster values based on the specified parameters
                 if multiply:
-                    # Set the raster cells to a multiple of the existing values
-                    self.raster[mask] = self.raster[mask] * unique_value
+                    # Use uint32 intermediate to prevent uint16 overflow
+                    result = np.clip(
+                        self.raster[mask].astype(np.uint32)
+                        * np.uint32(unique_value),
+                        0,
+                        np.iinfo(np.uint16).max
+                    ).astype(self.raster.dtype)
+                    self.raster[mask] = result
                 else:
                     # Set the raster cells to the new value
                     self.raster[mask] = unique_value
@@ -567,11 +586,11 @@ class GeoRasterizer:
             self,
             gdf: GeoDataFrame,
             cost_assumptions: Optional[Union[CostAssumptionsType, int, float]] = None,
-            ignore_value: Optional[float] = 65535,
+            ignore_value: Optional[float] = IMPASSABLE_CELL_COST,
             multiply: bool = False,
             zone_field: Optional[str] = None,
             forbidden_zone: Optional[str] = None,
-            forbidden_value: int = 65535,
+            forbidden_value: int = IMPASSABLE_CELL_COST,
     ):
         """
         Modify the raster with an additional GeoDataFrame.
@@ -699,4 +718,10 @@ class GeoRasterizer:
             self.transform.e,
             self.transform.f + first_row * self.transform.e
         )
+
+        # Update raster_dataset to reflect the shrunk raster
+        self.raster_dataset = InMemoryRasterDataset(
+            self.raster, self.crs, self.transform
+        )
+
         return self.raster
