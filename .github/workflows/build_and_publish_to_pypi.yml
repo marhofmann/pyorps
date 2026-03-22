@@ -324,7 +324,7 @@ jobs:
           TMPDIR=$(mktemp -d)
           cp -r tests "$TMPDIR"/tests_run
           cd "$TMPDIR"/tests_run
-          python -m pytest . --tb=short --import-mode=importlib -k "not networkit"
+          python -m pytest . --tb=short --import-mode=importlib --ignore=test_graph/test_networkit_api.py
 
   publish:
     name: Publish to PyPI

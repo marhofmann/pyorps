@@ -43,7 +43,11 @@ from pyorps.io.geo_dataset import InMemoryRasterDataset
 # ---------------------------------------------------------------------------
 # P5.4: GPU raster sidecar validation
 # ---------------------------------------------------------------------------
-from pyorps.io.gpu_raster import load_gpu_raster
+try:
+    from pyorps.io.gpu_raster import load_gpu_raster
+    HAS_GPU_RASTER = True
+except ImportError:
+    HAS_GPU_RASTER = False
 
 
 class TestWfsUrlValidation(unittest.TestCase):
@@ -386,6 +390,7 @@ class TestUint16OverflowProtection(unittest.TestCase):
         self.assertTrue(np.all(result == 500))
 
 
+@unittest.skipUnless(HAS_GPU_RASTER, "gpu_raster not available")
 class TestGpuRasterSidecarValidation(unittest.TestCase):
     """P5.4: Validate GPU raster sidecar metadata against binary file."""
 
