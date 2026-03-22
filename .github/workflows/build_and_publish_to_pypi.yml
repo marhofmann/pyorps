@@ -317,14 +317,25 @@ jobs:
           print('SUCCESS: All modules imported correctly!')
           "@
 
-      - name: Run tests on macOS from a temp directory
+      - name: Smoke test on macOS (full tests run on Linux/Windows)
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          TMPDIR=$(mktemp -d)
-          cp -r tests "$TMPDIR"/tests_run
-          cd "$TMPDIR"/tests_run
-          python -m pytest . --tb=short --import-mode=importlib --ignore=test_graph/test_networkit_api.py
+          cd /tmp
+          python -c "
+          import pyorps
+          from pyorps import PathFinder, GeoRasterizer, CostAssumptions
+          from pyorps import Path, PathCollection
+          from pyorps.utils import CYTHON_AVAILABLE
+          assert CYTHON_AVAILABLE, 'Cython extensions not loaded'
+          import pyorps.utils._heap
+          import pyorps.utils._raster_context
+          import pyorps.utils._dijkstra
+          import pyorps.utils._delta_stepping
+          import pyorps.utils.path_algorithms
+          import pyorps.utils.path_core
+          print('SUCCESS: All macOS smoke tests passed')
+          "
 
   publish:
     name: Publish to PyPI
