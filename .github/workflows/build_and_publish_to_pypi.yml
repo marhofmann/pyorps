@@ -18,8 +18,6 @@ jobs:
             CIBW_ARCHS_LINUX: "x86_64"
           - os: windows-latest
             CIBW_ARCHS_WINDOWS: "AMD64"
-          - os: macos-14
-            CIBW_ARCHS_MACOS: "arm64"
 
     steps:
       - name: Checkout code
@@ -52,16 +50,6 @@ jobs:
           CIBW_SKIP: "*-win32"
           CIBW_ARCHS_WINDOWS: ${{ matrix.CIBW_ARCHS_WINDOWS }}
           CIBW_BEFORE_BUILD: "python -m pip install --upgrade pip setuptools>=77 wheel packaging>=24.2 numpy>=2.0.0 cython>=3.0.0"
-          CIBW_BUILD_VERBOSITY: 2
-        run: python -m cibuildwheel --output-dir wheelhouse
-
-      - name: Build wheels on macOS
-        if: runner.os == 'macOS'
-        env:
-          CIBW_BUILD: "cp311-* cp312-* cp313-*"
-          CIBW_ARCHS_MACOS: ${{ matrix.CIBW_ARCHS_MACOS }}
-          CIBW_BEFORE_BUILD: "brew install libomp && python -m pip install --upgrade pip setuptools>=77 wheel packaging>=24.2 numpy>=2.0.0 cython>=3.0.0"
-          CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=14.0"
           CIBW_BUILD_VERBOSITY: 2
         run: python -m cibuildwheel --output-dir wheelhouse
 
@@ -131,12 +119,6 @@ jobs:
           - os: windows-latest
             python: "3.12"
           - os: windows-latest
-            python: "3.13"
-          - os: macos-14
-            python: "3.11"
-          - os: macos-14
-            python: "3.12"
-          - os: macos-14
             python: "3.13"
 
     steps:
@@ -266,57 +248,6 @@ jobs:
           print('SUCCESS: All extensions loaded correctly!')
           "@
 
-      - name: Install wheel on macOS (with full extra)
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          PYTHON_VERSION: ${{ matrix.python }}
-        run: |
-          # Move to a temp directory to avoid importing from source
-          cd /tmp
-
-          # Find the appropriate wheel for this Python version
-          PYVER=$(echo $PYTHON_VERSION | tr -d '.')
-          WHEEL=$(ls $GITHUB_WORKSPACE/wheelhouse/pyorps*cp${PYVER}*macos*.whl 2>/dev/null | head -n1)
-          if [ -z "$WHEEL" ]; then
-            WHEEL=$(ls $GITHUB_WORKSPACE/wheelhouse/pyorps*.whl | head -n1)
-          fi
-          echo "Installing wheel: $WHEEL"
-
-          # Install the wheel with full extras
-          python -m pip install "${WHEEL}[full]" --force-reinstall
-
-          # Verify the installation FROM A DIFFERENT DIRECTORY
-          python <<'EOF'
-          import sys
-          import os
-
-          # Ensure we're not in the source directory
-          assert 'pyorps' not in os.listdir('.'), "Still in source directory!"
-
-          import pyorps
-
-          print("Python version:", sys.version)
-          print("pyorps imported from:", pyorps.__file__)
-
-          # Check for Cython extensions (new modular structure)
-          for mod_name in ['_heap', '_raster_context', '_dijkstra', '_delta_stepping']:
-              try:
-                  mod = __import__(f'pyorps.utils.{mod_name}', fromlist=[mod_name])
-                  print(f"{mod_name} extension imported from: {mod.__file__}")
-              except ImportError as e:
-                  print(f"ERROR: Could not import {mod_name}: {e}")
-                  sys.exit(1)
-
-          # Check backward-compat shims
-          import pyorps.utils.path_algorithms as pa
-          import pyorps.utils.path_core as pc
-          print("path_algorithms shim imported from:", pa.__file__)
-          print("path_core shim imported from:", pc.__file__)
-
-          print("SUCCESS: All extensions loaded correctly!")
-          EOF
-
       - name: Install pytest
         run: python -m pip install pytest
 
@@ -387,15 +318,6 @@ jobs:
           print('Imported all Cython extensions and backward-compat shims')
           print('SUCCESS: All modules imported correctly!')
           "@
-
-      - name: Run full tests on macOS from a temp directory
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          TMPDIR=$(mktemp -d)
-          cp -r tests "$TMPDIR"/tests_run
-          cd "$TMPDIR"/tests_run
-          python -m pytest . --tb=short --import-mode=importlib
 
   publish:
     name: Publish to PyPI
