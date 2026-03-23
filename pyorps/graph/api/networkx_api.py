@@ -6,15 +6,15 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
-from typing import Optional
 
 # Third party
 import networkx as nx
 from numpy import ndarray
 
+from pyorps.core.exceptions import AlgorithmNotImplementedError, NoPathFoundError
+
 # Project files
 from pyorps.core.types import Node, NodeList, NodePathList
-from pyorps.core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
 from pyorps.graph.api.graph_library_api import GraphLibraryAPI
 
 
@@ -24,8 +24,8 @@ class NetworkxAPI(GraphLibraryAPI):
             self,
             from_nodes: NodeList,
             to_nodes: NodeList,
-            cost: Optional[ndarray[int]] = None,
-            dem_data: Optional[ndarray] = None,
+            cost: ndarray[int] | None = None,
+            dem_data: ndarray | None = None,
             **kwargs
     ) -> nx.Graph:
         """
@@ -120,7 +120,7 @@ class NetworkxAPI(GraphLibraryAPI):
                                                     weight='weight')
 
             elif algorithm == "astar":
-                heuristic_function = kwargs.get('heuristic', kwargs.get('heu', None))
+                heuristic_function = kwargs.get('heuristic', kwargs.get('heu'))
 
                 if heuristic_function is None:
                     nodes, heuristic = self.get_a_star_heuristic(target, **kwargs)
@@ -136,7 +136,7 @@ class NetworkxAPI(GraphLibraryAPI):
                 raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
 
         except nx.NetworkXNoPath:
-            raise NoPathFoundError(source=source, target=target)
+            raise NoPathFoundError(source=source, target=target) from None
 
         path = self._ensure_path_endpoints(path, source, target)
         return path
@@ -177,7 +177,7 @@ class NetworkxAPI(GraphLibraryAPI):
 
             return paths
 
-        elif algorithm in ["bidirectional_dijkstra", "astar"]:
+        if algorithm in ["bidirectional_dijkstra", "astar"]:
             # Run individual algorithm for each target
             for target in targets:
                 try:
@@ -188,8 +188,7 @@ class NetworkxAPI(GraphLibraryAPI):
                     paths.append([])
             return paths
 
-        else:
-            raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
+        raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
 
     def _all_pairs_shortest_path(
             self,
@@ -226,7 +225,6 @@ class NetworkxAPI(GraphLibraryAPI):
 
             return paths
 
-        else:
-            # For other algorithms, compute each path individually
-            return self._compute_all_pairs_shortest_paths(sources, targets, algorithm,
-                                                          **kwargs)
+        # For other algorithms, compute each path individually
+        return self._compute_all_pairs_shortest_paths(sources, targets, algorithm,
+                                                      **kwargs)

@@ -7,12 +7,13 @@ Reference:
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
 # Third party
+
 import rustworkx as rx
-from numpy import ndarray, max as np_max
-from typing import Optional
+from numpy import max as np_max
+from numpy import ndarray
 
 # Project files
-from pyorps.core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
+from pyorps.core.exceptions import AlgorithmNotImplementedError, NoPathFoundError
 from pyorps.core.types import Node, NodeList, NodePathList
 from pyorps.graph.api.graph_library_api import GraphLibraryAPI
 
@@ -23,7 +24,7 @@ class RustworkxAPI(GraphLibraryAPI):
             self,
             from_nodes: NodeList,
             to_nodes: NodeList,
-            cost: Optional[ndarray[int]] = None,
+            cost: ndarray[int] | None = None,
             **kwargs
     ) -> rx.PyGraph:
         """
@@ -39,7 +40,7 @@ class RustworkxAPI(GraphLibraryAPI):
             The graph object
         """
         # Get total number of nodes needed for the graph
-        if n := kwargs.get('n', None):
+        if n := kwargs.get('n'):
             max_node = n - 1
         else:
             max_node = np_max([np_max(from_nodes), np_max(to_nodes)])
@@ -134,7 +135,7 @@ class RustworkxAPI(GraphLibraryAPI):
                 path = list(path[target])
             elif algorithm == "astar":
                 # Get heuristic function or use default as heuristic
-                heuristic_function = kwargs.get('heuristic', kwargs.get('heu', None))
+                heuristic_function = kwargs.get('heuristic', kwargs.get('heu'))
 
                 if heuristic_function is None:
                     nodes, heuristic = self.get_a_star_heuristic(target,
@@ -162,7 +163,7 @@ class RustworkxAPI(GraphLibraryAPI):
 
             return self._ensure_path_endpoints(path, source, target)
         except rx.NoPathFound:
-            raise NoPathFoundError(source=source, target=target)
+            raise NoPathFoundError(source=source, target=target) from None
 
     def _compute_single_source_multiple_targets(
             self,

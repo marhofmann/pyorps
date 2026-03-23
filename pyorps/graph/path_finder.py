@@ -6,32 +6,55 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
-from time import time
-from typing import Optional, Union, Any, Generator
+from collections.abc import Generator
 from contextlib import contextmanager
+from time import time
+from typing import Any
 from warnings import warn
 
-from numpy import (array, ndarray, ravel_multi_index, unravel_index, sqrt, uint32,
-                   int32, asarray, iinfo, uint16)
 from geopandas import GeoDataFrame, GeoSeries
-from shapely.geometry import LineString, Point, MultiPoint
+from numpy import (
+    array,
+    asarray,
+    iinfo,
+    int32,
+    ndarray,
+    ravel_multi_index,
+    sqrt,
+    uint16,
+    uint32,
+    unravel_index,
+)
 from rasterio.transform import Affine
+from shapely.geometry import LineString, MultiPoint, Point
+
+from pyorps.core.exceptions import NoPathFoundError, RasterShapeError
 
 # Project imports
 from pyorps.core.path import Path, PathCollection
-from pyorps.core.types import (BboxType, GeometryMaskType, InputDataType,
-                               CostAssumptionsType, CoordinateInput, Node, NodeList,
-                               NodePathList, NormalizedCoordinate, CoordinateTuple,
-                               CoordinateList)
-from pyorps.core.exceptions import NoPathFoundError, RasterShapeError
+from pyorps.core.types import (
+    BboxType,
+    CoordinateInput,
+    CoordinateList,
+    CoordinateTuple,
+    CostAssumptionsType,
+    GeometryMaskType,
+    InputDataType,
+    Node,
+    NodeList,
+    NodePathList,
+    NormalizedCoordinate,
+)
 from pyorps.graph.api.graph_api import GraphAPI
-from pyorps.raster.rasterizer import GeoRasterizer
+from pyorps.io.geo_dataset import RasterDataset, VectorDataset, initialize_geo_dataset
 from pyorps.raster.handler import RasterHandler
+from pyorps.raster.rasterizer import GeoRasterizer
 from pyorps.utils.neighborhood import get_neighborhood_steps
-from pyorps.io.geo_dataset import initialize_geo_dataset, VectorDataset, RasterDataset
-from pyorps.utils.traversal import (calculate_path_metrics_numba,
-                                    find_nearest_valid_positions_numba,
-                                    check_max_values)
+from pyorps.utils.traversal import (
+    calculate_path_metrics_numba,
+    check_max_values,
+    find_nearest_valid_positions_numba,
+)
 
 # Maximum number of cells that can be safely indexed with uint32.
 # Rasters exceeding this limit would cause silent index overflow in the
@@ -40,7 +63,7 @@ MAX_SAFE_CELLS = iinfo(uint32).max  # 2**32 - 1 = 4_294_967_295
 
 
 @contextmanager
-def timed(name: str, timings_dict: Optional[dict[str, float]]) -> Generator:
+def timed(name: str, timings_dict: dict[str, float] | None) -> Generator:
     """
     Simple context manager for timing code blocks.
 
@@ -120,22 +143,22 @@ class PathFinder:
     def __init__(
             self,
             dataset_source: InputDataType,
-            source_coords: Optional[CoordinateInput],
-            target_coords: Optional[CoordinateInput],
-            search_space_buffer_m: Optional[float] = None,
-            neighborhood_str: Optional[Union[str, int]] = "r2",
-            steps: Optional[ndarray[int]] = None,
+            source_coords: CoordinateInput | None,
+            target_coords: CoordinateInput | None,
+            search_space_buffer_m: float | None = None,
+            neighborhood_str: str | int | None = "r2",
+            steps: ndarray[int] | None = None,
             ignore_max_cost: bool = True,
             graph_api: str = "cython",
-            cost_assumptions: Optional[CostAssumptionsType] = None,
-            datasets_to_modify: Optional[list[dict[str, Any]]] = None,
-            crs: Optional[str] = None,
-            bbox: Optional[BboxType] = None,
-            mask: Optional[GeometryMaskType] = None,
-            transform: Optional[Affine] = None,
-            raster_save_path: Optional[str] = None,
-            dem: Optional[InputDataType] = None,
-            dem_kwargs: Optional[dict[str, Any]] = None,
+            cost_assumptions: CostAssumptionsType | None = None,
+            datasets_to_modify: list[dict[str, Any]] | None = None,
+            crs: str | None = None,
+            bbox: BboxType | None = None,
+            mask: GeometryMaskType | None = None,
+            transform: Affine | None = None,
+            raster_save_path: str | None = None,
+            dem: InputDataType | None = None,
+            dem_kwargs: dict[str, Any] | None = None,
             use_gpu: bool = False,
             **kwargs
     ):
@@ -253,8 +276,8 @@ class PathFinder:
 
     @staticmethod
     def normalize_coordinates(
-            input_data: Optional[CoordinateInput]
-    ) -> Optional[NormalizedCoordinate]:
+            input_data: CoordinateInput | None
+    ) -> NormalizedCoordinate | None:
         """
         Normalize different coordinate formats into tuples or lists of tuples.
 
@@ -303,8 +326,7 @@ class PathFinder:
             raise ValueError("Input data cannot be interpreted as coordinates")
         if isinstance(coordinate_output, list) and len(coordinate_output) == 1:
             return coordinate_output[0]
-        else:
-            return coordinate_output
+        return coordinate_output
 
     @staticmethod
     def _point_or_multipoints(input_data: CoordinateInput) -> NormalizedCoordinate:
@@ -319,12 +341,11 @@ class PathFinder:
         """
         if len(input_data) == 0:
             return []
-        elif all(isinstance(item, Point) for item in input_data):
+        if all(isinstance(item, Point) for item in input_data):
             return PathFinder._get_point_coordinates(input_data)
-        elif all(isinstance(item, MultiPoint) for item in input_data):
+        if all(isinstance(item, MultiPoint) for item in input_data):
             return PathFinder._get_multipoint_coordinates(input_data)
-        else:
-            raise ValueError("Input data cannot be interpreted as coordinates")
+        raise ValueError("Input data cannot be interpreted as coordinates")
 
     @staticmethod
     def _get_multipoint_coordinates(input_data):
@@ -358,10 +379,10 @@ class PathFinder:
 
     def create_raster_handler(
             self,
-            cost_assumptions: Optional[CostAssumptionsType] = None,
-            datasets_to_modify: Optional[list[dict[str, Any]]] = None,
-            raster_save_path: Optional[str] = None,
-            dem_kwargs: Optional[dict[str, Any]] = None,
+            cost_assumptions: CostAssumptionsType | None = None,
+            datasets_to_modify: list[dict[str, Any]] | None = None,
+            raster_save_path: str | None = None,
+            dem_kwargs: dict[str, Any] | None = None,
             **kwargs
     ) -> RasterHandler:
         """
@@ -533,10 +554,9 @@ class PathFinder:
             self.runtimes["edge_construction"] = self._graph_api.edge_construction_time
             self.runtimes["graph_creation"] = self._graph_api.graph_creation_time
             return self._graph_api.graph
-        else:
-            self.runtimes["edge_construction"] = 0.0
-            self.runtimes["graph_creation"] = 0.0
-            return None
+        self.runtimes["edge_construction"] = 0.0
+        self.runtimes["graph_creation"] = 0.0
+        return None
 
     @property
     def graph_api(self) -> GraphAPI:
@@ -549,8 +569,8 @@ class PathFinder:
 
     def get_node_indices_from_coords(
             self,
-            coords: Union[CoordinateTuple, CoordinateList]
-    ) -> Union[Node, NodeList, NodePathList]:
+            coords: CoordinateTuple | CoordinateList
+    ) -> Node | NodeList | NodePathList:
         """
         Convert coordinates to node indices.
 
@@ -688,7 +708,7 @@ class PathFinder:
 
     def get_coords_from_node_indices(
             self,
-            node_indices: Union[Node, NodeList],
+            node_indices: Node | NodeList,
     ) -> CoordinateList:
         """
         Convert node indices to coordinates.
@@ -716,14 +736,14 @@ class PathFinder:
 
     def find_route(
             self,
-            source: Optional[CoordinateInput] = None,
-            target: Optional[CoordinateInput] = None,
+            source: CoordinateInput | None = None,
+            target: CoordinateInput | None = None,
             algorithm: str = "dijkstra",
             calculate_metrics: bool = True,
             pairwise: bool = False,
-            raster_parameters: Optional[dict[str, Any]] = None,
+            raster_parameters: dict[str, Any] | None = None,
             **kwargs
-    ) -> Union[Path, PathCollection]:
+    ) -> Path | PathCollection:
         """
         Find the shortest path between source and target coordinates.
 
@@ -791,12 +811,11 @@ class PathFinder:
                 not isinstance(path_indices[0], ndarray)):
             return self._create_path_result(path_indices, source, target, algorithm,
                                             calculate_metrics)
-        else:
-            # Case 2 & 3: Multiple paths
-            # For single source + multiple targets OR multiple sources +
-            # multiple targets
-            results = self._extract_path_results(path_indices, algorithm,
-                                                 calculate_metrics)
+        # Case 2 & 3: Multiple paths
+        # For single source + multiple targets OR multiple sources +
+        # multiple targets
+        results = self._extract_path_results(path_indices, algorithm,
+                                             calculate_metrics)
         return results
 
     def _extract_path_results(self, path_indices, algorithm, calculate_metrics):
@@ -947,7 +966,7 @@ class PathFinder:
         self.path_gdf = GeoDataFrame(records, geometry="geometry", crs=self.dataset.crs)
         return self.path_gdf
 
-    def save_paths(self, save_file_path: Optional[str] = None) -> None:
+    def save_paths(self, save_file_path: str | None = None) -> None:
         """
         Save all calculated paths to a file in a GIS-compatible format.
 
@@ -979,7 +998,7 @@ class PathFinder:
         if save_file_path is not None and save_file_path != '':
             self.path_gdf.to_file(save_file_path)
 
-    def save_raster(self, save_path: Optional[str] = None) -> None:
+    def save_raster(self, save_path: str | None = None) -> None:
         """
         Save the raster data used for path calculations to a GeoTIFF file.
 
@@ -1011,21 +1030,21 @@ class PathFinder:
             self.raster_handler.save_section_as_raster(save_path)
 
     def plot_paths(self,
-                   paths: Optional[Union[Path, PathCollection, list[Path]]] = None,
+                   paths: Path | PathCollection | list[Path] | None = None,
                    plot_all: bool = True,
                    subplots: bool = True,
                    subplot_size: tuple[int, int] = (10, 8),
                    source_color: str = 'green',
                    target_color: str = 'red',
-                   path_colors: Optional[Union[str, list[str]]] = None,
+                   path_colors: str | list[str] | None = None,
                    source_marker: str = 'o',
                    target_marker: str = 'x',
                    path_line_width: int = 2,
                    show_raster: bool = True,
-                   title: Optional[Union[str, list[str]]] = None,
-                   sup_title: Optional[str] = None,
-                   path_id: Optional[Union[int, list[int]]] = None,
-                   reverse_colors: bool = False) -> Union[Any, list[Any]]:
+                   title: str | list[str] | None = None,
+                   sup_title: str | None = None,
+                   path_id: int | list[int] | None = None,
+                   reverse_colors: bool = False) -> Any | list[Any]:
         """
         Plot paths with customizable styling and layout options.
 

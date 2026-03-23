@@ -6,16 +6,15 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
-from typing import Optional
 
 # Third party
 import numpy as np
-from numpy import ndarray
 from networkit import Graph
-from networkit.distance import Dijkstra, BidirectionalDijkstra, AStar
+from networkit.distance import AStar, BidirectionalDijkstra, Dijkstra
+from numpy import ndarray
 
 # Project files
-from pyorps.core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
+from pyorps.core.exceptions import AlgorithmNotImplementedError, NoPathFoundError
 from pyorps.core.types import Node, NodeList, NodePathList
 from pyorps.graph.api.graph_library_api import GraphLibraryAPI
 
@@ -26,7 +25,7 @@ class NetworkitAPI(GraphLibraryAPI):
             self,
             from_nodes: NodeList,
             to_nodes: NodeList,
-            cost: Optional[ndarray[int]] = None,
+            cost: ndarray[int] | None = None,
             **kwargs
     ) -> Graph:
         """
@@ -41,7 +40,7 @@ class NetworkitAPI(GraphLibraryAPI):
         Returns:
             The graph object
         """
-        if (n := kwargs.get('n', None)) is not None:
+        if (n := kwargs.get('n')) is not None:
             self.graph = Graph(n, weighted=True, directed=False)
         else:
             n = max([max(from_nodes), max(to_nodes)]) + 1
@@ -130,7 +129,7 @@ class NetworkitAPI(GraphLibraryAPI):
 
         elif algorithm == "astar":
             # Use provided heuristic function or default to zero heuristic
-            heuristic_function = kwargs.get('heuristic', kwargs.get('heu', None))
+            heuristic_function = kwargs.get('heuristic', kwargs.get('heu'))
             if heuristic_function is None:
                 _, heuristic = self.get_a_star_heuristic(target, source, **kwargs)
                 heuristic_function = list(heuristic)
@@ -170,7 +169,7 @@ class NetworkitAPI(GraphLibraryAPI):
         if algorithm == "dijkstra" or algorithm == "bidirectional_dijkstra":
             return self._compute_multi_target_dijkstra(source, targets)
 
-        elif algorithm == "astar":
+        if algorithm == "astar":
             # If using A* with multiple targets, run individual A* or fall back to
             # Dijkstra depending on whether a heuristic is provided
             if 'heuristic' in kwargs:
@@ -183,10 +182,8 @@ class NetworkitAPI(GraphLibraryAPI):
                     except NoPathFoundError:
                         paths.append([])
                 return paths
-            else:
-                return self._compute_multi_target_dijkstra(source, targets)
-        else:
-            raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
+            return self._compute_multi_target_dijkstra(source, targets)
+        raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
 
     def _compute_multi_target_dijkstra(self, source, targets):
         # Use MultiTargetDijkstra for efficient computation
@@ -245,7 +242,6 @@ class NetworkitAPI(GraphLibraryAPI):
                     paths.append(path)
 
             return paths
-        else:
-            # For other algorithms, use helper function to compute paths individually
-            return self._compute_all_pairs_shortest_paths(sources, targets, algorithm,
-                                                          **kwargs)
+        # For other algorithms, use helper function to compute paths individually
+        return self._compute_all_pairs_shortest_paths(sources, targets, algorithm,
+                                                      **kwargs)

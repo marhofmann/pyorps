@@ -6,14 +6,14 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
-from typing import Optional
 
 # Third party
 import igraph as ig
-from numpy import float64, ndarray, max as np_max
+from numpy import float64, ndarray
+from numpy import max as np_max
 
 # Project files
-from pyorps.core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
+from pyorps.core.exceptions import AlgorithmNotImplementedError, NoPathFoundError
 from pyorps.core.types import Node, NodeList, NodePathList
 from pyorps.graph.api.graph_library_api import GraphLibraryAPI
 
@@ -24,7 +24,7 @@ class IGraphAPI(GraphLibraryAPI):
             self,
             from_nodes: NodeList,
             to_nodes: NodeList,
-            cost: Optional[ndarray[int]] = None,
+            cost: ndarray[int] | None = None,
             **kwargs
     ) -> ig.Graph:
         """
@@ -40,7 +40,7 @@ class IGraphAPI(GraphLibraryAPI):
             The graph object
         """
         # Determine number of nodes
-        if (n := kwargs.get('n', None)) is not None:
+        if (n := kwargs.get('n')) is not None:
             n_vertices = n
         else:
             n_vertices = np_max([np_max(from_nodes), np_max(to_nodes)]) + 1
@@ -143,7 +143,7 @@ class IGraphAPI(GraphLibraryAPI):
                                                  algorithm="bellman_ford")[0]
 
         elif algorithm == "astar":
-            heuristic_function = kwargs.get('heuristic', kwargs.get('heu', None))
+            heuristic_function = kwargs.get('heuristic', kwargs.get('heu'))
 
             if heuristic_function is None:
                 _, heuristic = self.get_a_star_heuristic(target, **kwargs)
@@ -205,7 +205,7 @@ class IGraphAPI(GraphLibraryAPI):
                     paths.append(self._ensure_path_endpoints(path, source, targets[i]))
             return paths
 
-        elif algorithm == "astar":
+        if algorithm == "astar":
             # For A*, handle each target separately
             paths = []
             for target in targets:
@@ -217,8 +217,7 @@ class IGraphAPI(GraphLibraryAPI):
                     paths.append([])
             return paths
 
-        else:
-            raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
+        raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
 
     def _all_pairs_shortest_path(
             self,
@@ -264,7 +263,6 @@ class IGraphAPI(GraphLibraryAPI):
 
             return paths
 
-        else:
-            # For other algorithms, compute each path individually
-            return self._compute_all_pairs_shortest_paths(sources, targets, algorithm,
-                                                          **kwargs)
+        # For other algorithms, compute each path individually
+        return self._compute_all_pairs_shortest_paths(sources, targets, algorithm,
+                                                      **kwargs)
