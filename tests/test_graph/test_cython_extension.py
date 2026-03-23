@@ -1077,9 +1077,9 @@ class TestDeltaSteppingVsNetworkitDijkstra(unittest.TestCase):
 
         targets = np.array(targets_list, dtype=np.uint64)
 
-        # Delta-stepping multi-target
+        # Delta-stepping multi-target (delta=40 keeps ratio within default buffer)
         delta_paths = delta_stepping_single_source_multiple_targets(
-            raster, self.steps_4, source, targets, delta=20.0
+            raster, self.steps_4, source, targets, delta=40.0
         )
 
         # Build NetworkKit graph
