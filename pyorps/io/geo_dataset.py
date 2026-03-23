@@ -261,14 +261,17 @@ def initialize_geo_dataset(file_source: InputDataType,
     return geodataset
 
 
+_VECTOR_EXTENSIONS = {".shp", ".geojson", ".json", ".gpkg", ".gml", ".kml"}
+_RASTER_EXTENSIONS = {".tif", ".tiff", ".jp2", ".img", ".bil", ".dem"}
+
+
 def _determine_data_type(file_source: Any) -> str:
     """Determine whether the input is for a vector or raster dataset."""
     # Check if it's already a GeoDataset subclass
-    if isinstance(file_source, GeoDataset):
-        if isinstance(file_source, VectorDataset):
-            return "vector"
-        if isinstance(file_source, RasterDataset):
-            return "raster"
+    if isinstance(file_source, VectorDataset):
+        return "vector"
+    if isinstance(file_source, RasterDataset):
+        return "raster"
 
     # Check for in-memory vector data
     if isinstance(file_source, (gpd.GeoDataFrame, gpd.GeoSeries)):
@@ -285,16 +288,13 @@ def _determine_data_type(file_source: Any) -> str:
 
     # Check file extension for local files
     if isinstance(file_source, str):
-        if isfile(file_source):
-            ext = splitext(file_source)[1].lower()
-            # Vector file extensions
-            if ext in [".shp", ".geojson", ".json", ".gpkg", ".gml", ".kml"]:
-                return "vector"
-            # Raster file extensions
-            if ext in [".tif", ".tiff", ".jp2", ".img", ".bil", ".dem"]:
-                return "raster"
-        else:
+        if not isfile(file_source):
             raise FileNotFoundError(f"File {file_source} not found.")
+        ext = splitext(file_source)[1].lower()
+        if ext in _VECTOR_EXTENSIONS:
+            return "vector"
+        if ext in _RASTER_EXTENSIONS:
+            return "raster"
 
     return "unknown"
 

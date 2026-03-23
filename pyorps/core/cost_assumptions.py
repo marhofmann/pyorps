@@ -488,6 +488,27 @@ class CostAssumptions:
                 combined_mask = main_mask & side_mask
                 gdf.loc[combined_mask, 'cost'] = cost
 
+    @staticmethod
+    def _add_label(value_to_names: dict[int, list[str]],
+                   cost_int: int, label: str) -> None:
+        names = value_to_names.setdefault(cost_int, [])
+        if label and label not in names:
+            names.append(label)
+
+    def _labels_from_nested(self, value_to_names: dict[int, list[str]]) -> None:
+        for main_val, inner in self.cost_assumptions.items():
+            wildcard_cost = inner.get("", None)
+            for sub_val, cost in inner.items():
+                cost_int = int(cost)
+                if sub_val and wildcard_cost is not None \
+                        and int(wildcard_cost) == cost_int:
+                    label = str(main_val)
+                elif sub_val:
+                    label = f"{main_val} > {sub_val}"
+                else:
+                    label = str(main_val)
+                self._add_label(value_to_names, cost_int, label)
+
     def build_cost_labels(self) -> dict[int, str]:
         """
         Build a reverse mapping from cost values to terrain type names.
@@ -503,39 +524,14 @@ class CostAssumptions:
         first_key = next(iter(self.cost_assumptions), None)
 
         if isinstance(first_key, tuple):
-            # Tuple-keyed structure: {('Wald', 'Nadelholz'): 405, ...}
             for keys, cost in self.cost_assumptions.items():
-                cost_int = int(cost)
                 label = " > ".join(str(k) for k in keys if k != "")
-                value_to_names.setdefault(cost_int, [])
-                if label and label not in value_to_names[cost_int]:
-                    value_to_names[cost_int].append(label)
+                self._add_label(value_to_names, int(cost), label)
         elif isinstance(next(iter(self.cost_assumptions.values()), None), dict):
-            # Nested dict: {'Wald': {'Nadelholz': 405, ...}, ...}
-            for main_val, inner in self.cost_assumptions.items():
-                wildcard_cost = inner.get("", None)
-                for sub_val, cost in inner.items():
-                    cost_int = int(cost)
-                    # If a wildcard ("") exists at the same cost, use just
-                    # the main category name instead of "Main > Sub"
-                    if sub_val and wildcard_cost is not None \
-                            and int(wildcard_cost) == cost_int:
-                        label = str(main_val)
-                    elif sub_val:
-                        label = f"{main_val} > {sub_val}"
-                    else:
-                        label = str(main_val)
-                    value_to_names.setdefault(cost_int, [])
-                    if label not in value_to_names[cost_int]:
-                        value_to_names[cost_int].append(label)
+            self._labels_from_nested(value_to_names)
         else:
-            # Simple dict: {'Wald': 365, ...}
             for name, cost in self.cost_assumptions.items():
-                cost_int = int(cost)
-                value_to_names.setdefault(cost_int, [])
-                label = str(name)
-                if label not in value_to_names[cost_int]:
-                    value_to_names[cost_int].append(label)
+                self._add_label(value_to_names, int(cost), str(name))
 
         return {v: " / ".join(names) for v, names in value_to_names.items()}
 
@@ -815,6 +811,18 @@ def find_side_features(
     return side_features if side_features else None
 
 
+def _has_partial_null_pattern(crosstab: pd.DataFrame) -> bool:
+    """Check if some main values have side values while others don't."""
+    null_cols = [col for col in crosstab.columns if pd.isna(col) or col == '']
+    if not null_cols:
+        return False
+    non_null_main_values = sum(
+        1 for _, row in crosstab.iterrows()
+        if row.drop(null_cols, errors='ignore').sum() > 0
+    )
+    return 0 < non_null_main_values < len(crosstab.index)
+
+
 def column_shows_relationship_to_main_feature(
         gdf: GeoDataFrame, main_feature: str,
         side_feature: str
@@ -831,50 +839,27 @@ def column_shows_relationship_to_main_feature(
         True if the column shows a meaningful relationship, False otherwise
     """
     try:
-        # Create a cross-tabulation of the two columns
         crosstab = pd.crosstab(gdf[main_feature], gdf[side_feature])
 
-        # Skip columns with too many unique values
         if len(crosstab.columns) > 100:
             return False
 
-        # Check for non-empty cells density
         non_empty_cells = pd.DataFrame(crosstab > 0).sum().sum()
         total_cells = crosstab.size
 
-        # If there's a good density of non-empty combinations, that's a good sign
         if non_empty_cells / total_cells > 0.05:
             return True
 
-        # Even with many nulls, check if there's a pattern to the non-nulls
-        for _, row in crosstab.iterrows():
-            non_zero_vals = row[row > 0]
+        # Check if any row has diversity (2+ non-zero values)
+        has_diversity = any(
+            (row > 0).sum() >= 2 for _, row in crosstab.iterrows()
+        )
+        if has_diversity:
+            return True
 
-            # Skip rows with only one value
-            if len(non_zero_vals) <= 1:
-                continue
-
-            # Check if there's diversity in the values
-            if len(non_zero_vals) >= 2:
-                return True
-
-        # Special check for columns with many nulls:
-        # If certain main values have side values while others don't, that's meaningful
-        null_cols = [col for col in crosstab.columns if pd.isna(col) or col == '']
-        if null_cols:
-            non_null_main_values = 0
-            for _, row in crosstab.iterrows():
-                if row.drop(null_cols, errors='ignore').sum() > 0:
-                    non_null_main_values += 1
-
-            # If some main values have side values and others don't, that's meaningful
-            if 0 < non_null_main_values < len(crosstab.index):
-                return True
-
-        return False
+        return _has_partial_null_pattern(crosstab)
 
     except (ValueError, TypeError):
-        # If analysis fails, be conservative and return False
         return False
 
 

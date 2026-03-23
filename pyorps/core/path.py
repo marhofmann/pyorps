@@ -49,6 +49,19 @@ class Path:
     # Optional mapping from cost values to terrain type names
     cost_labels: dict[int, str] | None = field(default=None, repr=False)
 
+    def _resolve_labels(
+            self,
+            cost_assumptions: CostAssumptions | None,
+            cost_labels: dict[int, str] | None,
+    ) -> dict[int, str]:
+        if cost_labels is not None:
+            return cost_labels
+        if cost_assumptions is not None:
+            return cost_assumptions.build_cost_labels()
+        if self.cost_labels is not None:
+            return self.cost_labels
+        return {}
+
     def analyze(
             self,
             cost_assumptions: CostAssumptions | None = None,
@@ -72,14 +85,7 @@ class Path:
         Returns:
             Formatted string with path analysis.
         """
-        # Resolve labels
-        labels = cost_labels
-        if labels is None and cost_assumptions is not None:
-            labels = cost_assumptions.build_cost_labels()
-        if labels is None:
-            labels = self.cost_labels
-        if labels is None:
-            labels = {}
+        labels = self._resolve_labels(cost_assumptions, cost_labels)
 
         lines = []
         lines.append(f"Path Analysis (ID={self.path_id})")
@@ -111,7 +117,6 @@ class Path:
                 length_m = self.length_by_category[cost_val]
                 pct = self.length_by_category_percent.get(cost_val, 0)
                 label = labels.get(int(cost_val), f"Cost {int(cost_val)}")
-                # Truncate long labels
                 if len(label) > 35:
                     label = label[:32] + "..."
                 lines.append(
