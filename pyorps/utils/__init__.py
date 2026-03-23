@@ -13,47 +13,45 @@ import warnings
 from .traversal import (
     # Core path functions
     calculate_path_metrics_numba,
-    intermediate_steps_numba,
-
+    calculate_region_bounds,
+    calculate_segment_length,
     # Graph construction helpers
     construct_edges,
-    get_max_number_of_edges,
-
     # Distance calculations
     euclidean_distances_numba,
-    get_cost_factor_numba,
-
-    # Index manipulation
-    ravel_index,
-    calculate_region_bounds,
-
-    # Node validation
-    is_valid_node,
     find_valid_nodes,
-
+    get_cost_factor_numba,
+    get_max_number_of_edges,
     # Path analysis
     get_outgoing_edges,
-    calculate_segment_length
+    intermediate_steps_numba,
+    # Node validation
+    is_valid_node,
+    # Index manipulation
+    ravel_index,
 )
 
 # Try to import Cython extensions
 try:
     from .path_algorithms import (
-        # Dijkstra algorithms
-        dijkstra_2d_cython,
-        dijkstra_single_source_multiple_targets,
-        dijkstra_some_pairs_shortest_paths,
-        dijkstra_multiple_sources_multiple_targets,
-
         # Delta-stepping algorithms (persistent thread pool — fastest)
         delta_stepping_2d_persistent as delta_stepping_2d,
-        delta_stepping_single_source_multiple_targets_persistent
-            as delta_stepping_single_source_multiple_targets,
-        delta_stepping_some_pairs_shortest_paths_persistent
-            as delta_stepping_some_pairs_shortest_paths,
-        delta_stepping_multiple_sources_multiple_targets_persistent
-            as delta_stepping_multiple_sources_multiple_targets,
-
+    )
+    from .path_algorithms import (
+        delta_stepping_multiple_sources_multiple_targets_persistent as delta_stepping_multiple_sources_multiple_targets,
+    )
+    from .path_algorithms import (
+        delta_stepping_single_source_multiple_targets_persistent as delta_stepping_single_source_multiple_targets,
+    )
+    from .path_algorithms import (
+        delta_stepping_some_pairs_shortest_paths_persistent as delta_stepping_some_pairs_shortest_paths,
+    )
+    from .path_algorithms import (
+        # Dijkstra algorithms
+        dijkstra_2d_cython,
+        dijkstra_multiple_sources_multiple_targets,
+        dijkstra_single_source_multiple_targets,
+        dijkstra_some_pairs_shortest_paths,
         # Utility functions
         group_by_proximity,
     )

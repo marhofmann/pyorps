@@ -8,13 +8,13 @@ Reference:
 """
 from __future__ import annotations
 
-from typing import Optional, Any, TYPE_CHECKING
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 from numpy import ndarray
 from shapely.geometry import LineString
 
-from pyorps.core.types import CoordinateTuple, NodeList, CoordinateList
+from pyorps.core.types import CoordinateList, CoordinateTuple, NodeList
 
 if TYPE_CHECKING:
     from pyorps.core.cost_assumptions import CostAssumptions
@@ -40,19 +40,19 @@ class Path:
     neighborhood: str
 
     # Optional metrics that may be calculated
-    total_length: Optional[float] = None
-    total_cost: Optional[float] = None
-    total_cell_cost: Optional[float] = None
-    length_by_category: Optional[dict[float, float]] = None
-    length_by_category_percent: Optional[dict[float, float]] = None
+    total_length: float | None = None
+    total_cost: float | None = None
+    total_cell_cost: float | None = None
+    length_by_category: dict[float, float] | None = None
+    length_by_category_percent: dict[float, float] | None = None
 
     # Optional mapping from cost values to terrain type names
-    cost_labels: Optional[dict[int, str]] = field(default=None, repr=False)
+    cost_labels: dict[int, str] | None = field(default=None, repr=False)
 
     def analyze(
             self,
-            cost_assumptions: Optional[CostAssumptions] = None,
-            cost_labels: Optional[dict[int, str]] = None,
+            cost_assumptions: CostAssumptions | None = None,
+            cost_labels: dict[int, str] | None = None,
     ) -> str:
         """
         Return a human-readable breakdown of the path by terrain category.
@@ -254,7 +254,7 @@ class PathCollection:
             path_id: int = None,
             source: Any = None,
             target: Any = None
-    ) -> Optional[Path]:
+    ) -> Path | None:
         """
         Retrieve a stored path by ID, or by source AND target.
 

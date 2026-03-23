@@ -6,19 +6,22 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
-from typing import Tuple, List, Union, Optional, Any
+from typing import Any
 
 import numpy as np
-from shapely.geometry import LineString, MultiPoint, Polygon
+from pyproj import Transformer
 from rasterio import open as rio_open
 from rasterio.features import rasterize
-from rasterio.windows import Window, transform as transform_window
-from rasterio.transform import from_origin, rowcol, Affine, xy as transform_xy
-from pyproj import Transformer
+from rasterio.transform import Affine, from_origin, rowcol
+from rasterio.transform import xy as transform_xy
+from rasterio.windows import Window
+from rasterio.windows import transform as transform_window
+from shapely.geometry import LineString, MultiPoint, Polygon
 
-from pyorps.io.geo_dataset import RasterDataset
-from pyorps.core.types import CoordinateTuple, CoordinateList
 from pyorps.core.exceptions import RasterShapeError
+from pyorps.core.types import CoordinateList, CoordinateTuple
+from pyorps.io.geo_dataset import RasterDataset
+
 
 class RasterHandler:
     """
@@ -35,13 +38,13 @@ class RasterHandler:
 
     def __init__(self,
                  raster_source: RasterDataset,
-                 source_coords: Union[Tuple[float, float], List[Tuple[float, float]]],
-                 target_coords: Union[Tuple[float, float], List[Tuple[float, float]]],
-                 search_space_buffer_m: Optional[float] = None,
-                 input_crs: Optional[str] = None,
+                 source_coords: tuple[float, float] | list[tuple[float, float]],
+                 target_coords: tuple[float, float] | list[tuple[float, float]],
+                 search_space_buffer_m: float | None = None,
+                 input_crs: str | None = None,
                  apply_mask: bool = True,
-                 outside_value: Optional[Any] = None,
-                 bands: Optional[List[int]] = None):
+                 outside_value: Any | None = None,
+                 bands: list[int] | None = None):
         """
         Initialize a RasterHandler for working with raster data and coordinate
         transformations.
@@ -79,13 +82,13 @@ class RasterHandler:
 
     def _init_from_metadata(
             self,
-            source_coords: Union[CoordinateTuple, CoordinateList],
-            target_coords: Union[CoordinateTuple, CoordinateList],
-            search_space_buffer_m: Optional[float] = None,
-            input_crs: Optional[str] = None,
+            source_coords: CoordinateTuple | CoordinateList,
+            target_coords: CoordinateTuple | CoordinateList,
+            search_space_buffer_m: float | None = None,
+            input_crs: str | None = None,
             apply_mask: bool = True,
-            outside_value: Optional[Any] = None,
-            bands: Optional[List[int]] = None
+            outside_value: Any | None = None,
+            bands: list[int] | None = None
     ):
         """
         Initialize using metadata and raster data.
@@ -202,7 +205,7 @@ class RasterHandler:
 
     @staticmethod
     def _transform_coords(
-            coords: Union[CoordinateTuple, CoordinateList],
+            coords: CoordinateTuple | CoordinateList,
             input_crs: str,
             target_crs: str
     ):
@@ -229,18 +232,17 @@ class RasterHandler:
             # Single coordinate pair
             x, y = transformer.transform(coords[0], coords[1])
             return x, y
-        else:
-            # List of coordinates
-            result = []
-            for coord in coords:
-                x, y = transformer.transform(coord[0], coord[1])
-                result.append((x, y))
-            return result
+        # List of coordinates
+        result = []
+        for coord in coords:
+            x, y = transformer.transform(coord[0], coord[1])
+            result.append((x, y))
+        return result
 
     def estimate_buffer_width(
             self,
-            source_coords: Union[CoordinateTuple, CoordinateList],
-            target_coords: Union[CoordinateTuple, CoordinateList],
+            source_coords: CoordinateTuple | CoordinateList,
+            target_coords: CoordinateTuple | CoordinateList,
             min_buffer: float = 200,
             max_buffer: float = 4000,
             sample_radius: float = 50
@@ -336,8 +338,8 @@ class RasterHandler:
 
     @staticmethod
     def max_distance_pair(
-            coords1: Union[CoordinateTuple, CoordinateList],
-            coords2: Union[CoordinateTuple, CoordinateList]
+            coords1: CoordinateTuple | CoordinateList,
+            coords2: CoordinateTuple | CoordinateList
     ):
         """
         Find the pair of coordinates (one from coords1, one from coords2) with the
@@ -383,8 +385,8 @@ class RasterHandler:
     def apply_geometry_mask(
             self,
             geometry: Polygon,
-            outside_value: Optional[int] = None,
-            bands: Optional[Union[list[int], int]] = None
+            outside_value: int | None = None,
+            bands: list[int] | int | None = None
     ):
         """
         Set pixel values outside the given geometry to the specified value.
@@ -423,7 +425,7 @@ class RasterHandler:
 
     def coords_to_indices(
             self,
-            coords: Union[CoordinateTuple, CoordinateList]
+            coords: CoordinateTuple | CoordinateList
     ) -> np.ndarray:
         """
         Convert geographic coordinates to pixel row/column indices within this raster
@@ -450,7 +452,7 @@ class RasterHandler:
 
         return np.array(list(zip(rows, cols)))
 
-    def indices_to_coords(self, indices: List[Tuple[int, int]]) -> np.ndarray:
+    def indices_to_coords(self, indices: list[tuple[int, int]]) -> np.ndarray:
         """
         Convert pixel indices to geographic coordinates.
 
@@ -506,11 +508,11 @@ def create_test_tiff(
         output_path: str,
         width: int = 100,
         height: int = 100,
-        transform: Optional[Affine] = None,
+        transform: Affine | None = None,
         crs="EPSG:32632",
         pattern: str = "random",
         bands: int = 1,
-        nodata: Optional[int] = None
+        nodata: int | None = None
 ):
     """
     Creates a synthetic GeoTIFF file for testing with different patterns.

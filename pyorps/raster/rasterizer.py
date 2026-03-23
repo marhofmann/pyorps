@@ -6,23 +6,35 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
-from typing import Union, Optional, Callable, Any
-from copy import deepcopy
 import warnings
+from collections.abc import Callable
+from copy import deepcopy
+from typing import Any
 
 import numpy as np
 from geopandas import GeoDataFrame
 from rasterio import open as rio_open
-from rasterio.features import rasterize, geometry_mask
+from rasterio.features import geometry_mask, rasterize
 from rasterio.transform import Affine, from_bounds
 from shapely.geometry import Polygon, box
 
-# Changed to relative imports from other modules
-from pyorps.io.geo_dataset import (initialize_geo_dataset, VectorDataset, 
-                                   RasterDataset, InMemoryRasterDataset, GeoDataset)
-from pyorps.core.types import (InputDataType, CostAssumptionsType, BboxType,
-                               GeometryMaskType, IMPASSABLE_CELL_COST)
 from pyorps.core.cost_assumptions import CostAssumptions
+from pyorps.core.types import (
+    IMPASSABLE_CELL_COST,
+    BboxType,
+    CostAssumptionsType,
+    GeometryMaskType,
+    InputDataType,
+)
+
+# Changed to relative imports from other modules
+from pyorps.io.geo_dataset import (
+    GeoDataset,
+    InMemoryRasterDataset,
+    RasterDataset,
+    VectorDataset,
+    initialize_geo_dataset,
+)
 
 
 class GeoRasterizer:
@@ -39,9 +51,9 @@ class GeoRasterizer:
             self,
             input_data: GeoDataset,
             cost_assumptions: CostAssumptionsType,
-            bbox: Optional[BboxType] = None,
-            mask: Optional[GeometryMaskType] = None,
-            default_crs: Optional[str] = None,
+            bbox: BboxType | None = None,
+            mask: GeometryMaskType | None = None,
+            default_crs: str | None = None,
             **kwargs
     ):
         """
@@ -95,7 +107,7 @@ class GeoRasterizer:
 
     def clip_to_area(
             self,
-            clip_geometry: Union[GeoDataFrame, Polygon]
+            clip_geometry: GeoDataFrame | Polygon
     ) -> GeoDataset:
         """
         Clip the base dataset to a specific area.
@@ -114,10 +126,10 @@ class GeoRasterizer:
 
     @staticmethod
     def create_buffer(
-            dataset: Union[VectorDataset, GeoDataFrame],
+            dataset: VectorDataset | GeoDataFrame,
             geometry_buffer_m: float,
             inplace: bool = True
-    ) -> Union[VectorDataset, GeoDataFrame]:
+    ) -> VectorDataset | GeoDataFrame:
         """
         Add a buffer to geometries in a dataset.
 
@@ -143,21 +155,19 @@ class GeoRasterizer:
         if inplace:
             data['geometry'] = data.buffer(geometry_buffer_m)
             return dataset if isinstance(dataset, VectorDataset) else data
-        else:
-            buffered_data = data.copy()
-            buffered_data['geometry'] = buffered_data.buffer(geometry_buffer_m)
+        buffered_data = data.copy()
+        buffered_data['geometry'] = buffered_data.buffer(geometry_buffer_m)
 
-            if isinstance(dataset, VectorDataset):
-                # Create a new GeoDataset with the buffered data
-                buffered_dataset = deepcopy(dataset)
-                buffered_dataset.data = buffered_data
-                return buffered_dataset
-            else:
-                return buffered_data
+        if isinstance(dataset, VectorDataset):
+            # Create a new GeoDataset with the buffered data
+            buffered_dataset = deepcopy(dataset)
+            buffered_dataset.data = buffered_data
+            return buffered_dataset
+        return buffered_data
 
     def create_bounds_geodataframe(
             self,
-            target_crs: Optional[str] = None
+            target_crs: str | None = None
     ) -> GeoDataFrame:
         """
         Creates a GeoDataFrame from the bounds of the base data in a specified CRS.
@@ -201,12 +211,12 @@ class GeoRasterizer:
             field_name: str = 'cost',
             resolution_in_m: float = 1.0,
             fill_value: int = IMPASSABLE_CELL_COST,
-            save_path: Optional[str] = None,
+            save_path: str | None = None,
             dtype: str = "uint16",
             geometry_buffer_m: float = 0,
-            bounding_box: Optional[Polygon] = None,
-            preprocessing_function: Optional[Callable] = None,
-            preprocessing_kwargs: Optional[dict[str, Any]] = None,
+            bounding_box: Polygon | None = None,
+            preprocessing_function: Callable | None = None,
+            preprocessing_kwargs: dict[str, Any] | None = None,
     ) -> RasterDataset:
         """
         Rasterize the base dataset based on a specified field.
@@ -351,7 +361,7 @@ class GeoRasterizer:
             self,
             gdf: GeoDataFrame,
             resolution_in_m: float = 1.0,
-            bounding_box: Optional[Polygon] = None
+            bounding_box: Polygon | None = None
     ) -> tuple[int, int]:
         """
         Calculate the output shape (rows, columns) based on a GeoDataFrame and
@@ -431,7 +441,7 @@ class GeoRasterizer:
             self,
             gdf: GeoDataFrame,
             value: float,
-            ignore_value: Optional[float] = IMPASSABLE_CELL_COST,
+            ignore_value: float | None = IMPASSABLE_CELL_COST,
             multiply: bool = False) -> np.ndarray:
         """
         Modifies the raster cells inside the polygons of a GeoDataFrame.
@@ -481,15 +491,15 @@ class GeoRasterizer:
     def modify_raster_from_dataset(
             self,
             input_data: InputDataType,
-            cost_assumptions: Optional[Union[CostAssumptionsType, int, float]] = None,
-            bbox: Optional[BboxType] = None,
-            mask: Optional[GeometryMaskType] = None,
-            transform: Optional[Affine] = None,
+            cost_assumptions: CostAssumptionsType | int | float | None = None,
+            bbox: BboxType | None = None,
+            mask: GeometryMaskType | None = None,
+            transform: Affine | None = None,
             geometry_buffer_m: float = 0,
-            ignore_value: Optional[float] = IMPASSABLE_CELL_COST,
+            ignore_value: float | None = IMPASSABLE_CELL_COST,
             multiply: bool = False,
-            zone_field: Optional[str] = None,
-            forbidden_zone: Optional[str] = None,
+            zone_field: str | None = None,
+            forbidden_zone: str | None = None,
             forbidden_value: int = IMPASSABLE_CELL_COST,
             **kwargs
     ) -> np.ndarray:
@@ -585,11 +595,11 @@ class GeoRasterizer:
     def _modify_raster_from_dataset_simple_cost_assumptions(
             self,
             gdf: GeoDataFrame,
-            cost_assumptions: Optional[Union[CostAssumptionsType, int, float]] = None,
-            ignore_value: Optional[float] = IMPASSABLE_CELL_COST,
+            cost_assumptions: CostAssumptionsType | int | float | None = None,
+            ignore_value: float | None = IMPASSABLE_CELL_COST,
             multiply: bool = False,
-            zone_field: Optional[str] = None,
-            forbidden_zone: Optional[str] = None,
+            zone_field: str | None = None,
+            forbidden_zone: str | None = None,
             forbidden_value: int = IMPASSABLE_CELL_COST,
     ):
         """

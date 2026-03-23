@@ -9,28 +9,31 @@ This module provides:
 """
 
 # Core dataset classes
+# Exception classes
+from ..core.exceptions import (
+    WFSConnectionError,
+    WFSError,
+    WFSLayerNotFoundError,
+    WFSResponseParsingError,
+)
 from .geo_dataset import (
     # Base classes
-    GeoDataset, VectorDataset, RasterDataset,
-
+    GeoDataset,
+    InMemoryRasterDataset,
     # Vector dataset implementations
-    InMemoryVectorDataset, LocalVectorDataset, WFSVectorDataset,
-
+    InMemoryVectorDataset,
     # Raster dataset implementations
-    LocalRasterDataset, InMemoryRasterDataset,
-
+    LocalRasterDataset,
+    LocalVectorDataset,
+    RasterDataset,
+    VectorDataset,
+    WFSVectorDataset,
     # Factory function
-    initialize_geo_dataset
+    initialize_geo_dataset,
 )
 
 # Data loading functions
 from .vector_loader import load_from_wfs
-
-# Exception classes
-from ..core.exceptions import (
-    WFSError, WFSConnectionError,
-    WFSResponseParsingError, WFSLayerNotFoundError
-)
 
 __all__ = [
     # Core dataset classes

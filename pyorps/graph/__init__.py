@@ -8,16 +8,15 @@ This module provides:
 """
 
 # Import main graph class and key function
-from .path_finder import PathFinder, get_graph_api_class
+# Import exceptions
+from ..core.exceptions import AlgorithmNotImplementedError, NoPathFoundError
 
 # Import Path classes from core (do not re-export from graph.raster_graph)
 from ..core.path import Path, PathCollection
 
-# Import exceptions
-from ..core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
-
 # Import API base classes
 from .api import GraphAPI, GraphLibraryAPI
+from .path_finder import PathFinder, get_graph_api_class
 
 __all__ = [
     # Main graph class and factory function

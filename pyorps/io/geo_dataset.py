@@ -6,31 +6,32 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
-from abc import ABC, abstractmethod
-from os.path import splitext, isfile
-from typing import Union, Optional, Any
 import warnings
+from abc import ABC, abstractmethod
+from os.path import isfile, splitext
+from typing import Any
 
 import geopandas as gpd
-from numpy import ndarray, dtype
-from rasterio.transform import Affine
+from numpy import dtype, ndarray
 from rasterio import open as rio_open
+from rasterio.transform import Affine
+
+# Changed to relative import from the core module
+from ..core.types import BboxType, GeometryMaskType, InputDataType
 
 # Changed from flat import to relative import from the same io module
 from .vector_loader import load_from_wfs
-# Changed to relative import from the core module
-from ..core.types import BboxType, InputDataType, GeometryMaskType
 
 
 class GeoDataset(ABC):
     file_source: Any
-    crs: Optional[str] = None
+    crs: str | None = None
 
-    data: Optional[Union[gpd.GeoDataFrame, ndarray]] = None
+    data: gpd.GeoDataFrame | ndarray | None = None
 
     def __init__(self,
                  file_source: Any,
-                 crs: Optional[str] = None):
+                 crs: str | None = None):
         self.file_source = file_source
         self.crs = crs
 
@@ -40,14 +41,14 @@ class GeoDataset(ABC):
 
 
 class VectorDataset(GeoDataset, ABC):
-    bbox: Optional[BboxType] = None
-    mask: Optional[GeometryMaskType] = None
+    bbox: BboxType | None = None
+    mask: GeometryMaskType | None = None
 
     def __init__(self,
                  file_source: Any,
-                 crs: Optional[str] = None,
-                 bbox: Optional[BboxType] = None,
-                 mask: Optional[GeometryMaskType] = None):
+                 crs: str | None = None,
+                 bbox: BboxType | None = None,
+                 mask: GeometryMaskType | None = None):
         super().__init__(file_source, crs)
         self.bbox = bbox
         self.mask = mask
@@ -144,17 +145,16 @@ class WFSVectorDataset(LocalVectorDataset):
                              f"{self.file_source}!"
                              f"\nPlease provide a dictionary with a valid 'url' and "
                              f"'layer' key-value pairs!")
-        else:
-            if self.bbox is None and self.mask is not None:
-                bounds = self.mask.total_bounds
-                self.bbox = (bounds[0], bounds[1], bounds[2], bounds[3])
-            self.data = load_from_wfs(
-                url=self.file_source["url"],
-                layer=self.file_source["layer"],
-                bbox=self.bbox,
-                filter_params=kwargs.get("filter_params"),
-                auto_match=kwargs.get("auto_match", True)
-            )
+        if self.bbox is None and self.mask is not None:
+            bounds = self.mask.total_bounds
+            self.bbox = (bounds[0], bounds[1], bounds[2], bounds[3])
+        self.data = load_from_wfs(
+            url=self.file_source["url"],
+            layer=self.file_source["layer"],
+            bbox=self.bbox,
+            filter_params=kwargs.get("filter_params"),
+            auto_match=kwargs.get("auto_match", True)
+        )
         self.post_loading()
 
     # noinspection PyUnresolvedReferences
@@ -211,10 +211,10 @@ class InMemoryRasterDataset(RasterDataset):
 
 
 def initialize_geo_dataset(file_source: InputDataType,
-                           crs: Optional[str] = None,
-                           bbox: Optional[BboxType] = None,
-                           mask: Optional[GeometryMaskType] = None,
-                           transform: Optional[Affine] = None) -> GeoDataset:
+                           crs: str | None = None,
+                           bbox: BboxType | None = None,
+                           mask: GeometryMaskType | None = None,
+                           transform: Affine | None = None) -> GeoDataset:
     """
     Factory function to create the appropriate GeoDataset instance based on the
     provided input.
@@ -267,7 +267,7 @@ def _determine_data_type(file_source: Any) -> str:
     if isinstance(file_source, GeoDataset):
         if isinstance(file_source, VectorDataset):
             return "vector"
-        elif isinstance(file_source, RasterDataset):
+        if isinstance(file_source, RasterDataset):
             return "raster"
 
     # Check for in-memory vector data
@@ -291,7 +291,7 @@ def _determine_data_type(file_source: Any) -> str:
             if ext in [".shp", ".geojson", ".json", ".gpkg", ".gml", ".kml"]:
                 return "vector"
             # Raster file extensions
-            elif ext in [".tif", ".tiff", ".jp2", ".img", ".bil", ".dem"]:
+            if ext in [".tif", ".tiff", ".jp2", ".img", ".bil", ".dem"]:
                 return "raster"
         else:
             raise FileNotFoundError(f"File {file_source} not found.")
@@ -300,29 +300,29 @@ def _determine_data_type(file_source: Any) -> str:
 
 
 def _create_vector_dataset(file_source: Any,
-                           crs: Optional[str] = None,
-                           bbox: Optional[BboxType] = None,
-                           mask: Optional[GeometryMaskType] = None) -> VectorDataset:
+                           crs: str | None = None,
+                           bbox: BboxType | None = None,
+                           mask: GeometryMaskType | None = None) -> VectorDataset:
     """Create the appropriate vector dataset based on the input type."""
     # In-memory GeoDataFrame or GeoSeries
     if isinstance(file_source, (gpd.GeoDataFrame, gpd.GeoSeries)):
         return InMemoryVectorDataset(file_source, crs, bbox=bbox, mask=mask)
 
     # WFS data source
-    elif (isinstance(file_source, dict) and "url" in file_source and
+    if (isinstance(file_source, dict) and "url" in file_source and
           "layer" in file_source):
         return WFSVectorDataset(file_source, crs, bbox=bbox, mask=mask)
 
     # Local file
-    elif isinstance(file_source, str):
+    if isinstance(file_source, str):
         return LocalVectorDataset(file_source, crs, bbox=bbox, mask=mask)
 
     raise ValueError(f"Unsupported vector data source: {file_source}")
 
 
 def _create_raster_dataset(file_source: Any,
-                           crs: Optional[str] = None,
-                           transform: Optional[Affine] = None
+                           crs: str | None = None,
+                           transform: Affine | None = None
                            ) -> RasterDataset:
     """Create the appropriate raster dataset based on the input type."""
     # In-memory numpy array
@@ -333,7 +333,7 @@ def _create_raster_dataset(file_source: Any,
         return InMemoryRasterDataset(file_source, crs, transform=transform)
 
     # Local file
-    elif isinstance(file_source, str):
+    if isinstance(file_source, str):
         return LocalRasterDataset(file_source, crs)
 
     raise ValueError(f"Unsupported raster data source: {file_source}")

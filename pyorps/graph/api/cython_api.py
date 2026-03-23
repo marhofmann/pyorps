@@ -1,19 +1,19 @@
-import numpy as np
-from numpy import array, uint32, uint64, astype, ndarray
-from typing import Union, List
 
-from pyorps.core.exceptions import PairwiseError, AlgorithmNotImplementedError
+import numpy as np
+from numpy import array, astype, ndarray, uint32, uint64
+
+from pyorps.core.exceptions import AlgorithmNotImplementedError, PairwiseError
 from pyorps.core.types import IMPASSABLE_CELL_COST
 from pyorps.graph.api.graph_api import GraphAPI
 from pyorps.utils.path_algorithms import (
-    dijkstra_2d_cython,
-    dijkstra_single_source_multiple_targets,
-    dijkstra_some_pairs_shortest_paths,
-    dijkstra_multiple_sources_multiple_targets,
     delta_stepping_2d_persistent,
+    delta_stepping_multiple_sources_multiple_targets_persistent,
     delta_stepping_single_source_multiple_targets_persistent,
     delta_stepping_some_pairs_shortest_paths_persistent,
-    delta_stepping_multiple_sources_multiple_targets_persistent,
+    dijkstra_2d_cython,
+    dijkstra_multiple_sources_multiple_targets,
+    dijkstra_single_source_multiple_targets,
+    dijkstra_some_pairs_shortest_paths,
 )
 
 
@@ -28,11 +28,11 @@ class CythonAPI(GraphAPI):
 
     def shortest_path(
             self,
-            source_indices: Union[int, List[int], ndarray],
-            target_indices: Union[int, List[int], ndarray],
+            source_indices: int | list[int] | ndarray,
+            target_indices: int | list[int] | ndarray,
             algorithm: str = "dijkstra",
             **kwargs
-    ) -> Union[List[int], List[List[int]]]:
+    ) -> list[int] | list[list[int]]:
         """
         Find shortest/least-cost path(s) using Cython implementations.
 
@@ -67,12 +67,11 @@ class CythonAPI(GraphAPI):
         # Route to appropriate implementation
         if is_single_source and is_single_target:
             return self._single_path(sources[0], targets[0], algo, **kwargs)
-        elif is_single_source:
+        if is_single_source:
             return self._single_to_multi(sources, targets, algo, **kwargs)
-        elif is_pairwise:
+        if is_pairwise:
             return self._pairwise_paths(sources, targets, algo, **kwargs)
-        else:
-            return self._multi_to_multi(sources, targets, algo, **kwargs)
+        return self._multi_to_multi(sources, targets, algo, **kwargs)
 
     def _to_array(self, indices):
         """

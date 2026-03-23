@@ -7,7 +7,6 @@ Reference:
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
 from abc import ABC, abstractmethod
-from typing import Union, Optional
 
 from numpy import ndarray
 
@@ -21,8 +20,8 @@ class GraphAPI(ABC):
             self,
             raster_data: ndarray[int],
             steps: ndarray[int],
-            ignore_max: Optional[bool] = True,
-            dem_data: Optional[ndarray] = None,
+            ignore_max: bool | None = True,
+            dem_data: ndarray | None = None,
     ):
         """
         Initialize the base graph API with raster data and neighborhood steps.
@@ -41,11 +40,11 @@ class GraphAPI(ABC):
     @abstractmethod
     def shortest_path(
             self,
-            source_indices: Union[int, list[int], ndarray[int], tuple[int, int]],
-            target_indices: Union[int, list[int], ndarray[int], tuple[int, int]],
+            source_indices: int | list[int] | ndarray[int] | tuple[int, int],
+            target_indices: int | list[int] | ndarray[int] | tuple[int, int],
             algorithm: str = "dijkstra",
             **kwargs
-    ) -> Union[NodeList, NodePathList]:
+    ) -> NodeList | NodePathList:
         """
         Find the shortest path(s) between source and target indices.
 

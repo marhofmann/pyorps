@@ -6,18 +6,23 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
-from typing import Union, Optional, Any, Callable
-import os
-from pathlib import Path
 import csv
 import json
+import os
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
 import numpy as np
 import pandas as pd
-
 from geopandas import GeoDataFrame, GeoSeries
 
-from .exceptions import (InvalidSourceError, FileLoadError, FormatError,
-                         NoSuitableColumnsError)
+from .exceptions import (
+    FileLoadError,
+    FormatError,
+    InvalidSourceError,
+    NoSuitableColumnsError,
+)
 
 
 class CostAssumptions:
@@ -33,7 +38,7 @@ class CostAssumptions:
 
     def __init__(
             self,
-            source: Optional[Union[str, dict]] = None
+            source: str | dict | None = None
     ):
         """
         Initialize the CostAssumptions object.
@@ -64,7 +69,7 @@ class CostAssumptions:
 
     def load(
             self,
-            source: Union[str, dict]
+            source: str | dict
     ) -> dict:
         """
         Load cost assumptions from a file or dictionary.
@@ -123,7 +128,7 @@ class CostAssumptions:
         for encoding in encodings:
             try:
                 # Read a sample to detect the dialect
-                with open(filepath, 'r', encoding=encoding) as f:
+                with open(filepath, encoding=encoding) as f:
                     sample = f.read(4096)
 
                 sniffer = csv.Sniffer()
@@ -146,7 +151,7 @@ class CostAssumptions:
                         return self.cost_assumptions
                     except (pd.errors.ParserError, ValueError):
                         continue
-            except (csv.Error, UnicodeDecodeError, IOError):
+            except (OSError, csv.Error, UnicodeDecodeError):
                 # If auto-detection fails, try common delimiters
                 for delimiter in common_delimiters:
                     for decimal in decimal_separators:
@@ -186,7 +191,7 @@ class CostAssumptions:
 
         for encoding in encodings:
             try:
-                with open(filepath, 'r', encoding=encoding) as f:
+                with open(filepath, encoding=encoding) as f:
                     data = json.load(f)
 
                     # Check if it's the new format with metadata
@@ -246,7 +251,7 @@ class CostAssumptions:
             df = self._convert_numeric_columns(df)
             self.cost_assumptions = self.convert_df_to_cost_dict(df)
             return self.cost_assumptions
-        except (pd.errors.ParserError, ValueError, IOError) as first_error:
+        except (OSError, pd.errors.ParserError, ValueError) as first_error:
             # If there's an issue, try reading as strings and convert manually
             try:
                 df = pd.read_excel(filepath, dtype=str)
@@ -257,10 +262,10 @@ class CostAssumptions:
                 df = self._convert_numeric_columns(df)
                 self.cost_assumptions = self.convert_df_to_cost_dict(df)
                 return self.cost_assumptions
-            except (pd.errors.ParserError, ValueError, IOError) as e:
+            except (OSError, pd.errors.ParserError, ValueError) as e:
                 msg = (f"Failed to read Excel file {filepath}. Original error: "
                        f"{first_error}. Second attempt error: {e}")
-                raise FileLoadError(msg)
+                raise FileLoadError(msg) from e
 
     def convert_df_to_cost_dict(
             self,
@@ -353,8 +358,8 @@ class CostAssumptions:
     def apply_to_geodataframe(
             self,
             gdf: GeoDataFrame,
-            main_feature: Optional[str] = None,
-            side_features: Optional[list[str]] = None
+            main_feature: str | None = None,
+            side_features: list[str] | None = None
     ):
         """
         Apply cost assumptions to a GeoDataFrame.
@@ -407,8 +412,8 @@ class CostAssumptions:
     def _apply_tuple_costs(
             self,
             gdf: GeoDataFrame,
-            main_feature: Optional[str] = None,
-            side_features: Optional[list[str]] = None
+            main_feature: str | None = None,
+            side_features: list[str] | None = None
     ):
         """
         Apply costs to the GeoDataFrame based on tuple keys in cost assumptions.
@@ -442,8 +447,8 @@ class CostAssumptions:
     def _apply_nested_costs(
             self,
             gdf: GeoDataFrame,
-            main_feature: Optional[str] = None,
-            side_features: Optional[list[str]] = None
+            main_feature: str | None = None,
+            side_features: list[str] | None = None
     ):
         """
         Apply costs to the GeoDataFrame based on nested dictionary cost assumptions.
@@ -653,7 +658,7 @@ class CostAssumptions:
 
             return pd.DataFrame(data)
 
-        elif (self.side_features and
+        if (self.side_features and
               isinstance(next(iter(cost_dict.values()), None), dict)):
             # Handle nested dictionary structure
             data = []
@@ -668,19 +673,18 @@ class CostAssumptions:
 
             return pd.DataFrame(data)
 
-        else:
-            # Simple mapping
-            return pd.DataFrame({
-                self.main_feature: list(cost_dict.keys()),
-                'cost': list(cost_dict.values())
-            })
+        # Simple mapping
+        return pd.DataFrame({
+            self.main_feature: list(cost_dict.keys()),
+            'cost': list(cost_dict.values())
+        })
 
 
 def save_empty_cost_assumptions(
         geo_dataset: Any,
-        save_path: Union[str, Path],
-        main_feature: Optional[str] = None,
-        side_features: Optional[list[str]] = None,
+        save_path: str | Path,
+        main_feature: str | None = None,
+        side_features: list[str] | None = None,
         file_type: str = 'csv',
         **kwargs
 ) -> dict:
@@ -914,7 +918,7 @@ def get_zero_cost_assumptions(
 
 
 def calculate_geometry_area(
-        geometries: Union[GeoSeries,]
+        geometries: GeoSeries
 ) -> float:
     """
     Calculate the sum of areas for a collection of geometries.

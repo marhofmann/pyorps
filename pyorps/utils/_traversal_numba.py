@@ -7,9 +7,9 @@ Reference:
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
 
-from typing import Tuple, Union
-import numpy as np
+
 import numba as nb
+import numpy as np
 
 from pyorps.core.types import IMPASSABLE_CELL_COST
 
@@ -187,7 +187,7 @@ def intermediate_steps_numba(dr: int8_type, dc: int8_type) -> int8_2d_array:
 
 @nb.njit(float64_type(int8_type, int8_type, pyint_type), cache=True,
          fastmath=True)
-def get_cost_factor_numba(dr: int8_type, dc: int8_type, 
+def get_cost_factor_numba(dr: int8_type, dc: int8_type,
                           intermediates_count: pyint_type) -> float64_type:
     """
     Calculate the cost factor for an edge based on its geometric length.
@@ -574,15 +574,14 @@ def calculate_segment_length(abs_dr: int, abs_dc: int) -> float:
     if abs_dr <= 1 and abs_dc <= 1:
         # sqrt(2) or 1
         return 1.4142135623730951 if (abs_dr == 1 and abs_dc == 1) else 1.0
-    elif (abs_dr == 2 and abs_dc == 1) or (abs_dr == 1 and abs_dc == 2):
+    if (abs_dr == 2 and abs_dc == 1) or (abs_dr == 1 and abs_dc == 2):
         return 2.236067977499789  # sqrt(5)
-    elif (abs_dr == 3 and abs_dc == 1) or (abs_dr == 1 and abs_dc == 3):
+    if (abs_dr == 3 and abs_dc == 1) or (abs_dr == 1 and abs_dc == 3):
         return 3.1622776601683795  # sqrt(10)
-    elif (abs_dr == 3 and abs_dc == 2) or (abs_dr == 2 and abs_dc == 3):
+    if (abs_dr == 3 and abs_dc == 2) or (abs_dr == 2 and abs_dc == 3):
         return 3.605551275463989  # sqrt(13)
-    else:
-        # General case using Pythagorean theorem
-        return np.sqrt(abs_dr * abs_dr + abs_dc * abs_dc)
+    # General case using Pythagorean theorem
+    return np.sqrt(abs_dr * abs_dr + abs_dc * abs_dc)
 
 
 @nb.njit(nb.types.Tuple((float64_type, uint16_1d_array_c, float64_1d_array_c))
@@ -742,8 +741,8 @@ def euclidean_distances_numba(raster: np.ndarray,
 @nb.njit(cache=True)
 def get_outgoing_edges(node_idx: int, raster: np.ndarray, steps: np.ndarray,
                        rows: int, cols: int,
-                       exclude_mask: Union[np.ndarray, None] = None
-                       ) -> Tuple[np.ndarray, np.ndarray]:
+                       exclude_mask: np.ndarray | None = None
+                       ) -> tuple[np.ndarray, np.ndarray]:
     """
     Get outgoing edges from a specific node for dynamic graph traversal.
 
@@ -874,7 +873,7 @@ def calculate_gradient_penalty(height_diff: float64_type,
         # Cap at a reasonable maximum to avoid numerical issues
         return min(penalty, 10000.0)
 
-    elif gradient_function == "power":
+    if gradient_function == "power":
         # Alternative: Power function with adaptive exponent
         # This gives more control over the transition curve
 
@@ -890,7 +889,7 @@ def calculate_gradient_penalty(height_diff: float64_type,
 
         return min(penalty, 10000.0)
 
-    elif gradient_function == "energy":
+    if gradient_function == "energy":
         # Physics-based approach: actual energy/work consideration
         # Penalty based on the additional work needed to overcome gravity
 
@@ -917,7 +916,7 @@ def calculate_gradient_penalty(height_diff: float64_type,
 
         return min(penalty, 10000.0)
 
-    elif gradient_function == "sigmoid":
+    if gradient_function == "sigmoid":
         # Smooth sigmoid transition - most general approach
         # Single parameter controls the steepness of transition
 
@@ -941,19 +940,18 @@ def calculate_gradient_penalty(height_diff: float64_type,
 
         return penalty
 
-    else:
-        # Default: simple quadratic penalty
-        # Most general and predictable behavior
-        angle_rad = np.arctan(slope)
-        normalized_angle = np.abs(angle_rad) / (np.pi / 2.0)
+    # Default: simple quadratic penalty
+    # Most general and predictable behavior
+    angle_rad = np.arctan(slope)
+    normalized_angle = np.abs(angle_rad) / (np.pi / 2.0)
 
-        # Quadratic growth with angle
-        # At 0°: penalty = 1.0
-        # At 45°: penalty ≈ 101
-        # At 90°: penalty = 401
-        penalty = 1.0 + 400.0 * normalized_angle * normalized_angle
+    # Quadratic growth with angle
+    # At 0°: penalty = 1.0
+    # At 45°: penalty ≈ 101
+    # At 90°: penalty = 401
+    penalty = 1.0 + 400.0 * normalized_angle * normalized_angle
 
-        return penalty
+    return penalty
 
 
 @nb.njit(

@@ -22,16 +22,18 @@ list, which leads to a much higher (more than double) memory usage!
 Please see the specific interfaces to the specific graph libraries for more details!
 """
 
-from typing import Optional, Any, Union, List
 from abc import abstractmethod
-from warnings import warn
-import numpy as np
 from time import time
+from typing import Any
+from warnings import warn
+
+import numpy as np
+
+from pyorps.core.exceptions import NoPathFoundError, PairwiseError
+from pyorps.core.types import Node, NodeList, NodePathList, SourceTargetType
+from pyorps.utils.traversal import construct_edges, construct_edges_3d
 
 from .graph_api import GraphAPI
-from pyorps.core.exceptions import NoPathFoundError, PairwiseError
-from pyorps.core.types import SourceTargetType, Node, NodeList, NodePathList
-from pyorps.utils.traversal import construct_edges, construct_edges_3d
 
 
 class GraphLibraryAPI(GraphAPI):
@@ -46,12 +48,12 @@ class GraphLibraryAPI(GraphAPI):
     def __init__(self,
                  raster_data: np.ndarray[int],
                  steps: np.ndarray[int],
-                 ignore_max: Optional[bool] = True,
-                 dem_data: Optional[np.ndarray] = None,
-                 from_nodes: Optional[np.ndarray] = None,
-                 to_nodes: Optional[np.ndarray] = None,
-                 cost: Optional[np.ndarray] = None,
-                 dem_kwargs: Optional[dict[str, Any]] = None,
+                 ignore_max: bool | None = True,
+                 dem_data: np.ndarray | None = None,
+                 from_nodes: np.ndarray | None = None,
+                 to_nodes: np.ndarray | None = None,
+                 cost: np.ndarray | None = None,
+                 dem_kwargs: dict[str, Any] | None = None,
                  use_gpu: bool = False,
                  **kwargs):
         """
@@ -119,9 +121,7 @@ class GraphLibraryAPI(GraphAPI):
             or (None, None, None) if GPU is unavailable.
         """
         try:
-            from pyorps.utils.traversal_gpu import (
-                construct_edges_gpu, GPU_AVAILABLE
-            )
+            from pyorps.utils.traversal_gpu import GPU_AVAILABLE, construct_edges_gpu
         except ImportError:
             warn("GPU edge construction unavailable (cupy not installed). "
                  "Falling back to CPU.")
@@ -174,7 +174,7 @@ class GraphLibraryAPI(GraphAPI):
             self,
             from_nodes: np.ndarray[int],
             to_nodes: np.ndarray[int],
-            cost: Optional[np.ndarray[int]] = None,
+            cost: np.ndarray[int] | None = None,
             **kwargs
     ) -> Any:
         """
@@ -220,7 +220,7 @@ class GraphLibraryAPI(GraphAPI):
         """
 
     @abstractmethod
-    def get_nodes(self) -> Union[List[int], np.ndarray]:
+    def get_nodes(self) -> list[int] | np.ndarray:
         """
         This method returns the nodes in the graph as a list or numpy array of node
         indices.
@@ -231,11 +231,11 @@ class GraphLibraryAPI(GraphAPI):
 
     def shortest_path(
             self,
-            source_indices: Optional[SourceTargetType],
-            target_indices: Optional[SourceTargetType],
+            source_indices: SourceTargetType | None,
+            target_indices: SourceTargetType | None,
             algorithm: str = "dijkstra",
             **kwargs
-    ) -> Union[NodeList, NodePathList]:
+    ) -> NodeList | NodePathList:
         """
         This method applies the specified shortest path algorithm on the created graph
         object and finds the shortest path between source(s) and target(s) as a list of
@@ -266,13 +266,13 @@ class GraphLibraryAPI(GraphAPI):
                                              **kwargs)
 
         # Single source, multiple targets
-        elif not source_has_len and target_has_len:
+        if not source_has_len and target_has_len:
             return self._compute_single_source_multiple_targets(source_indices,
                                                                 target_indices,
                                                                 algorithm,
                                                                 **kwargs)
         # Multiple sources, single target
-        elif source_has_len and not target_has_len:
+        if source_has_len and not target_has_len:
             paths = self._compute_single_source_multiple_targets(target_indices,
                                                                  source_indices,
                                                                  algorithm,
@@ -280,17 +280,15 @@ class GraphLibraryAPI(GraphAPI):
             return [p[::-1] for p in paths]
 
         # Multiple sources, multiple targets (all pairs or pairwise)
-        else:
-            # Check for pairwise computation
-            pairwise = kwargs.get('pairwise', False)
-            if pairwise:
-                if len(source_indices) != len(target_indices):
-                    raise PairwiseError()
-                return self._pairwise_shortest_path(source_indices, target_indices,
-                                                    algorithm, **kwargs)
-            else:
-                return self._all_pairs_shortest_path(source_indices, target_indices,
-                                                     algorithm, **kwargs)
+        # Check for pairwise computation
+        pairwise = kwargs.get('pairwise', False)
+        if pairwise:
+            if len(source_indices) != len(target_indices):
+                raise PairwiseError()
+            return self._pairwise_shortest_path(source_indices, target_indices,
+                                                algorithm, **kwargs)
+        return self._all_pairs_shortest_path(source_indices, target_indices,
+                                             algorithm, **kwargs)
 
     @abstractmethod
     def _compute_single_path(
@@ -418,7 +416,7 @@ class GraphLibraryAPI(GraphAPI):
     def get_a_star_heuristic(
             self,
             target: Node,
-            source: Optional[Node] = None,
+            source: Node | None = None,
             **kwargs
     ) -> tuple[np.ndarray, np.ndarray]:
         """
@@ -482,7 +480,7 @@ class GraphLibraryAPI(GraphAPI):
     def get_advanced_a_star_heuristic(
             self,
             target: Node,
-            source: Optional[Node] = None,
+            source: Node | None = None,
             **kwargs
     ) -> tuple[np.ndarray, np.ndarray]:
         """
@@ -636,5 +634,4 @@ class GraphLibraryAPI(GraphAPI):
         # Combine into coordinate pairs and handle the steep case
         if steep:
             return np.column_stack((y_coords, x_coords))
-        else:
-            return np.column_stack((x_coords, y_coords))
+        return np.column_stack((x_coords, y_coords))

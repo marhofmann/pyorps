@@ -2,19 +2,18 @@
 Raster loading, combining, and discovery utilities for PYORPS
 """
 import logging
-from pathlib import Path
-from typing import Union, Optional, List, Tuple, Set
-from collections import defaultdict
 import warnings
+from collections import defaultdict
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 import numpy as np
 import rasterio
 from rasterio.crs import CRS
-from rasterio.merge import merge
-from rasterio.warp import reproject, Resampling, calculate_default_transform
 from rasterio.io import MemoryFile
+from rasterio.merge import merge
+from rasterio.warp import Resampling, calculate_default_transform, reproject
 
 from pyorps.io.geo_dataset import InMemoryRasterDataset
 
@@ -88,10 +87,10 @@ def _reproject_to_target_crs(src, target_crs):
 
 
 def read_raster_files(
-    file_paths: Union[str, Path, List[Union[str, Path]]],
-    default_crs: Optional[Union[str, CRS]] = None,
-    target_crs: Optional[Union[str, CRS]] = None
-) -> Tuple[List[rasterio.DatasetReader], List[MemoryFile]]:
+    file_paths: str | Path | list[str | Path],
+    default_crs: str | CRS | None = None,
+    target_crs: str | CRS | None = None
+) -> tuple[list[rasterio.DatasetReader], list[MemoryFile]]:
     """
     Read a set of raster data files (tif/tiff/geotiff) using rasterio.
 
@@ -206,13 +205,13 @@ def _build_merge_profile(merged_array, merged_transform, base_crs, dtype, nodata
 
 
 def combine_rasters(
-    raster_datasets: Union[List[rasterio.DatasetReader], Tuple[List[rasterio.DatasetReader], List]],
-    save_path: Optional[Union[str, Path]] = None,
+    raster_datasets: list[rasterio.DatasetReader] | tuple[list[rasterio.DatasetReader], list],
+    save_path: str | Path | None = None,
     method: str = 'first',
-    nodata: Optional[float] = None,
-    dtype: Optional[str] = None,
+    nodata: float | None = None,
+    dtype: str | None = None,
     resampling: Resampling = Resampling.bilinear
-) -> Tuple[np.ndarray, dict]:
+) -> tuple[np.ndarray, dict]:
     """Combine multiple raster datasets into a single array.
 
     Returns (merged_array, profile_dict) with CRS, transform, shape, etc.
@@ -238,10 +237,10 @@ def combine_rasters(
 
 
 def create_combined_raster_dataset(
-    file_paths: Union[str, Path, List[Union[str, Path]]],
-    crs: Optional[str] = None,
-    target_crs: Optional[str] = None,
-    save_path: Optional[Union[str, Path]] = None,
+    file_paths: str | Path | list[str | Path],
+    crs: str | None = None,
+    target_crs: str | None = None,
+    save_path: str | Path | None = None,
     method: str = 'first'
 ) -> 'InMemoryRasterDataset':
     """
@@ -309,13 +308,13 @@ def _is_excluded(file_path, exclude_patterns):
 
 
 def find_raster_files(
-    directory: Union[str, Path],
+    directory: str | Path,
     recursive: bool = True,
-    extensions: Optional[Set[str]] = None,
-    pattern: Optional[str] = None,
-    exclude_patterns: Optional[List[str]] = None,
+    extensions: set[str] | None = None,
+    pattern: str | None = None,
+    exclude_patterns: list[str] | None = None,
     return_absolute: bool = True
-) -> List[Path]:
+) -> list[Path]:
     """Find raster files in a directory, filtered by extension/pattern."""
     dir_path = Path(directory)
 
@@ -451,7 +450,7 @@ def _print_validation_summary(result, compatible):
 
 
 def validate_raster_compatibility(
-    raster_files: List[Union[str, Path]],
+    raster_files: list[str | Path],
     check_crs: bool = True,
     check_resolution: bool = True,
     check_bands: bool = False,

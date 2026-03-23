@@ -6,20 +6,22 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
-import numpy as np
-import matplotlib.pyplot as plt
+from typing import Any
+
 import matplotlib.colors as colors
+import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib import gridspec
-from rasterio.windows import bounds as window_bounds
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
-from matplotlib.patches import Rectangle
 from matplotlib.lines import Line2D
-from typing import List, Tuple, Dict, Union, Optional, Any
+from matplotlib.patches import Rectangle
+from rasterio.windows import bounds as window_bounds
+
+from ..core.path import Path, PathCollection
 
 # Project imports
 from ..raster.handler import RasterHandler
-from ..core.path import PathCollection, Path
 
 
 # Separate class instead of nested class for raster visualization data
@@ -29,8 +31,8 @@ class RasterVizData:
     def __init__(self) -> None:
         """Initialize empty visualization data containers."""
         self.unique_values: np.ndarray = np.array([])
-        self.gray_colors: List[Tuple[float, float, float]] = []
-        self.value_to_index: Dict[float, int] = {}
+        self.gray_colors: list[tuple[float, float, float]] = []
+        self.value_to_index: dict[float, int] = {}
 
 
 class PathPlotter:
@@ -58,18 +60,18 @@ class PathPlotter:
     def plot_paths(self,
                    plot_all: bool = True,
                    subplots: bool = True,
-                   subplotsize: Tuple[int, int] = (10, 8),
+                   subplotsize: tuple[int, int] = (10, 8),
                    source_color: str = 'green',
                    target_color: str = 'red',
-                   path_colors: Optional[Union[str, List[str]]] = None,
+                   path_colors: str | list[str] | None = None,
                    source_marker: str = 'o',
                    target_marker: str = 'x',
                    path_linewidth: int = 2,
                    show_raster: bool = True,
-                   title: Optional[Union[str, List[str]]] = None,
-                   suptitle: Optional[str] = None,
-                   path_id: Optional[int | list[int]] = None,
-                   reverse_colors: bool = False) -> Union[Axes, List[Axes]]:
+                   title: str | list[str] | None = None,
+                   suptitle: str | None = None,
+                   path_id: int | list[int] | None = None,
+                   reverse_colors: bool = False) -> Axes | list[Axes]:
         """
         Plot paths with options to display all paths or individual paths.
 
@@ -107,8 +109,8 @@ class PathPlotter:
             fig.suptitle(suptitle, fontsize=16)
 
         # Initialize data for legend
-        legend_handles: List[Any] = []
-        legend_labels: List[str] = []
+        legend_handles: list[Any] = []
+        legend_labels: list[str] = []
         raster_viz_data = None
 
         # Plot each path
@@ -152,8 +154,8 @@ class PathPlotter:
         return axes[0] if len(axes) == 1 else axes
 
     def _setup_path_colors(self,
-                           path_colors: Optional[Union[str, List[str]]],
-                           plot_all: bool) -> Union[str, List[str]]:
+                           path_colors: str | list[str] | None,
+                           plot_all: bool) -> str | list[str]:
         """
         Set up colors for paths based on input parameters.
 
@@ -182,7 +184,7 @@ class PathPlotter:
 
     def _determine_paths_to_plot(self,
                                  plot_all: bool,
-                                 path_id: Optional[int | list[int]]) -> List[Path]:
+                                 path_id: int | list[int] | None) -> list[Path]:
         """
         Determine which paths to plot based on user inputs.
 
@@ -199,24 +201,22 @@ class PathPlotter:
         if plot_all:
             # Return all paths in the collection
             return self.paths.all
-        elif path_id is not None:
+        if path_id is not None:
             if isinstance(path_id, int):
                 # Find specific path by ID
                 path = self.paths.get(path_id=path_id)
                 if path is None:
                     raise ValueError(f"No path found with ID {path_id}")
                 return [path]
-            else:
-                return [self.paths.get(path_id=pid) for pid in path_id]
-        else:
-            # Default to the last path if no specific path is requested
-            return [self.paths.all[-1]]
+            return [self.paths.get(path_id=pid) for pid in path_id]
+        # Default to the last path if no specific path is requested
+        return [self.paths.all[-1]]
 
     @staticmethod
-    def _create_figure_and_axes(paths_to_plot: List[Path],
+    def _create_figure_and_axes(paths_to_plot: list[Path],
                                 plot_all: bool,
                                 subplots: bool,
-                                subplotsize: Tuple[int, int]) -> Tuple[Figure, List[Axes], Axes]:
+                                subplotsize: tuple[int, int]) -> tuple[Figure, list[Axes], Axes]:
         """
         Create the figure, grid, and axes for plotting.
 
@@ -260,7 +260,7 @@ class PathPlotter:
         legend_ax.axis('off')  # Hide axis for the legend
 
         # Create axes for plots
-        axes: List[Axes] = []
+        axes: list[Axes] = []
         for i in range(n_paths):
             if plot_all and subplots and n_paths > 1:
                 # Multiple subplots case
@@ -289,7 +289,7 @@ class PathPlotter:
         return fig, axes, legend_ax
 
     @staticmethod
-    def _get_plot_title(title: Optional[Union[str, List[str]]],
+    def _get_plot_title(title: str | list[str] | None,
                         index: int,
                         path: Path) -> str:
         """
@@ -307,17 +307,16 @@ class PathPlotter:
         if isinstance(title, list) and index < len(title):
             return title[index]
         # If a single title is provided, use it for all plots
-        elif title is not None:
+        if title is not None:
             return title
         # Otherwise create a default title using path information
-        elif hasattr(path, 'total_length') and path.total_length is not None:
+        if hasattr(path, 'total_length') and path.total_length is not None:
             return f"Path {path.path_id} (length: {path.total_length:.2f} units)"
-        else:
-            return f"Path {path.path_id} from Source to Target"
+        return f"Path {path.path_id} from Source to Target"
 
     def _plot_raster_background(self,
                                 ax: Axes,
-                                viz_data: Optional[RasterVizData] = None,
+                                viz_data: RasterVizData | None = None,
                                 reverse_colors: bool = True) -> RasterVizData:
         """
         Plot the raster data as background for a path.
@@ -401,12 +400,12 @@ class PathPlotter:
     @staticmethod
     def _plot_path(ax: Axes,
                    path: Path,
-                   path_color: Union[str, Tuple[float, float, float, float]],
+                   path_color: str | tuple[float, float, float, float],
                    path_linewidth: int,
                    source_color: str,
                    target_color: str,
                    source_marker: str,
-                   target_marker: str) -> Tuple[List[Any], List[str]]:
+                   target_marker: str) -> tuple[list[Any], list[str]]:
         """
         Plot a single path with its source and target markers.
 
@@ -426,8 +425,8 @@ class PathPlotter:
             - List of labels for the legend
         """
         # Initialize legend items for this path
-        legend_handles: List[Any] = []
-        legend_labels: List[str] = []
+        legend_handles: list[Any] = []
+        legend_labels: list[str] = []
 
         # Get path coordinates
         path_coords = path.path_coords
@@ -497,11 +496,11 @@ class PathPlotter:
         ax.set_aspect('equal')
 
     @staticmethod
-    def _add_raster_legend(legend_handles: List[Any],
-                           legend_labels: List[str],
+    def _add_raster_legend(legend_handles: list[Any],
+                           legend_labels: list[str],
                            unique_values: np.ndarray,
-                           value_to_index: Dict[float, int],
-                           gray_colors: List[Tuple[float, float, float]]) -> None:
+                           value_to_index: dict[float, int],
+                           gray_colors: list[tuple[float, float, float]]) -> None:
         """
         Add raster color value information to the legend.
 
@@ -540,8 +539,8 @@ class PathPlotter:
 
     @staticmethod
     def _create_legend(legend_ax: Axes,
-                       legend_handles: List[Any],
-                       legend_labels: List[str]) -> None:
+                       legend_handles: list[Any],
+                       legend_labels: list[str]) -> None:
         """
         Create the legend in the designated legend area.
 

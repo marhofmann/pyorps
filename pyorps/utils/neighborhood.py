@@ -9,14 +9,13 @@ References:
     location', Environment and Planning A: Economy and Space, 1977, 9, (7), pp 727-738
 """
 
-from typing import Union, Tuple, List, Dict, Set
 import math
 import re
 
 import numpy as np
 
 
-def get_neighborhood_steps(k: Union[int, str], directed: bool = True) -> np.ndarray:
+def get_neighborhood_steps(k: int | str, directed: bool = True) -> np.ndarray:
     """
     Generate the steps for a k-neighborhood.
 
@@ -36,8 +35,7 @@ def get_neighborhood_steps(k: Union[int, str], directed: bool = True) -> np.ndar
         numbers = re.findall(r'^\D*(\d+)', k)
         if not numbers:
             raise ValueError("k must be an integer or neighbourhood string!")
-        else:
-            _k = int(numbers[0])
+        _k = int(numbers[0])
     else:
         _k = k
 
@@ -51,7 +49,7 @@ def get_neighborhood_steps(k: Union[int, str], directed: bool = True) -> np.ndar
     return np.array(list(steps), dtype=np.int8)
 
 
-def _generate_full_steps(k: int, memo: Dict[int, Set[Tuple[int, int]]], directed: bool) -> Set[Tuple[int, int]]:
+def _generate_full_steps(k: int, memo: dict[int, set[tuple[int, int]]], directed: bool) -> set[tuple[int, int]]:
     """
     Generate the complete set of steps for neighborhood k using recursive formulation.
 
@@ -119,7 +117,7 @@ def normalize_angle(angle: float) -> float:
     return angle % (2 * math.pi)
 
 
-def get_move_directions(moves: np.ndarray) -> List[float]:
+def get_move_directions(moves: np.ndarray) -> list[float]:
     """
     Get all possible move directions in radians for a given move set.
 
@@ -135,7 +133,7 @@ def get_move_directions(moves: np.ndarray) -> List[float]:
     return sorted(list(set(directions)))
 
 
-def find_adjacent_directions(phi: float, directions: List[float]) -> Tuple[float, float]:
+def find_adjacent_directions(phi: float, directions: list[float]) -> tuple[float, float]:
     """
     Find the adjacent directions θ_j and θ_{j+1} such that θ_j < φ < θ_{j+1}.
 
@@ -228,7 +226,7 @@ def max_deviation(theta_j: float, theta_j_plus_1: float, phi: float) -> float:
     return numerator / denominator
 
 
-def calculate_errors(directions: List[float], phi: float) -> Dict[str, float]:
+def calculate_errors(directions: list[float], phi: float) -> dict[str, float]:
     """
     Calculate elongation error and maximum deviation for a given set of directions and path angle.
 
@@ -261,7 +259,7 @@ def calculate_errors(directions: List[float], phi: float) -> Dict[str, float]:
     }
 
 
-def find_max_errors(directions: List[float]) -> Dict[str, float]:
+def find_max_errors(directions: list[float]) -> dict[str, float]:
     """
     Find the maximum elongation error and maximum deviation for a given set of directions.
 

@@ -6,28 +6,31 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
-from typing import Optional
-from pathlib import Path
 import concurrent.futures
-from concurrent.futures import ThreadPoolExecutor
-from difflib import SequenceMatcher
-from defusedxml import ElementTree as et
 import functools
 import ipaddress
 import logging
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from difflib import SequenceMatcher
+from pathlib import Path
 from urllib.parse import urlparse
 from xml.etree.ElementTree import Element as _Element
 
-import requests
 import geopandas as gpd
 import pandas as pd
+import requests
+from defusedxml import ElementTree as et
 from shapely.geometry import box
 from shapely.ops import unary_union
 
+from ..core.exceptions import (
+    WFSConnectionError,
+    WFSError,
+    WFSLayerNotFoundError,
+    WFSResponseParsingError,
+)
 from ..core.types import BboxType, GeometryMaskType
-from ..core.exceptions import (WFSLayerNotFoundError, WFSConnectionError,
-                               WFSResponseParsingError, WFSError)
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +108,7 @@ def _validate_wfs_url(url: str, block_private: bool = True) -> None:
             # If it's not a valid IP literal, it's a hostname -- that's fine
 
 
-def _sanitize_filter_params(filter_params: Optional[dict]) -> Optional[dict]:
+def _sanitize_filter_params(filter_params: dict | None) -> dict | None:
     """
     Sanitize WFS filter parameters.
 
@@ -169,13 +172,13 @@ MIN_CHUNK_AREA = 1e-6
 def load_from_wfs(
         url: str,
         layer: str,
-        bbox: Optional[BboxType] = None,
-        mask: Optional[GeometryMaskType] = None,
-        filter_params: Optional[dict] = None,
+        bbox: BboxType | None = None,
+        mask: GeometryMaskType | None = None,
+        filter_params: dict | None = None,
         auto_match: bool = True,
         max_workers: int = 4,
-        crs: Optional[str] = None
-) -> Optional[gpd.GeoDataFrame]:
+        crs: str | None = None
+) -> gpd.GeoDataFrame | None:
     """
     Load data from a Web Feature Service (WFS) using chunked loading.
 
@@ -260,18 +263,17 @@ def _get_bbox_from_mask(mask) -> tuple[float, float, float, float]:
     if hasattr(mask, 'bounds'):
         return mask.bounds
     # For GeoDataFrame or GeoSeries
-    elif hasattr(mask, 'total_bounds'):
+    if hasattr(mask, 'total_bounds'):
         return mask.total_bounds
     # For list of geometries
-    elif isinstance(mask, list) and all(hasattr(item, 'bounds') for item in mask):
+    if isinstance(mask, list) and all(hasattr(item, 'bounds') for item in mask):
         bounds_list = [geom.bounds for geom in mask]
         min_x = min(b[0] for b in bounds_list)
         min_y = min(b[1] for b in bounds_list)
         max_x = max(b[2] for b in bounds_list)
         max_y = max(b[3] for b in bounds_list)
         return min_x, min_y, max_x, max_y
-    else:
-        raise ValueError("Mask must be a Shapely geometry, GeoDataFrame, or GeoSeries")
+    raise ValueError("Mask must be a Shapely geometry, GeoDataFrame, or GeoSeries")
 
 
 def _chunk_intersects_mask(chunk: tuple[float, float, float, float], mask) -> bool:
@@ -291,17 +293,16 @@ def _chunk_intersects_mask(chunk: tuple[float, float, float, float], mask) -> bo
     if hasattr(mask, 'intersects'):
         return mask.intersects(chunk_box)
     # For GeoDataFrame or GeoSeries with multiple geometries
-    elif hasattr(mask, 'geometry'):
+    if hasattr(mask, 'geometry'):
         return any(geom.intersects(chunk_box) for geom in mask.geometry)
     # For list of geometries
-    elif isinstance(mask, list):
+    if isinstance(mask, list):
         return any(geom.intersects(chunk_box) for geom in mask)
-    else:
-        # Default to True if we can't determine intersection
-        return True
+    # Default to True if we can't determine intersection
+    return True
 
 
-def _clip_data_by_mask(gdf: gpd.GeoDataFrame, mask) -> Optional[gpd.GeoDataFrame]:
+def _clip_data_by_mask(gdf: gpd.GeoDataFrame, mask) -> gpd.GeoDataFrame | None:
     """
     Clip a GeoDataFrame by a geometry mask.
 
@@ -319,25 +320,24 @@ def _clip_data_by_mask(gdf: gpd.GeoDataFrame, mask) -> Optional[gpd.GeoDataFrame
     if hasattr(mask, 'intersects'):
         return gdf[gdf.geometry.intersects(mask)]
     # For GeoDataFrame or GeoSeries
-    elif hasattr(mask, 'geometry'):
+    if hasattr(mask, 'geometry'):
         # Convert to a single unary_union if it's a multi-geometry mask
         combined_geom = unary_union(list(mask.geometry))
         return gdf[gdf.geometry.intersects(combined_geom)]
     # For list of geometries
-    elif isinstance(mask, list):
+    if isinstance(mask, list):
         combined_geom = unary_union(mask)
         return gdf[gdf.geometry.intersects(combined_geom)]
-    else:
-        return gdf
+    return gdf
 
 
 def _try_direct_load(
         url: str,
         layer: str,
-        filter_params: Optional[dict] = None,
+        filter_params: dict | None = None,
         mask=None,
         srs: str = 'EPSG:25832'
-) -> tuple[Optional[gpd.GeoDataFrame], bool]:
+) -> tuple[gpd.GeoDataFrame | None, bool]:
     """
     Try to load the entire dataset directly without chunking.
 
@@ -475,16 +475,16 @@ def _fetch_capabilities_xml(url: str) -> _Element:
         response = requests.get(url, params=capabilities_params, timeout=30)
         response.raise_for_status()
     except requests.RequestException as e:
-        raise WFSConnectionError(f"Failed to connect to WFS service: {e}")
+        raise WFSConnectionError(f"Failed to connect to WFS service: {e}") from e
 
     try:
         return et.fromstring(response.content)
     except et.ParseError as e:
-        raise WFSResponseParsingError(f"Failed to parse WFS capabilities: {e}")
+        raise WFSResponseParsingError(f"Failed to parse WFS capabilities: {e}") from e
 
 
 def _get_available_layers(url: str,
-                          capabilities_xml: Optional[_Element] = None
+                          capabilities_xml: _Element | None = None
                           ) -> list[str]:
     """
     Get available layers from a WFS service.
@@ -531,11 +531,11 @@ def _get_available_layers(url: str,
 
     except Exception as e:
         raise WFSResponseParsingError(f"Unexpected error parsing WFS capabilities: "
-                                      f"{str(e)}")
+                                      f"{str(e)}") from e
 
 
 def _find_best_matching_layer(target_name: str,
-                              available_layers: list[str]) -> Optional[str]:
+                              available_layers: list[str]) -> str | None:
     """
     Find the layer name with highest similarity to the target name.
 
@@ -567,8 +567,8 @@ def _find_best_matching_layer(target_name: str,
 def _get_extent_from_capabilities(
         url: str,
         layer: str,
-        capabilities_xml: Optional[_Element] = None
-) -> Optional[tuple[float, float, float, float]]:
+        capabilities_xml: _Element | None = None
+) -> tuple[float, float, float, float] | None:
     """
     Extract layer extent from WFS GetCapabilities response.
 
@@ -637,7 +637,7 @@ def _get_extent_from_capabilities(
                         return min_lon, min_lat, max_lon, max_lat
 
     except et.ParseError as e:
-        raise WFSResponseParsingError(f"Failed to parse WFS capabilities: {e}")
+        raise WFSResponseParsingError(f"Failed to parse WFS capabilities: {e}") from e
 
     return None
 
@@ -714,11 +714,11 @@ def _load_data_in_parallel(
         url: str,
         layer: str,
         bbox: tuple[float, float, float, float],
-        filter_params: Optional[dict] = None,
+        filter_params: dict | None = None,
         max_workers: int = 4,
         mask=None,
         srs: str = 'EPSG:25832'
-) -> Optional[gpd.GeoDataFrame]:
+) -> gpd.GeoDataFrame | None:
     """
     Load WFS data in chunks using parallel processing.
 
@@ -896,9 +896,9 @@ def _fetch_wfs_data(
         url: str,
         layer: str,
         bbox: tuple[float, float, float, float],
-        filter_params: Optional[dict] = None,
+        filter_params: dict | None = None,
         srs: str = 'EPSG:25832'
-) -> Optional[gpd.GeoDataFrame]:
+) -> gpd.GeoDataFrame | None:
     """
     Fetch WFS data for a specific bounding box.
 
@@ -949,7 +949,7 @@ def _fetch_wfs_data(
 
             if 'json' in content_type:
                 return _parse_geojson_response(response)
-            elif 'xml' in content_type or 'gml' in content_type:
+            if 'xml' in content_type or 'gml' in content_type:
                 return _parse_xml_response(response)
 
         except requests.RequestException:
@@ -957,7 +957,7 @@ def _fetch_wfs_data(
     return None
 
 
-def _parse_geojson_response(response: requests.Response) -> Optional[gpd.GeoDataFrame]:
+def _parse_geojson_response(response: requests.Response) -> gpd.GeoDataFrame | None:
     """
     Parse a GeoJSON response into a GeoDataFrame.
 
@@ -975,7 +975,7 @@ def _parse_geojson_response(response: requests.Response) -> Optional[gpd.GeoData
         return None
 
 
-def _parse_xml_response(response: requests.Response) -> Optional[gpd.GeoDataFrame]:
+def _parse_xml_response(response: requests.Response) -> gpd.GeoDataFrame | None:
     """
     Parse an XML/GML response into a GeoDataFrame.
 
@@ -990,11 +990,11 @@ def _parse_xml_response(response: requests.Response) -> Optional[gpd.GeoDataFram
             temp_file = Path(temp_dir) / "wfs_response.xml"
             temp_file.write_bytes(response.content)
             return gpd.read_file(temp_file)
-    except (IOError, IndexError):
+    except (OSError, IndexError):
         return None
 
 
-def _combine_geodataframes(gdfs: list[gpd.GeoDataFrame]) -> Optional[gpd.GeoDataFrame]:
+def _combine_geodataframes(gdfs: list[gpd.GeoDataFrame]) -> gpd.GeoDataFrame | None:
     """
     Combine multiple GeoDataFrames and remove duplicates.
 

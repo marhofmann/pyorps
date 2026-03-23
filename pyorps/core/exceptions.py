@@ -24,37 +24,37 @@ class FileLoadError(CostAssumptionsError):
     """
     Exception raised when loading files fails.
     """
-    
+
 
 class InvalidSourceError(CostAssumptionsError):
     """
     Exception raised when the provided source is invalid.
     """
-    
+
 
 class FormatError(CostAssumptionsError):
     """
     Exception raised when data format is invalid.
     """
-    
+
 
 class FeatureColumnError(PyorpsError):
     """
     Base exception for feature column detection errors
     """
-    
+
 
 class NoSuitableColumnsError(FeatureColumnError):
     """
     Exception raised when no suitable columns are found
     """
-    
+
 
 class ColumnAnalysisError(FeatureColumnError):
     """
     Exception raised when column analysis fails
     """
-    
+
 
 """
 Exceptions for vector_loader
@@ -65,25 +65,25 @@ class WFSError(PyorpsError):
     """
     Base exception for WFS-related errors.
     """
-    
+
 
 class WFSConnectionError(WFSError):
     """
     Exception raised for connection issues with WFS services.
     """
-    
+
 
 class WFSResponseParsingError(WFSError):
     """
     Exception raised when parsing WFS responses fails.
     """
-    
+
 
 class WFSLayerNotFoundError(WFSError):
     """
     Exception raised when a requested layer cannot be found.
     """
-    
+
 
 """
 Exceptions for graph library API

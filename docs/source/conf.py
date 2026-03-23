@@ -21,8 +21,8 @@ try:
     version = __version__
 except ImportError:
     print("Warning: Could not import pyorps.__version__, using fallback")
-    release = '0.3.0'
-    version = '0.3.0'
+    release = '0.3.1'
+    version = '0.3.1'
 
 # -- General configuration ---------------------------------------------------
 
