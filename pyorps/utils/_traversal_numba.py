@@ -1159,3 +1159,150 @@ def construct_edges_3d(raster: uint16_2d_array,
     return (from_nodes_edges[:last_index], to_nodes_edges[:last_index],
             cost_edges[:last_index])
 
+
+@nb.njit(
+    nb.types.Tuple((float64_type, uint16_1d_array_c, float64_1d_array_c))(
+        uint16_2d_array,
+        nb.float64[:, ::1],  # coords in fractional (row, col) raster space
+    ),
+    fastmath=True,
+    cache=True,
+)
+def calculate_linestring_metrics_numba(raster, coords_rc):
+    """Walk a polyline through *raster* and report per-cell traversal length.
+
+    Uses the Amanatides-Woo 2-D DDA grid-traversal algorithm. For every
+    segment, every cell crossed receives the exact length of the intersection
+    of the segment with that cell. Cells outside the raster contribute zero.
+
+    Parameters
+    ----------
+    raster : uint16[:, :]
+        2-D cost / category raster, row-major.
+    coords_rc : float64[:, ::1]
+        Polyline vertices in fractional raster-index space (row_frac, col_frac).
+        Shape (N, 2). Row indices increase downward; column indices rightward.
+
+    Returns
+    -------
+    total_length : float
+        Sum of all intersected lengths (cell units).
+    categories : uint16[:]
+        Sorted unique category values present in the raster.
+    lengths : float64[:]
+        Length per category, aligned with *categories*.
+    """
+    rows = raster.shape[0]
+    cols = raster.shape[1]
+    n_pts = coords_rc.shape[0]
+
+    categories_array = np.sort(np.unique(raster))
+    num_categories = categories_array.shape[0]
+    min_category = categories_array[0]
+    max_category = categories_array[-1]
+    range_size = max_category - min_category + 1
+    category_to_index = np.full(range_size, -1, dtype=np.int32)
+    for i in range(num_categories):
+        category_to_index[categories_array[i] - min_category] = i
+
+    lengths_array = np.zeros(num_categories, dtype=np.float64)
+    total_length = 0.0
+
+    for s in range(n_pts - 1):
+        r0 = coords_rc[s, 0]
+        c0 = coords_rc[s, 1]
+        r1 = coords_rc[s + 1, 0]
+        c1 = coords_rc[s + 1, 1]
+        dr = r1 - r0
+        dc = c1 - c0
+        seg_len = np.sqrt(dr * dr + dc * dc)
+        if seg_len == 0.0:
+            continue
+
+        step_r = 1 if dr > 0.0 else (-1 if dr < 0.0 else 0)
+        step_c = 1 if dc > 0.0 else (-1 if dc < 0.0 else 0)
+
+        cur_r = int(np.floor(r0))
+        cur_c = int(np.floor(c0))
+
+        # Boundary correction: when starting exactly on an integer cell
+        # boundary, ``floor`` puts us in the cell on the positive side. That
+        # is correct when stepping in the positive direction, but when
+        # moving in the negative direction we are actually entering the cell
+        # on the negative side. When the segment is axis-parallel along a
+        # boundary (delta == 0), snap inward from the upper raster edge so
+        # boundary-tangent lines accumulate length in the adjacent valid
+        # cell row/column.
+        if r0 == np.floor(r0):
+            if dr < 0.0:
+                cur_r -= 1
+            elif dr == 0.0 and cur_r >= rows:
+                cur_r = rows - 1
+        if c0 == np.floor(c0):
+            if dc < 0.0:
+                cur_c -= 1
+            elif dc == 0.0 and cur_c >= cols:
+                cur_c = cols - 1
+
+        if dr > 0.0:
+            t_max_r = (np.floor(r0) + 1.0 - r0) / dr
+            t_delta_r = 1.0 / dr
+        elif dr < 0.0:
+            t_max_r = (r0 - np.floor(r0)) / (-dr)
+            if t_max_r == 0.0:
+                t_max_r = 1.0 / (-dr)
+            t_delta_r = 1.0 / (-dr)
+        else:
+            t_max_r = np.inf
+            t_delta_r = np.inf
+
+        if dc > 0.0:
+            t_max_c = (np.floor(c0) + 1.0 - c0) / dc
+            t_delta_c = 1.0 / dc
+        elif dc < 0.0:
+            t_max_c = (c0 - np.floor(c0)) / (-dc)
+            if t_max_c == 0.0:
+                t_max_c = 1.0 / (-dc)
+            t_delta_c = 1.0 / (-dc)
+        else:
+            t_max_c = np.inf
+            t_delta_c = np.inf
+
+        t_prev = 0.0
+        max_steps = int(abs(dr) + abs(dc)) + 4
+
+        for _ in range(max_steps):
+            if t_max_r < t_max_c:
+                t_next = t_max_r
+                advance_r = True
+            else:
+                t_next = t_max_c
+                advance_r = False
+
+            if t_next > 1.0:
+                t_next = 1.0
+
+            dt = t_next - t_prev
+            if dt > 0.0:
+                if (0 <= cur_r < rows) and (0 <= cur_c < cols):
+                    cell_len = dt * seg_len
+                    category = raster[cur_r, cur_c]
+                    if min_category <= category <= max_category:
+                        idx = category_to_index[category - min_category]
+                        if idx >= 0:
+                            lengths_array[idx] += cell_len
+                    total_length += cell_len
+
+            if t_next >= 1.0:
+                break
+
+            if advance_r:
+                cur_r += step_r
+                t_max_r += t_delta_r
+            else:
+                cur_c += step_c
+                t_max_c += t_delta_c
+            t_prev = t_next
+
+    return total_length, categories_array, lengths_array
+

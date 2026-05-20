@@ -49,6 +49,8 @@ from pyorps.graph.api.graph_api import GraphAPI
 from pyorps.io.geo_dataset import RasterDataset, VectorDataset, initialize_geo_dataset
 from pyorps.raster.handler import RasterHandler
 from pyorps.raster.rasterizer import GeoRasterizer
+from pyorps.utils._traversal_numba import calculate_linestring_metrics_numba
+from pyorps.utils.linestring_simplify import simplify_linestring
 from pyorps.utils.neighborhood import get_neighborhood_steps
 from pyorps.utils.traversal import (
     calculate_path_metrics_numba,
@@ -742,23 +744,52 @@ class PathFinder:
             calculate_metrics: bool = True,
             pairwise: bool = False,
             raster_parameters: dict[str, Any] | None = None,
+            simplify: dict[str, Any] | None = None,
             **kwargs
     ) -> Path | PathCollection:
         """
         Find the shortest path between source and target coordinates.
 
-        Parameter:
-            source: CoordinateInput - Source coordinates. If None, uses the
-                source_coords provided at initialization. Can be: tuple, list of
-                tuples, array of arrays, shapely Point,
-                shapely MultiPoint, GeoSeries of points, or GeoDataFrame of points.
-            target: Target coordinates. If None, uses the target_coords provided at
-                initialization. Can be a single pair (x, y) or a list of pairs
+        Parameters:
+            source: Source coordinates. Defaults to ``self.source_coords``.
+                Can be: tuple, list of tuples, array of arrays, shapely Point,
+                shapely MultiPoint, GeoSeries of points, or GeoDataFrame of
+                points.
+            target: Target coordinates. Defaults to ``self.target_coords``.
+                Can be a single pair (x, y) or a list of pairs
                 [(x1, y1), (x2, y2), ...].
-            algorithm: Algorithm to use for shortest path. Defaults to "dijkstra".
-            calculate_metrics: Whether to calculate path metrics. Defaults to True.
-            pairwise: Whether to calculate paths pairwise (requires equal number of
-                sources and targets). Default is False.
+            algorithm: Algorithm to use for shortest path. Defaults to
+                "dijkstra".
+            calculate_metrics: Whether to calculate path metrics. Defaults to
+                True.
+            pairwise: Whether to calculate paths pairwise (requires equal
+                numbers of sources and targets). Defaults to False.
+            raster_parameters: Parameters forwarded to
+                ``create_raster_handler`` if the handler has not been built
+                yet.
+            simplify: If provided, the routed LineString is simplified before
+                metrics are reported. The dict must contain:
+
+                * ``"method"`` – one of ``"douglas_peucker"`` (distance,
+                  Ramer-Douglas-Peucker; tolerance in CRS units),
+                  ``"douglas_peucker_topology"`` (distance, GEOS topology-
+                  preserving), ``"visvalingam"`` (Visvalingam-Whyatt; tolerance
+                  is the minimum effective triangle area in CRS units squared)
+                  or ``"grid"`` (snap vertices to a regular grid of spacing
+                  ``tolerance`` and collapse consecutive duplicates).
+                * ``"tolerance"`` – non-negative float; see method-specific
+                  units above.
+
+                When set, ``Path.path_geometry`` holds the simplified line,
+                ``Path.original_path_geometry`` holds the raw line,
+                ``Path.path_indices`` lists the cells the simplified line
+                crosses (in order, no duplicates), and
+                ``Path.length_by_category`` / ``Path.total_cost`` are
+                recomputed over those cells using the exact intersection
+                length of the line with each cell (2-D DDA). Endpoints are
+                preserved by DP and Visvalingam; the grid method snaps
+                endpoints to the grid (≤ ``tolerance`` shift).
+
         Returns:
             Path: When a single source-target pair is provided.
             PathCollection: When multiple source-target pairs or a single
@@ -777,6 +808,24 @@ class PathFinder:
 
         if source is None or target is None:
             raise ValueError("Source and target coordinates must not be None!")
+
+        # Validate simplify config early so we fail before routing.
+        if simplify is not None:
+            if "method" not in simplify:
+                raise KeyError(
+                    "simplify config must contain key 'method'"
+                )
+            if "tolerance" not in simplify:
+                raise KeyError(
+                    "simplify config must contain key 'tolerance'"
+                )
+            # Probe dispatcher to catch unknown methods upfront.
+            from shapely.geometry import LineString as _LS
+            simplify_linestring(
+                _LS([(0.0, 0.0), (1.0, 1.0)]),
+                method=simplify["method"],
+                tolerance=float(simplify["tolerance"]),
+            )
 
         if self.raster_handler is None:
             self.create_raster_handler(**(raster_parameters or {}))
@@ -809,29 +858,35 @@ class PathFinder:
         # Case 1: Single source, single target -> single path
         if (not isinstance(path_indices[0], list) and
                 not isinstance(path_indices[0], ndarray)):
-            return self._create_path_result(path_indices, source, target, algorithm,
-                                            calculate_metrics)
+            return self._create_path_result(
+                path_indices, source, target, algorithm,
+                calculate_metrics, simplify=simplify,
+            )
         # Case 2 & 3: Multiple paths
         # For single source + multiple targets OR multiple sources +
         # multiple targets
-        results = self._extract_path_results(path_indices, algorithm,
-                                             calculate_metrics)
+        results = self._extract_path_results(
+            path_indices, algorithm, calculate_metrics, simplify=simplify,
+        )
         return results
 
-    def _extract_path_results(self, path_indices, algorithm, calculate_metrics):
+    def _extract_path_results(self, path_indices, algorithm, calculate_metrics,
+                              simplify=None):
         results = PathCollection()
         for path in path_indices:
             if not path:
                 continue
             source = self.get_coords_from_node_indices(path[0])[0]
             target = self.get_coords_from_node_indices(path[-1])[0]
-            path = self._create_path_result(path, source, target, algorithm,
-                                            calculate_metrics)
+            path = self._create_path_result(
+                path, source, target, algorithm, calculate_metrics,
+                simplify=simplify,
+            )
             results.add(path)
         return results
 
     def _create_path_result(self, path_indices, source, target, algorithm,
-                            calculate_metrics):
+                            calculate_metrics, simplify=None):
         """
         Helper method to create a path result dictionary from path indices.
 
@@ -894,6 +949,13 @@ class PathFinder:
             with timed("path_metrics", self.runtimes):
                 self.calculate_path_metrics(path_indices, path)
 
+        # Optional post-routing simplification of the LineString. Runs after
+        # calculate_path_metrics so any raw metrics are computed first; this
+        # step then overwrites them with the simplified-geometry values.
+        if simplify is not None:
+            with timed("path_simplification", self.runtimes):
+                self._apply_simplification(path, simplify)
+
         # Store path in PathCollection
         self.paths.add(path)
 
@@ -933,6 +995,162 @@ class PathFinder:
         rows_idx = path_indices // cols
         cols_idx = path_indices % cols
         path.total_cell_cost = float(raster_data[rows_idx, cols_idx].sum())
+
+    def _linestring_to_raster_indices(self, line):
+        """Walk *line* through the raster (2-D DDA) and return (coords_rc, indices).
+
+        coords_rc : float64[N, 2]
+            Polyline vertices in fractional raster-index space (row_frac,
+            col_frac). Ready to feed into
+            ``calculate_linestring_metrics_numba``.
+        indices : uint32[K]
+            Linear cell indices of cells the line passes through, in order,
+            with consecutive duplicates collapsed. Suitable for
+            ``Path.path_indices``.
+        """
+        from numpy import asarray, ascontiguousarray, empty_like, floor as np_floor, inf as np_inf, array as np_array
+        import numpy as np
+
+        transform = self.raster_handler.window_transform
+        # rasterio Affine: x = a*c + b*r + c_off; y = d*c + e*r + f_off
+        a, b, c_off = transform.a, transform.b, transform.c
+        d, e, f_off = transform.d, transform.e, transform.f
+        xy = asarray(line.coords, dtype=np.float64)
+        coords_rc = empty_like(xy)
+        if b != 0.0 or d != 0.0:
+            inv = ~transform
+            for i in range(xy.shape[0]):
+                col_f, row_f = inv * (xy[i, 0], xy[i, 1])
+                coords_rc[i, 0] = row_f
+                coords_rc[i, 1] = col_f
+        else:
+            coords_rc[:, 1] = (xy[:, 0] - c_off) / a
+            coords_rc[:, 0] = (xy[:, 1] - f_off) / e
+
+        coords_rc = ascontiguousarray(coords_rc, dtype=np.float64)
+
+        raster = self.raster_handler.data[0]
+        rows, cols = raster.shape
+        visited = []
+        for s in range(coords_rc.shape[0] - 1):
+            r0, c0 = coords_rc[s]
+            r1, c1 = coords_rc[s + 1]
+            dr, dc = r1 - r0, c1 - c0
+            if dr == 0.0 and dc == 0.0:
+                continue
+            cur_r = int(np_floor(r0))
+            cur_c = int(np_floor(c0))
+            # Mirror the snap-inward at exact boundaries done in the kernel.
+            if r0 == np_floor(r0):
+                if dr < 0.0:
+                    cur_r -= 1
+                elif dr == 0.0 and cur_r >= rows:
+                    cur_r = rows - 1
+            if c0 == np_floor(c0):
+                if dc < 0.0:
+                    cur_c -= 1
+                elif dc == 0.0 and cur_c >= cols:
+                    cur_c = cols - 1
+
+            step_r = 1 if dr > 0 else (-1 if dr < 0 else 0)
+            step_c = 1 if dc > 0 else (-1 if dc < 0 else 0)
+            if dr > 0:
+                t_max_r = (np_floor(r0) + 1.0 - r0) / dr
+                t_delta_r = 1.0 / dr
+            elif dr < 0:
+                t_max_r = (r0 - np_floor(r0)) / -dr
+                if t_max_r == 0.0:
+                    t_max_r = 1.0 / -dr
+                t_delta_r = 1.0 / -dr
+            else:
+                t_max_r = np_inf
+                t_delta_r = np_inf
+            if dc > 0:
+                t_max_c = (np_floor(c0) + 1.0 - c0) / dc
+                t_delta_c = 1.0 / dc
+            elif dc < 0:
+                t_max_c = (c0 - np_floor(c0)) / -dc
+                if t_max_c == 0.0:
+                    t_max_c = 1.0 / -dc
+                t_delta_c = 1.0 / -dc
+            else:
+                t_max_c = np_inf
+                t_delta_c = np_inf
+
+            if 0 <= cur_r < rows and 0 <= cur_c < cols:
+                idx = int(cur_r * cols + cur_c)
+                if not visited or visited[-1] != idx:
+                    visited.append(idx)
+
+            max_steps = int(abs(dr) + abs(dc)) + 4
+            for _ in range(max_steps):
+                if t_max_r < t_max_c:
+                    if t_max_r > 1.0:
+                        break
+                    cur_r += step_r
+                    t_max_r += t_delta_r
+                else:
+                    if t_max_c > 1.0:
+                        break
+                    cur_c += step_c
+                    t_max_c += t_delta_c
+                if 0 <= cur_r < rows and 0 <= cur_c < cols:
+                    idx = int(cur_r * cols + cur_c)
+                    if not visited or visited[-1] != idx:
+                        visited.append(idx)
+
+        indices = np_array(visited, dtype=np.uint32)
+        return coords_rc, indices
+
+    def _apply_simplification(self, path, simplify_config):
+        """Replace path.path_geometry with a simplified line, rebuild
+        path.path_coords / path.path_indices, and recompute metrics over the
+        actual cells the simplified line crosses.
+        """
+        method = simplify_config["method"]
+        tolerance = simplify_config["tolerance"]
+
+        original = path.path_geometry
+        simplified = simplify_linestring(original, method=method,
+                                         tolerance=tolerance)
+
+        coords_rc, new_indices = self._linestring_to_raster_indices(simplified)
+        raster_data = self.raster_handler.data[0]
+
+        total_length, cats, lens = calculate_linestring_metrics_numba(
+            raster_data, coords_rc
+        )
+
+        path.original_path_geometry = original
+        path.path_geometry = simplified
+        path.path_coords = list(simplified.coords)
+        path.path_indices = new_indices
+        path.simplification_method = method
+        path.simplification_tolerance = float(tolerance)
+
+        path.total_length = float(total_length)
+        path.length_by_category = dict(zip(cats.tolist(), lens.tolist()))
+        if total_length > 0.0:
+            path.length_by_category_percent = {
+                k: (v / total_length) * 100.0
+                for k, v in path.length_by_category.items()
+            }
+        else:
+            path.length_by_category_percent = {
+                k: 0.0 for k in path.length_by_category
+            }
+        path.total_cost = sum(
+            cat * length for cat, length in path.length_by_category.items()
+        )
+        if new_indices.size > 0:
+            cols = raster_data.shape[1]
+            rows_idx = new_indices // cols
+            cols_idx = new_indices % cols
+            path.total_cell_cost = float(
+                raster_data[rows_idx, cols_idx].sum()
+            )
+        else:
+            path.total_cell_cost = 0.0
 
     def get_path(self, path_id=None, source=None, target=None):
         """

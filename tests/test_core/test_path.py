@@ -74,6 +74,89 @@ class TestPath(unittest.TestCase):
         self.assertIn("length_m=5.00", repr_str)
         self.assertIn("cost=10.00", repr_str)
 
+    def test_path_simplification_fields_default_none(self):
+        from shapely.geometry import LineString
+        from pyorps.core.path import Path
+        p = Path(
+            source=(0, 0),
+            target=(1, 1),
+            algorithm="dijkstra",
+            graph_api="cython",
+            path_indices=[0, 1],
+            path_coords=[(0.0, 0.0), (1.0, 1.0)],
+            path_geometry=LineString([(0.0, 0.0), (1.0, 1.0)]),
+            euclidean_distance=1.4142135,
+            runtimes={},
+            path_id=0,
+            search_space_buffer_m=0.0,
+            neighborhood="8",
+        )
+        assert p.simplification_method is None
+        assert p.simplification_tolerance is None
+        assert p.original_path_geometry is None
+
+    def test_path_simplification_fields_set(self):
+        from shapely.geometry import LineString
+        from pyorps.core.path import Path
+        orig = LineString([(0, 0), (0.5, 0), (1, 0)])
+        simp = LineString([(0, 0), (1, 0)])
+        p = Path(
+            source=(0, 0), target=(1, 0),
+            algorithm="dijkstra", graph_api="cython",
+            path_indices=[0, 1], path_coords=[(0.0, 0.0), (1.0, 0.0)],
+            path_geometry=simp,
+            euclidean_distance=1.0,
+            runtimes={}, path_id=0,
+            search_space_buffer_m=0.0, neighborhood="8",
+            simplification_method="douglas_peucker",
+            simplification_tolerance=0.1,
+            original_path_geometry=orig,
+        )
+        assert p.simplification_method == "douglas_peucker"
+        assert p.simplification_tolerance == 0.1
+        assert p.original_path_geometry.equals(orig)
+
+    def test_to_geodataframe_dict_includes_simplification(self):
+        from shapely.geometry import LineString
+        from pyorps.core.path import Path
+        p = Path(
+            source=(0, 0), target=(1, 0),
+            algorithm="dijkstra", graph_api="cython",
+            path_indices=[0, 1], path_coords=[(0.0, 0.0), (1.0, 0.0)],
+            path_geometry=LineString([(0, 0), (1, 0)]),
+            euclidean_distance=1.0,
+            runtimes={}, path_id=0,
+            search_space_buffer_m=0.0, neighborhood="8",
+            simplification_method="visvalingam",
+            simplification_tolerance=2.5,
+        )
+        d = p.to_geodataframe_dict()
+        assert d["simplification_method"] == "visvalingam"
+        assert d["simplification_tolerance"] == 2.5
+
+    def test_analyze_mentions_simplification_when_present(self):
+        from shapely.geometry import LineString
+        from pyorps.core.path import Path
+        p = Path(
+            source=(0, 0), target=(1, 0),
+            algorithm="dijkstra", graph_api="cython",
+            path_indices=[0, 1], path_coords=[(0.0, 0.0), (1.0, 0.0)],
+            path_geometry=LineString([(0, 0), (1, 0)]),
+            euclidean_distance=1.0,
+            runtimes={}, path_id=0,
+            search_space_buffer_m=0.0, neighborhood="8",
+            simplification_method="visvalingam",
+            simplification_tolerance=4.0,
+            original_path_geometry=LineString([(0, 0), (0.5, 0.1), (1, 0)]),
+            total_length=1.0,
+            length_by_category={1.0: 1.0},
+            length_by_category_percent={1.0: 100.0},
+        )
+        output = p.analyze()
+        assert "Simplification" in output
+        assert "visvalingam" in output
+        assert "4.0" in output
+
     def test_path_str_shows_runtime_not_cost(self):
         """P1.5: __str__ must show runtimes['runtime_total'], not total_cost."""
         path = Path(
