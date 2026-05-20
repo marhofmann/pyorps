@@ -24,3 +24,10 @@ pyorps/utils/*.cpp
 .playwright-mcp/
 profiles/
 uv.lock
+
+# Local-only files and generated outputs
+CLAUDE.md
+docs/superpowers/
+examples/analyze_simplification.py
+examples/batch_route_planning_pandapower.py
+output/
