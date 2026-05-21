@@ -74,6 +74,9 @@ case_studies = [
 additionals = [
     "openpyxl>=3.1.0",
 ]
+simplify = [
+    "simplification>=0.7,<1.0",  # Rust-backed Visvalingam-Whyatt + RDP
+]
 gpu = [
     "cupy-cuda12x>=13.0.0",
 ]
@@ -100,6 +103,8 @@ full = [
     "contextily>=1.6.0",
     # additionals
     "openpyxl>=3.1.0",
+    # simplify
+    "simplification>=0.7,<1.0",
 ]
 
 [tool.setuptools]
