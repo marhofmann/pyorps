@@ -39,9 +39,10 @@ def _build_finder(raster_path):
 
 def test_simplify_kwarg_passes_metadata(simple_raster):
     finder = _build_finder(simple_raster)
-    path = finder.find_route(
-        simplify={"method": "douglas_peucker", "tolerance": 0.5}
-    )
+    with pytest.warns(UserWarning, match="simplified geometry may traverse"):
+        path = finder.find_route(
+            simplify={"method": "douglas_peucker", "tolerance": 0.5}
+        )
     assert path.simplification_method == "douglas_peucker"
     assert path.simplification_tolerance == 0.5
     assert path.original_path_geometry is not None
@@ -57,23 +58,41 @@ def test_simplify_none_is_no_op(simple_raster):
     assert path.original_path_geometry is None
 
 
-def test_simplified_total_length_matches_geometry(simple_raster):
+def test_simplified_total_length_matches_unsimplified_geometry(simple_raster):
+    """Cost / length metrics are computed from the un-simplified line; the
+    simplified geometry is only used for export. So total_length must match
+    the original (un-simplified) line length, not the simplified one."""
     finder = _build_finder(simple_raster)
-    path = finder.find_route(
-        simplify={"method": "douglas_peucker", "tolerance": 0.5}
-    )
-    # Total length should equal Shapely geometry length within float noise,
-    # because the raster is 1m/pixel and the line is entirely inside.
+    with pytest.warns(UserWarning):
+        path = finder.find_route(
+            simplify={"method": "douglas_peucker", "tolerance": 0.5}
+        )
     assert math.isclose(
-        path.total_length, path.path_geometry.length, rel_tol=1e-6
+        path.total_length, path.original_path_geometry.length, rel_tol=1e-6
     )
+
+
+def test_simplify_preserves_unsimplified_metrics(simple_raster):
+    """Per-category lengths, total cost and cell cost must be byte-identical
+    to the un-simplified routing because simplification only touches the
+    exported geometry, never the metrics."""
+    raw = _build_finder(simple_raster).find_route()
+    with pytest.warns(UserWarning):
+        simp = _build_finder(simple_raster).find_route(
+            simplify={"method": "douglas_peucker", "tolerance": 0.5}
+        )
+    assert simp.total_length == raw.total_length
+    assert simp.total_cost == raw.total_cost
+    assert simp.total_cell_cost == raw.total_cell_cost
+    assert simp.length_by_category == raw.length_by_category
 
 
 def test_per_category_lengths_sum_to_total(simple_raster):
     finder = _build_finder(simple_raster)
-    path = finder.find_route(
-        simplify={"method": "douglas_peucker", "tolerance": 0.5}
-    )
+    with pytest.warns(UserWarning):
+        path = finder.find_route(
+            simplify={"method": "douglas_peucker", "tolerance": 0.5}
+        )
     assert math.isclose(
         sum(path.length_by_category.values()),
         path.total_length,
@@ -90,9 +109,10 @@ def test_tolerance_zero_preserves_geometry(simple_raster):
     """tolerance=0 should not drop inflection points; per-category totals
     should agree with the un-simplified case to high precision."""
     raw = _build_finder(simple_raster).find_route()
-    simp = _build_finder(simple_raster).find_route(
-        simplify={"method": "douglas_peucker", "tolerance": 0.0}
-    )
+    with pytest.warns(UserWarning):
+        simp = _build_finder(simple_raster).find_route(
+            simplify={"method": "douglas_peucker", "tolerance": 0.0}
+        )
     for cat, length in raw.length_by_category.items():
         assert math.isclose(
             simp.length_by_category[cat], length, rel_tol=1e-3, abs_tol=1e-3
@@ -123,7 +143,10 @@ def test_missing_tolerance_raises(simple_raster):
 def test_all_methods_produce_consistent_metrics(simple_raster, method,
                                                 tolerance):
     finder = _build_finder(simple_raster)
-    path = finder.find_route(simplify={"method": method, "tolerance": tolerance})
+    with pytest.warns(UserWarning):
+        path = finder.find_route(
+            simplify={"method": method, "tolerance": tolerance}
+        )
     # Endpoint behaviour: DP/Visvalingam keep endpoints exactly; the grid
     # method snaps endpoints to the grid (so they shift by ≤ tolerance).
     orig_start = path.original_path_geometry.coords[0]
