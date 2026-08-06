@@ -12,6 +12,7 @@ from time import time
 from typing import Any
 from warnings import warn
 
+import numpy as np
 from geopandas import GeoDataFrame, GeoSeries
 from numpy import (
     array,
@@ -29,6 +30,8 @@ from rasterio.transform import Affine
 from shapely.geometry import LineString, MultiPoint, Point
 
 from pyorps.core.exceptions import NoPathFoundError, RasterShapeError
+from pyorps.core.metric_stack import MetricStack
+from pyorps.core.objective import Objective
 
 # Project imports
 from pyorps.core.path import Path, PathCollection
@@ -46,7 +49,12 @@ from pyorps.core.types import (
     NormalizedCoordinate,
 )
 from pyorps.graph.api.graph_api import GraphAPI
-from pyorps.io.geo_dataset import RasterDataset, VectorDataset, initialize_geo_dataset
+from pyorps.io.geo_dataset import (
+    InMemoryRasterDataset,
+    RasterDataset,
+    VectorDataset,
+    initialize_geo_dataset,
+)
 from pyorps.raster.handler import RasterHandler
 from pyorps.raster.rasterizer import GeoRasterizer
 from pyorps.utils.linestring_simplify import simplify_linestring
@@ -161,6 +169,10 @@ class PathFinder:
             dem: InputDataType | None = None,
             dem_kwargs: dict[str, Any] | None = None,
             use_gpu: bool = False,
+            objective: "Objective | dict[str, float] | None" = None,
+            gradient_options: dict[str, Any] | None = None,
+            metric_layers: dict[str, Any] | None = None,
+            weight_precision: str = "uint16",
             **kwargs
     ):
         """
@@ -211,6 +223,22 @@ class PathFinder:
                 library backends (networkit, rustworkx, igraph, networkx). Requires
                 CuPy and an NVIDIA GPU. Falls back to CPU automatically if
                 unavailable. Has no effect on cython or cugraph backends.
+            objective: Optional feasibility objective (an Objective or a
+                weights dict like ``{"cost": 1.0, "landscape": 800.0}``).
+                Activates the metric pipeline: multi-metric cost assumptions
+                are rasterized into a MetricStack, combined under the
+                objective and quantized into the search raster. When None
+                (default), routing behaves exactly as before.
+            gradient_options: Optional gradient-response configuration
+                (dict, see pyorps.GradientOptions) when ``objective`` is a
+                plain dict. In-search gradient terms require the kernel
+                phases of the feasibility plan and are rejected until then.
+            weight_precision: "uint16" (default — the quantized search
+                raster all backends accept) or "float32" — a LOSSLESS
+                combined surface for extreme weight dynamic ranges (when
+                the combine diagnostics warn about quantization collapse).
+                float32 requires an objective and one of the
+                FLOAT_BACKENDS (library backends or raster_gpu).
             **kwargs: Additional keyword arguments to pass to the rasterize function
                 of the RasterHandler (if a VectorDataset or a source to a VectorDataset
                 has been provided with dataset_source) or to the load function of the
@@ -239,6 +267,17 @@ class PathFinder:
         self.graph_api_name = graph_api
         self.ignore_max_cost = ignore_max_cost
         self.use_gpu = use_gpu
+        self.objective = self._normalize_objective(objective, gradient_options)
+        self.metric_layers = metric_layers
+        self.metric_stack = None
+        self._combine_result = None
+        self._gradient_dem = None
+        if metric_layers and self.objective is None:
+            raise ValueError(
+                "metric_layers require an objective — pass objective= "
+                "to activate the metric pipeline.")
+        self.weight_precision = weight_precision
+        self._validate_precision_support()
 
         if steps is None and neighborhood_str:
             directed = self.graph_api_name in ("cython", "raster_gpu", "raster_gpu_v3", "cugraph")
@@ -271,9 +310,304 @@ class PathFinder:
                 transform=transform
             )
 
+        self._validate_gradient_support()
+
         if self.source_coords is not None and self.target_coords is not None:
             self.create_raster_handler(cost_assumptions, datasets_to_modify,
                                        raster_save_path, dem_kwargs, **kwargs)
+
+    @staticmethod
+    def _normalize_objective(
+            objective: "Objective | dict[str, float] | None",
+            gradient_options: dict[str, Any] | None,
+    ) -> Objective | None:
+        """Coerce the objective inputs into a validated Objective or None."""
+        if objective is None:
+            if gradient_options is not None:
+                raise ValueError(
+                    "gradient_options requires an objective — pass "
+                    "objective= as well.")
+            return None
+        if isinstance(objective, Objective):
+            if gradient_options is not None:
+                raise ValueError(
+                    "Pass gradient options inside the Objective instance "
+                    "OR use a plain weights dict with gradient_options=, "
+                    "not both.")
+            result = objective
+        else:
+            result = Objective(objective, gradient_options)
+        return result
+
+    #: Backends whose search kernels consume the gradient LUT pair.
+    GRADIENT_BACKENDS = ("cython", "networkit", "networkx", "igraph",
+                         "rustworkx", "raster_gpu")
+
+    #: Backends that accept lossless float32 weight rasters (Phase 9).
+    #: The cython kernels remain uint16-pinned (RasterContext).
+    FLOAT_BACKENDS = ("networkit", "networkx", "igraph", "rustworkx",
+                      "raster_gpu")
+
+    def _validate_precision_support(self) -> None:
+        """Fail fast on unsupported weight_precision configurations."""
+        if self.weight_precision not in ("uint16", "float32"):
+            raise ValueError(
+                f"weight_precision must be 'uint16' or 'float32', got "
+                f"{self.weight_precision!r}")
+        if self.weight_precision == "uint16":
+            return
+        if self.objective is None:
+            raise ValueError(
+                "weight_precision='float32' requires an objective — the "
+                "lossless path exists for combined feasibility surfaces.")
+        if self.graph_api_name not in self.FLOAT_BACKENDS:
+            raise NotImplementedError(
+                f"weight_precision='float32' is supported on "
+                f"{self.FLOAT_BACKENDS}; the '{self.graph_api_name}' "
+                f"kernels are uint16-pinned.")
+        if self.search_space_buffer_m is None:
+            raise ValueError(
+                "weight_precision='float32' requires an explicit "
+                "search_space_buffer_m (the buffer estimator assumes "
+                "integer rasters).")
+
+    def _uses_gradient_kernels(self) -> bool:
+        """True when the search must apply per-edge slope terms.
+
+        With an objective and a DEM, the 3D length stretch applies
+        unconditionally (geometry, plan section 0) — even without explicit
+        gradient responses.
+        """
+        return self.objective is not None and (
+            self.dem_dataset is not None
+            or self.objective.has_gradient_terms)
+
+    def _validate_gradient_support(self) -> None:
+        """Fail fast when gradient/stretch terms cannot reach the search."""
+        if not self._uses_gradient_kernels():
+            return
+        if self.dem_dataset is None:
+            raise ValueError(
+                "The objective contains gradient terms (a 'gradient' "
+                "weight, a multiplier response or max_gradient_pct) but "
+                "no DEM was provided — pass dem=.")
+        if self.graph_api_name not in self.GRADIENT_BACKENDS:
+            raise NotImplementedError(
+                f"With a DEM, an objective applies per-edge slope terms "
+                f"(3D stretch always; responses when configured) — "
+                f"supported on {self.GRADIENT_BACKENDS}, "
+                f"not on '{self.graph_api_name}'.")
+
+    def set_objective(
+            self,
+            objective: "Objective | dict[str, float]",
+            gradient_options: dict[str, Any] | None = None,
+    ) -> None:
+        """Swap the feasibility objective and recombine the search raster.
+
+        Cheap for the raster-direct backends (cython / raster_gpu): only
+        the combine + quantize step reruns and the graph handle is
+        invalidated — no graph rebuild happens until the next find_route.
+        """
+        normalized = self._normalize_objective(objective, gradient_options)
+        if normalized is None:
+            raise ValueError("set_objective requires an objective")
+        if self.metric_stack is None:
+            raise ValueError(
+                "set_objective requires a PathFinder constructed with "
+                "objective= (the metric pipeline is inactive).")
+        previous = self.objective
+        self.objective = normalized
+        try:
+            self._validate_gradient_support()
+        except (ValueError, NotImplementedError):
+            self.objective = previous
+            raise
+        self._apply_objective_to_stack()
+
+    def _apply_objective_to_stack(self) -> None:
+        """Combine the stack under the current objective, rebuild handler."""
+        use_float = self.weight_precision == "float32"
+        result = self.metric_stack.combine(self.objective,
+                                           quantize=not use_float)
+        self._combine_result = result
+        self._gradient_dem = None  # rebuilt lazily at graph creation
+        dataset = InMemoryRasterDataset(
+            result.weights, self.metric_stack.crs, self.metric_stack.transform)
+        handler_kwargs = {}
+        if use_float:
+            # Outside-buffer cells become +inf (the float forbidden
+            # encoding) instead of the integer dtype maximum.
+            handler_kwargs["outside_value"] = np.float32(np.inf)
+        self.raster_handler = RasterHandler(
+            dataset,
+            self.source_coords,
+            self.target_coords,
+            self.search_space_buffer_m,
+            **handler_kwargs,
+        )
+        self._graph_api = None
+
+    def _create_metric_raster_handler(
+            self,
+            cost_assumptions: CostAssumptionsType | None,
+            datasets_to_modify: list[dict[str, Any]] | None,
+            raster_save_path: str | None,
+            **kwargs
+    ) -> None:
+        """Metric-pipeline variant of create_raster_handler (objective set).
+
+        Vector input is rasterized into a multi-band MetricStack; raster
+        input becomes a zero-copy legacy alias stack. The stack stays at
+        full extent and unmasked — the RasterHandler owns windowing and
+        buffer masking of the combined weight raster, so objective changes
+        recombine from pristine layers.
+        """
+        if datasets_to_modify:
+            raise NotImplementedError(
+                "datasets_to_modify overlays on the metric pipeline land "
+                "with Phase 4 of the feasibility plan (per-metric "
+                "'applies_to' targeting).")
+
+        if isinstance(self.dataset, VectorDataset):
+            if cost_assumptions is None:
+                msg = "Cost assumptions must be provided when using vector data"
+                raise ValueError(msg)
+            allowed = {"resolution_in_m", "geometry_buffer_m",
+                       "include_category", "preprocessing_function",
+                       "preprocessing_kwargs"}
+            unknown = set(kwargs) - allowed
+            if unknown:
+                raise ValueError(
+                    f"Keyword argument(s) {sorted(unknown)} are not "
+                    f"supported together with objective= "
+                    f"(rasterize_metrics accepts {sorted(allowed)}).")
+            self.geo_rasterizer = GeoRasterizer(self.dataset, cost_assumptions)
+            self.metric_stack = self.geo_rasterizer.rasterize_metrics(**kwargs)
+        elif isinstance(self.dataset, RasterDataset):
+            if cost_assumptions is not None:
+                raise NotImplementedError(
+                    "Applying cost assumptions to a raster input together "
+                    "with objective= lands with Phase 4 of the "
+                    "feasibility plan.")
+            self.dataset.load_data(**kwargs)
+            band = self.dataset.data
+            if band is not None and band.ndim == 3:
+                band = band[0]
+            self.metric_stack = MetricStack.from_single_raster(
+                band, self.dataset.transform, self.dataset.crs)
+        else:
+            raise ValueError(f"Unsupported dataset type: {type(self.dataset)}")
+
+        if self.metric_layers:
+            self._ingest_metric_layers()
+
+        self._apply_objective_to_stack()
+
+        if raster_save_path is not None:
+            self.metric_stack.save(raster_save_path)
+
+    def _ingest_metric_layers(self) -> None:
+        """Add user-provided metric layers to the stack.
+
+        Spec forms per layer name:
+            "path.tif"                       — prebuilt raster, reprojected
+            ndarray                          — array on the stack grid
+            {"derive": "slope_from_dem", ...}— per-cell terrain slope (%)
+            {"source": path|ndarray, "transform": ..., "crs": ...,
+             "hard_max": ..., "hard_min": ...}
+        """
+        from pyorps.core.metric_stack import reproject_to_grid
+
+        stack = self.metric_stack
+        if stack.shape is None:
+            raise ValueError("Cannot add metric layers to an empty stack")
+
+        for name, spec in self.metric_layers.items():
+            if isinstance(spec, (str, ndarray)):
+                spec = {"source": spec}
+            elif not isinstance(spec, dict):
+                raise ValueError(
+                    f"metric_layers['{name}'] must be a path, an array or "
+                    f"a spec dict, got {type(spec)}")
+
+            derive = spec.get("derive")
+            if derive == "slope_from_dem":
+                self._ensure_stack_dem()
+                values = stack.derive_terrain_slope()
+            elif derive is not None:
+                raise ValueError(
+                    f"Unknown derive '{derive}' for metric layer "
+                    f"'{name}' (supported: 'slope_from_dem')")
+            elif "source" in spec:
+                values = self._load_layer_source(name, spec)
+            else:
+                raise ValueError(
+                    f"metric_layers['{name}'] needs 'source' or 'derive'")
+
+            stack.add_layer(name, values,
+                            hard_max=spec.get("hard_max"),
+                            hard_min=spec.get("hard_min"))
+
+    def _ensure_stack_dem(self) -> None:
+        """Reproject the DEM dataset onto the stack grid (once)."""
+        from pyorps.core.metric_stack import reproject_to_grid
+
+        stack = self.metric_stack
+        if stack.dem is not None:
+            return
+        if self.dem_dataset is None:
+            raise ValueError(
+                "Deriving terrain_slope requires a DEM — pass dem=.")
+        if self.dem_dataset.data is None:
+            self.dem_dataset.load_data(**(self.dem_kwargs or {}))
+        dem_src = self.dem_dataset.data
+        if dem_src.ndim > 2:
+            dem_src = dem_src[0]
+        # Legacy assumption: an unspecified DEM CRS matches the stack CRS.
+        src_crs = self.dem_dataset.crs or stack.crs
+        aligned = reproject_to_grid(
+            dem_src, self.dem_dataset.transform, src_crs,
+            stack.shape, stack.transform, stack.crs)
+        stack.attach_dem(aligned)
+
+    def _load_layer_source(self, name: str, spec: dict) -> ndarray:
+        """Load a prebuilt layer source onto the stack grid."""
+        from pyorps.core.metric_stack import reproject_to_grid
+
+        stack = self.metric_stack
+        source = spec["source"]
+        if isinstance(source, ndarray):
+            if source.shape == stack.shape:
+                return source
+            if "transform" not in spec:
+                raise ValueError(
+                    f"metric_layers['{name}'] array shape {source.shape} "
+                    f"differs from the stack {stack.shape} — provide "
+                    f"'transform' (and optionally 'crs') for "
+                    f"reprojection.")
+            return reproject_to_grid(
+                source, spec["transform"], spec.get("crs", stack.crs),
+                stack.shape, stack.transform, stack.crs)
+        if isinstance(source, str):
+            from rasterio import open as rio_open
+            with rio_open(source) as src:
+                data = src.read(1)
+                aligned = reproject_to_grid(
+                    data, src.transform, src.crs,
+                    stack.shape, stack.transform, stack.crs)
+            # Uncovered area contributes 0 (coverage gaps are not
+            # forbidden — forbidden comes from values, 65535/inf).
+            uncovered = ~np.isfinite(aligned)
+            if uncovered.any():
+                warn(f"Metric layer '{name}': {int(uncovered.sum())} "
+                     f"cell(s) outside the source coverage default to 0.",
+                     UserWarning, stacklevel=2)
+                aligned[uncovered] = 0.0
+            return aligned
+        raise ValueError(
+            f"metric_layers['{name}']['source'] must be a path or an "
+            f"array, got {type(source)}")
 
     @staticmethod
     def normalize_coordinates(
@@ -401,6 +735,12 @@ class PathFinder:
         """
         # Using timed context manager instead of manual timing
         with timed("raster_loading", self.runtimes):
+            if self.objective is not None:
+                # Feasibility pipeline: MetricStack -> combine -> quantize
+                self._create_metric_raster_handler(
+                    cost_assumptions, datasets_to_modify, raster_save_path,
+                    **kwargs)
+                return self._finish_raster_handler_setup(dem_kwargs)
             # Check if we have vector data but no cost_assumptions
             if isinstance(self.dataset, VectorDataset) and cost_assumptions is None:
                 msg = "Cost assumptions must be provided when using vector data"
@@ -462,6 +802,13 @@ class PathFinder:
                         self.raster_handler.save_section_as_raster(raster_save_path)
             else:
                 raise ValueError(f"Unsupported dataset type: {type(self.dataset)}")
+        return self._finish_raster_handler_setup(dem_kwargs)
+
+    def _finish_raster_handler_setup(
+            self,
+            dem_kwargs: dict[str, Any] | None
+    ) -> RasterHandler:
+        """Shared tail of raster-handler creation: buffer warning + DEM."""
         if self.search_space_buffer_m is None:
             self.search_space_buffer_m = self.raster_handler.search_space_buffer_m
             shape = getattr(self.raster_handler, 'data', None)
@@ -534,6 +881,15 @@ class PathFinder:
         else:
             dem_data = None
 
+        # Objective + DEM: replace the raw DEM with one reprojected onto
+        # the search window grid and build the slope-response LUTs (the 3D
+        # stretch applies unconditionally; responses when configured).
+        gradient_luts = None
+        if (self.objective is not None
+                and self.dem_raster_handler is not None):
+            dem_data, gradient_luts = self._prepare_gradient_inputs(
+                raster_data)
+
         # Build extra kwargs for backends that support them
         extra_kwargs = {}
         if self.graph_api_name == "cugraph":
@@ -541,6 +897,8 @@ class PathFinder:
         elif self.graph_api_name not in ("cython",):
             extra_kwargs["use_gpu"] = self.use_gpu
             extra_kwargs["dem_kwargs"] = self.dem_kwargs
+        if gradient_luts is not None:
+            extra_kwargs["gradient_luts"] = gradient_luts
 
         # Create graph using the graph API
         self._graph_api = graph_api_class_constructor(raster_data,
@@ -558,6 +916,149 @@ class PathFinder:
         self.runtimes["edge_construction"] = 0.0
         self.runtimes["graph_creation"] = 0.0
         return None
+
+    def find_route_ensemble(
+            self,
+            objectives: "dict[str, Objective | dict] | list",
+            source: CoordinateInput | None = None,
+            target: CoordinateInput | None = None,
+            **kwargs
+    ) -> "RouteEnsemble":
+        """Route the same source-target pair under several objectives.
+
+        Variants run SEQUENTIALLY (deliberately — routing shares the
+        machine with other work); on the raster-direct backends each
+        additional variant costs only combine + search, no graph rebuild.
+        The finder's active objective is restored afterwards.
+
+        Parameters:
+            objectives: Mapping name -> Objective/weights-dict, or a list
+                of objectives (auto-named ``variant_0`` ...).
+            source / target: Optional single-pair override.
+            **kwargs: Forwarded to :meth:`find_route`.
+
+        Returns:
+            :class:`pyorps.core.ensemble.RouteEnsemble` — use
+            ``.to_dataframe()`` for the comparison table and
+            ``.pareto_front([...])`` for the non-dominated subset.
+        """
+        from pyorps.core.ensemble import EnsembleError, RouteEnsemble
+
+        if self.metric_stack is None:
+            raise ValueError(
+                "find_route_ensemble requires a PathFinder constructed "
+                "with objective= (the metric pipeline is inactive).")
+        if isinstance(objectives, list):
+            objectives = {f"variant_{i}": obj
+                          for i, obj in enumerate(objectives)}
+        if not objectives:
+            raise ValueError("objectives must not be empty")
+
+        ensemble = RouteEnsemble()
+        original_objective = self.objective
+        try:
+            for name, objective in objectives.items():
+                self.set_objective(objective)
+                path = self.find_route(source=source, target=target,
+                                       **kwargs)
+                if isinstance(path, PathCollection):
+                    raise EnsembleError(
+                        "find_route_ensemble supports a single "
+                        "source-target pair — route multiple pairs in an "
+                        "outer loop instead.")
+                ensemble.add(name, path)
+        finally:
+            if original_objective is not None:
+                self.set_objective(original_objective)
+        return ensemble
+
+    def compare_optimal(
+            self,
+            metrics: tuple[str, ...] = ("cost",),
+            source: CoordinateInput | None = None,
+            target: CoordinateInput | None = None,
+            **kwargs
+    ):
+        """Price the current objective against single-metric optima.
+
+        Runs the current objective plus one pure ``{metric: 1.0}`` route
+        per requested metric, and reports per-metric deltas — "your
+        policy costs +X EUR and saves Y exposure" (plan section 9).
+
+        Returns:
+            DataFrame: variant rows plus one ``delta current - <m>``
+            row per compared metric (positive = the current policy pays
+            more of that metric than the single-metric optimum).
+        """
+        if self.objective is None:
+            raise ValueError(
+                "compare_optimal requires an active objective")
+        variants = {"current": self.objective}
+        for metric in metrics:
+            variants[f"{metric}-optimal"] = {metric: 1.0}
+
+        ensemble = self.find_route_ensemble(variants, source=source,
+                                            target=target, **kwargs)
+        table = ensemble.to_dataframe()
+
+        metric_columns = [c for c in table.columns
+                          if c in ensemble["current"].metrics]
+        for metric in metrics:
+            delta = (table.loc["current", metric_columns]
+                     - table.loc[f"{metric}-optimal", metric_columns])
+            table.loc[f"delta current - {metric}-optimal",
+                      metric_columns] = delta
+        return table
+
+    def _prepare_gradient_inputs(self, raster_data):
+        """Reproject the DEM onto the search window grid and build LUTs.
+
+        Uses rasterio.warp.reproject (bilinear) with the true transforms of
+        both grids — correct for any DEM resolution or extent, unlike the
+        legacy shape-zoom approach. Non-finite DEM cells (nodata voids)
+        make the corresponding weight cells forbidden and are filled with
+        the mean height, so no NaN can ever reach a kernel.
+
+        Returns:
+            (dem_aligned float32, GradientLUTs)
+        """
+        from rasterio.warp import Resampling, reproject
+
+        if self.dem_raster_handler is None:
+            raise ValueError(
+                "Gradient terms require a DEM — pass dem= to PathFinder.")
+
+        dem_src = self.dem_raster_handler.data
+        if dem_src.ndim > 2:
+            dem_src = dem_src[0]
+        dst_crs = self.raster_handler.raster_dataset.crs
+        # Legacy assumption: an unspecified DEM CRS matches the raster CRS.
+        src_crs = self.dem_dataset.crs or dst_crs
+        dem_aligned = np.full(raster_data.shape, np.nan, dtype=np.float32)
+        reproject(
+            source=np.ascontiguousarray(dem_src, dtype=np.float32),
+            destination=dem_aligned,
+            src_transform=self.dem_raster_handler.window_transform,
+            src_crs=src_crs,
+            dst_transform=self.raster_handler.window_transform,
+            dst_crs=dst_crs,
+            resampling=Resampling.bilinear,
+        )
+
+        invalid = ~np.isfinite(dem_aligned)
+        if invalid.any():
+            finite = dem_aligned[~invalid]
+            fill = float(finite.mean()) if finite.size else 0.0
+            raster_data[invalid] = uint16(65535)  # forbid uncovered cells
+            dem_aligned[invalid] = fill
+
+        cell_size = float(abs(self.raster_handler.window_transform.a))
+        quant_scale = (self._combine_result.scale
+                       if self._combine_result is not None else 1.0)
+        gradient_luts = self.objective.build_gradient_luts(
+            self.steps, cell_size, quant_scale)
+        self._gradient_dem = dem_aligned  # reused by the metric evaluator
+        return dem_aligned, gradient_luts
 
     @property
     def graph_api(self) -> GraphAPI:
@@ -627,6 +1128,10 @@ class PathFinder:
         """
         if not self.ignore_max_cost:
             return indices_2d
+
+        # Float32 weight rasters (Phase 9): forbidden = non-finite
+        if np.issubdtype(self.raster_handler.data.dtype, np.floating):
+            return self._correct_forbidden_positions_float(indices_2d)
 
         # Get the maximum value for uint16
         max_value = iinfo(uint16).max  # 65535
@@ -706,6 +1211,30 @@ class PathFinder:
             warn(header + table, UserWarning, stacklevel=2)
 
         return corrected_indices
+
+    def _correct_forbidden_positions_float(self, indices_2d: ndarray) -> ndarray:
+        """Snap endpoints on non-finite (forbidden) float cells to the
+        nearest finite cell — the float twin of the uint16 correction."""
+        raster_data = self.raster_handler.data
+        if raster_data.ndim == 3:
+            raster_data = raster_data[0]
+        corrected = asarray(indices_2d, dtype=int32).copy()
+        finite_cells = None
+        for i, (row, col) in enumerate(corrected):
+            if np.isfinite(raster_data[row, col]):
+                continue
+            if finite_cells is None:
+                finite_cells = np.argwhere(np.isfinite(raster_data))
+                if finite_cells.size == 0:
+                    return corrected
+            d2 = ((finite_cells[:, 0] - row) ** 2
+                  + (finite_cells[:, 1] - col) ** 2)
+            nearest = finite_cells[int(d2.argmin())]
+            warn(f"Position [{row}, {col}] lies on a forbidden cell and "
+                 f"was corrected to [{nearest[0]}, {nearest[1]}].",
+                 UserWarning, stacklevel=2)
+            corrected[i] = nearest
+        return corrected
 
     def get_coords_from_node_indices(
             self,
@@ -794,6 +1323,11 @@ class PathFinder:
             PathCollection: When multiple source-target pairs or a single
                 source with multiple targets are provided.
         """
+        # Per-call objective override (kept out of the shortest_path kwargs)
+        objective = kwargs.pop("objective", None)
+        if objective is not None:
+            self.set_objective(objective)
+
         # Get source and target coords
         if source is None:
             source = self.source_coords
@@ -957,6 +1491,15 @@ class PathFinder:
                 self.geo_rasterizer.cost_manager.build_cost_labels()
             )
 
+        # Attach objective provenance when the metric pipeline is active
+        if self.objective is not None and self._combine_result is not None:
+            path.objective_spec = {
+                **self.objective.to_dict(),
+                "quantization_scale": self._combine_result.scale,
+                "resolution": self._combine_result.resolution,
+                "legacy_passthrough": self._combine_result.legacy_passthrough,
+            }
+
         # Calculate path metrics if requested
         if calculate_metrics:
             with timed("path_metrics", self.runtimes):
@@ -987,27 +1530,67 @@ class PathFinder:
 
         # Get the raster data (costs)
         raster_data = self.raster_handler.data[0]
-
-        # Calculate metrics using Numba-accelerated function
-        path.total_length, cat, length = calculate_path_metrics_numba(raster_data,
-                                                                      path_indices)
-
-        # Convert to regular Python dictionary
-        path.length_by_category = dict(zip(cat, length))
-        tot = path.total_length
-        l_by_cat = path.length_by_category.items()
-        # Calculate percentages
-        path.length_by_category_percent = {k: (v / tot) * 100 if tot > 0 else 0
-                                           for k, v in l_by_cat}
-
-        # Calculate total cost (distance-weighted: category × length in category)
-        path.total_cost = sum(cat * length for cat, length in l_by_cat)
-
-        # Calculate raw cell cost (sum of raster values along path)
         cols = raster_data.shape[1]
         rows_idx = path_indices // cols
         cols_idx = path_indices % cols
-        path.total_cell_cost = float(raster_data[rows_idx, cols_idx].sum())
+
+        # Legacy category metrics require the uint16 raster; the float32
+        # precision mode (Phase 9) relies on the evaluator instead.
+        if raster_data.dtype == np.uint16:
+            # Calculate metrics using Numba-accelerated function
+            path.total_length, cat, length = calculate_path_metrics_numba(
+                raster_data, path_indices)
+
+            # Convert to regular Python dictionary
+            path.length_by_category = dict(zip(cat, length))
+            tot = path.total_length
+            l_by_cat = path.length_by_category.items()
+            # Calculate percentages
+            path.length_by_category_percent = {
+                k: (v / tot) * 100 if tot > 0 else 0
+                for k, v in l_by_cat}
+
+            # Calculate total cost (distance-weighted: category × length)
+            path.total_cost = sum(cat * length for cat, length in l_by_cat)
+
+            # Calculate raw cell cost (sum of raster values along path)
+            path.total_cell_cost = float(
+                raster_data[rows_idx, cols_idx].sum())
+
+        # Feasibility-objective reporting: honest per-metric totals from
+        # the float layers (the legacy fields above stay untouched).
+        if self.objective is not None and self.metric_stack is not None:
+            self._evaluate_objective_metrics(rows_idx, cols_idx, path)
+
+    def _evaluate_objective_metrics(self, rows_idx, cols_idx, path):
+        """Populate Path.metrics/feasibility from the metric stack."""
+        from pyorps.utils.metric_eval import evaluate_path_metrics
+
+        sub = self.metric_stack.window(self.raster_handler.window)
+        layers = {name: sub[name] for name in sub.layer_names}
+        dem = self._gradient_dem  # aligned at graph creation (or None)
+
+        evaluation = evaluate_path_metrics(
+            rows_idx, cols_idx, layers, self.objective,
+            cell_size=float(abs(self.raster_handler.window_transform.a)),
+            dem=dem,
+            category=sub.category,
+            category_labels=sub.category_labels,
+        )
+
+        path.metrics = evaluation.metrics
+        path.feasibility = evaluation.feasibility
+        path.total_length_2d = evaluation.total_length_2d
+        path.total_length_3d = evaluation.total_length_3d
+        path.mean_gradient_pct = evaluation.mean_gradient_pct
+        path.max_gradient_pct = evaluation.max_gradient_pct
+        path.length_by_class = evaluation.length_by_class or None
+        if dem is not None or path.total_length is None:
+            # v3 plan section 0: with a DEM the reported length is the
+            # true 3D length (2D retained in total_length_2d). In float
+            # precision mode the legacy 2D metric is skipped entirely,
+            # so the evaluator supplies the length either way.
+            path.total_length = evaluation.total_length_3d
 
     def _apply_simplification(self, path, simplify_config):
         """Replace path.path_geometry with a simplified line for export.

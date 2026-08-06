@@ -19,6 +19,7 @@ from rasterio.transform import Affine, from_bounds
 from shapely.geometry import Polygon, box
 
 from pyorps.core.cost_assumptions import CostAssumptions
+from pyorps.core.metric_stack import MetricStack
 from pyorps.core.types import (
     IMPASSABLE_CELL_COST,
     BboxType,
@@ -74,6 +75,7 @@ class GeoRasterizer:
         self.default_crs = default_crs
         self.bbox = bbox
         self.mask = mask
+        self.metric_stack = None
 
         if isinstance(cost_assumptions, CostAssumptions):
             self.cost_manager = cost_assumptions
@@ -329,6 +331,140 @@ class GeoRasterizer:
         if save_path is not None:
             self.save_raster(save_path)
         return self.raster_dataset
+
+    def rasterize_metrics(
+            self,
+            resolution_in_m: float = 1.0,
+            geometry_buffer_m: float = 0,
+            include_category: bool = True,
+            preprocessing_function: Callable | None = None,
+            preprocessing_kwargs: dict[str, Any] | None = None,
+    ) -> MetricStack:
+        """Rasterize the base dataset into a multi-band :class:`MetricStack`.
+
+        One geometry pass, K value bindings: every metric column written by
+        the cost manager becomes one float32 band, plus an optional
+        feature-class category band for reporting breakdowns. All bands are
+        rasterized from the SAME sorted geometry sequence, so the winning
+        feature on overlaps is identical in every band — the alignment
+        invariant of the feasibility plan (section 6.4).
+
+        Cells outside all features are forbidden (as in :meth:`rasterize`,
+        where they receive the 65535 fill). Metric bands are NOT rounded —
+        float values like landscape indices survive as-is.
+
+        Parameters:
+            resolution_in_m: Output resolution in meters per pixel.
+            geometry_buffer_m: Optional buffer applied to the geometries.
+            include_category: Also rasterize the feature-class id band.
+            preprocessing_function: Optional hook called with the base
+                GeoDataFrame before applying cost assumptions.
+            preprocessing_kwargs: Keyword arguments for the hook.
+
+        Returns:
+            The rasterized :class:`MetricStack` (also stored as
+            ``self.metric_stack``).
+        """
+        if self.base_dataset is None or self.base_dataset.data is None:
+            raise ValueError("No base dataset loaded to rasterize")
+        if self.base_data.shape[0] == 0:
+            raise ValueError("Base data is empty - nothing to rasterize!")
+
+        if preprocessing_function is not None:
+            preprocessing_function(self.base_dataset.data,
+                                   **(preprocessing_kwargs or {}))
+
+        # Apply cost assumptions: one column per metric ('cost' first)
+        self.cost_manager.apply_to_geodataframe(self.base_data)
+        metric_names = self.cost_manager.metric_names
+        missing = [m for m in metric_names if m not in self.base_data.columns]
+        if missing:
+            raise ValueError(
+                f"Cost manager did not produce metric column(s) {missing}")
+
+        data = self.base_data
+        # Unmatched features: forbidden in cost => forbidden in the stack;
+        # other metrics default to 0 (their forbidden state rides the mask).
+        data['cost'] = data['cost'].fillna(IMPASSABLE_CELL_COST)
+        for name in metric_names:
+            if name != 'cost':
+                data[name] = data[name].fillna(0.0)
+
+        # ONE ordering for every band: ascending cost, so on overlaps the
+        # more expensive feature wins — exactly as in rasterize().
+        data = data.sort_values(by='cost', ascending=True)
+
+        if geometry_buffer_m > 0:
+            data = self.create_buffer(data, geometry_buffer_m, inplace=False)
+
+        out_shape = self._calculate_out_shape_from_geodataframe(
+            data, resolution_in_m)
+        transform = from_bounds(*data.total_bounds, *out_shape[::-1])
+
+        stack = MetricStack(transform, self.crs)
+
+        # Cost band first: its 65535 fill defines the outside-features
+        # forbidden area for the whole stack.
+        cost_band = rasterize(
+            zip(data['geometry'], data['cost'].astype(np.float32)),
+            out_shape=out_shape,
+            fill=float(IMPASSABLE_CELL_COST),
+            dtype="float32",
+            transform=transform,
+        )
+        stack.add_layer('cost', cost_band)
+
+        for name in metric_names:
+            if name == 'cost':
+                continue
+            band = rasterize(
+                zip(data['geometry'], data[name].astype(np.float32)),
+                out_shape=out_shape,
+                fill=0.0,
+                dtype="float32",
+                transform=transform,
+            )
+            stack.add_layer(name, band)
+
+        if include_category:
+            ids, labels = self._build_category_ids(data)
+            category_band = rasterize(
+                zip(data['geometry'], ids),
+                out_shape=out_shape,
+                fill=0,
+                dtype="uint16",
+                transform=transform,
+            )
+            stack.attach_category(category_band, labels)
+
+        self.metric_stack = stack
+        return stack
+
+    def _build_category_ids(self, data):
+        """Feature-class ids (1-based, 0 = no class) from the feature columns.
+
+        Ids follow the same row order as the value bindings, so the
+        category band picks the same winning feature as the metric bands.
+        """
+        main = self.cost_manager.main_feature
+        side = self.cost_manager.side_features or []
+        columns = [c for c in [main, *side] if c in data.columns]
+        if not columns:
+            # No feature columns detected — one class per unique cost value
+            keys = data['cost'].astype(str)
+        else:
+            keys = data[columns].astype(str).agg(
+                lambda row: " > ".join(v for v in row if v), axis=1)
+
+        unique_keys = list(dict.fromkeys(keys))
+        if len(unique_keys) > 65534:
+            raise ValueError(
+                f"{len(unique_keys)} feature classes exceed the uint16 "
+                f"category band capacity (65534).")
+        id_by_key = {key: i + 1 for i, key in enumerate(unique_keys)}
+        ids = keys.map(id_by_key).astype(np.uint16)
+        labels = {i + 1: key for i, key in enumerate(unique_keys)}
+        return ids, labels
 
     def _calculate_out_shape_from_bounding_box(
             self,

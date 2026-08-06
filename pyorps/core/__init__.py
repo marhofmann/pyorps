@@ -15,8 +15,12 @@ from .exceptions import (
                                FileLoadError,
                                FormatError,
                                InvalidSourceError,
+                               # Metric stack exceptions
+                               MetricStackError,
                                NoPathFoundError,
                                NoSuitableColumnsError,
+                               # Objective exceptions
+                               ObjectiveError,
                                PairwiseError,
                                # Base exception
                                PyorpsError,
@@ -28,6 +32,9 @@ from .exceptions import (
                                WFSLayerNotFoundError,
                                WFSResponseParsingError,
 )
+from .ensemble import EnsembleError, RouteEnsemble
+from .metric_stack import CombineResult, MetricStack
+from .objective import GradientLUTs, GradientOptions, Objective
 from .path import Path, PathCollection
 from .types import (
                                IMPASSABLE_CELL_COST,
@@ -44,6 +51,15 @@ from .types import (
 __all__ = [
     # Cost assumptions
     "CostAssumptions", "get_zero_cost_assumptions", "detect_feature_columns", "save_empty_cost_assumptions",
+
+    # Feasibility objective
+    "Objective", "GradientOptions", "GradientLUTs", "ObjectiveError",
+
+    # Metric stack
+    "MetricStack", "MetricStackError", "CombineResult",
+
+    # Route ensembles
+    "RouteEnsemble", "EnsembleError",
 
     # Types
     "InputDataType", "CostAssumptionsType", "BboxType", "GeometryMaskType",
