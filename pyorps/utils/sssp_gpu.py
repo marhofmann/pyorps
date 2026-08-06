@@ -111,7 +111,7 @@ void relax_light(
     if (u_dist >= 1e30f) return;
 
     unsigned short src_val = raster[u];
-    if (src_val == (unsigned short)max_cost) return;
+    if (src_val == max_cost) return;
 
     for (int s = 0; s < n_steps; s++) {
         int dr = (int)s_steps[s * 2];
@@ -123,7 +123,7 @@ void relax_light(
 
         int v = vr * cols + vc;
         unsigned short dst_val = raster[v];
-        if (dst_val == (unsigned short)max_cost) continue;
+        if (dst_val == max_cost) continue;
 
         // Check intermediates
         float inter_cost = 0.0f;
@@ -136,7 +136,7 @@ void relax_light(
                 valid = false; break;
             }
             unsigned short ival = raster[ir * cols + ic];
-            if (ival == (unsigned short)max_cost) {
+            if (ival == max_cost) {
                 valid = false; break;
             }
             inter_cost += (float)ival;
@@ -197,7 +197,7 @@ void relax_heavy(
     if (u_dist >= 1e30f) return;
 
     unsigned short src_val = raster[u];
-    if (src_val == (unsigned short)max_cost) return;
+    if (src_val == max_cost) return;
 
     for (int s = 0; s < n_steps; s++) {
         int dr = (int)s_steps[s * 2];
@@ -209,7 +209,7 @@ void relax_heavy(
 
         int v = vr * cols + vc;
         unsigned short dst_val = raster[v];
-        if (dst_val == (unsigned short)max_cost) continue;
+        if (dst_val == max_cost) continue;
 
         // Check intermediates
         float inter_cost = 0.0f;
@@ -222,7 +222,7 @@ void relax_heavy(
                 valid = false; break;
             }
             unsigned short ival = raster[ir * cols + ic];
-            if (ival == (unsigned short)max_cost) {
+            if (ival == max_cost) {
                 valid = false; break;
             }
             inter_cost += (float)ival;
@@ -292,7 +292,7 @@ void relax_light_v2(
     if (u_dist >= 1e30f) return;
 
     unsigned short src_val = raster[u];
-    if (src_val == (unsigned short)max_cost) return;
+    if (src_val == max_cost) return;
 
     for (int s = 0; s < n_steps; s++) {
         int dr = (int)s_steps[s * 2];
@@ -304,7 +304,7 @@ void relax_light_v2(
 
         int v = vr * cols + vc;
         unsigned short dst_val = raster[v];
-        if (dst_val == (unsigned short)max_cost) continue;
+        if (dst_val == max_cost) continue;
 
         // Check intermediates
         float inter_cost = 0.0f;
@@ -317,7 +317,7 @@ void relax_light_v2(
                 valid = false; break;
             }
             unsigned short ival = raster[ir * cols + ic];
-            if (ival == (unsigned short)max_cost) {
+            if (ival == max_cost) {
                 valid = false; break;
             }
             inter_cost += (float)ival;
@@ -382,7 +382,7 @@ void relax_heavy_v2(
     if (u_dist >= 1e30f) return;
 
     unsigned short src_val = raster[u];
-    if (src_val == (unsigned short)max_cost) return;
+    if (src_val == max_cost) return;
 
     for (int s = 0; s < n_steps; s++) {
         int dr = (int)s_steps[s * 2];
@@ -394,7 +394,7 @@ void relax_heavy_v2(
 
         int v = vr * cols + vc;
         unsigned short dst_val = raster[v];
-        if (dst_val == (unsigned short)max_cost) continue;
+        if (dst_val == max_cost) continue;
 
         // Check intermediates
         float inter_cost = 0.0f;
@@ -407,7 +407,7 @@ void relax_heavy_v2(
                 valid = false; break;
             }
             unsigned short ival = raster[ir * cols + ic];
-            if (ival == (unsigned short)max_cost) {
+            if (ival == max_cost) {
                 valid = false; break;
             }
             inter_cost += (float)ival;
@@ -507,7 +507,7 @@ void relax_light_v3(
     if (u_dist >= 1e30f) return;
 
     unsigned short src_val = raster[u];
-    if (src_val == (unsigned short)max_cost) return;
+    if (src_val == max_cost) return;
 
     for (int s = 0; s < n_steps; s++) {
         int dr = (int)s_steps[s * 2];
@@ -519,7 +519,7 @@ void relax_light_v3(
 
         int v = vr * cols + vc;
         unsigned short dst_val = raster[v];
-        if (dst_val == (unsigned short)max_cost) continue;
+        if (dst_val == max_cost) continue;
 
         // Check intermediates
         float inter_cost = 0.0f;
@@ -532,7 +532,7 @@ void relax_light_v3(
                 valid = false; break;
             }
             unsigned short ival = raster[ir * cols + ic];
-            if (ival == (unsigned short)max_cost) {
+            if (ival == max_cost) {
                 valid = false; break;
             }
             inter_cost += (float)ival;
@@ -680,10 +680,18 @@ void delta_stepping_persistent(
     const int n_steps, const int max_inter_cols,
     const int rows, const int cols, const int max_cost,
     float* dist, int* pred,
-    const float delta, const int n_pixels, const int max_light_iters,
+    const float delta, const int window, const int fuse_depth,
+    const int n_pixels, const int max_light_iters,
     const int* targets, const int n_targets, const float margin,
     volatile int* control, int* queue_a, int* queue_b,
-    int* settled, int* pending, const int buf_size
+    int* settled, int* pending, const int buf_size,
+    // Per-edge gradient terms (feasibility plan section 3.2).
+    // grad_n_bins == 0 disables everything (null-pointer fast path).
+    const float* __restrict__ dem,
+    const float* __restrict__ grad_lut,        // (n_bins*2) [mult, add]
+    const float* __restrict__ grad_bin_factor, // (n_steps)
+    const float* __restrict__ grad_step_len,   // (n_steps)
+    const int grad_n_bins
 ) {
     int n_blocks = gridDim.x;
     extern __shared__ char smem[];
@@ -697,10 +705,26 @@ void delta_stepping_persistent(
     for (int i = threadIdx.x; i < n_steps; i += blockDim.x) s_cost_factors[i] = cost_factors[i];
     int ls = n_steps * max_inter_cols * 2;
     for (int i = threadIdx.x; i < ls; i += blockDim.x) s_inter_lut[i] = inter_lut[i];
+    // Gradient tables after the intermediate LUT (4-byte aligned).
+    int lsp = (ls + 3) & ~3;
+    float* s_grad_lut = (float*)(s_inter_lut + lsp);
+    float* s_grad_bf  = s_grad_lut + 2 * grad_n_bins;
+    float* s_grad_sl  = s_grad_bf + n_steps;
+    if (grad_n_bins > 0) {
+        for (int i = threadIdx.x; i < 2 * grad_n_bins; i += blockDim.x)
+            s_grad_lut[i] = grad_lut[i];
+        for (int i = threadIdx.x; i < n_steps; i += blockDim.x) {
+            s_grad_bf[i] = grad_bin_factor[i];
+            s_grad_sl[i] = grad_step_len[i];
+        }
+    }
     __syncthreads();
     int gtid = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = gridDim.x * blockDim.x;
     int swap = 0;
+    // Super-bucket window: 'window' consecutive base buckets are processed
+    // as one phase (effective delta = span). window=1 == classic behavior.
+    float span = delta * (float)window;
 
     while (true) {
         while (control[CTL_COUNT_A] == 0) {
@@ -709,7 +733,7 @@ void delta_stepping_persistent(
                 if (gtid == 0) { control[CTL_NEAR] = 0; control[CTL_FAR] = 0; }
                 grid_barrier(control, n_blocks);
                 int bkt = control[CTL_BUCKET];
-                float bl = bkt * delta, bh = (bkt + 1) * delta;
+                float bl = bkt * delta, bh = (bkt + window) * delta;
                 int* qa = swap ? queue_b : queue_a;
                 for (int i = gtid; i < pc; i += stride) {
                     int v = pending[i]; float d = dist[v];
@@ -723,7 +747,7 @@ void delta_stepping_persistent(
                 if (gtid == 0) { control[CTL_COUNT_A] = control[CTL_NEAR]; control[CTL_PENDING] = fc; }
                 grid_barrier(control, n_blocks);
                 if (control[CTL_COUNT_A] > 0) break;
-                if (control[CTL_PENDING] > 0) { if (gtid == 0) control[CTL_BUCKET] += 1; grid_barrier(control, n_blocks); continue; }
+                if (control[CTL_PENDING] > 0) { if (gtid == 0) control[CTL_BUCKET] += window; grid_barrier(control, n_blocks); continue; }
             }
             if (gtid == 0) control[CTL_MIN_DIST] = __float_as_int(1e30f);
             grid_barrier(control, n_blocks);
@@ -734,7 +758,7 @@ void delta_stepping_persistent(
             grid_barrier(control, n_blocks);
             float gm = __int_as_float(control[CTL_MIN_DIST]);
             if (gm >= 1e29f) { if (gtid == 0) control[CTL_DONE] = 1; grid_barrier(control, n_blocks); break; }
-            int nb = (int)(gm / delta); float fl = nb * delta, fh = (nb + 1) * delta;
+            int nb = (int)(gm / delta); float fl = nb * delta, fh = (nb + window) * delta;
             if (gtid == 0) { control[CTL_BUCKET] = nb; control[CTL_NEAR] = 0; }
             grid_barrier(control, n_blocks);
             int* qa = swap ? queue_b : queue_a;
@@ -747,7 +771,7 @@ void delta_stepping_persistent(
         if (control[CTL_COUNT_A] == 0) break;
 
         int bkt = control[CTL_BUCKET];
-        float blo = bkt * delta, bhi = (bkt + 1) * delta;
+        float blo = bkt * delta, bhi = (bkt + window) * delta;
         { int ca = control[CTL_COUNT_A]; int* qa = swap ? queue_b : queue_a;
           for (int i = gtid; i < ca && i < buf_size; i += stride) settled[i] = qa[i];
           if (gtid == 0) control[CTL_SETTLED] = ca < buf_size ? ca : buf_size; }
@@ -760,32 +784,55 @@ void delta_stepping_persistent(
             int* qb = swap ? queue_a : queue_b;
             int ca = control[CTL_COUNT_A];
             for (int idx = gtid; idx < ca; idx += stride) {
-                int u = qa[idx]; int ur = u / cols, uc = u - ur * cols;
-                float ud = dist[u]; if (ud >= 1e30f) continue;
-                unsigned short sv = raster[u]; if (sv == (unsigned short)max_cost) continue;
+                int u = qa[idx];
+                for (int hop = 0; ; hop++) {
+                int chase = -1;
+                int ur = u / cols, uc = u - ur * cols;
+                float ud = dist[u]; if (ud >= 1e30f) break;
+                unsigned short sv = raster[u]; if (sv == max_cost) break;
+                float udem = (grad_n_bins > 0) ? dem[u] : 0.0f;
                 for (int s = 0; s < n_steps; s++) {
                     int vr = ur + (int)s_steps[s*2], vc = uc + (int)s_steps[s*2+1];
                     if (vr < 0 || vr >= rows || vc < 0 || vc >= cols) continue;
                     int v = vr * cols + vc;
-                    unsigned short dv = raster[v]; if (dv == (unsigned short)max_cost) continue;
+                    unsigned short dv = raster[v]; if (dv == max_cost) continue;
                     float ic = 0.0f; bool ok = true; int ni = s_n_inter[s];
                     for (int k = 0; k < ni; k++) {
                         int ir = ur + (int)s_inter_lut[(s*max_inter_cols+k)*2];
                         int icc = uc + (int)s_inter_lut[(s*max_inter_cols+k)*2+1];
                         if (ir < 0 || ir >= rows || icc < 0 || icc >= cols) { ok = false; break; }
-                        unsigned short iv = raster[ir*cols+icc]; if (iv == (unsigned short)max_cost) { ok = false; break; }
+                        unsigned short iv = raster[ir*cols+icc]; if (iv == max_cost) { ok = false; break; }
                         ic += (float)iv;
                     }
                     if (!ok) continue;
                     float ew = ((float)sv + (float)dv + ic) * s_cost_factors[s];
-                    if (ew > delta) continue;
+                    if (grad_n_bins > 0) {
+                        float dh = fabsf(dem[v] - udem);
+                        int gb = (int)(dh * s_grad_bf[s]);
+                        if (gb >= grad_n_bins) gb = grad_n_bins - 1;
+                        float gmul = s_grad_lut[2*gb];
+                        if (isinf(gmul)) continue;  // hard grade limit
+                        ew = ew * gmul + s_grad_lut[2*gb+1] * s_grad_sl[s];
+                    }
+                    if (ew > span) continue;
                     float nd = ud + ew;
                     int ndi = __float_as_int(nd), odi = atomicMin((int*)&dist[v], ndi);
                     if (ndi < odi) {
                         if (pred != NULL) pred[v] = u;
-                        if (nd >= blo && nd < bhi) { int p = atomicAdd((int*)&control[CTL_COUNT_B], 1); if (p < buf_size) qb[p] = v; }
+                        if (nd >= blo && nd < bhi) {
+                            int p = atomicAdd((int*)&control[CTL_COUNT_B], 1); if (p < buf_size) qb[p] = v;
+                            chase = v;
+                        }
                         else { int p = atomicAdd((int*)&control[CTL_PENDING], 1); if (p < buf_size) pending[p] = v; }
                     }
+                }
+                // Tail-chase fusion: follow one in-window improvement
+                // immediately (bounded depth). The chased vertex was also
+                // queued to qb, so correctness is a strict superset of the
+                // classic behavior -- the chase only propagates improvements
+                // deeper within this light iteration.
+                if (chase < 0 || hop >= fuse_depth) break;
+                u = chase;
                 }
             }
             grid_barrier(control, n_blocks);
@@ -803,23 +850,32 @@ void delta_stepping_persistent(
           for (int idx = gtid; idx < sc; idx += stride) {
               int u = settled[idx]; int ur = u / cols, uc = u - ur * cols;
               float ud = dist[u]; if (ud >= 1e30f) continue;
-              unsigned short sv = raster[u]; if (sv == (unsigned short)max_cost) continue;
+              unsigned short sv = raster[u]; if (sv == max_cost) continue;
+              float udem = (grad_n_bins > 0) ? dem[u] : 0.0f;
               for (int s = 0; s < n_steps; s++) {
                   int vr = ur + (int)s_steps[s*2], vc = uc + (int)s_steps[s*2+1];
                   if (vr < 0 || vr >= rows || vc < 0 || vc >= cols) continue;
                   int v = vr * cols + vc;
-                  unsigned short dv = raster[v]; if (dv == (unsigned short)max_cost) continue;
+                  unsigned short dv = raster[v]; if (dv == max_cost) continue;
                   float ic = 0.0f; bool ok = true; int ni = s_n_inter[s];
                   for (int k = 0; k < ni; k++) {
                       int ir = ur + (int)s_inter_lut[(s*max_inter_cols+k)*2];
                       int icc = uc + (int)s_inter_lut[(s*max_inter_cols+k)*2+1];
                       if (ir < 0 || ir >= rows || icc < 0 || icc >= cols) { ok = false; break; }
-                      unsigned short iv = raster[ir*cols+icc]; if (iv == (unsigned short)max_cost) { ok = false; break; }
+                      unsigned short iv = raster[ir*cols+icc]; if (iv == max_cost) { ok = false; break; }
                       ic += (float)iv;
                   }
                   if (!ok) continue;
                   float ew = ((float)sv + (float)dv + ic) * s_cost_factors[s];
-                  if (ew <= delta) continue;
+                  if (grad_n_bins > 0) {
+                      float dh = fabsf(dem[v] - udem);
+                      int gb = (int)(dh * s_grad_bf[s]);
+                      if (gb >= grad_n_bins) gb = grad_n_bins - 1;
+                      float gmul = s_grad_lut[2*gb];
+                      if (isinf(gmul)) continue;  // hard grade limit
+                      ew = ew * gmul + s_grad_lut[2*gb+1] * s_grad_sl[s];
+                  }
+                  if (ew <= span) continue;
                   float nd = ud + ew; int ndi = __float_as_int(nd), odi = atomicMin((int*)&dist[v], ndi);
                   if (ndi < odi) {
                       if (pred != NULL) pred[v] = u;
@@ -830,9 +886,9 @@ void delta_stepping_persistent(
         }
         grid_barrier(control, n_blocks);
 
-        if (gtid == 0) control[CTL_BUCKET] += 1;
+        if (gtid == 0) control[CTL_BUCKET] += window;
         grid_barrier(control, n_blocks);
-        int nxt = control[CTL_BUCKET]; float nl = nxt * delta, nh = (nxt + 1) * delta;
+        int nxt = control[CTL_BUCKET]; float nl = nxt * delta, nh = (nxt + window) * delta;
         int hc = control[CTL_COUNT_B], pcc = control[CTL_PENDING], cmb = hc + pcc;
         if (cmb > 0) {
             int* qb = swap ? queue_a : queue_b;
@@ -890,9 +946,9 @@ void delta_stepping_persistent(
 _sssp_kernel_cache = {}
 
 
-def _get_sssp_kernel(name, source, cooperative=False):
+def _get_sssp_kernel(name, source, cooperative=False, variant="u16"):
     """Get a compiled CuPy RawKernel, compiling on first use."""
-    key = (name, cooperative)
+    key = (name, cooperative, variant)
     if key not in _sssp_kernel_cache:
         kwargs = {}
         if cooperative:
@@ -907,6 +963,24 @@ def _get_sssp_kernel(name, source, cooperative=False):
             )
         _sssp_kernel_cache[key] = cp.RawKernel(source, name, **kwargs)
     return _sssp_kernel_cache[key]
+
+
+def _float_raster_source(source):
+    """Derive the float32-raster kernel variant from the uint16 source.
+
+    Lossless weight_precision="float32" mode (feasibility plan Phase 9):
+    the raster becomes ``const float*`` and the forbidden test becomes
+    ``value >= 1e30f`` (combine() encodes forbidden as +inf) instead of
+    the uint16 sentinel comparison. The ``(float)`` casts become no-ops;
+    everything else (gradient terms, queues, atomics) is unchanged.
+    """
+    return (source
+            .replace("const unsigned short* __restrict__ raster",
+                     "const float* __restrict__ raster")
+            .replace("unsigned short sv", "float sv")
+            .replace("unsigned short dv", "float dv")
+            .replace("unsigned short iv", "float iv")
+            .replace("== max_cost", ">= 1e30f"))
 
 
 def _compute_smem_bytes(n_steps: int, max_inter_cols: int) -> int:
@@ -942,9 +1016,14 @@ def _compute_auto_delta(
     Returns:
         Positive float delta value
     """
-    max_val = np.iinfo(np.uint16).max if ignore_max else np.iinfo(np.uint16).max + 1
-    valid = raster.ravel()
-    valid = valid[valid < max_val]
+    if np.issubdtype(raster.dtype, np.floating):
+        valid = raster.ravel()
+        valid = valid[np.isfinite(valid) & (valid < 1e30)]
+    else:
+        max_val = (np.iinfo(np.uint16).max if ignore_max
+                   else np.iinfo(np.uint16).max + 1)
+        valid = raster.ravel()
+        valid = valid[valid < max_val]
     if len(valid) == 0:
         return 100.0
 
@@ -1007,7 +1086,11 @@ def _validate_source(raster, source_idx, n_pixels, max_cost, return_predecessor)
 
     cols = raster.shape[1]
     source_r, source_c = divmod(int(source_idx), cols)
-    if raster[source_r, source_c] == max_cost:
+    value = raster[source_r, source_c]
+    if np.issubdtype(raster.dtype, np.floating):
+        if not np.isfinite(value) or value >= 1e30:
+            return _make_empty_result(n_pixels, return_predecessor)
+    elif value == max_cost:
         return _make_empty_result(n_pixels, return_predecessor)
     return None
 
@@ -1036,6 +1119,64 @@ def _upload_step_data(steps):
 
     return (d_steps, d_cost_factors, d_inter_lut, d_n_inter,
             cost_factors, max_inter_cols, smem_bytes)
+
+
+def _prepare_gradient_gpu(dem, gradient_luts, raster_shape, n_steps,
+                          max_inter_cols):
+    """Upload the gradient inputs for the V4 kernel.
+
+    Returns (dem_arg, lut_arg, bf_arg, sl_arg, n_bins, smem_extra,
+    mean_mult). With gradient_luts None everything degenerates to null
+    pointers, n_bins = 0 and mean_mult = 1.0 — the kernel's fast path.
+    """
+    if gradient_luts is None:
+        null = np.intp(0)
+        return null, null, null, null, 0, 0, 1.0
+    if dem is None:
+        raise ValueError("gradient_luts require a dem aligned to the raster")
+    dem = np.ascontiguousarray(dem, dtype=np.float32)
+    if dem.shape != raster_shape:
+        raise ValueError(
+            f"DEM shape {dem.shape} does not match the raster "
+            f"{raster_shape} — align the DEM first.")
+    if not np.isfinite(dem).all():
+        raise ValueError(
+            "DEM contains non-finite values — sanitize before the GPU "
+            "((int)(NaN * x) is undefined on device).")
+
+    d_dem = cp.asarray(dem)
+    d_lut = cp.asarray(np.ascontiguousarray(
+        gradient_luts.packed, dtype=np.float32).ravel())
+    d_bf = cp.asarray(np.ascontiguousarray(
+        gradient_luts.bin_factor, dtype=np.float32))
+    d_sl = cp.asarray(np.ascontiguousarray(
+        gradient_luts.step_len_cells, dtype=np.float32))
+    n_bins = int(gradient_luts.n_bins)
+
+    # Extra shared memory: 4-byte pad after the intermediate LUT, the
+    # packed (mult, add) table and the two per-direction arrays.
+    lut_bytes = n_steps * max_inter_cols * 2
+    pad = ((lut_bytes + 3) & ~3) - lut_bytes
+    smem_extra = pad + 8 * n_bins + 8 * n_steps
+
+    # Delta scaling: with the multiplicative table active, the mean edge
+    # weight grows by the mean multiplier over the DEM's actual slope
+    # distribution (estimated from unit-step height differences).
+    mean_mult = 1.0
+    finite_mult = gradient_luts.mult[np.isfinite(gradient_luts.mult)]
+    if finite_mult.size and finite_mult.max() > 1.0 + 1e-6:
+        axis_d = int(np.argmin(gradient_luts.step_len_cells))
+        dh = np.abs(np.diff(dem, axis=0)).ravel()
+        if dh.size:
+            bins = np.minimum(
+                (dh * float(gradient_luts.bin_factor[axis_d])).astype(np.int64),
+                n_bins - 1)
+            mults = gradient_luts.mult[bins]
+            mults = mults[np.isfinite(mults)]
+            if mults.size:
+                mean_mult = float(mults.mean())
+
+    return d_dem, d_lut, d_bf, d_sl, n_bins, smem_extra, mean_mult
 
 
 def _init_dist_pred(n_pixels, source_idx, return_predecessor):
@@ -1314,6 +1455,8 @@ def sssp_raster_gpu(
         return_predecessor: bool = False,
         max_light_iterations: int = 100,
         threads_per_block: int = 256,
+        dem: Optional[np.ndarray] = None,
+        gradient_luts=None,
 ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
     """GPU delta-stepping SSSP; uses v4 persistent kernel, falls back to v3."""
     if not GPU_AVAILABLE:
@@ -1327,7 +1470,19 @@ def sssp_raster_gpu(
             ignore_max=ignore_max, target_indices=target_indices,
             margin=margin, return_predecessor=return_predecessor,
             max_light_iterations=max_light_iterations,
-            threads_per_block=threads_per_block)
+            threads_per_block=threads_per_block,
+            dem=dem, gradient_luts=gradient_luts)
+    if gradient_luts is not None:
+        raise RuntimeError(
+            "Per-edge gradient terms require the V4 persistent cooperative "
+            "kernel, which is unavailable on this system (cooperative "
+            "groups could not be compiled). Use the cython backend "
+            "instead.")
+    if np.issubdtype(np.asarray(raster).dtype, np.floating):
+        raise RuntimeError(
+            "Float32 weight rasters require the V4 persistent cooperative "
+            "kernel, which is unavailable on this system. Use a library "
+            "backend instead.")
     return _sssp_raster_gpu_v3(
         raster, steps, source_idx, delta, ignore_max,
         target_indices, margin, return_predecessor,
@@ -1420,6 +1575,9 @@ def _common_gpu_setup(raster, steps, source_idx, delta, ignore_max,
     """Shared setup: validate source, upload data, init dist/pred."""
     rows, cols = raster.shape
     n_pixels = rows * cols
+    # 65536 disables the sentinel: the kernels compare in int domain
+    # (never cast max_cost to unsigned short — 65536 would truncate to 0
+    # and make value-0 cells impassable).
     max_cost = int(np.iinfo(np.uint16).max) if ignore_max else (
         int(np.iinfo(np.uint16).max) + 1)
     early_exit = _validate_source(
@@ -1429,7 +1587,12 @@ def _common_gpu_setup(raster, steps, source_idx, delta, ignore_max,
     (d_steps, d_cost_factors, d_inter_lut, d_n_inter,
      cost_factors, max_inter_cols, smem_bytes) = _upload_step_data(steps)
     delta = _resolve_delta(delta, raster, cost_factors, ignore_max)
-    d_raster = cp.asarray(raster.astype(np.uint16))
+    if np.issubdtype(raster.dtype, np.floating):
+        # Lossless float32 mode (forbidden = +inf) — no uint16 cast.
+        d_raster = cp.asarray(np.ascontiguousarray(raster,
+                                                   dtype=np.float32))
+    else:
+        d_raster = cp.asarray(raster.astype(np.uint16))
     d_dist, d_pred, pred_arg = _init_dist_pred(
         n_pixels, source_idx, return_predecessor)
     return None, (d_raster, d_steps, d_cost_factors, d_inter_lut, d_n_inter,
@@ -1448,8 +1611,30 @@ def sssp_raster_gpu_v4(
         return_predecessor: bool = False,
         max_light_iterations: int = 100,
         threads_per_block: int = 256,
+        window: int = 4,
+        fuse_depth: int = 0,
+        dem: Optional[np.ndarray] = None,
+        gradient_luts=None,
 ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
-    """V4 persistent cooperative kernel SSSP. Same API as sssp_raster_gpu."""
+    """V4 persistent cooperative kernel SSSP. Same API as sssp_raster_gpu.
+
+    dem / gradient_luts: optional per-edge gradient terms (feasibility
+        plan section 3.2) — a float32 DEM aligned to the raster plus a
+        pyorps.core.objective.GradientLUTs slope-response pair.
+
+    window: number of consecutive base buckets processed per phase
+        (super-bucket / effective-delta lever; 1 = classic behavior).
+        Default 4: benchmarked 1.15-1.80x faster than window=1 on every
+        tested pattern/size (random & heavy-tail, 1000^2-3000^2), always
+        bit-exact. window=8 is faster still on smooth cost distributions.
+        Clamped to [1, 32] -- the validated range; larger windows can
+        overflow the pending buffer on dense cheap terrain.
+    fuse_depth: bounded in-thread tail-chase of in-window improvements
+        (bucket-fusion lever; 0 = off -- benchmarked slower on GPU due to
+        warp divergence; kept for experimentation).
+    """
+    window = min(max(1, int(window)), 32)
+    fuse_depth = max(0, int(fuse_depth))
     if not GPU_AVAILABLE:
         raise RuntimeError("CUDA GPU not available: pip install cupy-cuda12x")
 
@@ -1461,14 +1646,27 @@ def sssp_raster_gpu_v4(
      max_inter_cols, smem_bytes, delta, d_dist, d_pred, pred_arg,
      rows, cols, n_pixels, n_steps, max_cost) = ctx
 
+    (dem_arg, grad_lut_arg, grad_bf_arg, grad_sl_arg, grad_n_bins,
+     smem_extra, grad_mean_mult) = _prepare_gradient_gpu(
+        dem, gradient_luts, (rows, cols), n_steps, max_inter_cols)
+    smem_bytes += smem_extra
+    # Keep the light/heavy balance sane under the multiplicative table.
+    delta *= grad_mean_mult
+
     _, n_targets, targets_arg = _prepare_v4_targets(target_indices)
     d_qa, d_qb, d_settled, d_pending, d_ctl, buf_size = \
         _alloc_v4_buffers(n_pixels, n_steps, source_idx)
 
     _ensure_cuda_path()
-    kernel = _get_sssp_kernel(
-        "delta_stepping_persistent", _PERSISTENT_SSSP_KERNEL,
-        cooperative=True)
+    if np.issubdtype(np.asarray(raster).dtype, np.floating):
+        kernel = _get_sssp_kernel(
+            "delta_stepping_persistent",
+            _float_raster_source(_PERSISTENT_SSSP_KERNEL),
+            cooperative=True, variant="f32")
+    else:
+        kernel = _get_sssp_kernel(
+            "delta_stepping_persistent", _PERSISTENT_SSSP_KERNEL,
+            cooperative=True)
     tpb = threads_per_block
     max_blocks = cp.cuda.Device().attributes["MultiProcessorCount"] * 2
     kernel(
@@ -1477,10 +1675,17 @@ def sssp_raster_gpu_v4(
          np.int32(n_steps), np.int32(max_inter_cols),
          np.int32(rows), np.int32(cols), np.int32(max_cost),
          d_dist, pred_arg, np.float32(delta),
-         np.int32(n_pixels), np.int32(max_light_iterations),
+         np.int32(max(1, window)), np.int32(max(0, fuse_depth)),
+         np.int32(n_pixels),
+         # In-window light chains grow with the window span; the iteration
+         # cap must scale with it or the cap-break drops leftover frontier
+         # (latent V4 hazard, exposed by window > 8 on cheap dense terrain).
+         np.int32(max_light_iterations * max(1, window)),
          targets_arg, np.int32(n_targets), np.float32(margin),
          d_ctl, d_qa, d_qb, d_settled, d_pending,
-         np.int32(buf_size)),
+         np.int32(buf_size),
+         dem_arg, grad_lut_arg, grad_bf_arg, grad_sl_arg,
+         np.int32(grad_n_bins)),
         shared_mem=smem_bytes)
     cp.cuda.Stream.null.synchronize()
     return _transfer_results(d_dist, d_pred, return_predecessor)

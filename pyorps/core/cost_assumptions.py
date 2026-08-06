@@ -9,6 +9,7 @@ Reference:
 import csv
 import json
 import os
+import warnings
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,14 @@ from .exceptions import (
 )
 
 
+#: Leaf keys with special meaning in multi-metric leaves. "factor" is a
+#: modifier (weight = cost * factor), not a metric of its own.
+RESERVED_LEAF_KEYS = frozenset({"cost", "factor", "weight"})
+
+#: Value marking a feature class as forbidden (in ALL metrics).
+_FORBIDDEN_VALUE = 65535.0
+
+
 class CostAssumptions:
     """
     A class for handling cost assumptions for rasterization.
@@ -34,11 +43,31 @@ class CostAssumptions:
     assumptions from a dictionary or a GeoDataFrame.
     - Mapping costs to features in a GeoDataFrame
     - Managing hierarchical cost structures
+
+    Multi-metric leaves (feasibility model):
+        A leaf may be a dict of named metric values instead of a scalar::
+
+            {"Forest": {"cost": 365, "landscape": 0.9},
+             "Agriculture": {"cost": 107, "factor": 3.0},
+             "Residential": 65535,          # forbidden in ALL metrics
+             "Grassland": 130}              # scalar = legacy: {"cost": 130}
+
+        A dict leaf is recognized when it contains one of the reserved keys
+        ("cost", "factor", "weight") or when its keys are all declared via
+        the ``metrics`` parameter. Unspecified metrics default to 0; the
+        derived "weight" metric follows the resolution rule
+        ``weight = weight | cost*factor | cost`` and exists only when any
+        leaf provides "factor" or "weight". A value of 65535/inf in any
+        metric marks the class forbidden in all metrics.
+
+        ``apply_to_geodataframe`` then writes one column per metric
+        ('cost' plus e.g. 'landscape', 'weight', ...).
     """
 
     def __init__(
             self,
-            source: str | dict | None = None
+            source: str | dict | None = None,
+            metrics: list[str] | None = None,
     ):
         """
         Initialize the CostAssumptions object.
@@ -47,9 +76,14 @@ class CostAssumptions:
             source:
                 1. Path to a cost assumptions file
                 2. A dictionary of cost values
+            metrics: Optional explicit list of metric names. Declaring
+                metrics disambiguates dict leaves whose keys are not
+                reserved names and forces multi-metric mode.
         """
         self.source = source
         self.cost_assumptions = {}
+        self.metric_assumptions: dict[str, dict] = {}
+        self.declared_metrics = list(metrics) if metrics else None
         self.main_feature = None
         self.side_features = []
 
@@ -87,6 +121,7 @@ class CostAssumptions:
             else:
                 self.main_feature = keys
             self.cost_assumptions = costs
+            self._normalize_metrics()
             return self.cost_assumptions
 
         if isinstance(source, str) and os.path.isfile(source):
@@ -102,9 +137,255 @@ class CostAssumptions:
             if not loader:
                 raise InvalidSourceError(f"Unsupported file format: {file_ext}")
 
-            return loader(source)
+            loader(source)
+            self._normalize_metrics()
+            return self.cost_assumptions
 
         raise InvalidSourceError("Source must be a dictionary or a valid file path")
+
+    # ------------------------------------------------------------------
+    # Multi-metric normalization (feasibility model)
+    # ------------------------------------------------------------------
+
+    @property
+    def metric_names(self) -> list[str]:
+        """Names of all metric views ('cost' first). Legacy => ['cost']."""
+        if self.metric_assumptions:
+            return list(self.metric_assumptions)
+        return ["cost"] if self.cost_assumptions else []
+
+    @property
+    def is_multi_metric(self) -> bool:
+        """True when more than the single legacy cost metric is present."""
+        return len(self.metric_assumptions) > 1
+
+    def _is_metric_leaf(self, value) -> bool:
+        """A dict leaf carrying named metric values (not side features)."""
+        if not isinstance(value, dict) or not value:
+            return False
+        keys = set(value)
+        if keys & RESERVED_LEAF_KEYS:
+            return True
+        declared = set(self.declared_metrics or [])
+        return bool(declared) and keys <= declared
+
+    def _normalize_metrics(self) -> None:
+        """Detect multi-metric leaves and build per-metric scalar views.
+
+        Legacy structures (scalar leaves, nested side-feature dicts, tuple
+        keys with scalar values) pass through untouched:
+        ``metric_assumptions`` then aliases the original dict as the sole
+        'cost' view — byte-identical behavior.
+        """
+        ca = self.cost_assumptions
+        if not isinstance(ca, dict) or not ca:
+            self.metric_assumptions = {"cost": ca} if ca else {}
+            return
+        # Idempotency guard: already normalized.
+        if self.metric_assumptions.get("cost") is ca:
+            return
+
+        discovery = self._discover_metric_structure(ca)
+        if discovery is None:
+            self.metric_assumptions = {"cost": ca}
+            return
+
+        metric_names, nested = discovery
+        views: dict[str, dict] = {name: {} for name in metric_names}
+        if nested:
+            for main_val, inner in ca.items():
+                for name in metric_names:
+                    views[name][main_val] = {}
+                for side_val, leaf in inner.items():
+                    resolved = self._resolve_leaf(
+                        leaf, metric_names, (main_val, side_val))
+                    for name in metric_names:
+                        views[name][main_val][side_val] = resolved[name]
+        else:
+            for key, leaf in ca.items():
+                resolved = self._resolve_leaf(leaf, metric_names, key)
+                for name in metric_names:
+                    views[name][key] = resolved[name]
+
+        self.metric_assumptions = views
+        self.cost_assumptions = views["cost"]
+
+    def _discover_metric_structure(
+            self, ca: dict
+    ) -> tuple[list[str], bool] | None:
+        """Find metric names and structure, or None for pure legacy input.
+
+        Returns:
+            (ordered metric names, nested_flag) — nested_flag is True when
+            metric leaves sit below a side-feature level — or None when no
+            multi-metric leaves are present and no metrics were declared.
+        """
+        ordered: dict[str, None] = {}
+
+        depth1_dicts = [v for v in ca.values() if isinstance(v, dict)]
+        metric_at_1 = [d for d in depth1_dicts if self._is_metric_leaf(d)]
+
+        if metric_at_1:
+            non_metric = [d for d in depth1_dicts
+                          if not self._is_metric_leaf(d)]
+            if non_metric:
+                raise FormatError(
+                    "Mixed cost-assumption leaves: some dict leaves carry "
+                    "metric values (containing 'cost'/'factor'/'weight') "
+                    "while others look like nested side-feature dicts. "
+                    "Use one structure consistently or declare metric "
+                    "names via CostAssumptions(metrics=[...]).")
+            nested = False
+            for leaf in metric_at_1:
+                for key in leaf:
+                    ordered.setdefault(key, None)
+        else:
+            depth2 = [v for d in depth1_dicts for v in d.values()
+                      if isinstance(v, dict)]
+            metric_at_2 = [d for d in depth2 if self._is_metric_leaf(d)]
+            if metric_at_2:
+                non_metric2 = [d for d in depth2
+                               if not self._is_metric_leaf(d)]
+                if non_metric2:
+                    raise FormatError(
+                        "Mixed nested cost-assumption leaves: some inner "
+                        "dicts carry metric values, others do not. Use one "
+                        "structure consistently or declare metric names "
+                        "via CostAssumptions(metrics=[...]).")
+                if not all(isinstance(v, dict) for v in ca.values()):
+                    raise FormatError(
+                        "Nested multi-metric cost assumptions require a "
+                        "side-feature dict for every main feature value.")
+                nested = True
+                for leaf in metric_at_2:
+                    for key in leaf:
+                        ordered.setdefault(key, None)
+            elif self.declared_metrics:
+                # Declared metrics force multi-metric mode on scalar input.
+                nested = False
+            else:
+                return None
+
+        if self.declared_metrics is not None:
+            allowed = set(self.declared_metrics) | RESERVED_LEAF_KEYS
+            unknown = [k for k in ordered if k not in allowed]
+            if unknown:
+                raise FormatError(
+                    f"Metric key(s) {unknown} are not in the declared "
+                    f"metrics {self.declared_metrics} (reserved keys "
+                    f"{sorted(RESERVED_LEAF_KEYS)} are always allowed).")
+
+        for name in self.declared_metrics or []:
+            ordered.setdefault(name, None)
+
+        has_weight = "weight" in ordered or "factor" in ordered
+        ordered.pop("factor", None)
+        ordered.pop("cost", None)
+        ordered.pop("weight", None)
+
+        metric_names = ["cost"] + list(ordered)
+        if has_weight:
+            metric_names.append("weight")
+        return metric_names, nested
+
+    def _resolve_leaf(
+            self, leaf, metric_names: list[str], key
+    ) -> dict[str, float]:
+        """Resolve one leaf (scalar or dict) into values for every metric.
+
+        Rules (plan section 4.2):
+        - scalar v          => cost = v, weight = v, others = 0
+        - dict              => cost = leaf.get("cost", 0), others default 0,
+                               weight = weight | cost*factor | cost
+        - a metric value of exactly 65535 or inf marks the class forbidden
+          in ALL metrics (warning when mixed with explicit finite values);
+          other values above 65535 are legitimate float metrics.
+        """
+        has_weight = "weight" in metric_names
+
+        if not isinstance(leaf, dict):
+            try:
+                value = float(leaf)
+            except (TypeError, ValueError):
+                raise FormatError(
+                    f"Cost value for {key!r} must be numeric, "
+                    f"got {leaf!r}") from None
+            forbidden = value == _FORBIDDEN_VALUE or np.isinf(value)
+            resolved = {}
+            for name in metric_names:
+                if name == "cost":
+                    resolved[name] = value
+                elif name == "weight":
+                    resolved[name] = value
+                else:
+                    resolved[name] = _FORBIDDEN_VALUE if forbidden else 0.0
+            return resolved
+
+        unknown = set(leaf) - set(metric_names) - {"factor"}
+        if unknown:
+            raise FormatError(
+                f"Unknown metric key(s) {sorted(unknown)} in cost leaf for "
+                f"{key!r}. Known metrics: {metric_names} (+ 'factor'). "
+                f"Declare additional metrics via "
+                f"CostAssumptions(metrics=[...]).")
+
+        numeric: dict[str, float] = {}
+        for name, value in leaf.items():
+            try:
+                numeric[name] = float(value)
+            except (TypeError, ValueError):
+                raise FormatError(
+                    f"Metric '{name}' for {key!r} must be numeric, "
+                    f"got {value!r}") from None
+            if np.isnan(numeric[name]):
+                raise FormatError(
+                    f"Metric '{name}' for {key!r} is NaN")
+            if numeric[name] < 0:
+                raise FormatError(
+                    f"Metric '{name}' for {key!r} must be >= 0, "
+                    f"got {numeric[name]}")
+
+        if "factor" in numeric and "cost" not in numeric:
+            raise FormatError(
+                f"Leaf for {key!r} specifies 'factor' without 'cost' — "
+                f"'factor' scales cost into the weight metric "
+                f"(weight = cost * factor).")
+
+        cost = numeric.get("cost", 0.0)
+        if "weight" in numeric:
+            weight = numeric["weight"]
+        elif "factor" in numeric:
+            weight = cost * numeric["factor"]
+        else:
+            weight = cost
+
+        resolved = {}
+        for name in metric_names:
+            if name == "cost":
+                resolved[name] = cost
+            elif name == "weight":
+                resolved[name] = weight
+            else:
+                resolved[name] = numeric.get(name, 0.0)
+
+        forbidden = any(v == _FORBIDDEN_VALUE or np.isinf(v)
+                        for v in resolved.values())
+        if forbidden:
+            explicit_finite = [
+                name for name in leaf
+                if name != "factor" and name in resolved
+                and resolved[name] != _FORBIDDEN_VALUE
+                and not np.isinf(resolved[name])
+            ]
+            if explicit_finite:
+                warnings.warn(
+                    f"Cost leaf for {key!r} mixes a forbidden value "
+                    f"({int(_FORBIDDEN_VALUE)}/inf) with finite metric "
+                    f"values {explicit_finite} — forbidden is absolute "
+                    f"and applies to ALL metrics.",
+                    UserWarning, stacklevel=2)
+            resolved = {name: _FORBIDDEN_VALUE for name in metric_names}
+        return resolved
 
     def _load_csv_cost_assumptions(
             self,
@@ -199,6 +480,9 @@ class CostAssumptions:
                             'cost_assumptions' in data):
                         self.main_feature = data['metadata']['main_feature']
                         self.side_features = data['metadata'].get('side_features', [])
+                        metadata_metrics = data['metadata'].get('metrics')
+                        if metadata_metrics:
+                            self.declared_metrics = list(metadata_metrics)
 
                         # Handle tuple keys if necessary
                         if self.side_features:
@@ -294,6 +578,17 @@ class CostAssumptions:
         if not numeric_columns:
             raise FormatError("No numeric column found for cost values")
 
+        # Multi-metric mode: several numeric columns, one literally named
+        # 'cost' — every numeric column then is a metric named by its header.
+        # (A single numeric column, whatever its name, stays legacy; multiple
+        # numeric columns WITHOUT a 'cost' header keep the legacy behavior of
+        # treating extras as hierarchy columns.)
+        cost_named = [c for c in numeric_columns
+                      if str(c).strip().lower() == "cost"]
+        if len(numeric_columns) >= 2 and cost_named:
+            return self._convert_df_multi_metric(df, numeric_columns,
+                                                 cost_named[0])
+
         # Use the first numeric column as the cost column
         cost_column = numeric_columns[0]
 
@@ -312,7 +607,64 @@ class CostAssumptions:
 
         # Create a series with a MultiIndex and convert to nested dictionaries
         cost_series = df.set_index(index_columns)[cost_column]
-        return cost_series.to_dict()
+        self.cost_assumptions = cost_series.to_dict()
+        return self.cost_assumptions
+
+    def _convert_df_multi_metric(
+            self,
+            df: pd.DataFrame,
+            numeric_columns: list,
+            cost_column,
+    ) -> dict:
+        """Convert a DataFrame with several metric columns to dict leaves.
+
+        The 'cost'-named column becomes the "cost" metric; every other
+        numeric column becomes a metric named by its (stripped) header.
+        Non-numeric columns form the feature hierarchy exactly as in the
+        legacy path. NaN metric cells are omitted from the leaf (metric
+        defaults then apply).
+        """
+        index_columns = [c for c in df.columns if c not in numeric_columns]
+        if not index_columns:
+            raise FormatError("No columns found for feature hierarchy")
+
+        metric_by_column = {cost_column: "cost"}
+        for col in numeric_columns:
+            if col == cost_column:
+                continue
+            name = str(col).strip()
+            if not name:
+                raise FormatError(
+                    f"Metric column {col!r} has an empty header")
+            if name in metric_by_column.values():
+                raise FormatError(
+                    f"Duplicate metric column name '{name}'")
+            metric_by_column[col] = name
+
+        self.main_feature = None
+        self.side_features = []
+        for ci, column in enumerate(index_columns):
+            df[column] = df[column].fillna('')
+            if ci == 0:
+                self.main_feature = column
+            else:
+                self.side_features.append(column)
+
+        leaves: dict = {}
+        for _, row in df.iterrows():
+            if len(index_columns) == 1:
+                key = row[index_columns[0]]
+            else:
+                key = tuple(row[c] for c in index_columns)
+            leaf = {}
+            for col, metric in metric_by_column.items():
+                value = row[col]
+                if pd.notna(value):
+                    leaf[metric] = float(value)
+            leaves[key] = leaf
+
+        self.cost_assumptions = leaves
+        return self.cost_assumptions
 
     @staticmethod
     def _convert_numeric_columns(
@@ -384,23 +736,40 @@ class CostAssumptions:
 
         CostAssumptions._init_feature_columns(gdf, main_feature, side_features)
 
-        self._set_cost_column(gdf, main_feature, side_features)
+        metric_map = self.metric_assumptions or {"cost": self.cost_assumptions}
+        feature_columns = {main_feature, *side_features}
+        for metric, assumptions in metric_map.items():
+            column = "cost" if metric == "cost" else metric
+            if column in feature_columns:
+                raise FormatError(
+                    f"Metric name '{column}' collides with the feature "
+                    f"column '{column}' — rename the metric.")
+            self._set_value_column(gdf, main_feature, side_features,
+                                   assumptions, column)
 
         return gdf
 
     def _set_cost_column(self, gdf, main_feature, side_features):
+        """Legacy entry point: apply the cost view to the 'cost' column."""
+        self._set_value_column(gdf, main_feature, side_features,
+                               self.cost_assumptions, 'cost')
+
+    def _set_value_column(self, gdf, main_feature, side_features,
+                          assumptions, column):
         # Handle different cost assumption structures
-        first_key = next(iter(self.cost_assumptions), None)
+        first_key = next(iter(assumptions), None)
         if isinstance(first_key, tuple):
             # Complex tuple keys structure - from multi-index
-            self._apply_tuple_costs(gdf, main_feature, side_features)
-        elif side_features and isinstance(next(iter(self.cost_assumptions.values()),
+            self._apply_tuple_costs(gdf, main_feature, side_features,
+                                    assumptions=assumptions, column=column)
+        elif side_features and isinstance(next(iter(assumptions.values()),
                                                None), dict):
             # Nested dictionary structure
-            self._apply_nested_costs(gdf, main_feature, side_features)
+            self._apply_nested_costs(gdf, main_feature, side_features,
+                                     assumptions=assumptions, column=column)
         else:
             # Simple mapping with numeric values
-            gdf['cost'] = gdf[main_feature].map(self.cost_assumptions)
+            gdf[column] = gdf[main_feature].map(assumptions)
 
     @staticmethod
     def _init_feature_columns(gdf, main_feature, side_features):
@@ -413,7 +782,9 @@ class CostAssumptions:
             self,
             gdf: GeoDataFrame,
             main_feature: str | None = None,
-            side_features: list[str] | None = None
+            side_features: list[str] | None = None,
+            assumptions: dict | None = None,
+            column: str = 'cost',
     ):
         """
         Apply costs to the GeoDataFrame based on tuple keys in cost assumptions.
@@ -422,33 +793,39 @@ class CostAssumptions:
             gdf: GeoDataFrame to update with cost values
             main_feature: Column name for the primary feature
             side_features: List of column names for secondary features
+            assumptions: Value mapping to apply (defaults to the cost view)
+            column: Target column to write (defaults to 'cost')
 
         Returns:
             None (modifies gdf in-place)
         """
+        if assumptions is None:
+            assumptions = self.cost_assumptions
         # Create wildcard dictionary for default values
-        iter_items = self.cost_assumptions.items()
+        iter_items = assumptions.items()
         wild_cards = {keys[0]: value for keys, value in iter_items if '' in keys}
 
         # Apply specific mappings
-        for keys, value in self.cost_assumptions.items():
+        for keys, value in assumptions.items():
             main_key, *side_keys = keys
             mask = gdf[main_feature] == main_key
             for side_feature, side_key in zip(side_features, side_keys):
                 mask &= gdf[side_feature] == side_key
-            gdf.loc[mask, 'cost'] = value
+            gdf.loc[mask, column] = value
 
         # Apply wildcards for missing values
-        cost_nan = gdf['cost'].isna()
+        cost_nan = gdf[column].isna()
         for wild_card_key, wild_card_value in wild_cards.items():
             mask = (gdf[main_feature] == wild_card_key) & cost_nan
-            gdf.loc[mask, 'cost'] = wild_card_value
+            gdf.loc[mask, column] = wild_card_value
 
     def _apply_nested_costs(
             self,
             gdf: GeoDataFrame,
             main_feature: str | None = None,
-            side_features: list[str] | None = None
+            side_features: list[str] | None = None,
+            assumptions: dict | None = None,
+            column: str = 'cost',
     ):
         """
         Apply costs to the GeoDataFrame based on nested dictionary cost assumptions.
@@ -458,6 +835,8 @@ class CostAssumptions:
             main_feature: Column name for the primary feature
             side_features: List containing a single column name for the
             secondary feature
+            assumptions: Value mapping to apply (defaults to the cost view)
+            column: Target column to write (defaults to 'cost')
 
         Returns:
             None (modifies gdf in-place)
@@ -466,10 +845,13 @@ class CostAssumptions:
             msg = "Multiple side features not supported for nested dictionary structure"
             raise FormatError(msg)
 
+        if assumptions is None:
+            assumptions = self.cost_assumptions
+
         side_feature = side_features[0]
 
         # Iterate over each main feature value and its inner dictionary
-        for main_value, inner_dict in self.cost_assumptions.items():
+        for main_value, inner_dict in assumptions.items():
             # Create mask for the main feature
             main_mask = gdf[main_feature] == main_value
 
@@ -486,7 +868,7 @@ class CostAssumptions:
 
                 # Apply cost where both masks match
                 combined_mask = main_mask & side_mask
-                gdf.loc[combined_mask, 'cost'] = cost
+                gdf.loc[combined_mask, column] = cost
 
     @staticmethod
     def _add_label(value_to_names: dict[int, list[str]],
@@ -586,20 +968,51 @@ class CostAssumptions:
             'cost_assumptions': {}
         }
 
+        source_dict = self.cost_assumptions
+        if self.is_multi_metric:
+            output_dict['metadata']['metrics'] = self.metric_names
+            source_dict = self._rebuild_metric_leaves()
+
         # Convert the cost assumptions dictionary to a JSON-serializable format
-        if self.cost_assumptions:
-            first_key = next(iter(self.cost_assumptions))
+        if source_dict:
+            first_key = next(iter(source_dict))
             if isinstance(first_key, tuple):
                 # Handle tuple keys by converting them to string representations
-                for key, value in self.cost_assumptions.items():
+                for key, value in source_dict.items():
                     key_str = "__".join(str(k) for k in key)
                     output_dict['cost_assumptions'][key_str] = value
             else:
                 # Regular keys can be directly serialized
-                output_dict['cost_assumptions'] = self.cost_assumptions
+                output_dict['cost_assumptions'] = source_dict
 
         with open(filepath, mode='w', encoding=encoding) as f:
             json.dump(output_dict, f, indent=indent)
+
+    def _rebuild_metric_leaves(self) -> dict:
+        """Reconstruct dict leaves from the per-metric views.
+
+        Inverse of :meth:`_normalize_metrics` for serialization. Note that
+        'factor' is resolved at load time — the rebuilt leaves carry the
+        resolved 'weight' values instead.
+        """
+        views = self.metric_assumptions
+        names = list(views)
+        cost_view = views["cost"]
+        first_value = next(iter(cost_view.values()), None)
+        nested = (self.side_features and isinstance(first_value, dict)
+                  and not isinstance(next(iter(cost_view), None), tuple))
+
+        if nested:
+            rebuilt: dict = {}
+            for main_val, inner in cost_view.items():
+                rebuilt[main_val] = {
+                    side_val: {name: views[name][main_val][side_val]
+                               for name in names}
+                    for side_val in inner
+                }
+            return rebuilt
+        return {key: {name: views[name][key] for name in names}
+                for key in cost_view}
 
     def to_excel(
             self,
@@ -636,6 +1049,9 @@ class CostAssumptions:
         """
         if cost_dict is None:
             cost_dict = self.cost_assumptions
+        # Multi-metric: one column per metric (feature columns first)
+        if self.is_multi_metric and cost_dict is self.cost_assumptions:
+            return self._metric_views_to_df()
         # Check if it's a simple or nested dictionary
         first_key = next(iter(cost_dict), None)
 
@@ -674,6 +1090,42 @@ class CostAssumptions:
             self.main_feature: list(cost_dict.keys()),
             'cost': list(cost_dict.values())
         })
+
+    def _metric_views_to_df(self) -> pd.DataFrame:
+        """DataFrame with feature columns plus one column per metric."""
+        leaves = self._rebuild_metric_leaves()
+        names = self.metric_names
+        first_key = next(iter(leaves), None)
+        first_value = next(iter(leaves.values()), None)
+        nested = (self.side_features and isinstance(first_value, dict)
+                  and not isinstance(first_key, tuple)
+                  and not set(first_value) <= set(names))
+
+        data = []
+        if isinstance(first_key, tuple):
+            for keys, leaf in leaves.items():
+                row = {self.main_feature: keys[0]}
+                for side_feature, side_key in zip(self.side_features,
+                                                  keys[1:]):
+                    row[side_feature] = side_key
+                row.update(leaf)
+                data.append(row)
+        elif nested:
+            for main_value, inner in leaves.items():
+                for side_value, leaf in inner.items():
+                    row = {self.main_feature: main_value,
+                           self.side_features[0]: side_value}
+                    row.update(leaf)
+                    data.append(row)
+        else:
+            for key, leaf in leaves.items():
+                row = {self.main_feature: key}
+                row.update(leaf)
+                data.append(row)
+        columns = ([self.main_feature] + list(self.side_features or [])
+                   + names)
+        columns = [c for c in columns if c is not None]
+        return pd.DataFrame(data, columns=columns)
 
 
 def save_empty_cost_assumptions(

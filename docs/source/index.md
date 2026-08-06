@@ -74,6 +74,7 @@ getting_started/quickstart
 
 core_features/data_input
 core_features/cost_assumptions
+core_features/cost_semantics
 core_features/rasterization
 core_features/search_space
 core_features/path_finding

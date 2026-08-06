@@ -28,6 +28,12 @@ from .core.exceptions import (
     RasterShapeError,
     WFSError,
 )
+from .core.ensemble import RouteEnsemble
+from .core.metric_stack import MetricStack
+from .core.objective import (
+    GradientOptions,
+    Objective,
+)
 from .core.path import (  # Fixed: import from core.path instead of graph
     Path,
     PathCollection,
@@ -58,6 +64,9 @@ __all__ = [
 
     # Graph and routing
     "PathFinder", "Path", "PathCollection",
+
+    # Feasibility objective
+    "Objective", "GradientOptions", "MetricStack", "RouteEnsemble",
 
     # Cost assumptions
     "CostAssumptions", "get_zero_cost_assumptions", "detect_feature_columns",

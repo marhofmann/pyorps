@@ -35,6 +35,9 @@ def make_extensions():
         ("pyorps.utils._raster_context", "pyorps/utils/_raster_context"),
         ("pyorps.utils._dijkstra", "pyorps/utils/_dijkstra"),
         ("pyorps.utils._delta_stepping", "pyorps/utils/_delta_stepping"),
+        ("pyorps.utils._constrained_context", "pyorps/utils/_constrained_context"),
+        ("pyorps.utils._constrained_dijkstra", "pyorps/utils/_constrained_dijkstra"),
+        ("pyorps.utils._constrained_delta", "pyorps/utils/_constrained_delta"),
     ]
 
     system = platform.system().lower()
