@@ -15,6 +15,7 @@ Contains:
 
 import numpy as np
 cimport numpy as np
+from libc.math cimport INFINITY, fabs
 from libcpp.vector cimport vector
 from libcpp cimport bool
 
@@ -96,12 +97,60 @@ cdef class DijkstraSolver:
     cdef int32_t[:] prev
     cdef uint8_t[:] visited
 
+    # Optional gradient terms (feasibility plan section 3.2):
+    #   s-bin  b = min(int(|dem[v]-dem[u]| * bin_factor[d]), n_bins-1)
+    #   weight w = terrain * mult_lut[b] + add_lut[b] * step_len[d]
+    # mult_lut[b] == inf marks the edge forbidden (hard grade limit).
+    cdef bint use_gradient
+    cdef float32_t[:, :] grad_dem
+    cdef float32_t[:] grad_mult
+    cdef float32_t[:] grad_add
+    cdef float32_t[:] grad_bin_factor
+    cdef float32_t[:] grad_step_len
+    cdef int grad_n_bins
+
     def __cinit__(self, RasterContext ctx):
         self.ctx = ctx
         cdef int n = ctx.total_cells
         self.dist = np.full(n, np.inf, dtype=np.float64)
         self.prev = np.full(n, -1, dtype=np.int32)
         self.visited = np.zeros(n, dtype=np.uint8)
+        self.use_gradient = False
+        self.grad_n_bins = 0
+
+    def set_gradient(self,
+                     np.ndarray[float32_t, ndim=2] dem,
+                     np.ndarray[float32_t, ndim=1] mult_lut,
+                     np.ndarray[float32_t, ndim=1] add_lut,
+                     np.ndarray[float32_t, ndim=1] bin_factor,
+                     np.ndarray[float32_t, ndim=1] step_len_cells,
+                     int n_bins):
+        """Enable per-edge gradient terms for all subsequent queries.
+
+        Parameters:
+            dem: float32 DEM aligned to the raster grid (same shape).
+            mult_lut: (n_bins,) multiplicative slope response Γ_mult
+                (3D stretch × penalty; inf beyond the hard grade limit).
+            add_lut: (n_bins,) additive slope response Γ_add, pre-scaled
+                by the quantization scale.
+            bin_factor: (n_dirs,) per-direction |Δh|→bin factor.
+            step_len_cells: (n_dirs,) step length in cell units.
+            n_bins: Number of LUT bins.
+        """
+        if (dem.shape[0] != self.ctx.rows or
+                dem.shape[1] != self.ctx.cols):
+            raise ValueError(
+                f"DEM shape ({dem.shape[0]}, {dem.shape[1]}) does not "
+                f"match the raster ({self.ctx.rows}, {self.ctx.cols})")
+        if mult_lut.shape[0] != n_bins or add_lut.shape[0] != n_bins:
+            raise ValueError("LUT sizes do not match n_bins")
+        self.grad_dem = np.ascontiguousarray(dem)
+        self.grad_mult = np.ascontiguousarray(mult_lut)
+        self.grad_add = np.ascontiguousarray(add_lut)
+        self.grad_bin_factor = np.ascontiguousarray(bin_factor)
+        self.grad_step_len = np.ascontiguousarray(step_len_cells)
+        self.grad_n_bins = n_bins
+        self.use_gradient = True
 
     cdef _reset(self):
         """Reset arrays for a new query."""
@@ -186,6 +235,11 @@ cdef class DijkstraSolver:
         cdef int valid_path
         cdef int i, dr, dc
 
+        # Gradient locals (hoisted; used only when use_grad is set)
+        cdef bint use_grad = self.use_gradient
+        cdef double grad_mult_val, height_diff
+        cdef int slope_bin
+
         # Main Dijkstra loop with early termination
         while not heap_empty(&pq):
             current = heap_top(&pq).index
@@ -241,6 +295,24 @@ cdef class DijkstraSolver:
                              intermediate_cost +
                              raster[<int>neighbor_row, <int>neighbor_col]) * (
                              directions[i].cost_factor)
+
+                # Per-edge gradient terms (chord slope over the step)
+                if use_grad:
+                    height_diff = fabs(
+                        <double>self.grad_dem[<int>neighbor_row,
+                                              <int>neighbor_col] -
+                        <double>self.grad_dem[<int>current_row,
+                                              <int>current_col])
+                    slope_bin = <int>(height_diff *
+                                      <double>self.grad_bin_factor[i])
+                    if slope_bin >= self.grad_n_bins:
+                        slope_bin = self.grad_n_bins - 1
+                    grad_mult_val = <double>self.grad_mult[slope_bin]
+                    if grad_mult_val == INFINITY:
+                        continue  # hard grade limit: edge forbidden
+                    total_cost = (total_cost * grad_mult_val +
+                                  <double>self.grad_add[slope_bin] *
+                                  <double>self.grad_step_len[i])
 
                 # Update shortest path if better route found
                 new_dist = dist[current] + total_cost
@@ -308,6 +380,11 @@ cdef class DijkstraSolver:
         cdef int valid_path
         cdef int i, dr, dc
 
+        # Gradient locals (hoisted; used only when use_grad is set)
+        cdef bint use_grad = self.use_gradient
+        cdef double grad_mult_val, height_diff
+        cdef int slope_bin
+
         # Modified Dijkstra loop with multi-target termination
         while not heap_empty(&pq) and targets_remaining > 0:
             current = heap_top(&pq).index
@@ -362,6 +439,24 @@ cdef class DijkstraSolver:
                              intermediate_cost +
                              raster[<int>neighbor_row, <int>neighbor_col]) * (
                              directions[i].cost_factor)
+
+                # Per-edge gradient terms (chord slope over the step)
+                if use_grad:
+                    height_diff = fabs(
+                        <double>self.grad_dem[<int>neighbor_row,
+                                              <int>neighbor_col] -
+                        <double>self.grad_dem[<int>current_row,
+                                              <int>current_col])
+                    slope_bin = <int>(height_diff *
+                                      <double>self.grad_bin_factor[i])
+                    if slope_bin >= self.grad_n_bins:
+                        slope_bin = self.grad_n_bins - 1
+                    grad_mult_val = <double>self.grad_mult[slope_bin]
+                    if grad_mult_val == INFINITY:
+                        continue  # hard grade limit: edge forbidden
+                    total_cost = (total_cost * grad_mult_val +
+                                  <double>self.grad_add[slope_bin] *
+                                  <double>self.grad_step_len[i])
 
                 # Update shortest path if improvement found
                 new_dist = dist[current] + total_cost
@@ -611,10 +706,25 @@ cdef class DijkstraSolver:
 # These maintain the exact same signatures as path_algorithms.pyx
 # for backward compatibility.
 
+cdef _apply_gradient_kwargs(solver, gradient_luts, dem):
+    """Configure a DijkstraSolver from a GradientLUTs object (or no-op)."""
+    if gradient_luts is None or dem is None:
+        return
+    solver.set_gradient(
+        np.ascontiguousarray(dem, dtype=np.float32),
+        np.ascontiguousarray(gradient_luts.mult, dtype=np.float32),
+        np.ascontiguousarray(gradient_luts.add, dtype=np.float32),
+        np.ascontiguousarray(gradient_luts.bin_factor, dtype=np.float32),
+        np.ascontiguousarray(gradient_luts.step_len_cells, dtype=np.float32),
+        int(gradient_luts.n_bins),
+    )
+
+
 def dijkstra_2d_cython(np.ndarray[uint16_t, ndim=2] raster_arr,
                        np.ndarray[int8_t, ndim=2] steps_arr,
                        uint32_t source_idx, uint32_t target_idx,
-                       uint16_t max_value=65535):
+                       uint16_t max_value=65535,
+                       dem=None, gradient_luts=None):
     """
     Find shortest path between two points in a 2D raster using Dijkstra.
 
@@ -627,6 +737,9 @@ def dijkstra_2d_cython(np.ndarray[uint16_t, ndim=2] raster_arr,
         source_idx: Linear index of starting cell
         target_idx: Linear index of destination cell
         max_value: Cost value representing obstacles (default 65535)
+        dem: Optional float32 DEM aligned to raster_arr (same shape)
+        gradient_luts: Optional pyorps.core.objective.GradientLUTs enabling
+            per-edge gradient terms (feasibility plan section 3.2)
 
     Returns:
         1D numpy array (uint32) of linear indices of cells in the
@@ -638,6 +751,7 @@ def dijkstra_2d_cython(np.ndarray[uint16_t, ndim=2] raster_arr,
 
     ctx = RasterContext(raster_arr, steps_arr, max_value)
     solver = DijkstraSolver(ctx)
+    _apply_gradient_kwargs(solver, gradient_luts, dem)
     return solver.single_pair(source_idx, target_idx)
 
 
@@ -646,7 +760,8 @@ def dijkstra_single_source_multiple_targets(
         np.ndarray[int8_t, ndim=2] steps_arr,
         uint32_t source_idx,
         np.ndarray[uint32_t, ndim=1] target_indices,
-        uint16_t max_value=65535):
+        uint16_t max_value=65535,
+        dem=None, gradient_luts=None):
     """
     Find optimal paths from one source to multiple targets efficiently.
 
@@ -658,12 +773,15 @@ def dijkstra_single_source_multiple_targets(
         source_idx: Linear index of the single starting cell
         target_indices: 1D numpy array (uint32) of target cell indices
         max_value: Cost value representing obstacles (default 65535)
+        dem: Optional float32 DEM aligned to raster_arr (same shape)
+        gradient_luts: Optional GradientLUTs enabling per-edge gradient terms
 
     Returns:
         List of numpy arrays, one per target. Empty arrays for unreachable.
     """
     ctx = RasterContext(raster_arr, steps_arr, max_value)
     solver = DijkstraSolver(ctx)
+    _apply_gradient_kwargs(solver, gradient_luts, dem)
     return solver.single_source_multi_target(source_idx, target_indices)
 
 
@@ -672,7 +790,8 @@ def dijkstra_multiple_sources_multiple_targets(
         np.ndarray[int8_t, ndim=2] steps_arr,
         np.ndarray[uint32_t, ndim=1] source_indices,
         np.ndarray[uint32_t, ndim=1] target_indices,
-        uint16_t max_value=65535, bint return_paths=True):
+        uint16_t max_value=65535, bint return_paths=True,
+        dem=None, gradient_luts=None):
     """
     Compute all-pairs shortest paths between multiple sources and targets.
 
@@ -692,6 +811,7 @@ def dijkstra_multiple_sources_multiple_targets(
     """
     ctx = RasterContext(raster_arr, steps_arr, max_value)
     solver = DijkstraSolver(ctx)
+    _apply_gradient_kwargs(solver, gradient_luts, dem)
     return solver.multi_source_multi_target(
         source_indices, target_indices, return_paths)
 
@@ -702,7 +822,8 @@ def dijkstra_some_pairs_shortest_paths(
         np.ndarray[uint32_t, ndim=1] source_indices,
         np.ndarray[uint32_t, ndim=1] target_indices,
         uint16_t max_value=65535,
-        bint return_paths=True):
+        bint return_paths=True,
+        dem=None, gradient_luts=None):
     """
     Find optimal paths for specific source-target pairs using batch optimization.
 
@@ -722,5 +843,6 @@ def dijkstra_some_pairs_shortest_paths(
     """
     ctx = RasterContext(raster_arr, steps_arr, max_value)
     solver = DijkstraSolver(ctx)
+    _apply_gradient_kwargs(solver, gradient_luts, dem)
     return solver.some_pairs(
         source_indices, target_indices, return_paths)

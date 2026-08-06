@@ -22,9 +22,18 @@ class CythonAPI(GraphAPI):
     Graph API implementation that directly uses Cython algorithms on raster data.
     """
 
-    def __init__(self, raster_data, steps, ignore_max=True, dem_data=None):
+    def __init__(self, raster_data, steps, ignore_max=True, dem_data=None,
+                 gradient_luts=None):
         super().__init__(raster_data, steps, ignore_max)
         self.max_value = IMPASSABLE_CELL_COST if self.ignore_max else 0
+        # Per-edge gradient terms (feasibility plan): a DEM aligned to the
+        # raster plus the slope-response LUT pair. Consumed by the Dijkstra
+        # kernels; delta-stepping support is a later phase.
+        self.dem_data = dem_data
+        self.gradient_luts = gradient_luts
+        if gradient_luts is not None and dem_data is None:
+            raise ValueError(
+                "gradient_luts require dem_data aligned to the raster")
 
     def shortest_path(
             self,
@@ -64,6 +73,12 @@ class CythonAPI(GraphAPI):
         if algo not in ["dijkstra", "delta-stepping", "delta-stepping-circular"]:
             raise AlgorithmNotImplementedError(algorithm, graph_library="cython")
 
+        if self.gradient_luts is not None and algo != "dijkstra":
+            raise NotImplementedError(
+                "In-search gradient terms are currently supported by the "
+                "cython 'dijkstra' algorithm only (delta-stepping support "
+                "is a later phase of the feasibility plan).")
+
         # Route to appropriate implementation
         if is_single_source and is_single_target:
             return self._single_path(sources[0], targets[0], algo, **kwargs)
@@ -99,7 +114,9 @@ class CythonAPI(GraphAPI):
             path = dijkstra_2d_cython(
                 self.raster_data, self.steps,
                 source, target,
-                max_value=self.max_value
+                max_value=self.max_value,
+                dem=self.dem_data,
+                gradient_luts=self.gradient_luts,
             )
         else:
             path = delta_stepping_2d_persistent(
@@ -118,7 +135,9 @@ class CythonAPI(GraphAPI):
             paths = dijkstra_single_source_multiple_targets(
                 self.raster_data, self.steps,
                 sources[0], targets,
-                self.max_value
+                self.max_value,
+                dem=self.dem_data,
+                gradient_luts=self.gradient_luts,
             )
         else:  # delta-stepping
             # Convert to uint64 for delta-stepping
@@ -141,7 +160,9 @@ class CythonAPI(GraphAPI):
             paths = dijkstra_some_pairs_shortest_paths(
                 self.raster_data, self.steps,
                 sources, targets,
-                max_value=self.max_value
+                max_value=self.max_value,
+                dem=self.dem_data,
+                gradient_luts=self.gradient_luts,
             )
         else:  # delta-stepping
             # Convert to uint64 for delta-stepping
@@ -161,7 +182,9 @@ class CythonAPI(GraphAPI):
                 self.raster_data, self.steps,
                 astype(sources, uint32),
                 astype(targets, uint32),
-                self.max_value
+                self.max_value,
+                dem=self.dem_data,
+                gradient_luts=self.gradient_luts,
             )
         else:  # delta-stepping
             # Convert to uint64 for delta-stepping

@@ -52,6 +52,7 @@ class RasterGPUAPI(GraphAPI):
             dem_data: Optional[ndarray] = None,
             delta: Union[float, str] = "auto",
             margin: float = 1.00001,
+            gradient_luts=None,
             **kwargs,
     ):
         if not RASTER_GPU_AVAILABLE:
@@ -61,6 +62,14 @@ class RasterGPUAPI(GraphAPI):
             )
 
         super().__init__(raster_data, steps, ignore_max, dem_data)
+
+        # Per-edge gradient terms (feasibility plan): only active when the
+        # slope-response LUT pair is provided — a bare dem_data keeps the
+        # legacy behavior (it merely disables the symmetric-search trick).
+        self.gradient_luts = gradient_luts
+        if gradient_luts is not None and dem_data is None:
+            raise ValueError(
+                "gradient_luts require dem_data aligned to the raster")
 
         self._delta = delta
         self._margin = margin
@@ -90,6 +99,8 @@ class RasterGPUAPI(GraphAPI):
             target_indices=targets,
             margin=self._margin,
             return_predecessor=True,
+            dem=self.dem_data if self.gradient_luts is not None else None,
+            gradient_luts=self.gradient_luts,
         )
         return dist, pred
 
