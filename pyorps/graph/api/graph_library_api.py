@@ -55,6 +55,7 @@ class GraphLibraryAPI(GraphAPI):
                  cost: np.ndarray | None = None,
                  dem_kwargs: dict[str, Any] | None = None,
                  use_gpu: bool = False,
+                 gradient_luts=None,
                  **kwargs):
         """
         Initialize the graph library API.
@@ -78,8 +79,35 @@ class GraphLibraryAPI(GraphAPI):
         if from_nodes is None or to_nodes is None:
             before_constructing_edge_data = time()
 
+            # Gradient-aware edge construction (feasibility objective):
+            # takes precedence — the LUT pair defines the edge weights.
+            if gradient_luts is not None:
+                if self.dem_data is None:
+                    raise ValueError(
+                        "gradient_luts require dem_data aligned to the "
+                        "raster")
+                from pyorps.utils.metric_edges import (
+                    construct_edges_gradient,
+                )
+                from_nodes, to_nodes, cost = construct_edges_gradient(
+                    self.raster_data, self.dem_data, self.steps,
+                    gradient_luts, self.ignore_max,
+                )
+            # Lossless float32 weight raster (feasibility Phase 9)
+            elif np.issubdtype(self.raster_data.dtype, np.floating):
+                if self.dem_data is not None:
+                    raise ValueError(
+                        "A float weight raster with a DEM requires "
+                        "gradient_luts (slope terms are mandatory with "
+                        "elevation data under an objective).")
+                from pyorps.utils.metric_edges import (
+                    construct_edges_weights,
+                )
+                from_nodes, to_nodes, cost = construct_edges_weights(
+                    self.raster_data, self.steps, self.ignore_max,
+                )
             # Try GPU edge construction if requested
-            if use_gpu:
+            elif use_gpu:
                 from_nodes, to_nodes, cost = self._construct_edges_gpu(
                     dem_kwargs
                 )

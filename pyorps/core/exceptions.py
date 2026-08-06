@@ -38,6 +38,20 @@ class FormatError(CostAssumptionsError):
     """
 
 
+class ObjectiveError(PyorpsError):
+    """
+    Exception raised for invalid feasibility-objective configuration
+    (weights, gradient responses, LUT construction).
+    """
+
+
+class MetricStackError(PyorpsError):
+    """
+    Exception raised for metric-stack violations (band misalignment,
+    missing layers, invalid values, I/O format problems).
+    """
+
+
 class FeatureColumnError(PyorpsError):
     """
     Base exception for feature column detection errors
