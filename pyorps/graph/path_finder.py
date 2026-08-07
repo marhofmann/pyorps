@@ -69,6 +69,13 @@ from pyorps.utils.traversal import (
 # Cython shortest-path kernels.
 MAX_SAFE_CELLS = iinfo(uint32).max  # 2**32 - 1 = 4_294_967_295
 
+#: The phases of PathFinder.runtimes that sum to runtimes["total"]. Every other
+#: key is either a component of one of these ("import_time_graph_api",
+#: "edge_construction" and "graph_creation" decompose "graph_build") or an
+#: absolute timestamp ("shortest_path_start_time"), and must never be added.
+RUNTIME_PHASES = ("raster_loading", "graph_build", "shortest_path",
+                  "path_metrics")
+
 
 @contextmanager
 def timed(name: str, timings_dict: dict[str, float] | None) -> Generator:
@@ -97,8 +104,11 @@ def get_graph_api_class(graph_api: str) -> type:
 
     Parameters:
         graph_api (str): The name of the graph API to use ("networkit", "igraph",
-        "networkx" or "rustworkx). Respective graph library must be installed!
-        Networkit is a dependency of pyorps and will be installed automatically.
+        "networkx", "rustworkx", "cython", "cugraph", "raster_gpu" or
+        "raster_fim" — the latter solves the continuous eikonal equation on
+        the GPU instead of a graph search). Respective graph library must be
+        installed! Networkit is a dependency of pyorps and will be installed
+        automatically.
 
     Returns:
         class: The corresponding graph API class.
@@ -129,6 +139,9 @@ def get_graph_api_class(graph_api: str) -> type:
         case "raster_gpu":
             from pyorps.graph.api.raster_gpu_api import RasterGPUAPI
             return RasterGPUAPI
+        case "raster_fim":
+            from pyorps.graph.api.raster_fim_api import RasterFIMAPI
+            return RasterFIMAPI
         case _:
             raise ValueError(f"Unsupported graph API: {graph_api}")
 
@@ -146,6 +159,24 @@ class PathFinder:
     analysis
 
     The class supports various graph APIs to create a graph from a raster.
+
+    Runtime accounting (``self.runtimes``, seconds, copied onto every Path):
+        raster_loading            one-time: loading/rasterizing the search
+                                  raster; measured in __init__ and repeated
+                                  verbatim in every later path's runtimes
+        graph_build               building the backend handle FOR THIS ROUTE
+                                  (edge construction included) — 0.0 when a
+                                  previously built graph was reused
+        import_time_graph_api,
+        edge_construction,
+        graph_creation            components of the last graph_build; never
+                                  added to "total" on their own
+        shortest_path             the search itself, graph construction
+                                  excluded
+        path_metrics              post-processing (0.0 when
+                                  calculate_metrics=False)
+        total                     sum of RUNTIME_PHASES
+        shortest_path_start_time  absolute epoch timestamp of the search start
     """
 
     def __init__(
@@ -201,7 +232,10 @@ class PathFinder:
                 which have the maximum cost value or not
             graph_api: Graph API to use.
                 Available graph libraries:
-                    "cython" (default), "networkit", "rustworkx", "igraph", "networkx"
+                    "cython" (default), "networkit", "rustworkx", "igraph",
+                    "networkx", "cugraph", "raster_gpu" (GPU delta-stepping)
+                    and "raster_fim" (GPU eikonal solver — continuous
+                    least-cost paths, no neighborhood; requires CUDA)
             cost_assumptions: Cost assumptions to use for rasterization.
                 Required if dataset_source is vector data.
             datasets_to_modify: List of datasets to use to modify the raster using
@@ -237,7 +271,9 @@ class PathFinder:
                 combined surface for extreme weight dynamic ranges (when
                 the combine diagnostics warn about quantization collapse).
                 float32 requires an objective and one of the
-                FLOAT_BACKENDS (library backends or raster_gpu).
+                FLOAT_BACKENDS (library backends, raster_gpu or
+                raster_fim — the eikonal solver consumes float32
+                natively).
             **kwargs: Additional keyword arguments to pass to the rasterize function
                 of the RasterHandler (if a VectorDataset or a source to a VectorDataset
                 has been provided with dataset_source) or to the load function of the
@@ -285,6 +321,7 @@ class PathFinder:
             self.steps = steps
 
         self.runtimes = {}
+        self._total_cost_basis_warned = False
         self.paths = PathCollection()  # Initialize PathCollection instead of list
 
         # Initialize as None (to be lazily loaded/created)
@@ -345,7 +382,7 @@ class PathFinder:
     #: Backends that accept lossless float32 weight rasters (Phase 9).
     #: The cython kernels remain uint16-pinned (RasterContext).
     FLOAT_BACKENDS = ("networkit", "networkx", "igraph", "rustworkx",
-                      "raster_gpu")
+                      "raster_gpu", "raster_fim")
 
     def _validate_precision_support(self) -> None:
         """Fail fast on unsupported weight_precision configurations."""
@@ -847,12 +884,21 @@ class PathFinder:
         """
         Create a graph from the raster data.
 
+        Timed as the "graph_build" phase of self.runtimes (see the class
+        docstring); "import_time_graph_api", "edge_construction" and
+        "graph_creation" decompose it.
+
         Parameters:
             band_index: Index of the raster band to use. Defaults to 0.
 
         Returns:
             The created graph object.
         """
+        with timed("graph_build", self.runtimes):
+            return self._build_graph(band_index)
+
+    def _build_graph(self, band_index: int) -> Any:
+        """Body of create_graph, wrapped by the graph_build timer."""
         # Importing the specified graph API using the timed context manager
         with timed("import_time_graph_api", self.runtimes):
             graph_api_class_constructor = get_graph_api_class(self.graph_api_name)
@@ -884,7 +930,10 @@ class PathFinder:
         # the search window grid and build the slope-response LUTs (the 3D
         # stretch applies unconditionally; responses when configured).
         gradient_luts = None
-        if (self.objective is not None
+        # getattr: PathFinder is also constructed via __new__ (test doubles,
+        # subclasses that skip super().__init__), where only the attributes a
+        # caller sets exist.
+        if (getattr(self, "objective", None) is not None
                 and self.dem_raster_handler is not None):
             dem_data, gradient_luts = self._prepare_gradient_inputs(
                 raster_data)
@@ -1061,11 +1110,16 @@ class PathFinder:
 
     @property
     def graph_api(self) -> GraphAPI:
+        """The backend handle, built on first use.
+
+        Building is attributed to the "graph_build" phase and never to
+        "shortest_path"; a route that reuses an existing graph is charged
+        0.0 for it.
+        """
         if self._graph_api is None:
             self.create_graph()
-            # Overwrite the shortest_path_start_time, to make sure, that graph creation
-            # is not part of it
-            self.runtimes["shortest_path_start_time"] = time()
+        else:
+            self.runtimes["graph_build"] = 0.0
         return self._graph_api
 
     def get_node_indices_from_coords(
@@ -1319,12 +1373,17 @@ class PathFinder:
         source_indices = self.get_node_indices_from_coords(source)
         target_indices = self.get_node_indices_from_coords(target)
 
+        # Build the graph BEFORE the search timer starts — dereferencing the
+        # property inside the timed block charged edge construction (minutes
+        # on the library backends) to "shortest_path".
+        graph_api = self.graph_api
+
         # Time the shortest path calculation
         self.runtimes["shortest_path_start_time"] = time()
 
         # Find the shortest path using the graph API
         with timed("shortest_path", self.runtimes):
-            path_indices = self.graph_api.shortest_path(
+            path_indices = graph_api.shortest_path(
                 source_indices=source_indices,
                 target_indices=target_indices,
                 algorithm=algorithm,
@@ -1389,17 +1448,6 @@ class PathFinder:
         # Create LineString from path coordinates
         path_geometry = LineString(path_coords)
 
-        # Calculate total runtime based on the graph API used
-        if self.graph_api_name == "cython":
-            self.runtimes["total"] = self.runtimes.get("raster_loading", 0) + \
-                                     self.runtimes.get("shortest_path", 0.0)
-        else:
-            self.runtimes["total"] = self.runtimes.get("raster_loading", 0) + \
-                                     self.runtimes.get("graph_creation", 0) + \
-                                     self.runtimes.get("edge_construction", 0) + \
-                                     self.runtimes.get("import_time_graph_api", 0) + \
-                                     self.runtimes.get("shortest_path", 0.0)
-
         # Create path object using the Path dataclass
         path_id = len(self.paths)
         path = Path(
@@ -1436,15 +1484,86 @@ class PathFinder:
         if calculate_metrics:
             with timed("path_metrics", self.runtimes):
                 self.calculate_path_metrics(path_indices, path)
+        else:
+            self.runtimes["path_metrics"] = 0.0
+
+        # Every phase counted exactly once, post-processing included; the
+        # Path carries the completed accounting, not a mid-run snapshot.
+        self.runtimes["total"] = sum(
+            self.runtimes.get(phase, 0.0) for phase in RUNTIME_PHASES)
+        path.runtimes = self.runtimes.copy()
 
         # Store path in PathCollection
         self.paths.add(path)
 
         return path
 
+    def _total_cost_basis(self) -> tuple[str, list[str]]:
+        """Describe what Path.total_cost reflects and where it diverges.
+
+        total_cost is always recomputed as ``sum(cell value x 2D length)``
+        over the search raster. That is the minimized quantity only in the
+        plain 2D discrete case; the returned list names every term of the
+        actual search objective the number does NOT contain.
+
+        Returns:
+            (basis, divergences) — *basis* names the quantity total_cost was
+            computed from, *divergences* is empty when it is the quantity
+            the search minimized.
+        """
+        basis = "sum(cell value x 2D length) over the search raster"
+        divergences = []
+        if self.graph_api_name == "raster_fim":
+            divergences.append(
+                "the eikonal field value T[target] that was actually "
+                "minimized — the discrete recompute prices the continuous "
+                "path upward")
+        if self.dem_raster_handler is not None:
+            term = ("the 3D length stretch and the slope response that the "
+                    "search applied to every edge")
+            if self.objective is None:
+                term += " (Path.total_length is the 2D length here as well)"
+            divergences.append(term)
+        if self.objective is not None:
+            scale = (self._combine_result.scale
+                     if self._combine_result is not None else 1.0)
+            divergences.append(
+                f"the objective's units — the raster holds the quantized "
+                f"combined surface (scale {scale:g}), so the number is "
+                f"objective units x m, not EUR")
+        return basis, divergences
+
+    def _report_total_cost_basis(self, path, computed: bool) -> None:
+        """Record (and once per finder, warn about) the total_cost basis.
+
+        Changing what total_cost *means* is a product decision owned by the
+        dual-metric plan (2026-06-09: construction_cost vs
+        routing_objective). Until that lands the number stays exactly as it
+        was; this only makes the mismatch visible instead of silent.
+        """
+        basis, divergences = self._total_cost_basis()
+        if not computed:
+            path.total_cost_basis = (
+                "not computed (float32 weight raster) — see Path.metrics")
+            return
+        path.total_cost_basis = basis
+        if not divergences or getattr(self, "_total_cost_basis_warned", False):
+            return
+        self._total_cost_basis_warned = True
+        warn(f"Path.total_cost is a recompute of {basis} and does not "
+             f"reflect: {'; '.join(divergences)}. Read Path.metrics / "
+             f"Path.feasibility for what the search minimized. Every result "
+             f"carries this statement on Path.total_cost_basis.",
+             UserWarning, stacklevel=3)
+
     def calculate_path_metrics(self, path_indices, path):
         """
         Calculate metrics about the path and add directly to the Path object.
+
+        Sets Path.total_cost_basis: total_cost is recomputed from the 2D
+        search raster and is NOT the value the search minimized whenever a
+        DEM, a gradient response, an objective quantization or the
+        continuous eikonal backend is in play.
 
         Parameters:
             path_indices: List of node indices for the path.
@@ -1481,6 +1600,9 @@ class PathFinder:
             # Calculate raw cell cost (sum of raster values along path)
             path.total_cell_cost = float(
                 raster_data[rows_idx, cols_idx].sum())
+
+        self._report_total_cost_basis(
+            path, computed=raster_data.dtype == np.uint16)
 
         # Feasibility-objective reporting: honest per-metric totals from
         # the float layers (the legacy fields above stay untouched).
