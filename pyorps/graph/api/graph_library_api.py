@@ -35,6 +35,63 @@ from pyorps.utils.traversal import construct_edges, construct_edges_3d
 
 from .graph_api import GraphAPI
 
+#: Cell-count ceiling for the edge-list backends.
+#: These APIs materialise an explicit edge list preallocated at the theoretical
+#: maximum: 4 B (from) + 4 B (to) + 8 B (cost) per edge and ~8 edges per cell at
+#: R2, i.e. ~128 B/cell before the library's own graph object exists — 0.6 GiB at
+#: this limit, 3.2 GB at 25 M cells (a 5 km route at 1 m resolution) and 12.8 GB
+#: at 100 M. The allocation happens minutes before any result, so an unguarded
+#: run ends in an out-of-memory kill with nothing to show for it. The limit is
+#: set where the edge arrays plus the graph object still stay in low single-digit
+#: GB on a 16 GB machine.
+#: Override for research use by setting this to None (disables the guard
+#: process-wide) or by passing ``allow_large_raster=True`` to a single API.
+MAX_LIBRARY_BACKEND_CELLS = 5_000_000
+
+
+def check_library_backend_size(
+        n_cells: int,
+        n_directions: int,
+        backend: str,
+        allow_large_raster: bool = False,
+) -> None:
+    """
+    Refuse edge-list construction on rasters that cannot fit in memory.
+
+    Parameters:
+        n_cells: Number of raster cells the edge list would be built over
+        n_directions: Number of neighborhood step directions
+        backend: Name of the backend, used in the error message
+        allow_large_raster: Bypass the guard for this call
+
+    Raises:
+        ValueError: If the raster exceeds MAX_LIBRARY_BACKEND_CELLS and the
+            guard was not overridden.
+    """
+    limit = MAX_LIBRARY_BACKEND_CELLS
+    if allow_large_raster or limit is None or n_cells <= limit:
+        return
+
+    max_edges = int(n_cells) * int(n_directions)
+    gigabytes = max_edges * 16 / 2 ** 30
+    raise ValueError(
+        f"{backend} builds an explicit edge list: {int(n_cells):,} cells x "
+        f"{int(n_directions)} directions = {max_edges:,} edges preallocated "
+        f"at 16 B/edge = {gigabytes:.1f} GiB, before the graph object itself. "
+        f"Rasters above MAX_LIBRARY_BACKEND_CELLS = {limit:,} cells are "
+        f"refused here instead of failing with an out-of-memory kill minutes "
+        f"into the run.\n"
+        f"Use a raster-direct backend, which never builds an edge list: "
+        f"graph_api='cython' (CPU), 'raster_gpu' (GPU delta-stepping) or "
+        f"'raster_fim' (GPU eikonal). PathFinder's "
+        f"weight_precision='float32' mode also lists these graph libraries, "
+        f"but 'raster_gpu' and 'raster_fim' accept float32 rasters too and "
+        f"are the only float32 options that scale.\n"
+        f"To route on this raster anyway (research use), pass "
+        f"allow_large_raster=True to the graph API or set "
+        f"pyorps.graph.api.graph_library_api.MAX_LIBRARY_BACKEND_CELLS = "
+        f"None.")
+
 
 class GraphLibraryAPI(GraphAPI):
     """
@@ -43,6 +100,10 @@ class GraphLibraryAPI(GraphAPI):
     This class extends GraphAPI with common functionality needed by standard graph
     libraries that require edge data to be explicitly provided and a graph to be
     constructed.
+
+    Rasters larger than the module-level MAX_LIBRARY_BACKEND_CELLS are refused
+    (see check_library_backend_size); pass allow_large_raster=True or set that
+    module attribute to None to override.
     """
 
     def __init__(self,
@@ -56,6 +117,7 @@ class GraphLibraryAPI(GraphAPI):
                  dem_kwargs: dict[str, Any] | None = None,
                  use_gpu: bool = False,
                  gradient_luts=None,
+                 allow_large_raster: bool = False,
                  **kwargs):
         """
         Initialize the graph library API.
@@ -69,11 +131,20 @@ class GraphLibraryAPI(GraphAPI):
             to_nodes: Target node indices for edges
             cost: Edge weights
             dem_kwargs: Optional dict with gradient_function key for 3D/DEM
-            use_gpu: If True, use GPU-accelerated edge construction (requires
-                CuPy and NVIDIA GPU). Falls back to CPU if GPU unavailable.
+            use_gpu: Accepted for API compatibility. GPU edge construction is
+                NOT implemented (pyorps.utils.traversal_gpu provides only the
+                step lookup tables), so this warns and builds the edges on the
+                CPU. Use graph_api="raster_gpu"/"raster_fim" for GPU routing.
+            allow_large_raster: Bypass the MAX_LIBRARY_BACKEND_CELLS guard for
+                this instance (research use — the edge list is preallocated at
+                the theoretical maximum and will exhaust memory).
 
         """
         super().__init__(raster_data, steps, ignore_max, dem_data)
+
+        check_library_backend_size(
+            self.raster_data.size, len(self.steps), type(self).__name__,
+            allow_large_raster)
 
         self.edge_construction_time = 0.0
         if from_nodes is None or to_nodes is None:
@@ -144,18 +215,35 @@ class GraphLibraryAPI(GraphAPI):
         """
         Attempt GPU edge construction, returning None tuple on failure.
 
+        No GPU edge builder exists: pyorps.utils.traversal_gpu implements only
+        prepare_step_lookup_tables, which the raster-direct GPU backends
+        consume. This method therefore reports that honestly and lets the
+        caller fall back to the CPU builder; the dispatch is kept so a future
+        traversal_gpu.construct_edges_gpu is picked up without further changes.
+
         Returns:
             Tuple of (from_nodes, to_nodes, cost) as NumPy arrays,
-            or (None, None, None) if GPU is unavailable.
+            or (None, None, None) if GPU edge construction is unavailable.
         """
         try:
-            from pyorps.utils.traversal_gpu import GPU_AVAILABLE, construct_edges_gpu
+            import pyorps.utils.traversal_gpu as traversal_gpu
         except ImportError:
-            warn("GPU edge construction unavailable (cupy not installed). "
+            warn("GPU edge construction unavailable "
+                 "(pyorps.utils.traversal_gpu could not be imported). "
                  "Falling back to CPU.")
             return None, None, None
 
-        if not GPU_AVAILABLE:
+        construct_edges_gpu = getattr(traversal_gpu, "construct_edges_gpu",
+                                      None)
+        if construct_edges_gpu is None:
+            warn("use_gpu=True has no effect on the graph-library backends: "
+                 "GPU edge construction is not implemented in pyorps "
+                 "(pyorps.utils.traversal_gpu provides only the step lookup "
+                 "tables). Building the edges on the CPU. For GPU routing "
+                 "use graph_api='raster_gpu' or 'raster_fim'.")
+            return None, None, None
+
+        if not traversal_gpu.GPU_AVAILABLE:
             warn("GPU edge construction unavailable (no CUDA GPU detected). "
                  "Falling back to CPU.")
             return None, None, None
