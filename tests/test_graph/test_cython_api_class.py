@@ -22,9 +22,13 @@ class TestCythonAPIInit(unittest.TestCase):
         self.assertEqual(api.max_value, 65535)
 
     def test_ignore_max_false(self):
+        from pyorps.utils._raster_context import NO_EXCLUSION_VALUE
+
         api = CythonAPI(self.raster, self.steps, ignore_max=False)
         self.assertFalse(api.ignore_max)
-        self.assertEqual(api.max_value, 0)
+        # Out-of-uint16-domain sentinel: nothing is excluded. Using 0 here made
+        # every zero-cost cell impassable.
+        self.assertEqual(api.max_value, NO_EXCLUSION_VALUE)
 
     def test_ignore_max_default_matches_base_class(self):
         """Regression: CythonAPI default for ignore_max must match GraphAPI (True)."""
