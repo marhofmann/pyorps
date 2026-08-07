@@ -22,7 +22,7 @@ from libcpp.vector cimport vector
 from libcpp.unordered_map cimport unordered_map
 from libcpp.unordered_set cimport unordered_set
 from cython.operator cimport dereference as deref
-from cython.parallel cimport prange, threadid
+from cython.parallel cimport prange
 from openmp cimport omp_get_max_threads, omp_set_num_threads
 
 from pyorps.utils._heap cimport (
@@ -44,6 +44,55 @@ from pyorps.utils._constrained_context cimport (
     _check_span_clearance, _check_span_clearance_vh,
     _tower_terrain,
 )
+
+cdef extern from "atomic_cas.h" nogil:
+    int atomic_fetch_add_int(volatile int* addr, int val)
+
+
+# ==================== RELAXATION BUFFER OVERFLOW PROTOCOL ====================
+#
+# The parallel relaxation phase writes candidate state improvements into a
+# fixed per-thread CRelaxBuf and the sequential merge applies them. A dropped
+# buffer entry is a LOST RELAXATION: the improvement never reaches the state
+# array or the bucket queue, so the search can return a silently suboptimal
+# route. One bucket can hold 10^5+ active states at > 5 km, well past the
+# buffer size.
+#
+# Threads therefore claim CRELAX_CHUNK-sized slices of the active list through
+# an atomic counter and stop claiming once their buffer is within one chunk's
+# worth of pushes of capacity. Whatever stays unclaimed is merged and re-issued
+# in another round. Invariant:
+#
+#     a chunk is claimed only while count <= buf_guard - 1, and one chunk adds
+#     at most CRELAX_CHUNK * max_pushes_per_state entries, so count stays
+#     below capacity.
+#
+# With no buffer pressure the loop runs exactly one round and behaves as before.
+
+# Work-claim granularity of the parallel relaxation phase.
+cdef enum:
+    CRELAX_CHUNK = 64
+
+
+# Shared claim counter. A struct member is addressable from inside prange
+# without triggering Cython's reduction-variable analysis.
+cdef struct CRelaxWork:
+    int work_idx
+
+
+def _validate_span_bins(int n_span_bins, float span_bin_size, float max_span):
+    """Reject span-bin configs that cannot cover max_span.
+
+    The packed state index assumes span_bin < n_span_bins; a span bin
+    computed past that aliases into neighboring (direction, cell) states
+    and silently corrupts the search (out-of-bounds in dense modes).
+    """
+    if <double>n_span_bins * <double>span_bin_size < <double>max_span - 1e-6:
+        raise ValueError(
+            f"n_span_bins ({n_span_bins}) * span_bin_size ({span_bin_size}) "
+            f"must cover max_span ({max_span}); otherwise span bins alias "
+            f"into neighboring states and silently corrupt the search."
+        )
 
 
 # ===========================================================================
@@ -72,13 +121,18 @@ def constrained_delta_stepping_2d(
     np.ndarray[np.int32_t, ndim=1] area_offsets=None,
     np.ndarray[np.int32_t, ndim=1] area_offset_starts=None,
     np.ndarray[np.int32_t, ndim=1] area_offset_counts=None,
+    int return_dist=0,
 ):
     """Parallel constrained delta-stepping with tower placement.
 
     Uses OpenMP thread-parallel edge relaxation within each bucket phase.
     Thread-local buffers collect results; sequential merge maintains correctness.
     Same result as constrained_dijkstra_2d but leverages multiple cores.
+
+    return_dist nonzero appends the optimal path cost (float) to the return
+    tuple: (path, towers, dist). Unreachable targets report inf.
     """
+    _validate_span_bins(n_span_bins, span_bin_size, max_span)
     cdef int rows = raster.shape[0]
     cdef int cols = raster.shape[1]
     cdef int n_dirs = steps.shape[0]
@@ -192,7 +246,23 @@ def constrained_delta_stepping_2d(
     cdef int num_threads = int(_os.environ.get('OMP_NUM_THREADS', str(_os.cpu_count() or 4)))
     if num_threads < 1:
         num_threads = 1
+    # Never exceed the OpenMP runtime's own team size: os.cpu_count() ignores
+    # OMP_THREAD_LIMIT and container CPU quotas, and oversubscribing here would
+    # starve other work on the machine.
+    if num_threads > omp_get_max_threads():
+        num_threads = omp_get_max_threads()
+    cdef int omp_team = num_threads
     cdef int buf_cap = 131072  # 128K entries per thread
+    # A single active state contributes at most 2 * n_dirs buffer
+    # entries; a claimed chunk must always fit, or the merge would lose an
+    # improvement the search already committed to (see protocol note above).
+    cdef int max_pushes_per_state = 2 * n_dirs
+    if buf_cap < 2 * CRELAX_CHUNK * max_pushes_per_state:
+        buf_cap = 2 * CRELAX_CHUNK * max_pushes_per_state
+    cdef int buf_guard = buf_cap - CRELAX_CHUNK * max_pushes_per_state
+    cdef CRelaxWork cw_data
+    cdef CRelaxWork* cw = &cw_data
+    cdef int chunk_start, chunk_end
     cdef CRelaxBuf* tbufs = <CRelaxBuf*>malloc(num_threads * sizeof(CRelaxBuf))
     cdef int t
     if tbufs == NULL:
@@ -306,151 +376,162 @@ def constrained_delta_stepping_2d(
                 if n_active == 0:
                     break
 
-                # Reset thread buffers
-                for t in range(num_threads):
-                    tbufs[t].count = 0
+                # ---- PARALLEL EDGE RELAXATION (guarded claim + rollover) ----
+                cw.work_idx = 0
+                while True:
+                    for t in range(num_threads):
+                        tbufs[t].count = 0
 
-                # ---- PARALLEL EDGE RELAXATION ----
-                for ai in prange(n_active, nogil=True, schedule='dynamic',
-                                 chunksize=64, num_threads=num_threads):
-                    tid = threadid()
-                    if tid < 0 or tid >= num_threads:
-                        tid = 0
-
-                    cur_state = active[ai]
-                    p_cur_dist = states[cur_state].dist
-                    p_cur_cell = <uint32_t>(cur_state / spc)
-                    p_remainder = cur_state - (<uint64_t>p_cur_cell) * spc
-                    p_cur_dir = <uint8_t>(p_remainder / n_span_bins)
-                    p_cur_row = <int>(p_cur_cell / cols)
-                    p_cur_col = <int>(p_cur_cell % cols)
-                    p_cur_span_m = <double>states[cur_state].span_dist
-                    p_cur_raster_val = raster_ptr[p_cur_cell]
-                    p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
-
-                    p_nb_start = nb_offsets[p_cur_dir]
-                    p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
-
-                    for p_k in range(p_n_valid):
-                        p_nb = flat_nb[p_nb_start + p_k]
-                        p_nr = p_cur_row + p_nb.dr
-                        p_nc = p_cur_col + p_nb.dc
-
-                        if (<unsigned int>p_nr >= <unsigned int>rows or
-                                <unsigned int>p_nc >= <unsigned int>cols):
-                            continue
-
-                        p_nb_cell = <uint32_t>(p_nr * cols + p_nc)
-                        if mask_ptr[p_nb_cell] == 0:
-                            continue
-
-                        # Pre-visited skip
-                        p_base_nb = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins
-                        p_skip = 1
-                        for p_sb in range(n_span_bins):
-                            if (states[p_base_nb + p_sb].visited == 0 or
-                                    <double>states[p_base_nb + p_sb].dist > p_cur_dist):
-                                p_skip = 0
+                    for tid in prange(omp_team, nogil=True, schedule='static',
+                                      num_threads=omp_team):
+                        while True:
+                            if tbufs[tid].count >= buf_guard:
                                 break
-                        if p_skip:
-                            continue
+                            chunk_start = atomic_fetch_add_int(
+                                <volatile int*>&cw.work_idx, CRELAX_CHUNK)
+                            if chunk_start >= n_active:
+                                break
+                            chunk_end = chunk_start + CRELAX_CHUNK
+                            if chunk_end > n_active:
+                                chunk_end = n_active
+                            for ai in range(chunk_start, chunk_end):
+                                cur_state = active[ai]
+                                p_cur_dist = states[cur_state].dist
+                                p_cur_cell = <uint32_t>(cur_state / spc)
+                                p_remainder = cur_state - (<uint64_t>p_cur_cell) * spc
+                                p_cur_dir = <uint8_t>(p_remainder / n_span_bins)
+                                p_cur_row = <int>(p_cur_cell / cols)
+                                p_cur_col = <int>(p_cur_cell % cols)
+                                p_cur_span_m = <double>states[cur_state].span_dist
+                                p_cur_raster_val = raster_ptr[p_cur_cell]
+                                p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
 
-                        # Intermediate cache lookup
-                        p_cidx = <size_t>p_nb_cell * <size_t>n_dirs + <size_t>p_nb.d_out
-                        if icache_status[p_cidx] != 2:
-                            continue
-                        p_icost = icache_cost[p_cidx]
+                                p_nb_start = nb_offsets[p_cur_dir]
+                                p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
 
-                        p_terrain_cost = (<double>p_cur_raster_val +
-                                         <double>p_icost +
-                                         <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
-                        if grad_penalty_ptr != NULL:
-                            p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
-                        p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
-                        p_new_span_m = p_cur_span_m + <double>p_nb.step_distance
+                                for p_k in range(p_n_valid):
+                                    p_nb = flat_nb[p_nb_start + p_k]
+                                    p_nr = p_cur_row + p_nb.dr
+                                    p_nc = p_cur_col + p_nb.dc
 
-                        if p_nb.d_out == p_cur_dir:
-                            # Same direction: continue span
-                            if p_new_span_m < <double>max_span:
-                                p_new_span_bin = <uint16_t>(p_new_span_m / span_bin_size)
-                                p_new_state = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins + p_new_span_bin
-                                p_new_dist = p_cur_dist + p_edge_cost
-                                if (states[p_new_state].visited == 0 or
-                                        p_new_dist < <double>states[p_new_state].dist):
-                                    p_cnt = tbufs[tid].count
-                                    if p_cnt < tbufs[tid].capacity:
-                                        tbufs[tid].states[p_cnt] = p_new_state
-                                        tbufs[tid].dists[p_cnt] = p_new_dist
-                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                        tbufs[tid].span_dists[p_cnt] = <float>p_new_span_m
-                                        tbufs[tid].count = p_cnt + 1
+                                    if (<unsigned int>p_nr >= <unsigned int>rows or
+                                            <unsigned int>p_nc >= <unsigned int>cols):
+                                        continue
 
-                            # Same direction: optional tower
-                            if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
-                                p_tower_cost = _tower_terrain(
-                                    use_area_cost, p_cur_row, p_cur_col,
-                                    p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
-                                    raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
-                                    area_offsets_ptr, area_starts_ptr, area_counts_ptr,
-                                    dem_ptr_f, cell_size, gradient_scale,
-                                ) + <double>p_nb.tower_angle_cost
-                                p_reset_span_m = <double>p_nb.step_distance
-                                p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
-                                p_new_state = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins + p_reset_span_bin
-                                p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
-                                if (states[p_new_state].visited == 0 or
-                                        p_new_dist < <double>states[p_new_state].dist):
-                                    p_cnt = tbufs[tid].count
-                                    if p_cnt < tbufs[tid].capacity:
-                                        tbufs[tid].states[p_cnt] = p_new_state
-                                        tbufs[tid].dists[p_cnt] = p_new_dist
-                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                        tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
-                                        tbufs[tid].count = p_cnt + 1
-                        else:
-                            # Direction change: mandatory tower (min_span enforced)
-                            if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
-                                p_tower_cost = _tower_terrain(
-                                    use_area_cost, p_cur_row, p_cur_col,
-                                    p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
-                                    raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
-                                    area_offsets_ptr, area_starts_ptr, area_counts_ptr,
-                                    dem_ptr_f, cell_size, gradient_scale,
-                                ) + <double>p_nb.tower_angle_cost
-                                p_reset_span_m = <double>p_nb.step_distance
-                                p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
-                                p_new_state = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins + p_reset_span_bin
-                                p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
-                                if (states[p_new_state].visited == 0 or
-                                        p_new_dist < <double>states[p_new_state].dist):
-                                    p_cnt = tbufs[tid].count
-                                    if p_cnt < tbufs[tid].capacity:
-                                        tbufs[tid].states[p_cnt] = p_new_state
-                                        tbufs[tid].dists[p_cnt] = p_new_dist
-                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                        tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
-                                        tbufs[tid].count = p_cnt + 1
+                                    p_nb_cell = <uint32_t>(p_nr * cols + p_nc)
+                                    if mask_ptr[p_nb_cell] == 0:
+                                        continue
+
+                                    # Pre-visited skip
+                                    p_base_nb = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins
+                                    p_skip = 1
+                                    for p_sb in range(n_span_bins):
+                                        if (states[p_base_nb + p_sb].visited == 0 or
+                                                <double>states[p_base_nb + p_sb].dist > p_cur_dist):
+                                            p_skip = 0
+                                            break
+                                    if p_skip:
+                                        continue
+
+                                    # Intermediate cache lookup
+                                    p_cidx = <size_t>p_nb_cell * <size_t>n_dirs + <size_t>p_nb.d_out
+                                    if icache_status[p_cidx] != 2:
+                                        continue
+                                    p_icost = icache_cost[p_cidx]
+
+                                    p_terrain_cost = (<double>p_cur_raster_val +
+                                                     <double>p_icost +
+                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
+                                    if grad_penalty_ptr != NULL:
+                                        p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
+                                    p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
+                                    p_new_span_m = p_cur_span_m + <double>p_nb.step_distance
+
+                                    if p_nb.d_out == p_cur_dir:
+                                        # Same direction: continue span
+                                        if p_new_span_m < <double>max_span:
+                                            p_new_span_bin = <uint16_t>(p_new_span_m / span_bin_size)
+                                            p_new_state = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins + p_new_span_bin
+                                            p_new_dist = p_cur_dist + p_edge_cost
+                                            if (states[p_new_state].visited == 0 or
+                                                    p_new_dist < <double>states[p_new_state].dist):
+                                                p_cnt = tbufs[tid].count
+                                                if p_cnt < tbufs[tid].capacity:
+                                                    tbufs[tid].states[p_cnt] = p_new_state
+                                                    tbufs[tid].dists[p_cnt] = p_new_dist
+                                                    tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                    tbufs[tid].span_dists[p_cnt] = <float>p_new_span_m
+                                                    tbufs[tid].count = p_cnt + 1
+
+                                        # Same direction: optional tower
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                            p_tower_cost = _tower_terrain(
+                                                use_area_cost, p_cur_row, p_cur_col,
+                                                p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
+                                                raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
+                                                area_offsets_ptr, area_starts_ptr, area_counts_ptr,
+                                                dem_ptr_f, cell_size, gradient_scale,
+                                            ) + <double>p_nb.tower_angle_cost
+                                            p_reset_span_m = <double>p_nb.step_distance
+                                            p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
+                                            p_new_state = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins + p_reset_span_bin
+                                            p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
+                                            if (states[p_new_state].visited == 0 or
+                                                    p_new_dist < <double>states[p_new_state].dist):
+                                                p_cnt = tbufs[tid].count
+                                                if p_cnt < tbufs[tid].capacity:
+                                                    tbufs[tid].states[p_cnt] = p_new_state
+                                                    tbufs[tid].dists[p_cnt] = p_new_dist
+                                                    tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                    tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
+                                                    tbufs[tid].count = p_cnt + 1
+                                    else:
+                                        # Direction change: mandatory tower (min_span enforced)
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                            p_tower_cost = _tower_terrain(
+                                                use_area_cost, p_cur_row, p_cur_col,
+                                                p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
+                                                raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
+                                                area_offsets_ptr, area_starts_ptr, area_counts_ptr,
+                                                dem_ptr_f, cell_size, gradient_scale,
+                                            ) + <double>p_nb.tower_angle_cost
+                                            p_reset_span_m = <double>p_nb.step_distance
+                                            p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
+                                            p_new_state = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins + p_reset_span_bin
+                                            p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
+                                            if (states[p_new_state].visited == 0 or
+                                                    p_new_dist < <double>states[p_new_state].dist):
+                                                p_cnt = tbufs[tid].count
+                                                if p_cnt < tbufs[tid].capacity:
+                                                    tbufs[tid].states[p_cnt] = p_new_state
+                                                    tbufs[tid].dists[p_cnt] = p_new_dist
+                                                    tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                    tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
+                                                    tbufs[tid].count = p_cnt + 1
 
                     # ---- SEQUENTIAL MERGE ----
-                for t in range(num_threads):
-                    for bi in range(tbufs[t].count):
-                        p_new_state = tbufs[t].states[bi]
-                        p_new_dist = tbufs[t].dists[bi]
-                        if (states[p_new_state].visited == 0 or
-                                p_new_dist < states[p_new_state].dist):
-                            if states[p_new_state].touched == 0 or p_new_dist < states[p_new_state].dist:
-                                states[p_new_state].touched = 1
-                                # Re-open protocol: a settled state improved
-                                # (possible when delta > min edge cost, e.g.
-                                # 0-cost cells) returns to the frontier.
-                                states[p_new_state].visited = 0
-                                states[p_new_state].dist = p_new_dist
-                                states[p_new_state].pred = tbufs[t].preds[bi]
-                                states[p_new_state].span_dist = tbufs[t].span_dists[bi]
-                                new_logical = <size_t>(p_new_dist / delta)
-                                buckets[new_logical & bucket_mask].push_back(p_new_state)
-                                if new_logical > max_logical:
-                                    max_logical = new_logical
+                    for t in range(num_threads):
+                        for bi in range(tbufs[t].count):
+                            p_new_state = tbufs[t].states[bi]
+                            p_new_dist = tbufs[t].dists[bi]
+                            if (states[p_new_state].visited == 0 or
+                                    p_new_dist < states[p_new_state].dist):
+                                if states[p_new_state].touched == 0 or p_new_dist < states[p_new_state].dist:
+                                    states[p_new_state].touched = 1
+                                    # Re-open protocol: a settled state improved
+                                    # (possible when delta > min edge cost, e.g.
+                                    # 0-cost cells) returns to the frontier.
+                                    states[p_new_state].visited = 0
+                                    states[p_new_state].dist = p_new_dist
+                                    states[p_new_state].pred = tbufs[t].preds[bi]
+                                    states[p_new_state].span_dist = tbufs[t].span_dists[bi]
+                                    new_logical = <size_t>(p_new_dist / delta)
+                                    buckets[new_logical & bucket_mask].push_back(p_new_state)
+                                    if new_logical > max_logical:
+                                        max_logical = new_logical
+
+                    if cw.work_idx >= n_active:
+                        break
 
             # Re-insert deferred
             for bi in range(deferred.size()):
@@ -479,6 +560,9 @@ def constrained_delta_stepping_2d(
     if best_target_state == UINT64_MAX:
         free(states); free(icache_status); free(icache_cost)
         if grad_penalty_ptr != NULL: free(grad_penalty_ptr)
+        if return_dist:
+            return (np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32),
+                    float(INFINITY))
         return (np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32))
 
     cdef uint64_t walk_state = best_target_state
@@ -514,6 +598,12 @@ def constrained_delta_stepping_2d(
     free(states); free(icache_status); free(icache_cost)
     if grad_penalty_ptr != NULL: free(grad_penalty_ptr)
 
+    if return_dist:
+        return (
+            np.array(path_cells, dtype=np.uint32),
+            np.array(tower_cells, dtype=np.uint32),
+            float(best_target_dist),
+        )
     return (
         np.array(path_cells, dtype=np.uint32),
         np.array(tower_cells, dtype=np.uint32),
@@ -547,6 +637,7 @@ def constrained_delta_stepping_clearance_2d(
     ground + obstacles along the entire span. Guarantees globally optimal
     feasible path.
     """
+    _validate_span_bins(n_span_bins, span_bin_size, max_span)
     cdef int rows = raster.shape[0]
     cdef int cols = raster.shape[1]
     cdef int n_dirs = steps.shape[0]
@@ -633,7 +724,23 @@ def constrained_delta_stepping_clearance_2d(
     cdef int num_threads = int(_os.environ.get('OMP_NUM_THREADS', str(_os.cpu_count() or 4)))
     if num_threads < 1:
         num_threads = 1
+    # Never exceed the OpenMP runtime's own team size: os.cpu_count() ignores
+    # OMP_THREAD_LIMIT and container CPU quotas, and oversubscribing here would
+    # starve other work on the machine.
+    if num_threads > omp_get_max_threads():
+        num_threads = omp_get_max_threads()
+    cdef int omp_team = num_threads
     cdef int buf_cap = 131072
+    # A single active state contributes at most 2 * n_dirs buffer
+    # entries; a claimed chunk must always fit, or the merge would lose an
+    # improvement the search already committed to (see protocol note above).
+    cdef int max_pushes_per_state = 2 * n_dirs
+    if buf_cap < 2 * CRELAX_CHUNK * max_pushes_per_state:
+        buf_cap = 2 * CRELAX_CHUNK * max_pushes_per_state
+    cdef int buf_guard = buf_cap - CRELAX_CHUNK * max_pushes_per_state
+    cdef CRelaxWork cw_data
+    cdef CRelaxWork* cw = &cw_data
+    cdef int chunk_start, chunk_end
     cdef CRelaxBuf* tbufs = <CRelaxBuf*>malloc(num_threads * sizeof(CRelaxBuf))
     cdef int t
     if tbufs == NULL:
@@ -723,130 +830,144 @@ def constrained_delta_stepping_clearance_2d(
                 n_active = <int>active.size()
                 if n_active == 0:
                     break
-                for t in range(num_threads):
-                    tbufs[t].count = 0
+                # ---- PARALLEL EDGE RELAXATION (guarded claim + rollover) ----
+                cw.work_idx = 0
+                while True:
+                    for t in range(num_threads):
+                        tbufs[t].count = 0
 
-                for ai in prange(n_active, nogil=True, schedule='dynamic',
-                                 chunksize=64, num_threads=num_threads):
-                    tid = threadid()
-                    if tid < 0 or tid >= num_threads:
-                        tid = 0
-                    cur_state = active[ai]
-                    p_cur_dist = states[cur_state].dist
-                    p_cur_cell = <uint32_t>(cur_state / spc)
-                    p_remainder = cur_state - (<uint64_t>p_cur_cell) * spc
-                    p_cur_dir = <uint8_t>(p_remainder / n_span_bins)
-                    p_cur_row = <int>(p_cur_cell / cols)
-                    p_cur_col = <int>(p_cur_cell % cols)
-                    p_cur_span_m = <double>states[cur_state].span_dist
-                    p_cur_raster_val = raster_ptr[p_cur_cell]
-                    p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
-                    p_nb_start = nb_offsets[p_cur_dir]
-                    p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
-                    for p_k in range(p_n_valid):
-                        p_nb = flat_nb[p_nb_start + p_k]
-                        p_nr = p_cur_row + p_nb.dr
-                        p_nc = p_cur_col + p_nb.dc
-                        if (<unsigned int>p_nr >= <unsigned int>rows or
-                                <unsigned int>p_nc >= <unsigned int>cols):
-                            continue
-                        p_nb_cell = <uint32_t>(p_nr * cols + p_nc)
-                        if mask_ptr[p_nb_cell] == 0:
-                            continue
-                        p_base_nb = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins
-                        p_skip = 1
-                        for p_sb in range(n_span_bins):
-                            if (states[p_base_nb + p_sb].visited == 0 or
-                                    <double>states[p_base_nb + p_sb].dist > p_cur_dist):
-                                p_skip = 0
+                    for tid in prange(omp_team, nogil=True, schedule='static',
+                                      num_threads=omp_team):
+                        while True:
+                            if tbufs[tid].count >= buf_guard:
                                 break
-                        if p_skip:
-                            continue
-                        p_cidx = <size_t>p_nb_cell * <size_t>n_dirs + <size_t>p_nb.d_out
-                        if icache_status[p_cidx] != 2:
-                            continue
-                        p_icost = icache_cost[p_cidx]
-                        p_terrain_cost = (<double>p_cur_raster_val + <double>p_icost +
-                                         <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
-                        p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
-                        p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
-                        p_new_span_m = p_cur_span_m + <double>p_nb.step_distance
+                            chunk_start = atomic_fetch_add_int(
+                                <volatile int*>&cw.work_idx, CRELAX_CHUNK)
+                            if chunk_start >= n_active:
+                                break
+                            chunk_end = chunk_start + CRELAX_CHUNK
+                            if chunk_end > n_active:
+                                chunk_end = n_active
+                            for ai in range(chunk_start, chunk_end):
+                                cur_state = active[ai]
+                                p_cur_dist = states[cur_state].dist
+                                p_cur_cell = <uint32_t>(cur_state / spc)
+                                p_remainder = cur_state - (<uint64_t>p_cur_cell) * spc
+                                p_cur_dir = <uint8_t>(p_remainder / n_span_bins)
+                                p_cur_row = <int>(p_cur_cell / cols)
+                                p_cur_col = <int>(p_cur_cell % cols)
+                                p_cur_span_m = <double>states[cur_state].span_dist
+                                p_cur_raster_val = raster_ptr[p_cur_cell]
+                                p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
+                                p_nb_start = nb_offsets[p_cur_dir]
+                                p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
+                                for p_k in range(p_n_valid):
+                                    p_nb = flat_nb[p_nb_start + p_k]
+                                    p_nr = p_cur_row + p_nb.dr
+                                    p_nc = p_cur_col + p_nb.dc
+                                    if (<unsigned int>p_nr >= <unsigned int>rows or
+                                            <unsigned int>p_nc >= <unsigned int>cols):
+                                        continue
+                                    p_nb_cell = <uint32_t>(p_nr * cols + p_nc)
+                                    if mask_ptr[p_nb_cell] == 0:
+                                        continue
+                                    p_base_nb = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins
+                                    p_skip = 1
+                                    for p_sb in range(n_span_bins):
+                                        if (states[p_base_nb + p_sb].visited == 0 or
+                                                <double>states[p_base_nb + p_sb].dist > p_cur_dist):
+                                            p_skip = 0
+                                            break
+                                    if p_skip:
+                                        continue
+                                    p_cidx = <size_t>p_nb_cell * <size_t>n_dirs + <size_t>p_nb.d_out
+                                    if icache_status[p_cidx] != 2:
+                                        continue
+                                    p_icost = icache_cost[p_cidx]
+                                    p_terrain_cost = (<double>p_cur_raster_val + <double>p_icost +
+                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
+                                    p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
+                                    p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
+                                    p_new_span_m = p_cur_span_m + <double>p_nb.step_distance
 
-                        if p_nb.d_out == p_cur_dir:
-                            if p_new_span_m < <double>max_span:
-                                p_new_span_bin = <uint16_t>(p_new_span_m / span_bin_size)
-                                p_new_state = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins + p_new_span_bin
-                                p_new_dist = p_cur_dist + p_edge_cost
-                                if (states[p_new_state].visited == 0 or
-                                        p_new_dist < <double>states[p_new_state].dist):
-                                    p_cnt = tbufs[tid].count
-                                    if p_cnt < tbufs[tid].capacity:
-                                        tbufs[tid].states[p_cnt] = p_new_state
-                                        tbufs[tid].dists[p_cnt] = p_new_dist
-                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                        tbufs[tid].span_dists[p_cnt] = <float>p_new_span_m
-                                        tbufs[tid].count = p_cnt + 1
-                            if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
-                                p_clearance_ok = _check_span_clearance(
-                                    p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
-                                    tower_height, conductor_weight_per_m, conductor_tension,
-                                    min_clearance_val, dem_ptr, obstacle_ptr, rows, cols,
-                                    directions, cached_steps, step_dist_view[p_cur_dir])
-                                if p_clearance_ok:
-                                    p_tower_cost = p_cur_tower_terrain + <double>p_nb.tower_angle_cost
-                                    p_reset_span_m = <double>p_nb.step_distance
-                                    p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
-                                    p_new_state = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins + p_reset_span_bin
-                                    if states[p_new_state].visited == 0:
-                                        p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
-                                        p_cnt = tbufs[tid].count
-                                        if p_cnt < tbufs[tid].capacity:
-                                            tbufs[tid].states[p_cnt] = p_new_state
-                                            tbufs[tid].dists[p_cnt] = p_new_dist
-                                            tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                            tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
-                                            tbufs[tid].count = p_cnt + 1
-                        else:
-                            if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
-                                p_clearance_ok = _check_span_clearance(
-                                    p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
-                                    tower_height, conductor_weight_per_m, conductor_tension,
-                                    min_clearance_val, dem_ptr, obstacle_ptr, rows, cols,
-                                    directions, cached_steps, step_dist_view[p_cur_dir])
-                                if p_clearance_ok:
-                                    p_tower_cost = p_cur_tower_terrain + <double>p_nb.tower_angle_cost
-                                    p_reset_span_m = <double>p_nb.step_distance
-                                    p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
-                                    p_new_state = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins + p_reset_span_bin
-                                    if states[p_new_state].visited == 0:
-                                        p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
-                                        p_cnt = tbufs[tid].count
-                                        if p_cnt < tbufs[tid].capacity:
-                                            tbufs[tid].states[p_cnt] = p_new_state
-                                            tbufs[tid].dists[p_cnt] = p_new_dist
-                                            tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                            tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
-                                            tbufs[tid].count = p_cnt + 1
+                                    if p_nb.d_out == p_cur_dir:
+                                        if p_new_span_m < <double>max_span:
+                                            p_new_span_bin = <uint16_t>(p_new_span_m / span_bin_size)
+                                            p_new_state = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins + p_new_span_bin
+                                            p_new_dist = p_cur_dist + p_edge_cost
+                                            if (states[p_new_state].visited == 0 or
+                                                    p_new_dist < <double>states[p_new_state].dist):
+                                                p_cnt = tbufs[tid].count
+                                                if p_cnt < tbufs[tid].capacity:
+                                                    tbufs[tid].states[p_cnt] = p_new_state
+                                                    tbufs[tid].dists[p_cnt] = p_new_dist
+                                                    tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                    tbufs[tid].span_dists[p_cnt] = <float>p_new_span_m
+                                                    tbufs[tid].count = p_cnt + 1
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                            p_clearance_ok = _check_span_clearance(
+                                                p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
+                                                tower_height, conductor_weight_per_m, conductor_tension,
+                                                min_clearance_val, dem_ptr, obstacle_ptr, rows, cols,
+                                                directions, cached_steps, step_dist_view[p_cur_dir])
+                                            if p_clearance_ok:
+                                                p_tower_cost = p_cur_tower_terrain + <double>p_nb.tower_angle_cost
+                                                p_reset_span_m = <double>p_nb.step_distance
+                                                p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
+                                                p_new_state = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins + p_reset_span_bin
+                                                if states[p_new_state].visited == 0:
+                                                    p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
+                                                    p_cnt = tbufs[tid].count
+                                                    if p_cnt < tbufs[tid].capacity:
+                                                        tbufs[tid].states[p_cnt] = p_new_state
+                                                        tbufs[tid].dists[p_cnt] = p_new_dist
+                                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                        tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
+                                                        tbufs[tid].count = p_cnt + 1
+                                    else:
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                            p_clearance_ok = _check_span_clearance(
+                                                p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
+                                                tower_height, conductor_weight_per_m, conductor_tension,
+                                                min_clearance_val, dem_ptr, obstacle_ptr, rows, cols,
+                                                directions, cached_steps, step_dist_view[p_cur_dir])
+                                            if p_clearance_ok:
+                                                p_tower_cost = p_cur_tower_terrain + <double>p_nb.tower_angle_cost
+                                                p_reset_span_m = <double>p_nb.step_distance
+                                                p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
+                                                p_new_state = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * n_span_bins + p_reset_span_bin
+                                                if states[p_new_state].visited == 0:
+                                                    p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
+                                                    p_cnt = tbufs[tid].count
+                                                    if p_cnt < tbufs[tid].capacity:
+                                                        tbufs[tid].states[p_cnt] = p_new_state
+                                                        tbufs[tid].dists[p_cnt] = p_new_dist
+                                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                        tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
+                                                        tbufs[tid].count = p_cnt + 1
 
-                for t in range(num_threads):
-                    for bi in range(tbufs[t].count):
-                        p_new_state = tbufs[t].states[bi]
-                        p_new_dist = tbufs[t].dists[bi]
-                        if (states[p_new_state].visited == 0 or
-                                p_new_dist < states[p_new_state].dist):
-                            if states[p_new_state].touched == 0 or p_new_dist < states[p_new_state].dist:
-                                states[p_new_state].touched = 1
-                                # Re-open protocol: a settled state improved
-                                # (possible when delta > min edge cost, e.g.
-                                # 0-cost cells) returns to the frontier.
-                                states[p_new_state].visited = 0
-                                states[p_new_state].dist = p_new_dist
-                                states[p_new_state].pred = tbufs[t].preds[bi]
-                                states[p_new_state].span_dist = tbufs[t].span_dists[bi]
-                                new_logical = <size_t>(p_new_dist / delta_val)
-                                buckets[new_logical & bucket_mask].push_back(p_new_state)
-                                if new_logical > max_logical:
-                                    max_logical = new_logical
+                    for t in range(num_threads):
+                        for bi in range(tbufs[t].count):
+                            p_new_state = tbufs[t].states[bi]
+                            p_new_dist = tbufs[t].dists[bi]
+                            if (states[p_new_state].visited == 0 or
+                                    p_new_dist < states[p_new_state].dist):
+                                if states[p_new_state].touched == 0 or p_new_dist < states[p_new_state].dist:
+                                    states[p_new_state].touched = 1
+                                    # Re-open protocol: a settled state improved
+                                    # (possible when delta > min edge cost, e.g.
+                                    # 0-cost cells) returns to the frontier.
+                                    states[p_new_state].visited = 0
+                                    states[p_new_state].dist = p_new_dist
+                                    states[p_new_state].pred = tbufs[t].preds[bi]
+                                    states[p_new_state].span_dist = tbufs[t].span_dists[bi]
+                                    new_logical = <size_t>(p_new_dist / delta_val)
+                                    buckets[new_logical & bucket_mask].push_back(p_new_state)
+                                    if new_logical > max_logical:
+                                        max_logical = new_logical
+
+                    if cw.work_idx >= n_active:
+                        break
 
             for bi in range(deferred.size()):
                 cur_state = deferred[bi]
@@ -927,6 +1048,8 @@ def constrained_delta_stepping_height_2d(
     np.ndarray[np.int32_t, ndim=1] area_offsets=None,
     np.ndarray[np.int32_t, ndim=1] area_offset_starts=None,
     np.ndarray[np.int32_t, ndim=1] area_offset_counts=None,
+    int force_sparse=0,
+    int return_dist=0,
 ):
     """3D delta-stepping with variable tower heights and clearance.
 
@@ -941,6 +1064,7 @@ def constrained_delta_stepping_height_2d(
     Returns:
         3-tuple: (path_cells uint32[], tower_cells uint32[], tower_heights float32[])
     """
+    _validate_span_bins(n_span_bins, span_bin_size, max_span)
     cdef int rows = raster.shape[0]
     cdef int cols = raster.shape[1]
     cdef int n_dirs = steps.shape[0]
@@ -967,7 +1091,7 @@ def constrained_delta_stepping_height_2d(
         area_starts_ptr = &as_view[0]
         area_counts_ptr = &ac_view[0]
 
-    if total_states > dense_limit:
+    if total_states > dense_limit or force_sparse:
         return _height_sparse(
             raster, source_row, source_col, target_row, target_col,
             steps, angle_cost_lut, angle_valid_lut, step_distances,
@@ -978,6 +1102,7 @@ def constrained_delta_stepping_height_2d(
             obstacle_heights, exclude_mask,
             max_gradient_pct, gradient_scale,
             use_area_cost, area_offsets_ptr, area_starts_ptr, area_counts_ptr,
+            return_dist,
         )
 
     raster = np.ascontiguousarray(raster)
@@ -1071,7 +1196,23 @@ def constrained_delta_stepping_height_2d(
     cdef int num_threads = int(_os.environ.get('OMP_NUM_THREADS', str(_os.cpu_count() or 4)))
     if num_threads < 1:
         num_threads = 1
+    # Never exceed the OpenMP runtime's own team size: os.cpu_count() ignores
+    # OMP_THREAD_LIMIT and container CPU quotas, and oversubscribing here would
+    # starve other work on the machine.
+    if num_threads > omp_get_max_threads():
+        num_threads = omp_get_max_threads()
+    cdef int omp_team = num_threads
     cdef int buf_cap = 131072 * max(1, n_heights // 4)
+    # A single active state contributes at most n_dirs * (1 + n_heights) buffer
+    # entries; a claimed chunk must always fit, or the merge would lose an
+    # improvement the search already committed to (see protocol note above).
+    cdef int max_pushes_per_state = n_dirs * (1 + n_heights)
+    if buf_cap < 2 * CRELAX_CHUNK * max_pushes_per_state:
+        buf_cap = 2 * CRELAX_CHUNK * max_pushes_per_state
+    cdef int buf_guard = buf_cap - CRELAX_CHUNK * max_pushes_per_state
+    cdef CRelaxWork cw_data
+    cdef CRelaxWork* cw = &cw_data
+    cdef int chunk_start, chunk_end
     cdef CRelaxBuf* tbufs = <CRelaxBuf*>malloc(num_threads * sizeof(CRelaxBuf))
     cdef int t
     if tbufs == NULL:
@@ -1179,179 +1320,192 @@ def constrained_delta_stepping_height_2d(
                 n_active = <int>active.size()
                 if n_active == 0:
                     break
-                for t in range(num_threads):
-                    tbufs[t].count = 0
+                # ---- PARALLEL EDGE RELAXATION (guarded claim + rollover) ----
+                cw.work_idx = 0
+                while True:
+                    for t in range(num_threads):
+                        tbufs[t].count = 0
 
-                # ---- PARALLEL EDGE RELAXATION ----
-                for ai in prange(n_active, nogil=True, schedule='dynamic',
-                                 chunksize=64, num_threads=num_threads):
-                    tid = threadid()
-                    if tid < 0 or tid >= num_threads:
-                        tid = 0
-                    cur_state = active[ai]
-                    p_cur_dist = states[cur_state].dist
-                    p_cur_cell = <uint32_t>(cur_state / spc)
-                    p_remainder = cur_state - (<uint64_t>p_cur_cell) * spc
-                    p_cur_dir = <uint8_t>(p_remainder / p_sph)
-                    p_cur_hc = <uint8_t>((p_remainder % p_sph) % n_heights)
-                    p_cur_row = <int>(p_cur_cell / cols)
-                    p_cur_col = <int>(p_cur_cell % cols)
-                    p_cur_span_m = <double>states[cur_state].span_dist
-                    p_cur_raster_val = raster_ptr[p_cur_cell]
-                    p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
-                    p_h_a = th_ptr[p_cur_hc]  # current tower height (tower A)
-
-                    p_nb_start = nb_offsets[p_cur_dir]
-                    p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
-                    for p_k in range(p_n_valid):
-                        p_nb = flat_nb[p_nb_start + p_k]
-                        p_nr = p_cur_row + p_nb.dr
-                        p_nc = p_cur_col + p_nb.dc
-                        if (<unsigned int>p_nr >= <unsigned int>rows or
-                                <unsigned int>p_nc >= <unsigned int>cols):
-                            continue
-                        p_nb_cell = <uint32_t>(p_nr * cols + p_nc)
-                        if mask_ptr[p_nb_cell] == 0:
-                            continue
-
-                        # Skip if ALL height states of this (cell, dir) are visited
-                        p_base_nb = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * p_sph
-                        p_skip = 1
-                        for p_sb in range(n_span_bins * n_heights):
-                            if states[p_base_nb + p_sb].visited == 0:
-                                p_skip = 0
+                    for tid in prange(omp_team, nogil=True, schedule='static',
+                                      num_threads=omp_team):
+                        while True:
+                            if tbufs[tid].count >= buf_guard:
                                 break
-                        if p_skip:
-                            continue
+                            chunk_start = atomic_fetch_add_int(
+                                <volatile int*>&cw.work_idx, CRELAX_CHUNK)
+                            if chunk_start >= n_active:
+                                break
+                            chunk_end = chunk_start + CRELAX_CHUNK
+                            if chunk_end > n_active:
+                                chunk_end = n_active
+                            for ai in range(chunk_start, chunk_end):
+                                cur_state = active[ai]
+                                p_cur_dist = states[cur_state].dist
+                                p_cur_cell = <uint32_t>(cur_state / spc)
+                                p_remainder = cur_state - (<uint64_t>p_cur_cell) * spc
+                                p_cur_dir = <uint8_t>(p_remainder / p_sph)
+                                p_cur_hc = <uint8_t>((p_remainder % p_sph) % n_heights)
+                                p_cur_row = <int>(p_cur_cell / cols)
+                                p_cur_col = <int>(p_cur_cell % cols)
+                                p_cur_span_m = <double>states[cur_state].span_dist
+                                p_cur_raster_val = raster_ptr[p_cur_cell]
+                                p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
+                                p_h_a = th_ptr[p_cur_hc]  # current tower height (tower A)
 
-                        # Intermediate cache lookup
-                        p_cidx = <size_t>p_nb_cell * <size_t>n_dirs + <size_t>p_nb.d_out
-                        if icache_status[p_cidx] != 2:
-                            continue
-                        p_icost = icache_cost[p_cidx]
+                                p_nb_start = nb_offsets[p_cur_dir]
+                                p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
+                                for p_k in range(p_n_valid):
+                                    p_nb = flat_nb[p_nb_start + p_k]
+                                    p_nr = p_cur_row + p_nb.dr
+                                    p_nc = p_cur_col + p_nb.dc
+                                    if (<unsigned int>p_nr >= <unsigned int>rows or
+                                            <unsigned int>p_nc >= <unsigned int>cols):
+                                        continue
+                                    p_nb_cell = <uint32_t>(p_nr * cols + p_nc)
+                                    if mask_ptr[p_nb_cell] == 0:
+                                        continue
 
-                        p_terrain_cost = (<double>p_cur_raster_val + <double>p_icost +
-                                         <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
-                        p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
-                        p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
-                        p_new_span_m = p_cur_span_m + <double>p_nb.step_distance
+                                    # Skip if ALL height states of this (cell, dir) are visited
+                                    p_base_nb = (<uint64_t>p_nb_cell) * spc + <uint64_t>p_nb.d_out * p_sph
+                                    p_skip = 1
+                                    for p_sb in range(n_span_bins * n_heights):
+                                        if states[p_base_nb + p_sb].visited == 0:
+                                            p_skip = 0
+                                            break
+                                    if p_skip:
+                                        continue
 
-                        if p_nb.d_out == p_cur_dir:
-                            # Same direction: continue span (height carries forward)
-                            if p_new_span_m < <double>max_span:
-                                p_new_span_bin = <uint16_t>(p_new_span_m / span_bin_size)
-                                p_new_state = ((<uint64_t>p_nb_cell) * spc +
-                                              <uint64_t>p_nb.d_out * p_sph +
-                                              <uint64_t>p_new_span_bin * n_heights +
-                                              <uint64_t>p_cur_hc)
-                                p_new_dist = p_cur_dist + p_edge_cost
-                                if (states[p_new_state].visited == 0 or
-                                        p_new_dist < <double>states[p_new_state].dist):
-                                    p_cnt = tbufs[tid].count
-                                    if p_cnt < tbufs[tid].capacity:
-                                        tbufs[tid].states[p_cnt] = p_new_state
-                                        tbufs[tid].dists[p_cnt] = p_new_dist
-                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                        tbufs[tid].span_dists[p_cnt] = <float>p_new_span_m
-                                        tbufs[tid].count = p_cnt + 1
+                                    # Intermediate cache lookup
+                                    p_cidx = <size_t>p_nb_cell * <size_t>n_dirs + <size_t>p_nb.d_out
+                                    if icache_status[p_cidx] != 2:
+                                        continue
+                                    p_icost = icache_cost[p_cidx]
 
-                            # Same direction: optional tower with height exploration
-                            if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
-                                # Loop over candidate heights for new tower B (descending)
-                                for p_hb in range(n_heights):
-                                    p_h_b = th_ptr[p_hb]
-                                    p_clearance_ok = _check_span_clearance_vh(
-                                        p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
-                                        p_h_a, p_h_b,
-                                        conductor_weight_per_m, conductor_tension,
-                                        min_clearance_val, dem_ptr, obstacle_ptr,
-                                        rows, cols, directions, cached_steps,
-                                        step_dist_view[p_cur_dir])
-                                    if not p_clearance_ok:
-                                        break  # heights sorted desc: shorter will also fail
-                                    p_hp_b = hp_ptr[p_hb]
-                                    p_tower_cost = (_tower_terrain(
-                                        use_area_cost, p_cur_row, p_cur_col,
-                                        p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
-                                        raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
-                                        area_offsets_ptr, area_starts_ptr, area_counts_ptr,
-                                        dem_ptr, cell_size, gradient_scale,
-                                    ) + <double>p_nb.tower_angle_cost +
-                                                   <double>p_hp_b)
-                                    p_reset_span_m = <double>p_nb.step_distance
-                                    p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
-                                    p_new_state = ((<uint64_t>p_nb_cell) * spc +
-                                                  <uint64_t>p_nb.d_out * p_sph +
-                                                  <uint64_t>p_reset_span_bin * n_heights +
-                                                  <uint64_t>p_hb)
-                                    if states[p_new_state].visited == 0:
-                                        p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
-                                        p_cnt = tbufs[tid].count
-                                        if p_cnt < tbufs[tid].capacity:
-                                            tbufs[tid].states[p_cnt] = p_new_state
-                                            tbufs[tid].dists[p_cnt] = p_new_dist
-                                            tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                            tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
-                                            tbufs[tid].count = p_cnt + 1
-                        else:
-                            # Direction change: mandatory tower (min_span enforced)
-                            if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
-                                for p_hb in range(n_heights):
-                                    p_h_b = th_ptr[p_hb]
-                                    p_clearance_ok = _check_span_clearance_vh(
-                                        p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
-                                        p_h_a, p_h_b,
-                                        conductor_weight_per_m, conductor_tension,
-                                        min_clearance_val, dem_ptr, obstacle_ptr,
-                                        rows, cols, directions, cached_steps,
-                                        step_dist_view[p_cur_dir])
-                                    if not p_clearance_ok:
-                                        break  # height-sorted early exit
-                                    p_hp_b = hp_ptr[p_hb]
-                                    p_tower_cost = (_tower_terrain(
-                                        use_area_cost, p_cur_row, p_cur_col,
-                                        p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
-                                        raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
-                                        area_offsets_ptr, area_starts_ptr, area_counts_ptr,
-                                        dem_ptr, cell_size, gradient_scale,
-                                    ) + <double>p_nb.tower_angle_cost +
-                                                   <double>p_hp_b)
-                                    p_reset_span_m = <double>p_nb.step_distance
-                                    p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
-                                    p_new_state = ((<uint64_t>p_nb_cell) * spc +
-                                                  <uint64_t>p_nb.d_out * p_sph +
-                                                  <uint64_t>p_reset_span_bin * n_heights +
-                                                  <uint64_t>p_hb)
-                                    if states[p_new_state].visited == 0:
-                                        p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
-                                        p_cnt = tbufs[tid].count
-                                        if p_cnt < tbufs[tid].capacity:
-                                            tbufs[tid].states[p_cnt] = p_new_state
-                                            tbufs[tid].dists[p_cnt] = p_new_dist
-                                            tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                            tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
-                                            tbufs[tid].count = p_cnt + 1
+                                    p_terrain_cost = (<double>p_cur_raster_val + <double>p_icost +
+                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
+                                    p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
+                                    p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
+                                    p_new_span_m = p_cur_span_m + <double>p_nb.step_distance
 
-                # ---- SEQUENTIAL MERGE ----
-                for t in range(num_threads):
-                    for bi in range(tbufs[t].count):
-                        p_new_state = tbufs[t].states[bi]
-                        p_new_dist = tbufs[t].dists[bi]
-                        if (states[p_new_state].visited == 0 or
-                                p_new_dist < states[p_new_state].dist):
-                            if states[p_new_state].touched == 0 or p_new_dist < states[p_new_state].dist:
-                                states[p_new_state].touched = 1
-                                # Re-open protocol: a settled state improved
-                                # (possible when delta > min edge cost, e.g.
-                                # 0-cost cells) returns to the frontier.
-                                states[p_new_state].visited = 0
-                                states[p_new_state].dist = p_new_dist
-                                states[p_new_state].pred = tbufs[t].preds[bi]
-                                states[p_new_state].span_dist = tbufs[t].span_dists[bi]
-                                new_logical = <size_t>(p_new_dist / delta_val)
-                                buckets[new_logical & bucket_mask].push_back(p_new_state)
-                                if new_logical > max_logical:
-                                    max_logical = new_logical
+                                    if p_nb.d_out == p_cur_dir:
+                                        # Same direction: continue span (height carries forward)
+                                        if p_new_span_m < <double>max_span:
+                                            p_new_span_bin = <uint16_t>(p_new_span_m / span_bin_size)
+                                            p_new_state = ((<uint64_t>p_nb_cell) * spc +
+                                                          <uint64_t>p_nb.d_out * p_sph +
+                                                          <uint64_t>p_new_span_bin * n_heights +
+                                                          <uint64_t>p_cur_hc)
+                                            p_new_dist = p_cur_dist + p_edge_cost
+                                            if (states[p_new_state].visited == 0 or
+                                                    p_new_dist < <double>states[p_new_state].dist):
+                                                p_cnt = tbufs[tid].count
+                                                if p_cnt < tbufs[tid].capacity:
+                                                    tbufs[tid].states[p_cnt] = p_new_state
+                                                    tbufs[tid].dists[p_cnt] = p_new_dist
+                                                    tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                    tbufs[tid].span_dists[p_cnt] = <float>p_new_span_m
+                                                    tbufs[tid].count = p_cnt + 1
+
+                                        # Same direction: optional tower with height exploration
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                            # Loop over candidate heights for new tower B (descending)
+                                            for p_hb in range(n_heights):
+                                                p_h_b = th_ptr[p_hb]
+                                                p_clearance_ok = _check_span_clearance_vh(
+                                                    p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
+                                                    p_h_a, p_h_b,
+                                                    conductor_weight_per_m, conductor_tension,
+                                                    min_clearance_val, dem_ptr, obstacle_ptr,
+                                                    rows, cols, directions, cached_steps,
+                                                    step_dist_view[p_cur_dir])
+                                                if not p_clearance_ok:
+                                                    break  # heights sorted desc: shorter will also fail
+                                                p_hp_b = hp_ptr[p_hb]
+                                                p_tower_cost = (_tower_terrain(
+                                                    use_area_cost, p_cur_row, p_cur_col,
+                                                    p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
+                                                    raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
+                                                    area_offsets_ptr, area_starts_ptr, area_counts_ptr,
+                                                    dem_ptr, cell_size, gradient_scale,
+                                                ) + <double>p_nb.tower_angle_cost +
+                                                               <double>p_hp_b)
+                                                p_reset_span_m = <double>p_nb.step_distance
+                                                p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
+                                                p_new_state = ((<uint64_t>p_nb_cell) * spc +
+                                                              <uint64_t>p_nb.d_out * p_sph +
+                                                              <uint64_t>p_reset_span_bin * n_heights +
+                                                              <uint64_t>p_hb)
+                                                if states[p_new_state].visited == 0:
+                                                    p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
+                                                    p_cnt = tbufs[tid].count
+                                                    if p_cnt < tbufs[tid].capacity:
+                                                        tbufs[tid].states[p_cnt] = p_new_state
+                                                        tbufs[tid].dists[p_cnt] = p_new_dist
+                                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                        tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
+                                                        tbufs[tid].count = p_cnt + 1
+                                    else:
+                                        # Direction change: mandatory tower (min_span enforced)
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                            for p_hb in range(n_heights):
+                                                p_h_b = th_ptr[p_hb]
+                                                p_clearance_ok = _check_span_clearance_vh(
+                                                    p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
+                                                    p_h_a, p_h_b,
+                                                    conductor_weight_per_m, conductor_tension,
+                                                    min_clearance_val, dem_ptr, obstacle_ptr,
+                                                    rows, cols, directions, cached_steps,
+                                                    step_dist_view[p_cur_dir])
+                                                if not p_clearance_ok:
+                                                    break  # height-sorted early exit
+                                                p_hp_b = hp_ptr[p_hb]
+                                                p_tower_cost = (_tower_terrain(
+                                                    use_area_cost, p_cur_row, p_cur_col,
+                                                    p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
+                                                    raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
+                                                    area_offsets_ptr, area_starts_ptr, area_counts_ptr,
+                                                    dem_ptr, cell_size, gradient_scale,
+                                                ) + <double>p_nb.tower_angle_cost +
+                                                               <double>p_hp_b)
+                                                p_reset_span_m = <double>p_nb.step_distance
+                                                p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
+                                                p_new_state = ((<uint64_t>p_nb_cell) * spc +
+                                                              <uint64_t>p_nb.d_out * p_sph +
+                                                              <uint64_t>p_reset_span_bin * n_heights +
+                                                              <uint64_t>p_hb)
+                                                if states[p_new_state].visited == 0:
+                                                    p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
+                                                    p_cnt = tbufs[tid].count
+                                                    if p_cnt < tbufs[tid].capacity:
+                                                        tbufs[tid].states[p_cnt] = p_new_state
+                                                        tbufs[tid].dists[p_cnt] = p_new_dist
+                                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                        tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
+                                                        tbufs[tid].count = p_cnt + 1
+
+                    # ---- SEQUENTIAL MERGE ----
+                    for t in range(num_threads):
+                        for bi in range(tbufs[t].count):
+                            p_new_state = tbufs[t].states[bi]
+                            p_new_dist = tbufs[t].dists[bi]
+                            if (states[p_new_state].visited == 0 or
+                                    p_new_dist < states[p_new_state].dist):
+                                if states[p_new_state].touched == 0 or p_new_dist < states[p_new_state].dist:
+                                    states[p_new_state].touched = 1
+                                    # Re-open protocol: a settled state improved
+                                    # (possible when delta > min edge cost, e.g.
+                                    # 0-cost cells) returns to the frontier.
+                                    states[p_new_state].visited = 0
+                                    states[p_new_state].dist = p_new_dist
+                                    states[p_new_state].pred = tbufs[t].preds[bi]
+                                    states[p_new_state].span_dist = tbufs[t].span_dists[bi]
+                                    new_logical = <size_t>(p_new_dist / delta_val)
+                                    buckets[new_logical & bucket_mask].push_back(p_new_state)
+                                    if new_logical > max_logical:
+                                        max_logical = new_logical
+
+                    if cw.work_idx >= n_active:
+                        break
 
             for bi in range(deferred.size()):
                 cur_state = deferred[bi]
@@ -1376,6 +1530,9 @@ def constrained_delta_stepping_height_2d(
     cdef list tower_height_classes = []
     if best_target_state == UINT64_MAX:
         free(states); free(icache_status); free(icache_cost); free(grad_penalty_ptr)
+        if return_dist:
+            return (np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32),
+                    np.empty(0, dtype=np.float32), float(INFINITY))
         return (np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32),
                 np.empty(0, dtype=np.float32))
 
@@ -1417,6 +1574,10 @@ def constrained_delta_stepping_height_2d(
         tower_h_out[k] = tower_heights[tower_height_classes[k]]
 
     free(states); free(icache_status); free(icache_cost); free(grad_penalty_ptr)
+    if return_dist:
+        return (np.array(path_cells, dtype=np.uint32),
+                np.array(tower_cells, dtype=np.uint32),
+                tower_h_out, float(best_target_dist))
     return (np.array(path_cells, dtype=np.uint32),
             np.array(tower_cells, dtype=np.uint32),
             tower_h_out)
@@ -1448,6 +1609,7 @@ cdef _height_sparse(
     const int32_t* area_offsets_arg=NULL,
     const int32_t* area_starts_arg=NULL,
     const int32_t* area_counts_arg=NULL,
+    int return_dist=0,
 ):
     """Compact-dense delta-stepping with variable heights and clearance.
 
@@ -1576,7 +1738,23 @@ cdef _height_sparse(
     cdef int num_threads = int(_os.environ.get('OMP_NUM_THREADS', str(_os.cpu_count() or 4)))
     if num_threads < 1:
         num_threads = 1
+    # Never exceed the OpenMP runtime's own team size: os.cpu_count() ignores
+    # OMP_THREAD_LIMIT and container CPU quotas, and oversubscribing here would
+    # starve other work on the machine.
+    if num_threads > omp_get_max_threads():
+        num_threads = omp_get_max_threads()
+    cdef int omp_team = num_threads
     cdef int buf_cap = 131072 * max(1, n_heights // 4)
+    # A single active state contributes at most n_dirs * (1 + n_heights) buffer
+    # entries; a claimed chunk must always fit, or the merge would lose an
+    # improvement the search already committed to (see protocol note above).
+    cdef int max_pushes_per_state = n_dirs * (1 + n_heights)
+    if buf_cap < 2 * CRELAX_CHUNK * max_pushes_per_state:
+        buf_cap = 2 * CRELAX_CHUNK * max_pushes_per_state
+    cdef int buf_guard = buf_cap - CRELAX_CHUNK * max_pushes_per_state
+    cdef CRelaxWork cw_data
+    cdef CRelaxWork* cw = &cw_data
+    cdef int chunk_start, chunk_end
     cdef CRelaxBuf* tbufs = <CRelaxBuf*>malloc(num_threads * sizeof(CRelaxBuf))
     cdef int t
     if tbufs == NULL:
@@ -1697,164 +1875,185 @@ cdef _height_sparse(
                 n_active = <int>active_states.size()
                 if n_active == 0:
                     break
-                for t in range(num_threads):
-                    tbufs[t].count = 0
-
-                # ---- PARALLEL EDGE RELAXATION ----
+                # ---- PARALLEL EDGE RELAXATION (guarded claim + rollover) ----
                 # Reads only from: dense arrays (cdist, cflags), flat_nb,
                 # icache, grad_penalty, raster -- all thread-safe.
-                for ai in prange(n_active, nogil=True, schedule='dynamic',
-                                 chunksize=64, num_threads=num_threads):
-                    tid = threadid()
-                    if tid < 0 or tid >= num_threads:
-                        tid = 0
+                cw.work_idx = 0
+                while True:
+                    for t in range(num_threads):
+                        tbufs[t].count = 0
 
-                    cur_state = active_states[ai]
-                    p_cur_dist = active_dists[ai]
-                    p_cur_cell = <uint32_t>(cur_state / spc)
-                    p_remainder = cur_state - (<uint64_t>p_cur_cell) * spc
-                    p_cur_dir = <uint8_t>(p_remainder / u_sph)
-                    p_cur_hc = <uint8_t>((p_remainder % u_sph) % n_heights)
-                    p_cur_row = <int>(p_cur_cell / cols)
-                    p_cur_col = <int>(p_cur_cell % cols)
-                    p_cur_span_m = <double>active_spans[ai]
-                    p_cur_raster_val = raster_ptr[p_cur_cell]
-                    p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
-                    p_h_a = th_ptr[p_cur_hc]
+                    for tid in prange(omp_team, nogil=True, schedule='static',
+                                      num_threads=omp_team):
+                        while True:
+                            if tbufs[tid].count >= buf_guard:
+                                break
+                            chunk_start = atomic_fetch_add_int(
+                                <volatile int*>&cw.work_idx, CRELAX_CHUNK)
+                            if chunk_start >= n_active:
+                                break
+                            chunk_end = chunk_start + CRELAX_CHUNK
+                            if chunk_end > n_active:
+                                chunk_end = n_active
+                            for ai in range(chunk_start, chunk_end):
+                                cur_state = active_states[ai]
+                                p_cur_dist = active_dists[ai]
+                                p_cur_cell = <uint32_t>(cur_state / spc)
+                                p_remainder = cur_state - (<uint64_t>p_cur_cell) * spc
+                                p_cur_dir = <uint8_t>(p_remainder / u_sph)
+                                p_cur_hc = <uint8_t>((p_remainder % u_sph) % n_heights)
+                                p_cur_row = <int>(p_cur_cell / cols)
+                                p_cur_col = <int>(p_cur_cell % cols)
+                                p_cur_span_m = <double>active_spans[ai]
+                                p_cur_raster_val = raster_ptr[p_cur_cell]
+                                p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
+                                p_h_a = th_ptr[p_cur_hc]
 
-                    p_nb_start = nb_offsets[p_cur_dir]
-                    p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
-                    for p_k in range(p_n_valid):
-                        p_nb = flat_nb[p_nb_start + p_k]
-                        p_nr = p_cur_row + p_nb.dr
-                        p_nc = p_cur_col + p_nb.dc
-                        if (<unsigned int>p_nr >= <unsigned int>rows or
-                                <unsigned int>p_nc >= <unsigned int>cols):
-                            continue
-                        p_nb_cell = <uint32_t>(p_nr * cols + p_nc)
-                        if mask_ptr[p_nb_cell] == 0:
-                            continue
+                                p_nb_start = nb_offsets[p_cur_dir]
+                                p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
+                                for p_k in range(p_n_valid):
+                                    p_nb = flat_nb[p_nb_start + p_k]
+                                    p_nr = p_cur_row + p_nb.dr
+                                    p_nc = p_cur_col + p_nb.dc
+                                    if (<unsigned int>p_nr >= <unsigned int>rows or
+                                            <unsigned int>p_nc >= <unsigned int>cols):
+                                        continue
+                                    p_nb_cell = <uint32_t>(p_nr * cols + p_nc)
+                                    if mask_ptr[p_nb_cell] == 0:
+                                        continue
 
-                        p_cidx = <size_t>p_nb_cell * <size_t>n_dirs + <size_t>p_nb.d_out
-                        if icache_status[p_cidx] != 2:
-                            continue
-                        p_icost = icache_cost[p_cidx]
+                                    p_cidx = <size_t>p_nb_cell * <size_t>n_dirs + <size_t>p_nb.d_out
+                                    if icache_status[p_cidx] != 2:
+                                        continue
+                                    p_icost = icache_cost[p_cidx]
 
-                        p_terrain_cost = (<double>p_cur_raster_val +
-                                         <double>p_icost +
-                                         <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
-                        p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
-                        p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
-                        p_new_span_m = p_cur_span_m + <double>p_nb.step_distance
+                                    p_terrain_cost = (<double>p_cur_raster_val +
+                                                     <double>p_icost +
+                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
+                                    p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
+                                    p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
+                                    p_new_span_m = p_cur_span_m + <double>p_nb.step_distance
 
-                        if p_nb.d_out == p_cur_dir:
-                            if p_new_span_m < <double>max_span:
-                                p_new_span_bin = <uint16_t>(p_new_span_m / span_bin_size)
-                                p_new_state = ((<uint64_t>p_nb_cell) * spc +
-                                              <uint64_t>p_nb.d_out * u_sph +
-                                              <uint64_t>p_new_span_bin * n_heights +
-                                              <uint64_t>p_cur_hc)
-                                if not (cflags[p_new_state] & FLAG_VISITED):
-                                    p_new_dist = p_cur_dist + p_edge_cost
-                                    p_cnt = tbufs[tid].count
-                                    if p_cnt < tbufs[tid].capacity:
-                                        tbufs[tid].states[p_cnt] = p_new_state
-                                        tbufs[tid].dists[p_cnt] = p_new_dist
-                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                        tbufs[tid].span_dists[p_cnt] = <float>p_new_span_m
-                                        tbufs[tid].count = p_cnt + 1
+                                    if p_nb.d_out == p_cur_dir:
+                                        if p_new_span_m < <double>max_span:
+                                            p_new_span_bin = <uint16_t>(p_new_span_m / span_bin_size)
+                                            p_new_state = ((<uint64_t>p_nb_cell) * spc +
+                                                          <uint64_t>p_nb.d_out * u_sph +
+                                                          <uint64_t>p_new_span_bin * n_heights +
+                                                          <uint64_t>p_cur_hc)
+                                            p_new_dist = p_cur_dist + p_edge_cost
+                                            if (not (cflags[p_new_state] & FLAG_VISITED) or
+                                                    <float>p_new_dist < cdist[p_new_state]):
+                                                p_cnt = tbufs[tid].count
+                                                if p_cnt < tbufs[tid].capacity:
+                                                    tbufs[tid].states[p_cnt] = p_new_state
+                                                    tbufs[tid].dists[p_cnt] = p_new_dist
+                                                    tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                    tbufs[tid].span_dists[p_cnt] = <float>p_new_span_m
+                                                    tbufs[tid].count = p_cnt + 1
 
-                            if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
-                                for p_hb in range(n_heights):
-                                    p_h_b = th_ptr[p_hb]
-                                    p_clearance_ok = _check_span_clearance_vh(
-                                        p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
-                                        p_h_a, p_h_b,
-                                        conductor_weight_per_m, conductor_tension,
-                                        min_clearance_val, dem_ptr, obstacle_ptr,
-                                        rows, cols, directions, cached_steps,
-                                        step_dist_view[p_cur_dir])
-                                    if not p_clearance_ok:
-                                        break
-                                    p_hp_b = hp_ptr[p_hb]
-                                    p_tower_cost = (_tower_terrain(
-                                        use_area_cost, p_cur_row, p_cur_col,
-                                        p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
-                                        raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
-                                        area_offsets_ptr, area_starts_ptr, area_counts_ptr,
-                                        dem_ptr, cell_size, gradient_scale,
-                                    ) + <double>p_nb.tower_angle_cost +
-                                                   <double>p_hp_b)
-                                    p_reset_span_m = <double>p_nb.step_distance
-                                    p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
-                                    p_new_state = ((<uint64_t>p_nb_cell) * spc +
-                                                  <uint64_t>p_nb.d_out * u_sph +
-                                                  <uint64_t>p_reset_span_bin * n_heights +
-                                                  <uint64_t>p_hb)
-                                    if not (cflags[p_new_state] & FLAG_VISITED):
-                                        p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
-                                        p_cnt = tbufs[tid].count
-                                        if p_cnt < tbufs[tid].capacity:
-                                            tbufs[tid].states[p_cnt] = p_new_state
-                                            tbufs[tid].dists[p_cnt] = p_new_dist
-                                            tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                            tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
-                                            tbufs[tid].count = p_cnt + 1
-                        else:
-                            if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
-                                for p_hb in range(n_heights):
-                                    p_h_b = th_ptr[p_hb]
-                                    p_clearance_ok = _check_span_clearance_vh(
-                                        p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
-                                        p_h_a, p_h_b,
-                                        conductor_weight_per_m, conductor_tension,
-                                        min_clearance_val, dem_ptr, obstacle_ptr,
-                                        rows, cols, directions, cached_steps,
-                                        step_dist_view[p_cur_dir])
-                                    if not p_clearance_ok:
-                                        break
-                                    p_hp_b = hp_ptr[p_hb]
-                                    p_tower_cost = (_tower_terrain(
-                                        use_area_cost, p_cur_row, p_cur_col,
-                                        p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
-                                        raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
-                                        area_offsets_ptr, area_starts_ptr, area_counts_ptr,
-                                        dem_ptr, cell_size, gradient_scale,
-                                    ) + <double>p_nb.tower_angle_cost +
-                                                   <double>p_hp_b)
-                                    p_reset_span_m = <double>p_nb.step_distance
-                                    p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
-                                    p_new_state = ((<uint64_t>p_nb_cell) * spc +
-                                                  <uint64_t>p_nb.d_out * u_sph +
-                                                  <uint64_t>p_reset_span_bin * n_heights +
-                                                  <uint64_t>p_hb)
-                                    if not (cflags[p_new_state] & FLAG_VISITED):
-                                        p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
-                                        p_cnt = tbufs[tid].count
-                                        if p_cnt < tbufs[tid].capacity:
-                                            tbufs[tid].states[p_cnt] = p_new_state
-                                            tbufs[tid].dists[p_cnt] = p_new_dist
-                                            tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                            tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
-                                            tbufs[tid].count = p_cnt + 1
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                            for p_hb in range(n_heights):
+                                                p_h_b = th_ptr[p_hb]
+                                                p_clearance_ok = _check_span_clearance_vh(
+                                                    p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
+                                                    p_h_a, p_h_b,
+                                                    conductor_weight_per_m, conductor_tension,
+                                                    min_clearance_val, dem_ptr, obstacle_ptr,
+                                                    rows, cols, directions, cached_steps,
+                                                    step_dist_view[p_cur_dir])
+                                                if not p_clearance_ok:
+                                                    break
+                                                p_hp_b = hp_ptr[p_hb]
+                                                p_tower_cost = (_tower_terrain(
+                                                    use_area_cost, p_cur_row, p_cur_col,
+                                                    p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
+                                                    raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
+                                                    area_offsets_ptr, area_starts_ptr, area_counts_ptr,
+                                                    dem_ptr, cell_size, gradient_scale,
+                                                ) + <double>p_nb.tower_angle_cost +
+                                                               <double>p_hp_b)
+                                                p_reset_span_m = <double>p_nb.step_distance
+                                                p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
+                                                p_new_state = ((<uint64_t>p_nb_cell) * spc +
+                                                              <uint64_t>p_nb.d_out * u_sph +
+                                                              <uint64_t>p_reset_span_bin * n_heights +
+                                                              <uint64_t>p_hb)
+                                                p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
+                                                if (not (cflags[p_new_state] & FLAG_VISITED) or
+                                                        <float>p_new_dist < cdist[p_new_state]):
+                                                    p_cnt = tbufs[tid].count
+                                                    if p_cnt < tbufs[tid].capacity:
+                                                        tbufs[tid].states[p_cnt] = p_new_state
+                                                        tbufs[tid].dists[p_cnt] = p_new_dist
+                                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                        tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
+                                                        tbufs[tid].count = p_cnt + 1
+                                    else:
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                            for p_hb in range(n_heights):
+                                                p_h_b = th_ptr[p_hb]
+                                                p_clearance_ok = _check_span_clearance_vh(
+                                                    p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
+                                                    p_h_a, p_h_b,
+                                                    conductor_weight_per_m, conductor_tension,
+                                                    min_clearance_val, dem_ptr, obstacle_ptr,
+                                                    rows, cols, directions, cached_steps,
+                                                    step_dist_view[p_cur_dir])
+                                                if not p_clearance_ok:
+                                                    break
+                                                p_hp_b = hp_ptr[p_hb]
+                                                p_tower_cost = (_tower_terrain(
+                                                    use_area_cost, p_cur_row, p_cur_col,
+                                                    p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
+                                                    raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
+                                                    area_offsets_ptr, area_starts_ptr, area_counts_ptr,
+                                                    dem_ptr, cell_size, gradient_scale,
+                                                ) + <double>p_nb.tower_angle_cost +
+                                                               <double>p_hp_b)
+                                                p_reset_span_m = <double>p_nb.step_distance
+                                                p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
+                                                p_new_state = ((<uint64_t>p_nb_cell) * spc +
+                                                              <uint64_t>p_nb.d_out * u_sph +
+                                                              <uint64_t>p_reset_span_bin * n_heights +
+                                                              <uint64_t>p_hb)
+                                                p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
+                                                if (not (cflags[p_new_state] & FLAG_VISITED) or
+                                                        <float>p_new_dist < cdist[p_new_state]):
+                                                    p_cnt = tbufs[tid].count
+                                                    if p_cnt < tbufs[tid].capacity:
+                                                        tbufs[tid].states[p_cnt] = p_new_state
+                                                        tbufs[tid].dists[p_cnt] = p_new_dist
+                                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                        tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
+                                                        tbufs[tid].count = p_cnt + 1
 
-                # ---- SEQUENTIAL MERGE: O(1) dense array writes ----
-                for t in range(num_threads):
-                    for bi in range(tbufs[t].count):
-                        p_new_state = tbufs[t].states[bi]
-                        if cflags[p_new_state] & FLAG_VISITED:
-                            continue
-                        p_new_dist = tbufs[t].dists[bi]
-                        if (not (cflags[p_new_state] & FLAG_TOUCHED) or
-                                <float>p_new_dist < cdist[p_new_state]):
-                            cflags[p_new_state] = cflags[p_new_state] | FLAG_TOUCHED
-                            cdist[p_new_state] = <float>p_new_dist
-                            cpred[p_new_state] = tbufs[t].preds[bi]
-                            cspan[p_new_state] = tbufs[t].span_dists[bi]
-                            new_logical = <size_t>(p_new_dist / delta_val)
-                            buckets[new_logical & bucket_mask].push_back(p_new_state)
-                            if new_logical > max_logical:
-                                max_logical = new_logical
+                    # ---- SEQUENTIAL MERGE: O(1) dense array writes ----
+                    for t in range(num_threads):
+                        for bi in range(tbufs[t].count):
+                            p_new_state = tbufs[t].states[bi]
+                            p_new_dist = tbufs[t].dists[bi]
+                            if cflags[p_new_state] & FLAG_VISITED:
+                                if <float>p_new_dist >= cdist[p_new_state]:
+                                    continue
+                                # Re-open protocol: a settled state improved
+                                # (possible when delta > min edge cost, e.g.
+                                # 0-cost cells) returns to the frontier.
+                                cflags[p_new_state] = <uint8_t>(
+                                    cflags[p_new_state] & (~FLAG_VISITED))
+                            if (not (cflags[p_new_state] & FLAG_TOUCHED) or
+                                    <float>p_new_dist < cdist[p_new_state]):
+                                cflags[p_new_state] = cflags[p_new_state] | FLAG_TOUCHED
+                                cdist[p_new_state] = <float>p_new_dist
+                                cpred[p_new_state] = tbufs[t].preds[bi]
+                                cspan[p_new_state] = tbufs[t].span_dists[bi]
+                                new_logical = <size_t>(p_new_dist / delta_val)
+                                buckets[new_logical & bucket_mask].push_back(p_new_state)
+                                if new_logical > max_logical:
+                                    max_logical = new_logical
+
+                    if cw.work_idx >= n_active:
+                        break
 
             for bi in range(deferred.size()):
                 cur_state = deferred[bi]
@@ -1881,6 +2080,9 @@ cdef _height_sparse(
     if best_target_state == UINT64_MAX:
         free(cdist); free(cpred); free(cspan); free(cflags)
         free(icache_status); free(icache_cost); free(grad_penalty_ptr)
+        if return_dist:
+            return (np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32),
+                    np.empty(0, dtype=np.float32), float(INFINITY))
         return (np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32),
                 np.empty(0, dtype=np.float32))
 
@@ -1925,6 +2127,10 @@ cdef _height_sparse(
 
     free(cdist); free(cpred); free(cspan); free(cflags)
     free(icache_status); free(icache_cost); free(grad_penalty_ptr)
+    if return_dist:
+        return (np.array(path_cells, dtype=np.uint32),
+                np.array(tower_cells, dtype=np.uint32),
+                tower_h_out, float(best_target_dist))
     return (np.array(path_cells, dtype=np.uint32),
             np.array(tower_cells, dtype=np.uint32),
             tower_h_out)
@@ -1955,6 +2161,7 @@ def constrained_delta_stepping_lazy(
     np.ndarray[np.int32_t, ndim=1] area_offsets=None,
     np.ndarray[np.int32_t, ndim=1] area_offset_starts=None,
     np.ndarray[np.int32_t, ndim=1] area_offset_counts=None,
+    int return_dist=0,
 ):
     """Parallel delta-stepping with lazy hash map state allocation and clearance.
 
@@ -1971,6 +2178,7 @@ def constrained_delta_stepping_lazy(
     Returns:
         3-tuple: (path_cells uint32[], tower_cells uint32[], tower_heights float32[])
     """
+    _validate_span_bins(n_span_bins, span_bin_size, max_span)
     cdef int rows = raster.shape[0]
     cdef int cols = raster.shape[1]
     cdef int n_dirs = steps.shape[0]
@@ -2085,7 +2293,23 @@ def constrained_delta_stepping_lazy(
     cdef int num_threads = int(_os.environ.get('OMP_NUM_THREADS', str(_os.cpu_count() or 4)))
     if num_threads < 1:
         num_threads = 1
+    # Never exceed the OpenMP runtime's own team size: os.cpu_count() ignores
+    # OMP_THREAD_LIMIT and container CPU quotas, and oversubscribing here would
+    # starve other work on the machine.
+    if num_threads > omp_get_max_threads():
+        num_threads = omp_get_max_threads()
+    cdef int omp_team = num_threads
     cdef int buf_cap = 131072 * max(1, n_heights // 4)
+    # A single active state contributes at most n_dirs * (1 + n_heights) buffer
+    # entries; a claimed chunk must always fit, or the merge would lose an
+    # improvement the search already committed to (see protocol note above).
+    cdef int max_pushes_per_state = n_dirs * (1 + n_heights)
+    if buf_cap < 2 * CRELAX_CHUNK * max_pushes_per_state:
+        buf_cap = 2 * CRELAX_CHUNK * max_pushes_per_state
+    cdef int buf_guard = buf_cap - CRELAX_CHUNK * max_pushes_per_state
+    cdef CRelaxWork cw_data
+    cdef CRelaxWork* cw = &cw_data
+    cdef int chunk_start, chunk_end
     cdef CRelaxBuf* tbufs = <CRelaxBuf*>malloc(num_threads * sizeof(CRelaxBuf))
     cdef int t
     if tbufs == NULL:
@@ -2208,173 +2432,188 @@ def constrained_delta_stepping_lazy(
                 n_active = <int>active.size()
                 if n_active == 0:
                     break
-                for t in range(num_threads):
-                    tbufs[t].count = 0
-
-                # ---- PARALLEL EDGE RELAXATION ----
+                # ---- PARALLEL EDGE RELAXATION (guarded claim + rollover) ----
                 # Threads read ONLY from: raster_ptr, mask_ptr, icache, grad_penalty,
                 # flat_nb, active/active_dists/active_spans/active_hcs vectors.
                 # NO hash map access in this section.
-                for ai in prange(n_active, nogil=True, schedule='dynamic',
-                                 chunksize=64, num_threads=num_threads):
-                    tid = threadid()
-                    if tid < 0 or tid >= num_threads:
-                        tid = 0
-                    cur_state = active[ai]
-                    p_cur_dist = active_dists[ai]
-                    p_cur_cell = <uint32_t>(cur_state / spc)
-                    p_remainder = cur_state - (<uint64_t>p_cur_cell) * spc
-                    p_cur_dir = <uint8_t>(p_remainder / p_sph)
-                    p_cur_hc = active_hcs[ai]
-                    p_cur_row = <int>(p_cur_cell / cols)
-                    p_cur_col = <int>(p_cur_cell % cols)
-                    p_cur_span_m = <double>active_spans[ai]
-                    p_cur_raster_val = raster_ptr[p_cur_cell]
-                    p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
-                    p_h_a = th_ptr[p_cur_hc]
+                cw.work_idx = 0
+                while True:
+                    for t in range(num_threads):
+                        tbufs[t].count = 0
 
-                    p_nb_start = nb_offsets[p_cur_dir]
-                    p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
-                    for p_k in range(p_n_valid):
-                        p_nb = flat_nb[p_nb_start + p_k]
-                        p_nr = p_cur_row + p_nb.dr
-                        p_nc = p_cur_col + p_nb.dc
-                        if (<unsigned int>p_nr >= <unsigned int>rows or
-                                <unsigned int>p_nc >= <unsigned int>cols):
-                            continue
-                        p_nb_cell = <uint32_t>(p_nr * cols + p_nc)
-                        if mask_ptr[p_nb_cell] == 0:
-                            continue
+                    for tid in prange(omp_team, nogil=True, schedule='static',
+                                      num_threads=omp_team):
+                        while True:
+                            if tbufs[tid].count >= buf_guard:
+                                break
+                            chunk_start = atomic_fetch_add_int(
+                                <volatile int*>&cw.work_idx, CRELAX_CHUNK)
+                            if chunk_start >= n_active:
+                                break
+                            chunk_end = chunk_start + CRELAX_CHUNK
+                            if chunk_end > n_active:
+                                chunk_end = n_active
+                            for ai in range(chunk_start, chunk_end):
+                                cur_state = active[ai]
+                                p_cur_dist = active_dists[ai]
+                                p_cur_cell = <uint32_t>(cur_state / spc)
+                                p_remainder = cur_state - (<uint64_t>p_cur_cell) * spc
+                                p_cur_dir = <uint8_t>(p_remainder / p_sph)
+                                p_cur_hc = active_hcs[ai]
+                                p_cur_row = <int>(p_cur_cell / cols)
+                                p_cur_col = <int>(p_cur_cell % cols)
+                                p_cur_span_m = <double>active_spans[ai]
+                                p_cur_raster_val = raster_ptr[p_cur_cell]
+                                p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
+                                p_h_a = th_ptr[p_cur_hc]
 
-                        p_cidx = <size_t>p_nb_cell * <size_t>n_dirs + <size_t>p_nb.d_out
-                        if icache_status[p_cidx] != 2:
-                            continue
-                        p_icost = icache_cost[p_cidx]
+                                p_nb_start = nb_offsets[p_cur_dir]
+                                p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
+                                for p_k in range(p_n_valid):
+                                    p_nb = flat_nb[p_nb_start + p_k]
+                                    p_nr = p_cur_row + p_nb.dr
+                                    p_nc = p_cur_col + p_nb.dc
+                                    if (<unsigned int>p_nr >= <unsigned int>rows or
+                                            <unsigned int>p_nc >= <unsigned int>cols):
+                                        continue
+                                    p_nb_cell = <uint32_t>(p_nr * cols + p_nc)
+                                    if mask_ptr[p_nb_cell] == 0:
+                                        continue
 
-                        p_terrain_cost = (<double>p_cur_raster_val + <double>p_icost +
-                                         <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
-                        p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
-                        p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
-                        p_new_span_m = p_cur_span_m + <double>p_nb.step_distance
+                                    p_cidx = <size_t>p_nb_cell * <size_t>n_dirs + <size_t>p_nb.d_out
+                                    if icache_status[p_cidx] != 2:
+                                        continue
+                                    p_icost = icache_cost[p_cidx]
 
-                        if p_nb.d_out == p_cur_dir:
-                            # Same direction: continue span, carry height forward
-                            if p_new_span_m < <double>max_span:
-                                p_new_span_bin = <uint16_t>(p_new_span_m / span_bin_size)
-                                p_new_state = ((<uint64_t>p_nb_cell) * spc +
-                                              <uint64_t>p_nb.d_out * p_sph +
-                                              <uint64_t>p_new_span_bin * n_heights +
-                                              <uint64_t>p_cur_hc)
-                                p_new_dist = p_cur_dist + p_edge_cost
-                                p_cnt = tbufs[tid].count
-                                if p_cnt < tbufs[tid].capacity:
-                                    tbufs[tid].states[p_cnt] = p_new_state
-                                    tbufs[tid].dists[p_cnt] = p_new_dist
-                                    tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                    tbufs[tid].span_dists[p_cnt] = <float>p_new_span_m
-                                    tbufs[tid].count = p_cnt + 1
+                                    p_terrain_cost = (<double>p_cur_raster_val + <double>p_icost +
+                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
+                                    p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
+                                    p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
+                                    p_new_span_m = p_cur_span_m + <double>p_nb.step_distance
 
-                            # Same direction: optional tower with height exploration
-                            if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
-                                for p_hb in range(n_heights):
-                                    p_h_b = th_ptr[p_hb]
-                                    p_clearance_ok = _check_span_clearance_vh(
-                                        p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
-                                        p_h_a, p_h_b,
-                                        conductor_weight_per_m, conductor_tension,
-                                        min_clearance_val, dem_ptr, obstacle_ptr,
-                                        rows, cols, directions, cached_steps,
-                                        step_dist_view[p_cur_dir])
-                                    if not p_clearance_ok:
-                                        break
-                                    p_hp_b = hp_ptr[p_hb]
-                                    p_tower_cost = (_tower_terrain(
-                                        use_area_cost, p_cur_row, p_cur_col,
-                                        p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
-                                        raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
-                                        area_offsets_ptr, area_starts_ptr, area_counts_ptr,
-                                        dem_ptr, cell_size, gradient_scale,
-                                    ) + <double>p_nb.tower_angle_cost +
-                                                   <double>p_hp_b)
-                                    p_reset_span_m = <double>p_nb.step_distance
-                                    p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
-                                    p_new_state = ((<uint64_t>p_nb_cell) * spc +
-                                                  <uint64_t>p_nb.d_out * p_sph +
-                                                  <uint64_t>p_reset_span_bin * n_heights +
-                                                  <uint64_t>p_hb)
-                                    p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
-                                    p_cnt = tbufs[tid].count
-                                    if p_cnt < tbufs[tid].capacity:
-                                        tbufs[tid].states[p_cnt] = p_new_state
-                                        tbufs[tid].dists[p_cnt] = p_new_dist
-                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                        tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
-                                        tbufs[tid].count = p_cnt + 1
-                        else:
-                            # Direction change: mandatory tower
-                            if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
-                                for p_hb in range(n_heights):
-                                    p_h_b = th_ptr[p_hb]
-                                    p_clearance_ok = _check_span_clearance_vh(
-                                        p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
-                                        p_h_a, p_h_b,
-                                        conductor_weight_per_m, conductor_tension,
-                                        min_clearance_val, dem_ptr, obstacle_ptr,
-                                        rows, cols, directions, cached_steps,
-                                        step_dist_view[p_cur_dir])
-                                    if not p_clearance_ok:
-                                        break
-                                    p_hp_b = hp_ptr[p_hb]
-                                    p_tower_cost = (_tower_terrain(
-                                        use_area_cost, p_cur_row, p_cur_col,
-                                        p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
-                                        raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
-                                        area_offsets_ptr, area_starts_ptr, area_counts_ptr,
-                                        dem_ptr, cell_size, gradient_scale,
-                                    ) + <double>p_nb.tower_angle_cost +
-                                                   <double>p_hp_b)
-                                    p_reset_span_m = <double>p_nb.step_distance
-                                    p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
-                                    p_new_state = ((<uint64_t>p_nb_cell) * spc +
-                                                  <uint64_t>p_nb.d_out * p_sph +
-                                                  <uint64_t>p_reset_span_bin * n_heights +
-                                                  <uint64_t>p_hb)
-                                    p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
-                                    p_cnt = tbufs[tid].count
-                                    if p_cnt < tbufs[tid].capacity:
-                                        tbufs[tid].states[p_cnt] = p_new_state
-                                        tbufs[tid].dists[p_cnt] = p_new_dist
-                                        tbufs[tid].preds[p_cnt] = <int64_t>cur_state
-                                        tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
-                                        tbufs[tid].count = p_cnt + 1
+                                    if p_nb.d_out == p_cur_dir:
+                                        # Same direction: continue span, carry height forward
+                                        if p_new_span_m < <double>max_span:
+                                            p_new_span_bin = <uint16_t>(p_new_span_m / span_bin_size)
+                                            p_new_state = ((<uint64_t>p_nb_cell) * spc +
+                                                          <uint64_t>p_nb.d_out * p_sph +
+                                                          <uint64_t>p_new_span_bin * n_heights +
+                                                          <uint64_t>p_cur_hc)
+                                            p_new_dist = p_cur_dist + p_edge_cost
+                                            p_cnt = tbufs[tid].count
+                                            if p_cnt < tbufs[tid].capacity:
+                                                tbufs[tid].states[p_cnt] = p_new_state
+                                                tbufs[tid].dists[p_cnt] = p_new_dist
+                                                tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                tbufs[tid].span_dists[p_cnt] = <float>p_new_span_m
+                                                tbufs[tid].count = p_cnt + 1
 
-                # ---- SEQUENTIAL MERGE into hash map ----
-                for t in range(num_threads):
-                    for bi in range(tbufs[t].count):
-                        p_new_state = tbufs[t].states[bi]
-                        p_new_dist = tbufs[t].dists[bi]
-                        it_nb = states.find(p_new_state)
-                        if it_nb != states.end():
-                            if deref(it_nb).second.visited != 0:
-                                continue
-                            if p_new_dist < deref(it_nb).second.dist:
-                                deref(it_nb).second.dist = p_new_dist
-                                deref(it_nb).second.pred = tbufs[t].preds[bi]
-                                deref(it_nb).second.span_dist = tbufs[t].span_dists[bi]
+                                        # Same direction: optional tower with height exploration
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                            for p_hb in range(n_heights):
+                                                p_h_b = th_ptr[p_hb]
+                                                p_clearance_ok = _check_span_clearance_vh(
+                                                    p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
+                                                    p_h_a, p_h_b,
+                                                    conductor_weight_per_m, conductor_tension,
+                                                    min_clearance_val, dem_ptr, obstacle_ptr,
+                                                    rows, cols, directions, cached_steps,
+                                                    step_dist_view[p_cur_dir])
+                                                if not p_clearance_ok:
+                                                    break
+                                                p_hp_b = hp_ptr[p_hb]
+                                                p_tower_cost = (_tower_terrain(
+                                                    use_area_cost, p_cur_row, p_cur_col,
+                                                    p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
+                                                    raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
+                                                    area_offsets_ptr, area_starts_ptr, area_counts_ptr,
+                                                    dem_ptr, cell_size, gradient_scale,
+                                                ) + <double>p_nb.tower_angle_cost +
+                                                               <double>p_hp_b)
+                                                p_reset_span_m = <double>p_nb.step_distance
+                                                p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
+                                                p_new_state = ((<uint64_t>p_nb_cell) * spc +
+                                                              <uint64_t>p_nb.d_out * p_sph +
+                                                              <uint64_t>p_reset_span_bin * n_heights +
+                                                              <uint64_t>p_hb)
+                                                p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
+                                                p_cnt = tbufs[tid].count
+                                                if p_cnt < tbufs[tid].capacity:
+                                                    tbufs[tid].states[p_cnt] = p_new_state
+                                                    tbufs[tid].dists[p_cnt] = p_new_dist
+                                                    tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                    tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
+                                                    tbufs[tid].count = p_cnt + 1
+                                    else:
+                                        # Direction change: mandatory tower
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                            for p_hb in range(n_heights):
+                                                p_h_b = th_ptr[p_hb]
+                                                p_clearance_ok = _check_span_clearance_vh(
+                                                    p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
+                                                    p_h_a, p_h_b,
+                                                    conductor_weight_per_m, conductor_tension,
+                                                    min_clearance_val, dem_ptr, obstacle_ptr,
+                                                    rows, cols, directions, cached_steps,
+                                                    step_dist_view[p_cur_dir])
+                                                if not p_clearance_ok:
+                                                    break
+                                                p_hp_b = hp_ptr[p_hb]
+                                                p_tower_cost = (_tower_terrain(
+                                                    use_area_cost, p_cur_row, p_cur_col,
+                                                    p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
+                                                    raster_ptr, tower_terrain_ptr, p_cur_tower_terrain,
+                                                    area_offsets_ptr, area_starts_ptr, area_counts_ptr,
+                                                    dem_ptr, cell_size, gradient_scale,
+                                                ) + <double>p_nb.tower_angle_cost +
+                                                               <double>p_hp_b)
+                                                p_reset_span_m = <double>p_nb.step_distance
+                                                p_reset_span_bin = <uint16_t>(p_reset_span_m / span_bin_size)
+                                                p_new_state = ((<uint64_t>p_nb_cell) * spc +
+                                                              <uint64_t>p_nb.d_out * p_sph +
+                                                              <uint64_t>p_reset_span_bin * n_heights +
+                                                              <uint64_t>p_hb)
+                                                p_new_dist = p_cur_dist + p_edge_cost + p_tower_cost
+                                                p_cnt = tbufs[tid].count
+                                                if p_cnt < tbufs[tid].capacity:
+                                                    tbufs[tid].states[p_cnt] = p_new_state
+                                                    tbufs[tid].dists[p_cnt] = p_new_dist
+                                                    tbufs[tid].preds[p_cnt] = <int64_t>cur_state
+                                                    tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
+                                                    tbufs[tid].count = p_cnt + 1
+
+                    # ---- SEQUENTIAL MERGE into hash map ----
+                    for t in range(num_threads):
+                        for bi in range(tbufs[t].count):
+                            p_new_state = tbufs[t].states[bi]
+                            p_new_dist = tbufs[t].dists[bi]
+                            it_nb = states.find(p_new_state)
+                            if it_nb != states.end():
+                                if p_new_dist < deref(it_nb).second.dist:
+                                    deref(it_nb).second.dist = p_new_dist
+                                    deref(it_nb).second.pred = tbufs[t].preds[bi]
+                                    deref(it_nb).second.span_dist = tbufs[t].span_dists[bi]
+                                    # Re-open protocol: a settled state improved
+                                    # (possible when delta > min edge cost, e.g.
+                                    # 0-cost cells) returns to the frontier.
+                                    deref(it_nb).second.visited = 0
+                                    new_logical = <size_t>(p_new_dist / delta_val)
+                                    buckets[new_logical & bucket_mask].push_back(p_new_state)
+                                    if new_logical > max_logical:
+                                        max_logical = new_logical
+                            else:
+                                new_ls.dist = p_new_dist
+                                new_ls.pred = tbufs[t].preds[bi]
+                                new_ls.span_dist = tbufs[t].span_dists[bi]
+                                new_ls.visited = 0
+                                states[p_new_state] = new_ls
                                 new_logical = <size_t>(p_new_dist / delta_val)
                                 buckets[new_logical & bucket_mask].push_back(p_new_state)
                                 if new_logical > max_logical:
                                     max_logical = new_logical
-                        else:
-                            new_ls.dist = p_new_dist
-                            new_ls.pred = tbufs[t].preds[bi]
-                            new_ls.span_dist = tbufs[t].span_dists[bi]
-                            new_ls.visited = 0
-                            states[p_new_state] = new_ls
-                            new_logical = <size_t>(p_new_dist / delta_val)
-                            buckets[new_logical & bucket_mask].push_back(p_new_state)
-                            if new_logical > max_logical:
-                                max_logical = new_logical
+
+                    if cw.work_idx >= n_active:
+                        break
 
             for bi in range(deferred.size()):
                 cur_state = deferred[bi]
@@ -2401,6 +2640,9 @@ def constrained_delta_stepping_lazy(
 
     if best_target_state == UINT64_MAX:
         free(icache_status); free(icache_cost); free(grad_penalty_ptr)
+        if return_dist:
+            return (np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32),
+                    np.empty(0, dtype=np.float32), float(INFINITY))
         return (np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32),
                 np.empty(0, dtype=np.float32))
 
@@ -2444,6 +2686,10 @@ def constrained_delta_stepping_lazy(
         tower_h_out[k] = tower_heights[tower_height_classes[k]]
 
     free(icache_status); free(icache_cost); free(grad_penalty_ptr)
+    if return_dist:
+        return (np.array(path_cells, dtype=np.uint32),
+                np.array(tower_cells, dtype=np.uint32),
+                tower_h_out, float(best_target_dist))
     return (np.array(path_cells, dtype=np.uint32),
             np.array(tower_cells, dtype=np.uint32),
             tower_h_out)
