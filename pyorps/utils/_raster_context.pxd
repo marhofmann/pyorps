@@ -51,7 +51,7 @@ cdef class RasterContext:
 # ==================== UTILITY FUNCTIONS ====================
 
 cpdef np.ndarray[uint8_t, ndim=2] create_exclude_mask(
-        np.ndarray[uint16_t, ndim=2] raster_arr, uint16_t max_value)
+        np.ndarray[uint16_t, ndim=2] raster_arr, int64_t max_value)
 
 cpdef double path_cost(np.ndarray[uint64_t, ndim=1] path,
                       np.ndarray[uint16_t, ndim=2] raster_arr, uint64_t cols)

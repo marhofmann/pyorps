@@ -16,6 +16,9 @@ dist/
 .venv*/
 *.so
 *.pyd
+# Per-machine build stamp read by tests/test_build_provenance.py. Committing it
+# would make that gate fail on every other checkout.
+pyorps/utils/_build_provenance.json
 docs/build/
 pyorps/utils/*.cpp
 .claude/
