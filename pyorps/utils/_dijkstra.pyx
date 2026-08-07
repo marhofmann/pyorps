@@ -723,7 +723,7 @@ cdef _apply_gradient_kwargs(solver, gradient_luts, dem):
 def dijkstra_2d_cython(np.ndarray[uint16_t, ndim=2] raster_arr,
                        np.ndarray[int8_t, ndim=2] steps_arr,
                        uint32_t source_idx, uint32_t target_idx,
-                       uint16_t max_value=65535,
+                       int64_t max_value=65535,
                        dem=None, gradient_luts=None):
     """
     Find shortest path between two points in a 2D raster using Dijkstra.
@@ -760,7 +760,7 @@ def dijkstra_single_source_multiple_targets(
         np.ndarray[int8_t, ndim=2] steps_arr,
         uint32_t source_idx,
         np.ndarray[uint32_t, ndim=1] target_indices,
-        uint16_t max_value=65535,
+        int64_t max_value=65535,
         dem=None, gradient_luts=None):
     """
     Find optimal paths from one source to multiple targets efficiently.
@@ -790,7 +790,7 @@ def dijkstra_multiple_sources_multiple_targets(
         np.ndarray[int8_t, ndim=2] steps_arr,
         np.ndarray[uint32_t, ndim=1] source_indices,
         np.ndarray[uint32_t, ndim=1] target_indices,
-        uint16_t max_value=65535, bint return_paths=True,
+        int64_t max_value=65535, bint return_paths=True,
         dem=None, gradient_luts=None):
     """
     Compute all-pairs shortest paths between multiple sources and targets.
@@ -821,7 +821,7 @@ def dijkstra_some_pairs_shortest_paths(
         np.ndarray[int8_t, ndim=2] steps_arr,
         np.ndarray[uint32_t, ndim=1] source_indices,
         np.ndarray[uint32_t, ndim=1] target_indices,
-        uint16_t max_value=65535,
+        int64_t max_value=65535,
         bint return_paths=True,
         dem=None, gradient_luts=None):
     """

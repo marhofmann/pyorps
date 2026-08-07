@@ -321,31 +321,49 @@ cdef vector[StepData] precompute_directions(np.ndarray[int8_t, ndim=2] steps_arr
 
 # ==================== UTILITY FUNCTIONS ====================
 
+# Obstacle sentinel outside the uint16 cost domain: no cell is an obstacle.
+# The GPU kernels use the same value and compare in the int domain, because
+# casting it back to uint16 truncates to 0 and forbids every 0-cost cell.
+NO_EXCLUSION_VALUE = 65536
+
+
 cpdef np.ndarray[uint8_t, ndim=2] create_exclude_mask(
-        np.ndarray[uint16_t, ndim=2] raster_arr, uint16_t max_value):
+        np.ndarray[uint16_t, ndim=2] raster_arr, int64_t max_value):
     """
     Create a binary mask identifying traversable cells in the raster.
 
     Parameters:
         raster_arr: 2D numpy array containing cost values for each cell
-        max_value: Value representing obstacles/barriers (typically 65535)
+        max_value: Value representing obstacles/barriers (typically 65535).
+            Any value outside the uint16 domain (see NO_EXCLUSION_VALUE)
+            disables exclusion: every cell stays traversable.
 
     Returns:
         2D numpy array of uint8 values (1=traversable, 0=obstacle)
     """
     cdef int rows = <int>raster_arr.shape[0]
     cdef int cols = <int>raster_arr.shape[1]
-    cdef uint16_t[:, :] raster = raster_arr
+    cdef uint16_t[:, :] raster
+    cdef uint8_t[:, :] exclude_mask
+    cdef uint16_t obstacle
+    cdef int i, j
 
     # Initialize mask with all cells marked as traversable
     cdef np.ndarray[uint8_t, ndim=2] exclude_mask_arr = np.ones((rows, cols),
                                                                 dtype=np.uint8)
-    cdef uint8_t[:, :] exclude_mask = exclude_mask_arr
 
-    cdef int i, j
+    # Out-of-domain sentinel: nothing to exclude. Returning the all-traversable
+    # mask keeps the per-relaxation mask lookups branch-free.
+    if max_value < 0 or max_value > 65535:
+        return exclude_mask_arr
+
+    raster = raster_arr
+    exclude_mask = exclude_mask_arr
+    obstacle = <uint16_t>max_value
+
     for i in range(rows):
         for j in range(cols):
-            if raster[i, j] == max_value:
+            if raster[i, j] == obstacle:
                 exclude_mask[i, j] = 0  # Mark as obstacle
 
     return exclude_mask_arr
@@ -427,7 +445,7 @@ cdef class RasterContext:
         sys_limits: System resource limits
     """
 
-    def __cinit__(self, object raster_arr, object steps_arr, uint16_t max_value=65535):
+    def __cinit__(self, object raster_arr, object steps_arr, int64_t max_value=65535):
         self.rows = <int>raster_arr.shape[0]
         self.cols = <int>raster_arr.shape[1]
         self.total_cells = self.rows * self.cols
@@ -450,7 +468,7 @@ cdef class RasterContext:
 
 # ==================== PYTHON TEST WRAPPERS ====================
 
-def py_create_exclude_mask(np.ndarray[uint16_t, ndim=2] raster_arr, uint16_t max_value=65535):
+def py_create_exclude_mask(np.ndarray[uint16_t, ndim=2] raster_arr, int64_t max_value=65535):
     """Python wrapper for create_exclude_mask for testing."""
     return create_exclude_mask(raster_arr, max_value)
 
