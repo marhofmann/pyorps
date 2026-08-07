@@ -5,6 +5,7 @@ from numpy import array, astype, ndarray, uint32, uint64
 from pyorps.core.exceptions import AlgorithmNotImplementedError, PairwiseError
 from pyorps.core.types import IMPASSABLE_CELL_COST
 from pyorps.graph.api.graph_api import GraphAPI
+from pyorps.utils._raster_context import NO_EXCLUSION_VALUE
 from pyorps.utils.path_algorithms import (
     delta_stepping_2d_persistent,
     delta_stepping_multiple_sources_multiple_targets_persistent,
@@ -25,7 +26,12 @@ class CythonAPI(GraphAPI):
     def __init__(self, raster_data, steps, ignore_max=True, dem_data=None,
                  gradient_luts=None):
         super().__init__(raster_data, steps, ignore_max)
-        self.max_value = IMPASSABLE_CELL_COST if self.ignore_max else 0
+        # ignore_max=False means "no cell is an obstacle". The kernels build
+        # their exclude mask from `raster == max_value`, so the disabling
+        # sentinel must sit outside the uint16 cost domain - any in-domain
+        # value (0 in particular) would forbid the cells holding it.
+        self.max_value = (IMPASSABLE_CELL_COST if self.ignore_max
+                          else NO_EXCLUSION_VALUE)
         # Per-edge gradient terms (feasibility plan): a DEM aligned to the
         # raster plus the slope-response LUT pair. Consumed by the Dijkstra
         # kernels; delta-stepping support is a later phase.
