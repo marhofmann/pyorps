@@ -61,6 +61,8 @@ def constrained_dijkstra_2d(
     np.ndarray[np.int32_t, ndim=1] area_offset_starts=None,
     np.ndarray[np.int32_t, ndim=1] area_offset_counts=None,
     np.ndarray[np.float32_t, ndim=2] tower_cost_raster=None,
+    int force_sparse=0,
+    int return_dist=0,
 ):
     """Find constrained shortest path with tower placement.
 
@@ -90,7 +92,20 @@ def constrained_dijkstra_2d(
         required under a feasibility objective, where the search raster
         holds combined weights that no longer identify the land use.
         Forbidden tower sites carry INFINITY.
+    force_sparse : int, optional
+        Nonzero forces the sparse heap-based implementation regardless of
+        state-space size (testing hook: the heap path is exact by
+        construction and serves as reference for the bucket path).
+    return_dist : int, optional
+        Nonzero appends the optimal path cost (float) to the return tuple:
+        (path, towers, dist). Unreachable targets report inf.
     """
+    if <double>n_span_bins * <double>span_bin_size < <double>max_span - 1e-6:
+        raise ValueError(
+            f"n_span_bins ({n_span_bins}) * span_bin_size ({span_bin_size}) "
+            f"must cover max_span ({max_span}); otherwise span bins alias "
+            f"into neighboring states and silently corrupt the search."
+        )
     cdef int rows = raster.shape[0]
     cdef int cols = raster.shape[1]
     cdef int n_dirs = steps.shape[0]
@@ -126,7 +141,7 @@ def constrained_dijkstra_2d(
     # Memory budget: StateData(24) per state for dense
     cdef uint64_t dense_limit = 500000000  # ~12 GB
 
-    if total_states <= dense_limit:
+    if total_states <= dense_limit and not force_sparse:
         return _dijkstra_dense(
             raster, source_row, source_col, target_row, target_col,
             steps, angle_cost_lut, angle_valid_lut, step_distances,
@@ -135,7 +150,7 @@ def constrained_dijkstra_2d(
             initial_best_dist, dem_data, cell_size, max_gradient_pct,
             gradient_scale,
             use_area_cost_flag, area_offsets_ptr, area_starts_ptr, area_counts_ptr,
-            tower_cost_ptr,
+            tower_cost_ptr, return_dist,
         )
     else:
         return _dijkstra_sparse(
@@ -146,7 +161,7 @@ def constrained_dijkstra_2d(
             initial_best_dist, dem_data, cell_size, max_gradient_pct,
             gradient_scale,
             use_area_cost_flag, area_offsets_ptr, area_starts_ptr, area_counts_ptr,
-            tower_cost_ptr,
+            tower_cost_ptr, return_dist,
         )
 
 
@@ -172,6 +187,7 @@ cdef _dijkstra_dense(
     const int32_t* area_starts_arg=NULL,
     const int32_t* area_counts_arg=NULL,
     const float* tower_cost_ptr=NULL,
+    int return_dist=0,
 ):
     """Dense bucket-queue Dijkstra with AoS state layout for cache locality."""
     cdef int rows = raster.shape[0]
@@ -529,6 +545,9 @@ cdef _dijkstra_dense(
     if best_target_state == UINT64_MAX:
         free(states); free(icache_status); free(icache_cost)
         if grad_penalty_ptr != NULL: free(grad_penalty_ptr)
+        if return_dist:
+            return (np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32),
+                    float(INFINITY))
         return (np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32))
 
     cdef uint64_t walk_state = best_target_state
@@ -563,6 +582,12 @@ cdef _dijkstra_dense(
     free(states); free(icache_status); free(icache_cost)
     if grad_penalty_ptr != NULL: free(grad_penalty_ptr)
 
+    if return_dist:
+        return (
+            np.array(path_cells, dtype=np.uint32),
+            np.array(tower_cells, dtype=np.uint32),
+            float(best_target_dist),
+        )
     return (
         np.array(path_cells, dtype=np.uint32),
         np.array(tower_cells, dtype=np.uint32),
@@ -591,6 +616,7 @@ cdef _dijkstra_sparse(
     const int32_t* area_starts_arg=NULL,
     const int32_t* area_counts_arg=NULL,
     const float* tower_cost_ptr=NULL,
+    int return_dist=0,
 ):
     """Sparse Dijkstra — for state spaces too large for dense arrays."""
     cdef int rows = raster.shape[0]
@@ -874,6 +900,9 @@ cdef _dijkstra_sparse(
         heap64_free(&heap)
         free(icache_status); free(icache_cost)
         if grad_penalty_ptr != NULL: free(grad_penalty_ptr)
+        if return_dist:
+            return (np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32),
+                    float(INFINITY))
         return (np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32))
 
     cdef uint64_t walk_state = best_target_state
@@ -912,6 +941,12 @@ cdef _dijkstra_sparse(
     free(icache_status); free(icache_cost)
     if grad_penalty_ptr != NULL: free(grad_penalty_ptr)
 
+    if return_dist:
+        return (
+            np.array(path_cells, dtype=np.uint32),
+            np.array(tower_cells, dtype=np.uint32),
+            float(best_target_dist),
+        )
     return (
         np.array(path_cells, dtype=np.uint32),
         np.array(tower_cells, dtype=np.uint32),
