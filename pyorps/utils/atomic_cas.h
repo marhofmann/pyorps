@@ -130,6 +130,25 @@ static inline int atomic_fetch_add_int(volatile int* addr, int val) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Atomic byte exchange (test-and-set / clear for pending markers)    */
+/*                                                                     */
+/*  Returns the OLD value. Full-fence RMW on both platforms, which     */
+/*  makes the producer (CAS-dist then TAS-pending) / consumer          */
+/*  (clear-pending then load-dist) protocol lossless: if the producer  */
+/*  observes pending==1, the consumer's subsequent dist load is        */
+/*  guaranteed to observe the producer's earlier CAS.                  */
+/* ------------------------------------------------------------------ */
+
+static inline uint8_t atomic_exchange_u8(volatile uint8_t* addr, uint8_t val) {
+#ifdef _MSC_VER
+    // cppcheck-suppress misra-c2012-11.3
+    return (uint8_t)_InterlockedExchange8((volatile char*)addr, (char)val);
+#else
+    return __atomic_exchange_n(addr, val, __ATOMIC_SEQ_CST);
+#endif
+}
+
+/* ------------------------------------------------------------------ */
 /*  Sense-reversing barrier for persistent thread synchronization      */
 /*                                                                     */
 /*  Classic sense-reversing barrier using atomics.                     */
