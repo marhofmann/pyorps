@@ -54,7 +54,7 @@ class TestConstrainedDeltaBasic:
             angle_cost_lut=args[2], angle_valid_lut=args[3],
             step_distances=args[4], tower_terrain_costs=args[5],
             tower_angle_costs=args[6],
-            n_span_bins=5, span_bin_size=20.0,
+            n_span_bins=10, span_bin_size=20.0,
             min_span=40.0, max_span=200.0,
         )
         assert isinstance(path, np.ndarray)
@@ -75,7 +75,7 @@ class TestConstrainedDeltaBasic:
             angle_cost_lut=args[2], angle_valid_lut=args[3],
             step_distances=args[4], tower_terrain_costs=args[5],
             tower_angle_costs=args[6],
-            n_span_bins=5, span_bin_size=20.0,
+            n_span_bins=10, span_bin_size=20.0,
             min_span=40.0, max_span=200.0,
         )
         assert len(path) == 0
@@ -90,7 +90,7 @@ class TestConstrainedDeltaBasic:
             angle_cost_lut=args[2], angle_valid_lut=args[3],
             step_distances=args[4], tower_terrain_costs=args[5],
             tower_angle_costs=args[6],
-            n_span_bins=5, span_bin_size=20.0,
+            n_span_bins=10, span_bin_size=20.0,
             min_span=40.0, max_span=200.0,
             dem_data=dem, cell_size=10.0,
         )
@@ -111,7 +111,7 @@ class TestConstrainedDeltaClearance:
             angle_cost_lut=args[2], angle_valid_lut=args[3],
             step_distances=args[4], tower_terrain_costs=args[5],
             tower_angle_costs=args[6],
-            n_span_bins=5, span_bin_size=20.0,
+            n_span_bins=10, span_bin_size=20.0,
             min_span=40.0, max_span=200.0,
             dem_data=dem, cell_size=10.0,
             tower_height=50.0,
@@ -140,7 +140,7 @@ class TestConstrainedDeltaHeight:
             angle_cost_lut=args[2], angle_valid_lut=args[3],
             step_distances=args[4], tower_terrain_costs=args[5],
             tower_angle_costs=args[6],
-            n_span_bins=5, span_bin_size=20.0,
+            n_span_bins=10, span_bin_size=20.0,
             min_span=40.0, max_span=200.0,
             dem_data=dem, cell_size=10.0,
             tower_heights=tower_heights,
@@ -171,7 +171,7 @@ class TestConstrainedDeltaLazy:
             angle_cost_lut=args[2], angle_valid_lut=args[3],
             step_distances=args[4], tower_terrain_costs=args[5],
             tower_angle_costs=args[6],
-            n_span_bins=5, span_bin_size=20.0,
+            n_span_bins=10, span_bin_size=20.0,
             min_span=40.0, max_span=200.0,
             dem_data=dem, cell_size=10.0,
             tower_heights=tower_heights,
