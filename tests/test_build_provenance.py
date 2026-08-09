@@ -11,21 +11,30 @@ These tests fail until ``python setup.py build_ext --inplace`` has been run
 against the current working tree.
 """
 
+import ast
 import hashlib
 import importlib.machinery
 import json
 import os
+import re
+import subprocess
 from pathlib import Path
 
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = PROJECT_ROOT / "pyorps"
+SETUP_PY = PROJECT_ROOT / "setup.py"
 PROVENANCE_FILENAME = "_build_provenance.json"
 REBUILD_HINT = (
     f"Rebuild with:  python setup.py build_ext --inplace   (in {PROJECT_ROOT})"
 )
 FAST_MATH_VALUES = {"1", "true", "yes", "on"}
+
+#: ``cdef extern from "foo.h"`` / ``include "foo.pxi"`` - quoted forms only.
+#: Angle-bracket externs name system headers and are not ours to track.
+EXTERN_RE = re.compile(r'cdef\s+extern\s+from\s+["\']([^"\']+)["\']')
+INCLUDE_RE = re.compile(r'^\s*include\s+["\']([^"\']+)["\']', re.MULTILINE)
 
 
 def sha256_file(path):
@@ -73,6 +82,56 @@ def importable_stem(path):
 def fail_with(headline, problems, hint=REBUILD_HINT):
     listing = "\n".join(f"  - {problem}" for problem in problems)
     pytest.fail(f"{headline}\n{listing}\n{hint}")
+
+
+def tracked_files():
+    """Repo-relative posix paths git has under version control.
+
+    Skips (rather than fails) outside a work tree: an installed sdist or wheel
+    has no repository to interrogate.
+    """
+    if not (PROJECT_ROOT / ".git").exists():
+        pytest.skip("not a git work tree - nothing to check tracking against")
+    try:
+        completed = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=PROJECT_ROOT, capture_output=True, check=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        pytest.skip(f"git unavailable: {exc}")
+    return {name for name in completed.stdout.decode("utf-8").split("\0") if name}
+
+
+def declared_modules():
+    """The (module, stem-path) pairs setup.py's MODULES declares.
+
+    Parsed rather than imported: setup.py calls setup() at module scope, so
+    importing it here would run a build.
+    """
+    tree = ast.parse(SETUP_PY.read_text(encoding="utf-8"), filename=str(SETUP_PY))
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if any(getattr(t, "id", None) == "MODULES" for t in node.targets):
+            return [tuple(entry) for entry in ast.literal_eval(node.value)]
+    pytest.fail(f"No module-level MODULES assignment found in {SETUP_PY}")
+
+
+def local_dependencies(pyx_path):
+    """Quoted headers/includes referenced by a .pyx that resolve inside the repo."""
+    text = pyx_path.read_text(encoding="utf-8", errors="replace")
+    found = set()
+    for name in EXTERN_RE.findall(text) + INCLUDE_RE.findall(text):
+        for base in (pyx_path.parent, PACKAGE_ROOT / "utils"):
+            candidate = (base / name).resolve()
+            if candidate.is_file():
+                found.add(candidate)
+                break
+    return found
+
+
+def as_repo_path(path):
+    return Path(path).resolve().relative_to(PROJECT_ROOT).as_posix()
 
 
 def test_provenance_manifest_exists():
@@ -194,6 +253,76 @@ def test_no_compiled_module_without_source():
                 "Restore the .pyx, or remove the binary deliberately after "
                 "checking what imports it."
             ),
+        )
+
+
+def test_git_tracking_probe_is_meaningful():
+    """The tracking checks are only worth anything if the probe discriminates."""
+    tracked = tracked_files()
+    assert "setup.py" in tracked, (
+        "git ls-files did not report setup.py as tracked; the tracking checks "
+        "below would pass vacuously"
+    )
+    assert "pyorps/utils/_no_such_source.pyx" not in tracked
+
+
+def test_every_declared_module_source_is_tracked():
+    """setup.py must not declare a module whose source only exists locally.
+
+    A working tree that holds the .pyx builds happily while a fresh clone dies
+    in cythonize with "doesn't match any files". Both the .pyx and any .pxd
+    beside it count: the .pxd is what other modules cimport.
+    """
+    tracked = tracked_files()
+    problems = []
+    for module, stem in declared_modules():
+        for suffix in (".pyx", ".pxd"):
+            source = PROJECT_ROOT / f"{stem}{suffix}"
+            if not source.is_file():
+                if suffix == ".pyx":
+                    problems.append(
+                        f"{module}: declared in MODULES but {stem}.pyx does not "
+                        "exist at all"
+                    )
+                continue
+            rel = as_repo_path(source)
+            if rel not in tracked:
+                problems.append(f"{module}: {rel} exists but is NOT tracked by git")
+    if problems:
+        fail_with(
+            "setup.py declares extensions whose sources are not in the "
+            "repository. This tree builds; a clean checkout does not:",
+            problems,
+            hint=(
+                "Commit the sources, or remove the entry from MODULES. "
+                "Run 'git status --porcelain' to see them as untracked."
+            ),
+        )
+
+
+def test_every_local_build_dependency_is_tracked():
+    """Headers and .pxi includes a declared .pyx pulls in must be tracked too.
+
+    Committing the .pyx alone is not enough: a 'cdef extern from "atomic_cas.h"'
+    whose header is untracked, or one committed without a function the kernel
+    calls, fails at compile time on a clean checkout rather than in cythonize.
+    """
+    tracked = tracked_files()
+    problems = []
+    for module, stem in declared_modules():
+        pyx = PROJECT_ROOT / f"{stem}.pyx"
+        if not pyx.is_file():
+            continue  # reported by the previous test
+        for dependency in sorted(local_dependencies(pyx)):
+            rel = as_repo_path(dependency)
+            if rel not in tracked:
+                problems.append(f"{module}: needs {rel}, which is NOT tracked by git")
+    if problems:
+        fail_with(
+            "Declared extensions depend on local headers/includes that are not "
+            "in the repository:",
+            problems,
+            hint="Commit the headers, or drop the dependency from the .pyx.",
         )
 
 
