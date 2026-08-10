@@ -320,12 +320,32 @@ def gpu_gate(max_idle_temp_c=60.0, max_idle_util_pct=20.0,
     if not procs["supported"] and used is not None and used > busy_memory_mib:
         soft.append(f"{used:.0f} MiB already resident and nvidia-smi cannot "
                     f"enumerate compute apps (WDDM) — assuming a tenant")
-    temp = snap.get("temperature_gpu")
-    if temp is not None and temp > max_idle_temp_c:
-        soft.append(f"idle temperature {temp:.0f} C > {max_idle_temp_c:.0f} C")
     util = snap.get("utilization_gpu")
     if util is not None and util > max_idle_util_pct:
         soft.append(f"idle utilization {util:.0f}% > {max_idle_util_pct:.0f}%")
+
+    # Temperature alone is a poor tenancy signal on a laptop: the GPU shares a
+    # chassis with a CPU that may be running someone else's job, so the card
+    # can read 65 C while sitting at 0% utilisation, 0 MiB and its idle clock.
+    # Refusing on that blocks legitimate work, and a gate that cries wolf is a
+    # gate people learn to pass --allow-shared-gpu to by reflex. So temperature
+    # is a hard reason only when something else also suggests the GPU itself is
+    # working; otherwise it is recorded as a warning.
+    temp = snap.get("temperature_gpu")
+    if temp is not None and temp > max_idle_temp_c:
+        looks_idle = (
+            (util is None or util <= max_idle_util_pct)
+            and (used is None or used <= busy_memory_mib)
+            and not others
+        )
+        message = (f"idle temperature {temp:.0f} C > {max_idle_temp_c:.0f} C")
+        if looks_idle:
+            result["warnings"].append(
+                message + " but the GPU is otherwise idle (0 tenants, low "
+                          "utilisation, little memory resident) — treating as "
+                          "chassis heat, not GPU load")
+        else:
+            soft.append(message)
 
     free = snap.get("memory_free")
     if min_free_mib is not None and free is not None and free < min_free_mib:
@@ -392,6 +412,76 @@ def _utc_now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def cpu_contention(interval=1.0, top=5):
+    """Who else is using the CPU right now, sampled over ``interval``.
+
+    Absolute wall-clock numbers are only comparable between runs taken under
+    comparable load, and nothing else in this snapshot records that. A run
+    taken while another job holds eight cores is not wrong, it is simply not
+    comparable with one taken on a quiet machine - and six weeks later
+    nothing in the results file would say so. A/B comparisons within one run
+    survive contention (both arms pay it); absolute baselines do not.
+
+    Returns busy-core counts, not percentages: "3.2 of 16 cores" is directly
+    comparable across machines, "20%" is not.
+    """
+    logical = psutil.cpu_count(logical=True) or 1
+    procs = {}
+    for proc in psutil.process_iter(["pid", "name"]):
+        try:
+            proc.cpu_percent(None)          # prime; first call always 0.0
+            procs[proc.pid] = proc
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    total_before = psutil.cpu_percent(None)  # prime the system-wide counter
+    del total_before
+    time.sleep(max(0.1, float(interval)))
+
+    me = os.getpid()
+    rows = []
+    for pid, proc in procs.items():
+        # PID 0 is Windows' "System Idle Process": its CPU share is the
+        # machine being IDLE. Counting it inverts the reading - a quiet
+        # 16-core box reports ~13 busy cores.
+        if pid == 0:
+            continue
+        try:
+            cores = proc.cpu_percent(None) / 100.0
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+        if cores >= 0.05:
+            try:
+                name = proc.name()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                name = "?"
+            rows.append({"pid": pid, "name": name,
+                         "cores": round(cores, 2), "self": pid == me})
+    rows.sort(key=lambda r: -r["cores"])
+    busy = round(sum(r["cores"] for r in rows), 2)
+    return {
+        "interval_s": float(interval),
+        "cpu_count_logical": logical,
+        "busy_cores": busy,
+        "busy_cores_excluding_self": round(
+            sum(r["cores"] for r in rows if not r["self"]), 2),
+        "system_percent": psutil.cpu_percent(None),
+        "top": rows[:top],
+    }
+
+
+def print_contention(con, label=""):
+    """One line, so a contaminated run is obvious in the console too."""
+    other = con["busy_cores_excluding_self"]
+    verdict = ("quiet" if other < 0.5 else
+               "light" if other < 2.0 else
+               "BUSY - absolute timings are not comparable")
+    head = f"cpu{(' ' + label) if label else ''}: "
+    names = ", ".join(f"{r['name']}({r['cores']:.1f})"
+                      for r in con["top"] if not r["self"]) or "-"
+    print(f"{head}{other:.2f} of {con['cpu_count_logical']} cores busy "
+          f"elsewhere [{verdict}] | {names}")
+
+
 def environment_snapshot(include_gpu=True, include_processes=True):
     """Everything a later reader needs to judge whether two runs are
     comparable: host, GPU, TDR configuration and current tenancy.
@@ -413,6 +503,7 @@ def environment_snapshot(include_gpu=True, include_processes=True):
             "ram_available_bytes": int(vm.available),
         },
     }
+    snap["cpu_contention"] = cpu_contention()
     if not include_gpu:
         snap["gpu"] = {"available": False, "error": "not queried"}
         snap["tdr"] = {"available": False, "error": "not queried",
@@ -433,6 +524,8 @@ def print_environment(snap):
           f"{host['cpu_count_logical']} logical CPUs | "
           f"{host['ram_total_bytes'] / 2**30:.1f} GiB RAM "
           f"({host['ram_available_bytes'] / 2**30:.1f} free)")
+    if snap.get("cpu_contention"):
+        print_contention(snap["cpu_contention"], "at start")
     tdr = snap["tdr"]
     raw = ", ".join(f"{k}={v}" for k, v in tdr["values"].items()) or "none"
     print(f"TDR registry: {raw}")
