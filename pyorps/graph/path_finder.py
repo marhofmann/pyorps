@@ -104,9 +104,12 @@ def get_graph_api_class(graph_api: str) -> type:
 
     Parameters:
         graph_api (str): The name of the graph API to use ("networkit", "igraph",
-        "networkx", "rustworkx", "cython", "cugraph", "raster_gpu" or
+        "networkx", "rustworkx", "cython", "raster_gpu" or
         "raster_fim" — the latter solves the continuous eikonal equation on
-        the GPU instead of a graph search). Respective graph library must be
+        the GPU instead of a graph search). "cugraph" is accepted but raises:
+        the backend is not implemented, and cuGraph SSSP measured 5-25x
+        slower than the Cython kernel on raster grids.
+        Respective graph library must be
         installed! Networkit is a dependency of pyorps and will be installed
         automatically.
 
@@ -134,8 +137,18 @@ def get_graph_api_class(graph_api: str) -> type:
             from pyorps.graph.api.cython_api import CythonAPI
             return CythonAPI
         case "cugraph":
-            from pyorps.graph.api.cugraph_api import CuGraphAPI
-            return CuGraphAPI
+            # There is no cugraph_api module and there never was one in this
+            # repository; the import here could only ever raise
+            # ModuleNotFoundError, which reads as a broken install rather
+            # than an unimplemented backend. Measured verdict on the idea
+            # (project history): cuGraph SSSP ran 5-25x SLOWER than the
+            # Cython kernel on raster grids, because it is built for
+            # billion-edge social graphs and computes all distances instead
+            # of stopping at the target.
+            raise NotImplementedError(
+                "The 'cugraph' backend is not implemented. Use "
+                "graph_api='raster_gpu' for GPU routing (raster-direct "
+                "delta-stepping), or 'raster_fim' for the eikonal solver.")
         case "raster_gpu":
             from pyorps.graph.api.raster_gpu_api import RasterGPUAPI
             return RasterGPUAPI
@@ -1190,6 +1203,31 @@ class PathFinder:
         else:
             self.runtimes["graph_build"] = 0.0
         return self._graph_api
+
+    def release_device_resources(self, free_pool: bool = True) -> None:
+        """Give back any GPU memory the backend is holding.
+
+        The raster-direct GPU backends keep a device session alive between
+        queries - that is the point of plan item 1.2, and it is worth
+        roughly 18 B/cell (~0.42 GiB on a 25 M-cell window). Refcounting
+        releases it when the PathFinder is dropped, but a long-lived owner
+        never drops one: an interactive session holds a finder across
+        minutes of idle time, pinning VRAM on a card shared with other
+        work.
+
+        Call this when a routing job is finished but the finder is being
+        kept. The next query rebuilds the session and pays one re-upload;
+        nothing else changes, and no result differs. Backends with no
+        device state (cython, the graph libraries) are unaffected.
+        """
+        api = self._graph_api
+        close = getattr(api, "close", None)
+        if close is None:
+            return
+        try:
+            close(free_pool=free_pool)
+        except TypeError:          # a backend whose close() takes no kwargs
+            close()
 
     def get_node_indices_from_coords(
             self,
