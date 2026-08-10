@@ -55,11 +55,30 @@ class ConstrainedPath(Path):
     tower_type_costs: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self):
-        """Compute total_cost from constrained cost components."""
+        """Fill the totals the constrained builders do not pass in."""
         if self.total_cost is None:
             self.total_cost = (self.total_terrain_cost +
                                self.total_tower_cost +
                                self.total_angle_penalty_cost)
+        if self.total_length is None:
+            # The constrained kernels never run PathFinder's reporting pass,
+            # so nothing else populates this and every consumer summing it
+            # silently accumulated 0.0. path_coords are already CRS
+            # coordinates (the builder applies the transform per cell), so
+            # the polyline length is metric directly — no cell-size factor,
+            # unlike the cell-space kernel PathFinder has to scale.
+            self.total_length = self._polyline_length(self.path_coords)
+
+    @staticmethod
+    def _polyline_length(coords) -> float:
+        """Length of a coordinate polyline in CRS units; 0.0 if degenerate."""
+        if coords is None:
+            return 0.0
+        points = np.asarray(coords, dtype=float)
+        if points.ndim != 2 or len(points) < 2:
+            return 0.0
+        steps = np.diff(points[:, :2], axis=0)
+        return float(np.hypot(steps[:, 0], steps[:, 1]).sum())
 
     @staticmethod
     def _rotated_square(cx, cy, side, angle_rad):
