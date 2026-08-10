@@ -32,6 +32,7 @@ int32_1d_array = nb.types.Array(int32_type, 1, 'A')
 uint32_1d_array = nb.types.Array(uint32_type, 1, 'A')
 float64_1d_array = nb.types.Array(float64_type, 1, 'A')
 uint16_1d_array_c = nb.types.Array(uint16_type, 1, 'C')
+uint8_1d_array_c = nb.types.Array(nb.types.uint8, 1, 'C')
 float64_1d_array_c = nb.types.Array(float64_type, 1, 'C')
 
 
@@ -584,32 +585,36 @@ def calculate_segment_length(abs_dr: int, abs_dc: int) -> float:
     return np.sqrt(abs_dr * abs_dr + abs_dc * abs_dc)
 
 
-@nb.njit(nb.types.Tuple((float64_type, uint16_1d_array_c, float64_1d_array_c))
-        (uint16_2d_array, uint32_1d_array),
+@nb.njit(uint8_1d_array_c(uint16_2d_array), cache=True)
+def _mark_present_values(raster: uint16_2d_array) -> uint8_1d_array_c:
+    """Mark every uint16 value occurring in the raster in a 65536-bin table."""
+    present = np.zeros(65536, dtype=np.uint8)
+    rows, cols = raster.shape
+    for i in range(rows):
+        for j in range(cols):
+            present[raster[i, j]] = 1
+    return present
+
+
+def unique_categories(raster: np.ndarray) -> np.ndarray:
+    """Sorted unique values of a uint16 raster, in O(N) instead of O(N log N).
+
+    Bit-identical to ``np.sort(np.unique(raster))`` — a uint16 raster has at
+    most 65536 distinct values, so a presence table plus ``flatnonzero``
+    yields the same ascending uint16 array without sorting N cells.
+    """
+    return np.flatnonzero(_mark_present_values(raster)).astype(np.uint16)
+
+
+@nb.njit(nb.types.Tuple((float64_type, float64_1d_array_c))
+        (uint16_2d_array, uint32_1d_array, uint16_1d_array_c),
     fastmath=True, parallel=True)
-def calculate_path_metrics_numba(raster:uint16_2d_array,
-                                 path_indices: uint32_1d_array
-                                 ) -> nb.types.Tuple((float64_type,
-                                                      uint16_1d_array_c,
-                                                      float64_1d_array_c)):
-    """
-    Calculate comprehensive metrics for a power line path.
-
-    This function analyzes an optimal path found by the routing algorithm to
-    provide detailed statistics about path length, terrain traversed, and cost
-    distribution. This information is essential for power line planning and
-    cost estimation.
-
-    Parameters:
-        raster (np.ndarray): 2D cost raster representing terrain/construction costs
-        path_indices (np.ndarray): Array of linear indices representing the path
-
-    Returns:
-        Tuple[float, np.ndarray, np.ndarray]: Total length, categories, lengths
-
-    References:
-        [1]
-    """
+def _calculate_path_metrics_kernel(raster: uint16_2d_array,
+                                   path_indices: uint32_1d_array,
+                                   categories_array: uint16_1d_array_c
+                                   ) -> nb.types.Tuple((float64_type,
+                                                        float64_1d_array_c)):
+    """Accumulate total length and per-category lengths along the path."""
     # Get raster dimensions for coordinate conversion
     rows, cols = raster.shape
     n_segments = len(path_indices) - 1
@@ -620,8 +625,6 @@ def calculate_path_metrics_numba(raster:uint16_2d_array,
         path_2d[i, 0] = path_indices[i] // cols  # Row coordinate
         path_2d[i, 1] = path_indices[i] % cols   # Column coordinate
 
-    # Identify unique cost categories in the raster
-    categories_array = np.sort(np.unique(raster))
     num_categories = len(categories_array)
 
     # Create efficient mapping from category values to array indices
@@ -697,6 +700,41 @@ def calculate_path_metrics_numba(raster:uint16_2d_array,
         for j in range(num_categories):
             lengths_array[j] += thread_local_lengths[i, j]
 
+    return total_length, lengths_array
+
+
+def calculate_path_metrics_numba(raster: np.ndarray,
+                                 path_indices: np.ndarray,
+                                 categories: np.ndarray | None = None
+                                 ) -> tuple:
+    """
+    Calculate comprehensive metrics for a power line path.
+
+    This function analyzes an optimal path found by the routing algorithm to
+    provide detailed statistics about path length, terrain traversed, and cost
+    distribution. This information is essential for power line planning and
+    cost estimation.
+
+    Parameters:
+        raster (np.ndarray): 2D cost raster representing terrain/construction costs
+        path_indices (np.ndarray): Array of linear indices representing the path
+        categories (np.ndarray): Optional sorted unique raster values (see
+            :func:`unique_categories`). The table depends only on the raster,
+            so callers that report many paths against one raster can compute
+            it once; when omitted it is derived here.
+
+    Returns:
+        Tuple[float, np.ndarray, np.ndarray]: Total length, categories, lengths
+
+    References:
+        [1]
+    """
+    if categories is None:
+        categories_array = unique_categories(raster)
+    else:
+        categories_array = np.ascontiguousarray(categories, dtype=np.uint16)
+    total_length, lengths_array = _calculate_path_metrics_kernel(
+        raster, path_indices, categories_array)
     return total_length, categories_array, lengths_array
 
 

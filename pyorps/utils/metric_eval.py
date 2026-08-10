@@ -29,15 +29,76 @@ __all__ = ["evaluate_path_metrics", "PathEvaluation"]
 
 
 @nb.njit(cache=True)
-def _walk_path(path_rows, path_cols, layers, dem, use_dem, category,
-               use_category, cell_size, max_category):
+def _touched_cells(path_rows, path_cols):
+    """Enumerate the cells every path segment touches, in kernel order.
+
+    Reporting reads ~6 cells per segment; the layers are full-window. This
+    turns the walks into O(path) gathers instead of O(K x window) copies.
+
+    Returns (cell_rows, cell_cols, seg_ptr, seg_dr, seg_dc) where segment
+    ``i`` owns ``cell_*[seg_ptr[i]:seg_ptr[i + 1]]`` laid out as
+    {source, target, intermediates...} — the exact accumulation order of
+    the per-segment sums. Degenerate (dr == dc == 0) segments are dropped,
+    as the walks skipped them.
+    """
+    n_segments = path_rows.shape[0] - 1
+
+    n_active = 0
+    n_cells = 0
+    for i in range(n_segments):
+        dr = int(path_rows[i + 1] - path_rows[i])
+        dc = int(path_cols[i + 1] - path_cols[i])
+        if dr == 0 and dc == 0:
+            continue
+        n_active += 1
+        n_cells += 2 + _intermediate_offsets(dr, dc).shape[0]
+
+    cell_rows = np.empty(n_cells, dtype=np.int64)
+    cell_cols = np.empty(n_cells, dtype=np.int64)
+    seg_ptr = np.zeros(n_active + 1, dtype=np.int64)
+    seg_dr = np.empty(n_active, dtype=np.int64)
+    seg_dc = np.empty(n_active, dtype=np.int64)
+
+    s = 0
+    a = 0
+    for i in range(n_segments):
+        r0, c0 = path_rows[i], path_cols[i]
+        r1, c1 = path_rows[i + 1], path_cols[i + 1]
+        dr = int(r1 - r0)
+        dc = int(c1 - c0)
+        if dr == 0 and dc == 0:
+            continue
+        offsets = _intermediate_offsets(dr, dc)
+        cell_rows[s] = r0
+        cell_cols[s] = c0
+        cell_rows[s + 1] = r1
+        cell_cols[s + 1] = c1
+        for j in range(offsets.shape[0]):
+            cell_rows[s + 2 + j] = r0 + offsets[j, 0]
+            cell_cols[s + 2 + j] = c0 + offsets[j, 1]
+        s += 2 + offsets.shape[0]
+        seg_dr[a] = dr
+        seg_dc[a] = dc
+        a += 1
+        seg_ptr[a] = s
+
+    return cell_rows, cell_cols, seg_ptr, seg_dr, seg_dc
+
+
+@nb.njit(cache=True)
+def _walk_path(seg_dr, seg_dc, seg_ptr, values, dem_cells, use_dem,
+               cat_cells, use_category, cell_size, max_category):
     """Single pass over the path segments.
+
+    ``values`` is the (n_touched_cells, K) gather of the metric layers in
+    ``_touched_cells`` order; ``dem_cells`` / ``cat_cells`` are the same
+    gather of the DEM and the category band.
 
     Returns (metric_totals[K], length_2d, length_3d, grad_exposure,
     grad_max_pct, cat_lengths).
     """
-    n_layers = layers.shape[0]
-    n_segments = path_rows.shape[0] - 1
+    n_layers = values.shape[1]
+    n_segments = seg_dr.shape[0]
 
     totals = np.zeros(n_layers, dtype=np.float64)
     cat_lengths = np.zeros(max_category + 1, dtype=np.float64)
@@ -47,19 +108,15 @@ def _walk_path(path_rows, path_cols, layers, dem, use_dem, category,
     grad_max = 0.0
 
     for i in range(n_segments):
-        r0, c0 = path_rows[i], path_cols[i]
-        r1, c1 = path_rows[i + 1], path_cols[i + 1]
-        dr = int(r1 - r0)
-        dc = int(c1 - c0)
-        if dr == 0 and dc == 0:
-            continue
-
-        offsets = _intermediate_offsets(dr, dc)
-        n_cells = 2 + offsets.shape[0]
+        dr = seg_dr[i]
+        dc = seg_dc[i]
+        start = seg_ptr[i]
+        end = seg_ptr[i + 1]
+        n_cells = end - start
 
         seg_2d_m = np.sqrt(float(dr * dr + dc * dc)) * cell_size
         if use_dem:
-            dh = abs(float(dem[r1, c1]) - float(dem[r0, c0]))
+            dh = abs(float(dem_cells[start + 1]) - float(dem_cells[start]))
             seg_3d_m = np.sqrt(seg_2d_m * seg_2d_m + dh * dh)
             slope_pct = dh / seg_2d_m * 100.0
         else:
@@ -74,47 +131,39 @@ def _walk_path(path_rows, path_cols, layers, dem, use_dem, category,
 
         # Per-layer means over {source, intermediates, target}
         for k in range(n_layers):
-            value_sum = layers[k, r0, c0] + layers[k, r1, c1]
-            for j in range(offsets.shape[0]):
-                value_sum += layers[k, r0 + offsets[j, 0],
-                                    c0 + offsets[j, 1]]
+            value_sum = values[start, k]
+            for j in range(start + 1, end):
+                value_sum += values[j, k]
             totals[k] += value_sum / n_cells * seg_3d_m
 
         # Category attribution (per cell share of the segment length),
         # mirroring the legacy per-cell length attribution.
         if use_category:
             share = seg_3d_m / n_cells
-            cat_lengths[category[r0, c0]] += share
-            cat_lengths[category[r1, c1]] += share
-            for j in range(offsets.shape[0]):
-                cat_lengths[category[r0 + offsets[j, 0],
-                                     c0 + offsets[j, 1]]] += share
+            for j in range(start, end):
+                cat_lengths[cat_cells[j]] += share
 
     return (totals, length_2d, length_3d, grad_exposure, grad_max,
             cat_lengths)
 
 
 @nb.njit(cache=True)
-def _walk_feasibility(path_rows, path_cols, weighted_surface, dem, use_dem,
-                      cell_size, mult_lut, add_lut, bin_inv, n_bins,
+def _walk_feasibility(seg_dr, seg_dc, seg_ptr, weighted_cells, dem_cells,
+                      use_dem, cell_size, mult_lut, add_lut, bin_inv, n_bins,
                       use_luts):
     """Achieved objective: mean weighted-surface value × 2D length × Γ_mult
     + Γ_add × 2D length, per segment — the kernel formula in user units."""
-    n_segments = path_rows.shape[0] - 1
+    n_segments = seg_dr.shape[0]
     feasibility = 0.0
     for i in range(n_segments):
-        r0, c0 = path_rows[i], path_cols[i]
-        r1, c1 = path_rows[i + 1], path_cols[i + 1]
-        dr = int(r1 - r0)
-        dc = int(c1 - c0)
-        if dr == 0 and dc == 0:
-            continue
-        offsets = _intermediate_offsets(dr, dc)
-        n_cells = 2 + offsets.shape[0]
-        value_sum = weighted_surface[r0, c0] + weighted_surface[r1, c1]
-        for j in range(offsets.shape[0]):
-            value_sum += weighted_surface[r0 + offsets[j, 0],
-                                          c0 + offsets[j, 1]]
+        dr = seg_dr[i]
+        dc = seg_dc[i]
+        start = seg_ptr[i]
+        end = seg_ptr[i + 1]
+        n_cells = end - start
+        value_sum = weighted_cells[start]
+        for j in range(start + 1, end):
+            value_sum += weighted_cells[j]
         mean_value = value_sum / n_cells
         seg_2d_m = np.sqrt(float(dr * dr + dc * dc)) * cell_size
 
@@ -122,7 +171,7 @@ def _walk_feasibility(path_rows, path_cols, weighted_surface, dem, use_dem,
         add = 0.0
         if use_luts:
             if use_dem:
-                dh = abs(float(dem[r1, c1]) - float(dem[r0, c0]))
+                dh = abs(float(dem_cells[start + 1]) - float(dem_cells[start]))
                 slope_pct = dh / seg_2d_m * 100.0
             else:
                 slope_pct = 0.0
@@ -191,20 +240,32 @@ def evaluate_path_metrics(
     names = list(layers)
     if not names:
         raise ValueError("evaluate_path_metrics needs at least one layer")
-    shape = layers[names[0]].shape
-    stack = np.stack([np.ascontiguousarray(layers[n], dtype=np.float32)
-                      for n in names])
+
+    # Everything below reads ONLY the cells the path touches (plan item
+    # 1.1): gathering ~6 values per segment replaces K full-window float32
+    # copies plus a full-window weighted surface.
+    cell_rows, cell_cols, seg_ptr, seg_dr, seg_dc = _touched_cells(
+        path_rows, path_cols)
+
+    values = np.empty((cell_rows.shape[0], len(names)), dtype=np.float32)
+    for k, name in enumerate(names):
+        values[:, k] = np.asarray(layers[name])[cell_rows, cell_cols]
 
     use_dem = dem is not None
-    dem_arr = (np.ascontiguousarray(dem, dtype=np.float32) if use_dem
-               else np.zeros((1, 1), dtype=np.float32))
+    if use_dem:
+        dem_cells = np.asarray(dem)[cell_rows, cell_cols].astype(np.float32)
+    else:
+        dem_cells = np.zeros(cell_rows.shape[0], dtype=np.float32)
 
     use_category = category is not None
     if use_category:
-        category_arr = np.ascontiguousarray(category, dtype=np.int64)
-        max_category = int(category_arr.max()) if category_arr.size else 0
+        cat_cells = np.asarray(category)[cell_rows, cell_cols].astype(np.int64)
+        # Only categories present on the path can carry meters, so sizing
+        # the accumulator by the path maximum is equivalent to sizing it by
+        # the window maximum.
+        max_category = int(cat_cells.max()) if cat_cells.size else 0
     else:
-        category_arr = np.zeros((1, 1), dtype=np.int64)
+        cat_cells = np.zeros(cell_rows.shape[0], dtype=np.int64)
         max_category = 0
 
     # LUTs in user units (quant_scale=1) — the same discretization the
@@ -227,20 +288,24 @@ def evaluate_path_metrics(
 
     (totals, length_2d, length_3d, grad_exposure, grad_max,
      cat_lengths) = _walk_path(
-        path_rows, path_cols, stack, dem_arr, use_dem,
-        category_arr, use_category, float(cell_size), max_category)
+        seg_dr, seg_dc, seg_ptr, values, dem_cells, use_dem,
+        cat_cells, use_category, float(cell_size), max_category)
 
-    # Achieved objective: weighted float surface through the LUTs.
+    # Achieved objective: weighted float surface through the LUTs. The
+    # weighting is elementwise, so weighting the gathered cells is
+    # bit-identical to gathering from a weighted full-window surface.
     weights = objective.weights
-    weighted = np.zeros(shape, dtype=np.float32)
+    weighted_cells = np.zeros(cell_rows.shape[0], dtype=np.float32)
     for name, weight in weights.items():
         if weight > 0 and name in layers:
-            weighted += np.float32(weight) * layers[name]
+            weighted_cells += (np.float32(weight)
+                               * np.asarray(layers[name])[cell_rows,
+                                                          cell_cols])
     w_length = weights.get("length", 0.0)
     if w_length > 0:
-        weighted += np.float32(w_length)
+        weighted_cells += np.float32(w_length)
     feasibility = float(_walk_feasibility(
-        path_rows, path_cols, weighted, dem_arr, use_dem,
+        seg_dr, seg_dc, seg_ptr, weighted_cells, dem_cells, use_dem,
         float(cell_size), mult_lut, add_lut, bin_inv, n_bins, use_luts))
 
     metrics = {name: float(t) for name, t in zip(names, totals)}

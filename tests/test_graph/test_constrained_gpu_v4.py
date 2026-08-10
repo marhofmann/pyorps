@@ -11,7 +11,25 @@ try:
 except ImportError:
     GPU_AVAILABLE = False
 
-pytestmark = pytest.mark.skipif(not GPU_AVAILABLE, reason="CuPy not available")
+import os
+
+# The constrained GPU planners V1-V4 are not production code and the plan
+# recommends retiring them (item 3.8: V1 cannot fit 6 GB, V2-managed can
+# exhaust system RAM, V3 hangs on real rasters). Measured 2026-08-10: running
+# them pins the GPU at 100% and 84 C for minutes without completing a single
+# test, and the CUDA context can outlive a killed process, leaving the card
+# clocked up and unusable for anything else. Opt in deliberately:
+#   PYORPS_RUN_CONSTRAINED_GPU=1 pytest tests/test_graph/test_constrained_gpu_v4.py
+RUN_CONSTRAINED_GPU = os.environ.get(
+    "PYORPS_RUN_CONSTRAINED_GPU", "").strip().lower() not in ("", "0", "false")
+
+pytestmark = [
+    pytest.mark.skipif(not GPU_AVAILABLE, reason="CuPy not available"),
+    pytest.mark.skipif(
+        not RUN_CONSTRAINED_GPU,
+        reason="constrained GPU planners are unvalidated and can wedge the "
+               "GPU; set PYORPS_RUN_CONSTRAINED_GPU=1 to run"),
+]
 
 # ---------------------------------------------------------------------------
 # Helper: resolve #include directives (same approach as V3 driver)

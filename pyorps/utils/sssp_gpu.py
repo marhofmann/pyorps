@@ -630,7 +630,8 @@ _CTL_EARLY_CTR = 8     # early termination check counter
 _CTL_MIN_DIST_INT = 9  # for fallback: min dist as int (IEEE 754)
 _CTL_BARRIER_CNT = 10  # custom barrier: arrival counter
 _CTL_BARRIER_SENSE = 11  # custom barrier: sense-reversing flag
-_CTL_SIZE = 12
+_CTL_OVERFLOW = 12     # queue reservation exceeded buf_size -> self-heal
+_CTL_SIZE = 13
 
 _PERSISTENT_SSSP_KERNEL = r"""
 #include <cooperative_groups.h>
@@ -647,6 +648,19 @@ namespace cg = cooperative_groups;
 #define CTL_MIN_DIST 9
 #define CTL_BARRIER_CNT 10
 #define CTL_BARRIER_SENSE 11
+#define CTL_OVERFLOW 12
+
+// Queue-push helper: reservations past buf_size set the overflow flag
+// instead of silently dropping the vertex. The dropped vertex keeps its
+// (already atomicMin-updated) dist, and the end-of-phase self-heal path
+// rebuilds the frontier from dist[] -- lossless, just slower on the rare
+// overflow. Counts read back from control MUST be clamped to buf_size
+// (reservations can exceed it) or the queue reads run out of bounds.
+#define QPUSH(ctr, arr, v) do { \
+    int _p = atomicAdd((int*)&control[(ctr)], 1); \
+    if (_p < buf_size) (arr)[_p] = (v); \
+    else control[CTL_OVERFLOW] = 1; \
+} while (0)
 
 // Custom atomic barrier replacing grid.sync().
 // grid.sync() on Blackwell/sm_120 (CUDA 13.0) does not provide proper
@@ -728,7 +742,7 @@ void delta_stepping_persistent(
 
     while (true) {
         while (control[CTL_COUNT_A] == 0) {
-            int pc = control[CTL_PENDING];
+            int pc = control[CTL_PENDING]; if (pc > buf_size) pc = buf_size;
             if (pc > 0) {
                 if (gtid == 0) { control[CTL_NEAR] = 0; control[CTL_FAR] = 0; }
                 grid_barrier(control, n_blocks);
@@ -738,13 +752,17 @@ void delta_stepping_persistent(
                 for (int i = gtid; i < pc; i += stride) {
                     int v = pending[i]; float d = dist[v];
                     if (d < bl || d >= 1e30f) continue;
-                    if (d < bh) { int p = atomicAdd((int*)&control[CTL_NEAR], 1); if (p < buf_size) qa[p] = v; }
-                    else { int p = atomicAdd((int*)&control[CTL_FAR], 1); if (p < buf_size) settled[p] = v; }
+                    if (d < bh) QPUSH(CTL_NEAR, qa, v);
+                    else QPUSH(CTL_FAR, settled, v);
                 }
                 grid_barrier(control, n_blocks);
                 int fc = control[CTL_FAR]; int fc2 = fc < buf_size ? fc : buf_size;
                 for (int i = gtid; i < fc2; i += stride) pending[i] = settled[i];
-                if (gtid == 0) { control[CTL_COUNT_A] = control[CTL_NEAR]; control[CTL_PENDING] = fc; }
+                if (gtid == 0) {
+                    int nr = control[CTL_NEAR];
+                    control[CTL_COUNT_A] = nr < buf_size ? nr : buf_size;
+                    control[CTL_PENDING] = fc2;
+                }
                 grid_barrier(control, n_blocks);
                 if (control[CTL_COUNT_A] > 0) break;
                 if (control[CTL_PENDING] > 0) { if (gtid == 0) control[CTL_BUCKET] += window; grid_barrier(control, n_blocks); continue; }
@@ -762,9 +780,9 @@ void delta_stepping_persistent(
             if (gtid == 0) { control[CTL_BUCKET] = nb; control[CTL_NEAR] = 0; }
             grid_barrier(control, n_blocks);
             int* qa = swap ? queue_b : queue_a;
-            for (int i = gtid; i < n_pixels; i += stride) { float d = dist[i]; if (d >= fl && d < fh) { int p = atomicAdd((int*)&control[CTL_NEAR], 1); if (p < buf_size) qa[p] = i; } }
+            for (int i = gtid; i < n_pixels; i += stride) { float d = dist[i]; if (d >= fl && d < fh) QPUSH(CTL_NEAR, qa, i); }
             grid_barrier(control, n_blocks);
-            if (gtid == 0) control[CTL_COUNT_A] = control[CTL_NEAR];
+            if (gtid == 0) { int nr = control[CTL_NEAR]; control[CTL_COUNT_A] = nr < buf_size ? nr : buf_size; }
             grid_barrier(control, n_blocks); break;
         }
         if (control[CTL_DONE]) break;
@@ -820,10 +838,10 @@ void delta_stepping_persistent(
                     if (ndi < odi) {
                         if (pred != NULL) pred[v] = u;
                         if (nd >= blo && nd < bhi) {
-                            int p = atomicAdd((int*)&control[CTL_COUNT_B], 1); if (p < buf_size) qb[p] = v;
+                            QPUSH(CTL_COUNT_B, qb, v);
                             chase = v;
                         }
-                        else { int p = atomicAdd((int*)&control[CTL_PENDING], 1); if (p < buf_size) pending[p] = v; }
+                        else QPUSH(CTL_PENDING, pending, v);
                     }
                 }
                 // Tail-chase fusion: follow one in-window improvement
@@ -836,7 +854,8 @@ void delta_stepping_persistent(
                 }
             }
             grid_barrier(control, n_blocks);
-            int nc = control[CTL_COUNT_B]; if (nc == 0) break;
+            int nc = control[CTL_COUNT_B]; if (nc > buf_size) nc = buf_size;
+            if (nc == 0) break;
             int* qb2 = swap ? queue_a : queue_b;
             int os = control[CTL_SETTLED];
             for (int i = gtid; i < nc; i += stride) { int d = os + i; if (d < buf_size) settled[d] = qb2[i]; }
@@ -879,7 +898,7 @@ void delta_stepping_persistent(
                   float nd = ud + ew; int ndi = __float_as_int(nd), odi = atomicMin((int*)&dist[v], ndi);
                   if (ndi < odi) {
                       if (pred != NULL) pred[v] = u;
-                      int p = atomicAdd((int*)&control[CTL_COUNT_B], 1); if (p < buf_size) qb[p] = v;
+                      QPUSH(CTL_COUNT_B, qb, v);
                   }
               }
           }
@@ -889,7 +908,9 @@ void delta_stepping_persistent(
         if (gtid == 0) control[CTL_BUCKET] += window;
         grid_barrier(control, n_blocks);
         int nxt = control[CTL_BUCKET]; float nl = nxt * delta, nh = (nxt + window) * delta;
-        int hc = control[CTL_COUNT_B], pcc = control[CTL_PENDING], cmb = hc + pcc;
+        int hc = control[CTL_COUNT_B]; if (hc > buf_size) hc = buf_size;
+        int pcc = control[CTL_PENDING]; if (pcc > buf_size) pcc = buf_size;
+        int cmb = hc + pcc;
         if (cmb > 0) {
             int* qb = swap ? queue_a : queue_b;
             for (int i = gtid; i < hc && i < buf_size; i += stride) settled[i] = qb[i];
@@ -901,15 +922,35 @@ void delta_stepping_persistent(
             for (int i = gtid; i < cl; i += stride) {
                 int v = settled[i]; float d = dist[v];
                 if (d < nl || d >= 1e30f) continue;
-                if (d < nh) { int p = atomicAdd((int*)&control[CTL_NEAR], 1); if (p < buf_size) qao[p] = v; }
-                else { int p = atomicAdd((int*)&control[CTL_FAR], 1); if (p < buf_size) pending[p] = v; }
+                if (d < nh) QPUSH(CTL_NEAR, qao, v);
+                else QPUSH(CTL_FAR, pending, v);
             }
             grid_barrier(control, n_blocks);
-            if (gtid == 0) { control[CTL_COUNT_A] = control[CTL_NEAR]; control[CTL_PENDING] = control[CTL_FAR]; }
+            if (gtid == 0) {
+                int nr = control[CTL_NEAR], fr = control[CTL_FAR];
+                control[CTL_COUNT_A] = nr < buf_size ? nr : buf_size;
+                control[CTL_PENDING] = fr < buf_size ? fr : buf_size;
+            }
         } else {
             if (gtid == 0) { control[CTL_COUNT_A] = 0; control[CTL_PENDING] = 0; }
         }
         grid_barrier(control, n_blocks);
+
+        // Self-heal after any queue overflow this phase: dropped vertices
+        // kept their atomicMin-updated dist but left every queue, and may
+        // lie below the advanced bucket base. Restart the frontier search
+        // from this phase's base -- the fallback scan rebuilds the frontier
+        // from dist[] (lossless; re-relaxing settled vertices in the span
+        // produces no improvements, only bounded extra work).
+        if (control[CTL_OVERFLOW]) {
+            if (gtid == 0) {
+                control[CTL_OVERFLOW] = 0;
+                control[CTL_COUNT_A] = 0;
+                control[CTL_PENDING] = 0;
+                control[CTL_BUCKET] = bkt;
+            }
+            grid_barrier(control, n_blocks);
+        }
 
         if (n_targets > 0) {
             if (gtid == 0) control[CTL_EARLY_CTR] += 1;
@@ -934,6 +975,387 @@ void delta_stepping_persistent(
         }
 
         if (control[CTL_DONE]) break;
+    }
+}
+"""
+
+
+# V5 control-word indices
+_C5_DONE = 0
+_C5_WORK = 1          # queued + in-flight items (quiescence == 0)
+_C5_BASE = 2          # bucket index of the rolling span start
+_C5_BARRIER_CNT = 3   # rendezvous barrier: arrival counter
+_C5_BARRIER_SENSE = 4  # rendezvous barrier: sense-reversing flag
+_C5_MIN_DIST = 5      # rescan scratch: min dist as int bits
+_C5_OVERFLOW = 6      # a bucket ring overflowed -> rewind rescan
+_C5_TGT_MAX = 7       # target-bound scratch: max target dist as int bits
+_C5_SIZE = 8
+
+_ASYNC_SSSP_KERNEL = r"""
+#define C5_DONE 0
+#define C5_WORK 1
+#define C5_BASE 2
+#define C5_BARRIER_CNT 3
+#define C5_BARRIER_SENSE 4
+#define C5_MIN_DIST 5
+#define C5_OVERFLOW 6
+#define C5_TGT_MAX 7
+
+#define NB 32
+#define EMPTY_SLOT (-1)
+
+// Sense-reversing rendezvous barrier (same protocol as V4: grid.sync()
+// lacks usable memory ordering on Blackwell; explicit __threadfence()).
+__device__ void v5_barrier(volatile int* control, int n_blocks) {
+    __threadfence();
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        int my_sense = control[C5_BARRIER_SENSE];
+        int arrived = atomicAdd((int*)&control[C5_BARRIER_CNT], 1) + 1;
+        if (arrived == n_blocks) {
+            control[C5_BARRIER_CNT] = 0;
+            __threadfence();
+            control[C5_BARRIER_SENSE] = 1 - my_sense;
+        } else {
+            while (control[C5_BARRIER_SENSE] == my_sense) {}
+        }
+    }
+    __syncthreads();
+}
+
+// Asynchronous bucket-queue SSSP (ADDS-style, simplified for rasters).
+//
+// Hot path has NO grid-wide barriers: blocks claim chunks from a shared
+// ring of NB delta-granular buckets covering the rolling span
+// [base, base+NB)*delta, relax them, and push improvements with atomics
+// only. Improvements landing outside the span only update dist[] (no
+// queue entry); a span-boundary rescan rebuilds the frontier from dist[]
+// -- lossless, because a vertex whose dist lies at/after the new span
+// base was never relaxed-from at its current dist. Quiescence
+// (work == 0 => nothing queued AND nobody mid-chunk) funnels every block
+// into a rendezvous that advances the span, refills the ring, checks the
+// target bound, or terminates. Bucket granularity stays FINE (delta, not
+// a super-bucket): the 2026-08-06 sweep showed coarse priority windows
+// amplify work on heavy-tail rasters; the async design removes barrier
+// cost without giving up ordering.
+extern "C" __global__
+void sssp_async_v5(
+    const unsigned short* __restrict__ raster,
+    const signed char*    __restrict__ steps,
+    const float*          __restrict__ cost_factors,
+    const signed char*    __restrict__ inter_lut,
+    const int*            __restrict__ n_inter,
+    const int n_steps, const int max_inter_cols,
+    const int rows, const int cols, const int max_cost,
+    float* dist, int* pred,
+    const float delta, const int n_pixels, const int chunk,
+    const int* targets, const int n_targets, const float margin,
+    volatile int* control,
+    volatile int* wres,      // per-bucket write reservations [NB]
+    volatile int* rres,      // per-bucket read reservations  [NB]
+    int* arena,              // NB * cap item slots, EMPTY_SLOT-initialized
+    const int cap,
+    const float* __restrict__ dem,
+    const float* __restrict__ grad_lut,
+    const float* __restrict__ grad_bin_factor,
+    const float* __restrict__ grad_step_len,
+    const int grad_n_bins
+) {
+    int n_blocks = gridDim.x;
+    extern __shared__ char smem[];
+    int sb = n_steps * 2, sp = (sb + 3) & ~3;
+    signed char* s_steps = (signed char*)smem;
+    int* s_n_inter = (int*)(smem + sp);
+    float* s_cost_factors = (float*)(s_n_inter + n_steps);
+    signed char* s_inter_lut = (signed char*)(s_cost_factors + n_steps);
+    for (int i = threadIdx.x; i < sb; i += blockDim.x) s_steps[i] = steps[i];
+    for (int i = threadIdx.x; i < n_steps; i += blockDim.x) s_n_inter[i] = n_inter[i];
+    for (int i = threadIdx.x; i < n_steps; i += blockDim.x) s_cost_factors[i] = cost_factors[i];
+    int ls = n_steps * max_inter_cols * 2;
+    for (int i = threadIdx.x; i < ls; i += blockDim.x) s_inter_lut[i] = inter_lut[i];
+    int lsp = (ls + 3) & ~3;
+    float* s_grad_lut = (float*)(s_inter_lut + lsp);
+    float* s_grad_bf  = s_grad_lut + 2 * grad_n_bins;
+    float* s_grad_sl  = s_grad_bf + n_steps;
+    if (grad_n_bins > 0) {
+        for (int i = threadIdx.x; i < 2 * grad_n_bins; i += blockDim.x)
+            s_grad_lut[i] = grad_lut[i];
+        for (int i = threadIdx.x; i < n_steps; i += blockDim.x) {
+            s_grad_bf[i] = grad_bin_factor[i];
+            s_grad_sl[i] = grad_step_len[i];
+        }
+    }
+    __syncthreads();
+    int gtid = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = gridDim.x * blockDim.x;
+
+    __shared__ int sh_bucket, sh_start, sh_take;
+
+    while (true) {
+        if (control[C5_DONE]) break;
+
+        // ---- claim a chunk from the lowest claimable bucket (leader) ----
+        if (threadIdx.x == 0) {
+            sh_take = 0;
+            int base = control[C5_BASE];
+            for (int b = 0; b < NB; b++) {
+                for (;;) {
+                    int rr = rres[b];
+                    int wr = wres[b]; if (wr > cap) wr = cap;
+                    int avail = wr - rr;
+                    if (avail <= 0) break;
+                    int take = avail < chunk ? avail : chunk;
+                    if (atomicCAS((int*)&rres[b], rr, rr + take) == rr) {
+                        sh_bucket = b; sh_start = rr; sh_take = take;
+                        break;
+                    }
+                }
+                if (sh_take > 0) break;
+            }
+            (void)base;
+        }
+        __syncthreads();
+        int take = sh_take;
+
+        if (take == 0) {
+            // ---- no claimable work: quiescence check ----
+            if (control[C5_WORK] != 0) {
+            #if __CUDA_ARCH__ >= 700
+                __nanosleep(200);
+            #endif
+                continue;
+            }
+            // work == 0: nothing queued, nobody mid-chunk (a processing
+            // block keeps its chunk counted until fully done) -- every
+            // block observes 0 and funnels into the rendezvous.
+            v5_barrier(control, n_blocks);
+
+            // -- span advance / termination (all blocks, barriered) --
+            int base = control[C5_BASE];
+            float span_end = (base + NB) * delta;
+            // Overflow rewind: dropped pushes kept their dist inside the
+            // current span -- rescan from the span base, not its end.
+            float from_val = control[C5_OVERFLOW]
+                           ? base * delta : span_end;
+            if (base < 0) from_val = 0.0f;   // initial epoch
+            if (gtid == 0) control[C5_MIN_DIST] = __float_as_int(1e30f);
+            v5_barrier(control, n_blocks);
+            float lm = 1e30f;
+            for (int i = gtid; i < n_pixels; i += stride) {
+                float d = dist[i];
+                if (d >= from_val && d < lm) lm = d;
+            }
+            if (lm < 1e30f)
+                atomicMin((int*)&control[C5_MIN_DIST], __float_as_int(lm));
+            v5_barrier(control, n_blocks);
+            float gm = __int_as_float(control[C5_MIN_DIST]);
+            if (gm >= 1e29f) {
+                if (gtid == 0) control[C5_DONE] = 1;
+                v5_barrier(control, n_blocks);
+                break;
+            }
+            int new_base = (int)(gm / delta);
+            // target early exit: everything unprocessed is >= gm.
+            // Scratch word MUST differ from C5_MIN_DIST: gm was published
+            // through C5_MIN_DIST by the barrier above, and slower blocks
+            // may not have read it yet -- zeroing it here would hand them
+            // gm == 0 and diverge the blocks' barrier sequences (the
+            // 2026-08-06 nondeterministic targeted-mode corruption).
+            if (n_targets > 0) {
+                if (gtid == 0) control[C5_TGT_MAX] = 0;
+                v5_barrier(control, n_blocks);
+                for (int i = gtid; i < n_targets; i += stride)
+                    atomicMax((int*)&control[C5_TGT_MAX],
+                              __float_as_int(dist[targets[i]]));
+                v5_barrier(control, n_blocks);
+                float mt = __int_as_float(control[C5_TGT_MAX]);
+                if (mt < 1e29f && gm > mt * margin) {
+                    if (gtid == 0) control[C5_DONE] = 1;
+                    v5_barrier(control, n_blocks);
+                    break;
+                }
+            }
+            // -- reset ring, refill from dist[] --
+            for (int b = gtid; b < NB; b += stride) { wres[b] = 0; rres[b] = 0; }
+            if (gtid == 0) {
+                control[C5_BASE] = new_base;
+                control[C5_WORK] = 0;
+                control[C5_OVERFLOW] = 0;
+            }
+            v5_barrier(control, n_blocks);
+            float nbv = new_base * delta, nev = (new_base + NB) * delta;
+            for (int i = gtid; i < n_pixels; i += stride) {
+                float d = dist[i];
+                if (d < nbv || d >= nev) continue;
+                int bidx = (int)(d / delta) - new_base;
+                if (bidx < 0) bidx = 0; if (bidx >= NB) bidx = NB - 1;
+                atomicAdd((int*)&control[C5_WORK], 1);
+                int p = atomicAdd((int*)&wres[bidx], 1);
+                if (p < cap) {
+                    arena[bidx * cap + p] = i;
+                } else {
+                    atomicSub((int*)&control[C5_WORK], 1);
+                    control[C5_OVERFLOW] = 1;
+                }
+            }
+            v5_barrier(control, n_blocks);
+            continue;
+        }
+
+        // ---- process the claimed chunk ----
+        int b = sh_bucket, start = sh_start;
+        int base = control[C5_BASE];
+        float span_hi = (base + NB) * delta;
+        for (int i = threadIdx.x; i < take; i += blockDim.x) {
+            volatile int* slot = (volatile int*)&arena[b * cap + start + i];
+            int u;
+            while ((u = *slot) == EMPTY_SLOT) {}   // writer reserved: finite
+            *slot = EMPTY_SLOT;
+            int ur = u / cols, uc = u - ur * cols;
+            float ud = dist[u]; if (ud >= 1e30f) continue;
+            unsigned short sv = raster[u]; if (sv == max_cost) continue;
+            float udem = (grad_n_bins > 0) ? dem[u] : 0.0f;
+            for (int s = 0; s < n_steps; s++) {
+                int vr = ur + (int)s_steps[s*2], vc = uc + (int)s_steps[s*2+1];
+                if (vr < 0 || vr >= rows || vc < 0 || vc >= cols) continue;
+                int v = vr * cols + vc;
+                unsigned short dv = raster[v]; if (dv == max_cost) continue;
+                float ic = 0.0f; bool ok = true; int ni = s_n_inter[s];
+                for (int k = 0; k < ni; k++) {
+                    int ir = ur + (int)s_inter_lut[(s*max_inter_cols+k)*2];
+                    int icc = uc + (int)s_inter_lut[(s*max_inter_cols+k)*2+1];
+                    if (ir < 0 || ir >= rows || icc < 0 || icc >= cols) { ok = false; break; }
+                    unsigned short iv = raster[ir*cols+icc]; if (iv == max_cost) { ok = false; break; }
+                    ic += (float)iv;
+                }
+                if (!ok) continue;
+                float ew = ((float)sv + (float)dv + ic) * s_cost_factors[s];
+                if (grad_n_bins > 0) {
+                    float dh = fabsf(dem[v] - udem);
+                    int gb = (int)(dh * s_grad_bf[s]);
+                    if (gb >= grad_n_bins) gb = grad_n_bins - 1;
+                    float gmul = s_grad_lut[2*gb];
+                    if (isinf(gmul)) continue;
+                    ew = ew * gmul + s_grad_lut[2*gb+1] * s_grad_sl[s];
+                }
+                float nd = ud + ew;
+                // The pred store races concurrent better atomicMin winners
+                // (a slower older winner's store can land last, leaving
+                // pred pointing at the worse predecessor). Vertices
+                // improved exactly once (0-cost plateaus) are race-free;
+                // multiply-improved ones are validated and fixed by the
+                // v5_repair_pred post-pass.
+                int ndi = __float_as_int(nd), odi = atomicMin((int*)&dist[v], ndi);
+                if (ndi < odi) {
+                    if (pred != NULL) pred[v] = u;
+                    if (nd < span_hi) {
+                        int bidx = (int)(nd / delta) - base;
+                        if (bidx < 0) bidx = 0; if (bidx >= NB) bidx = NB - 1;
+                        // Count BEFORE reserving: once wres is advanced the
+                        // item is claimable, and a consumer may fully process
+                        // and decrement it -- if it were not yet counted,
+                        // C5_WORK could read 0 with work still in flight
+                        // (rendezvous deadlock).
+                        atomicAdd((int*)&control[C5_WORK], 1);
+                        int p = atomicAdd((int*)&wres[bidx], 1);
+                        if (p < cap) {
+                            __threadfence();
+                            arena[bidx * cap + p] = v;
+                        } else {
+                            atomicSub((int*)&control[C5_WORK], 1);
+                            control[C5_OVERFLOW] = 1;
+                        }
+                    }
+                    // out-of-span: dist[] already updated; the span-boundary
+                    // rescan recovers it -- no queue entry, no far list.
+                }
+            }
+        }
+        // chunk complete (including all its pushes): release the count
+        __threadfence();
+        __syncthreads();
+        if (threadIdx.x == 0) atomicSub((int*)&control[C5_WORK], take);
+    }
+}
+"""
+
+# Post-pass predecessor validation/repair for V5. The hot-path pred store
+# races concurrent better atomicMin winners: on a multiply-improved vertex
+# a slower older winner's plain store can land last, leaving pred pointing
+# at the worse predecessor. This pass keeps pred entries consistent with
+# the final dist (|dist[pred] + ew - dist[v]| <= tol and dist[pred] <=
+# dist[v]) and replaces inconsistent ones with the best strict-decrease
+# incoming edge. Vertices improved exactly once -- notably 0-cost plateau
+# members, whose only winning write is race-free -- validate and keep
+# their arrival-order tree link. Matching uses a small relative tolerance:
+# this kernel compiles separately from the relax kernel, so FMA
+# contraction may differ by an ulp.
+_V5_PRED_REPAIR_KERNEL = r"""
+extern "C" __global__
+void v5_repair_pred(
+    const unsigned short* __restrict__ raster,
+    const signed char*    __restrict__ steps,
+    const float*          __restrict__ cost_factors,
+    const signed char*    __restrict__ inter_lut,
+    const int*            __restrict__ n_inter,
+    const int n_steps, const int max_inter_cols,
+    const int rows, const int cols, const int max_cost,
+    const float* __restrict__ dist, int* pred,
+    const int n_pixels, const int source_idx,
+    const float* __restrict__ dem,
+    const float* __restrict__ grad_lut,
+    const float* __restrict__ grad_bin_factor,
+    const float* __restrict__ grad_step_len,
+    const int grad_n_bins
+) {
+    int v0 = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = gridDim.x * blockDim.x;
+    for (int v = v0; v < n_pixels; v += stride) {
+        if (v == source_idx) { pred[v] = -1; continue; }
+        float target_d = dist[v];
+        if (target_d >= 1e30f) { pred[v] = -1; continue; }
+        unsigned short dv = raster[v];
+        if (dv == max_cost) { pred[v] = -1; continue; }
+        int vr = v / cols, vc = v - vr * cols;
+        float vdem = (grad_n_bins > 0) ? dem[v] : 0.0f;
+        float tol = 1e-5f * fmaxf(target_d, 1.0f);
+        int cur = pred[v];
+        int best = -1; float best_diff = 1e30f;
+        for (int s = 0; s < n_steps; s++) {
+            int ur = vr - (int)steps[s*2], uc = vc - (int)steps[s*2+1];
+            if (ur < 0 || ur >= rows || uc < 0 || uc >= cols) continue;
+            int u = ur * cols + uc;
+            unsigned short sv = raster[u]; if (sv == max_cost) continue;
+            float ud = dist[u]; if (ud >= 1e30f) continue;
+            if (ud > target_d) continue;
+            float ic = 0.0f; bool ok = true; int ni = n_inter[s];
+            for (int k = 0; k < ni; k++) {
+                int ir = ur + (int)inter_lut[(s*max_inter_cols+k)*2];
+                int icc = uc + (int)inter_lut[(s*max_inter_cols+k)*2+1];
+                if (ir < 0 || ir >= rows || icc < 0 || icc >= cols) { ok = false; break; }
+                unsigned short iv = raster[ir*cols+icc]; if (iv == max_cost) { ok = false; break; }
+                ic += (float)iv;
+            }
+            if (!ok) continue;
+            float ew = ((float)sv + (float)dv + ic) * cost_factors[s];
+            if (grad_n_bins > 0) {
+                float dh = fabsf(vdem - dem[u]);
+                int gb = (int)(dh * grad_bin_factor[s]);
+                if (gb >= grad_n_bins) gb = grad_n_bins - 1;
+                float gmul = grad_lut[2*gb];
+                if (isinf(gmul)) continue;
+                ew = ew * gmul + grad_lut[2*gb+1] * grad_step_len[s];
+            }
+            float diff = fabsf((ud + ew) - target_d);
+            if (diff > tol) continue;
+            if (u == cur) { best = u; break; }  // existing link validates
+            // prefer strict-decrease replacements (plateau links only
+            // survive via validation of the race-free hot-path write)
+            if (ud < target_d && diff < best_diff) {
+                best = u; best_diff = diff;
+            }
+        }
+        pred[v] = best;
     }
 }
 """
@@ -1065,6 +1487,32 @@ def _check_v4_available():
     except Exception:
         _v4_available = False
     return _v4_available
+
+
+_v5_available = None
+
+
+def _check_v5_available():
+    """Check if the v5 async bucket-queue kernel can be compiled.
+
+    Caches the result so the compilation check only happens once.
+    Returns True if cooperative groups are supported and the kernel compiles.
+    """
+    global _v5_available
+    if _v5_available is not None:
+        return _v5_available
+    try:
+        _ensure_cuda_path()
+        kernel = _get_sssp_kernel(
+            "sssp_async_v5",
+            _ASYNC_SSSP_KERNEL,
+            cooperative=True,
+        )
+        _ = kernel.kernel
+        _v5_available = True
+    except Exception:
+        _v5_available = False
+    return _v5_available
 
 
 # ============================================================================
@@ -1458,12 +1906,26 @@ def sssp_raster_gpu(
         dem: Optional[np.ndarray] = None,
         gradient_luts=None,
 ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
-    """GPU delta-stepping SSSP; uses v4 persistent kernel, falls back to v3."""
+    """GPU SSSP; uses the v5 async bucket-queue kernel, falling back to
+    the v4 persistent kernel, then v3.
+
+    V5 became the production default 2026-08-06 after its acceptance run:
+    median 1.77x over V4-with-window-4 across random/heavy-tail at
+    1000^2-3000^2, bit-exact dist arrays in every test and measurement
+    (see benchmarks/FUSED_KERNEL_FINDINGS.md section 11).
+    """
     if not GPU_AVAILABLE:
         raise RuntimeError(
             "CUDA GPU not available. Install cupy with CUDA support: "
             "pip install cupy-cuda12x"
         )
+    if _check_v5_available():
+        return sssp_raster_gpu_v5(
+            raster, steps, source_idx, delta=delta,
+            ignore_max=ignore_max, target_indices=target_indices,
+            margin=margin, return_predecessor=return_predecessor,
+            threads_per_block=threads_per_block,
+            dem=dem, gradient_luts=gradient_luts)
     if _check_v4_available():
         return sssp_raster_gpu_v4(
             raster, steps, source_idx, delta=delta,
@@ -1615,6 +2077,7 @@ def sssp_raster_gpu_v4(
         fuse_depth: int = 0,
         dem: Optional[np.ndarray] = None,
         gradient_luts=None,
+        blocks_per_sm: int = 2,
 ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
     """V4 persistent cooperative kernel SSSP. Same API as sssp_raster_gpu.
 
@@ -1632,6 +2095,10 @@ def sssp_raster_gpu_v4(
     fuse_depth: bounded in-thread tail-chase of in-window improvements
         (bucket-fusion lever; 0 = off -- benchmarked slower on GPU due to
         warp divergence; kept for experimentation).
+    blocks_per_sm: resident blocks per SM for the cooperative launch.
+        Clamped to [1, 2] -- at >2 blocks/SM the kernel produces
+        incorrect results on Blackwell (root cause unknown, see
+        gpu_optimization notes); 2 is the validated production value.
     """
     window = min(max(1, int(window)), 32)
     fuse_depth = max(0, int(fuse_depth))
@@ -1667,8 +2134,15 @@ def sssp_raster_gpu_v4(
         kernel = _get_sssp_kernel(
             "delta_stepping_persistent", _PERSISTENT_SSSP_KERNEL,
             cooperative=True)
-    tpb = threads_per_block
-    max_blocks = cp.cuda.Device().attributes["MultiProcessorCount"] * 2
+    tpb = min(max(32, int(threads_per_block)), 512)
+    blocks_per_sm = min(max(1, int(blocks_per_sm)), 2)
+    # Correctness boundary (2026-08-06 launch sweep): >512 resident threads
+    # per SM produces wrong dist arrays (256x2 ok, 512x1 ok, 512x2 bad,
+    # 256x3 bad -- the historical "Bug #3"). Root cause unknown; clamp.
+    while blocks_per_sm > 1 and tpb * blocks_per_sm > 512:
+        blocks_per_sm -= 1
+    max_blocks = (cp.cuda.Device().attributes["MultiProcessorCount"]
+                  * blocks_per_sm)
     kernel(
         (max_blocks,), (tpb,),
         (d_raster, d_steps, d_cost_factors, d_inter_lut, d_n_inter,
@@ -1687,5 +2161,122 @@ def sssp_raster_gpu_v4(
          dem_arg, grad_lut_arg, grad_bf_arg, grad_sl_arg,
          np.int32(grad_n_bins)),
         shared_mem=smem_bytes)
+    cp.cuda.Stream.null.synchronize()
+    return _transfer_results(d_dist, d_pred, return_predecessor)
+
+
+# ============================================================================
+# V5 entry point — Asynchronous bucket queue (ADDS-style)
+# ============================================================================
+
+def sssp_raster_gpu_v5(
+        raster: np.ndarray,
+        steps: np.ndarray,
+        source_idx: int,
+        delta: Union[float, str] = "auto",
+        ignore_max: bool = True,
+        target_indices: Optional[np.ndarray] = None,
+        margin: float = 1.00001,
+        return_predecessor: bool = False,
+        threads_per_block: int = 256,
+        blocks_per_sm: int = 2,
+        chunk: int = 256,
+        dem: Optional[np.ndarray] = None,
+        gradient_luts=None,
+) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+    """V5 asynchronous bucket-queue SSSP. Same API as sssp_raster_gpu.
+
+    Barrier-free hot path (open-levers plan section 2): blocks pull work
+    chunks from a shared ring of 32 delta-granular buckets over a rolling
+    span and relax with atomics only; grid-wide synchronization happens
+    only at span-boundary rendezvous (quiescence-triggered). Exactness by
+    the same argument as delta-stepping: atomicMin + re-queue is
+    label-correcting; bucket order is advisory.
+
+    chunk: items a block claims per grab. Smaller values follow small
+        frontiers at lower latency; larger values amortize claim
+        overhead on wide frontiers. 256 benchmarked best across
+        random/heavy-tail x 1000^2-3000^2 (64/128/512/1024 all slower).
+    """
+    if not GPU_AVAILABLE:
+        raise RuntimeError("CUDA GPU not available: pip install cupy-cuda12x")
+
+    early_exit, ctx = _common_gpu_setup(
+        raster, steps, source_idx, delta, ignore_max, return_predecessor)
+    if early_exit is not None:
+        return early_exit
+    (d_raster, d_steps, d_cost_factors, d_inter_lut, d_n_inter,
+     max_inter_cols, smem_bytes, delta, d_dist, d_pred, pred_arg,
+     rows, cols, n_pixels, n_steps, max_cost) = ctx
+
+    (dem_arg, grad_lut_arg, grad_bf_arg, grad_sl_arg, grad_n_bins,
+     smem_extra, grad_mean_mult) = _prepare_gradient_gpu(
+        dem, gradient_luts, (rows, cols), n_steps, max_inter_cols)
+    smem_bytes += smem_extra
+    delta *= grad_mean_mult
+
+    _, n_targets, targets_arg = _prepare_v4_targets(target_indices)
+
+    n_buckets = 32
+    cap = max(4096, (3 * n_pixels) // n_buckets)
+    d_arena = cp.full(n_buckets * cap, -1, dtype=cp.int32)
+    d_wres = cp.zeros(n_buckets, dtype=cp.int32)
+    d_rres = cp.zeros(n_buckets, dtype=cp.int32)
+    d_ctl = cp.zeros(_C5_SIZE, dtype=cp.int32)
+    # base = -n_buckets makes the first rendezvous rescan start at 0,
+    # where it finds the source -- no host-side frontier setup needed.
+    d_ctl[_C5_BASE] = -n_buckets
+
+    _ensure_cuda_path()
+    if np.issubdtype(np.asarray(raster).dtype, np.floating):
+        kernel = _get_sssp_kernel(
+            "sssp_async_v5", _float_raster_source(_ASYNC_SSSP_KERNEL),
+            cooperative=True, variant="f32")
+    else:
+        kernel = _get_sssp_kernel(
+            "sssp_async_v5", _ASYNC_SSSP_KERNEL, cooperative=True)
+
+    tpb = min(max(32, int(threads_per_block)), 512)
+    blocks_per_sm = min(max(1, int(blocks_per_sm)), 2)
+    # Same >512 resident threads/SM correctness boundary as V4 (the
+    # rendezvous uses the identical barrier protocol) -- clamp.
+    while blocks_per_sm > 1 and tpb * blocks_per_sm > 512:
+        blocks_per_sm -= 1
+    max_blocks = (cp.cuda.Device().attributes["MultiProcessorCount"]
+                  * blocks_per_sm)
+    kernel(
+        (max_blocks,), (tpb,),
+        (d_raster, d_steps, d_cost_factors, d_inter_lut, d_n_inter,
+         np.int32(n_steps), np.int32(max_inter_cols),
+         np.int32(rows), np.int32(cols), np.int32(max_cost),
+         d_dist, pred_arg, np.float32(delta),
+         np.int32(n_pixels), np.int32(max(1, int(chunk))),
+         targets_arg, np.int32(n_targets), np.float32(margin),
+         d_ctl, d_wres, d_rres, d_arena, np.int32(cap),
+         dem_arg, grad_lut_arg, grad_bf_arg, grad_sl_arg,
+         np.int32(grad_n_bins)),
+        shared_mem=smem_bytes)
+
+    if return_predecessor:
+        # Validate/repair pred against the final dist (see the repair
+        # kernel comment: the async hot path can leave a raced pred
+        # entry pointing at a stale predecessor).
+        if np.issubdtype(np.asarray(raster).dtype, np.floating):
+            repair = _get_sssp_kernel(
+                "v5_repair_pred",
+                _float_raster_source(_V5_PRED_REPAIR_KERNEL),
+                variant="f32")
+        else:
+            repair = _get_sssp_kernel(
+                "v5_repair_pred", _V5_PRED_REPAIR_KERNEL)
+        r_blocks = min(4096, (n_pixels + tpb - 1) // tpb)
+        repair(
+            (r_blocks,), (tpb,),
+            (d_raster, d_steps, d_cost_factors, d_inter_lut, d_n_inter,
+             np.int32(n_steps), np.int32(max_inter_cols),
+             np.int32(rows), np.int32(cols), np.int32(max_cost),
+             d_dist, d_pred, np.int32(n_pixels), np.int32(source_idx),
+             dem_arg, grad_lut_arg, grad_bf_arg, grad_sl_arg,
+             np.int32(grad_n_bins)))
     cp.cuda.Stream.null.synchronize()
     return _transfer_results(d_dist, d_pred, return_predecessor)
