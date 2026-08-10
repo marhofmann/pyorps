@@ -1,3 +1,5 @@
+# cython: language_level=3, boundscheck=False, wraparound=False
+# cython: initializedcheck=False, cdivision=True, nonecheck=False
 """
 Graph construction, node validation, and path analysis utilities.
 
@@ -11,9 +13,6 @@ Contains:
 - Path metrics calculation
 - Utility functions (segment length, euclidean distances, etc.)
 """
-
-# cython: language_level=3, boundscheck=False, wraparound=False
-# cython: initializedcheck=False, cdivision=True, nonecheck=False
 
 import numpy as np
 cimport numpy as np
@@ -604,9 +603,38 @@ def calculate_segment_length(int abs_dr, int abs_dc):
     return _calculate_segment_length(abs_dr, abs_dc)
 
 
+def unique_categories(np.ndarray[uint16_t, ndim=2] raster):
+    """Sorted unique values of a uint16 raster, in O(N) instead of O(N log N).
+
+    Bit-identical to ``np.sort(np.unique(raster))`` — a uint16 raster has at
+    most 65536 distinct values, so a presence table plus ``flatnonzero``
+    yields the same ascending uint16 array without sorting N cells.
+    """
+    cdef const uint16_t[:, :] rv = raster
+    cdef np.ndarray[uint8_t, ndim=1] present = np.zeros(65536, dtype=np.uint8)
+    cdef uint8_t[::1] pv = present
+    cdef Py_ssize_t rows = rv.shape[0]
+    cdef Py_ssize_t cols = rv.shape[1]
+    cdef Py_ssize_t i, j
+
+    with nogil:
+        for i in range(rows):
+            for j in range(cols):
+                pv[rv[i, j]] = 1
+
+    return np.flatnonzero(present).astype(np.uint16)
+
+
 def calculate_path_metrics_numba(np.ndarray[uint16_t, ndim=2] raster,
-                                  np.ndarray[uint32_t, ndim=1] path_indices):
-    """Calculate comprehensive metrics for a power line path."""
+                                  np.ndarray[uint32_t, ndim=1] path_indices,
+                                  categories=None):
+    """Calculate comprehensive metrics for a power line path.
+
+    ``categories`` optionally supplies the sorted unique raster values
+    (see :func:`unique_categories`). The table depends only on the raster,
+    so callers that report many paths against one raster can compute it
+    once; when omitted it is derived here.
+    """
     cdef int rows = raster.shape[0]
     cdef int cols = raster.shape[1]
     cdef int n_segments = len(path_indices) - 1
@@ -620,7 +648,11 @@ def calculate_path_metrics_numba(np.ndarray[uint16_t, ndim=2] raster,
         path_2d[i, 1] = path_indices[i] % cols
 
     # Identify unique cost categories
-    cdef np.ndarray[uint16_t, ndim=1] categories_array = np.sort(np.unique(raster))
+    cdef np.ndarray[uint16_t, ndim=1] categories_array
+    if categories is None:
+        categories_array = unique_categories(raster)
+    else:
+        categories_array = np.ascontiguousarray(categories, dtype=np.uint16)
     cdef int num_categories = len(categories_array)
 
     # Create category-to-index mapping
