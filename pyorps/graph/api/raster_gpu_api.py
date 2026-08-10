@@ -258,17 +258,18 @@ class RasterGPUAPI(GraphAPI):
         """Device memory this API currently holds resident (0 when idle)."""
         return 0 if self._session is None else int(self._session.device_bytes)
 
-    def close(self) -> None:
+    def close(self, free_pool: bool = True) -> None:
         """Release every device buffer this API holds. Idempotent.
 
-        ``free_pool=True``: CuPy would otherwise keep the freed blocks in
-        its own pool, where the driver still counts them against this
-        process. On a 6 GB card shared with the user's other work, giving
-        them back is the point.
+        ``free_pool=True`` (the default): CuPy would otherwise keep the
+        freed blocks in its own pool, where the driver still counts them
+        against this process. On a 6 GB card shared with the user's other
+        work, giving them back is the point. Pass ``False`` to keep the
+        pool warm when another solve on this process is imminent.
         """
         session, self._session = self._session, None
         if session is not None:
-            session.close(free_pool=True)
+            session.close(free_pool=free_pool)
 
     def invalidate_session(self) -> None:
         """Drop the device session without releasing the CuPy pool.
