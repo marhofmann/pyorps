@@ -989,7 +989,12 @@ def _parse_xml_response(response: requests.Response) -> gpd.GeoDataFrame | None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_file = Path(temp_dir) / "wfs_response.xml"
             temp_file.write_bytes(response.content)
-            return gpd.read_file(temp_file)
+            try:
+                # pyogrio Arrow fast path (2-4x documented) when available
+                import pyarrow  # noqa: F401
+                return gpd.read_file(temp_file, use_arrow=True)
+            except ImportError:
+                return gpd.read_file(temp_file)
     except (OSError, IndexError):
         return None
 
