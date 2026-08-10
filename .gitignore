@@ -27,3 +27,28 @@ pyorps/utils/*.cpp
 .playwright-mcp/
 profiles/
 uv.lock
+
+# --- Large generated data -------------------------------------------------
+# ~5.6 GB of routing outputs, study results and benchmark fixtures live in the
+# working tree. GitHub hard-rejects any single file over 100 MB and git history
+# is immutable, so these stay local. Keep the CODE in these directories.
+output/
+examples/data/shapes/
+examples/data/raster/raster_for_distribution_grid_planning.tiff
+examples/data/raster/modified_raster_for_distribution_grid_planning.tiff
+case_studies/substation_planning/*.json
+case_studies/substation_planning/*.geojson
+case_studies/substation_planning/*.txt
+case_studies/substation_planning/shape/
+case_studies/substation_planning/results/
+case_studies/substation_planning/find_substation_tree/
+benchmarks/realworld_data/
+benchmarks/results/
+benchmarks/arcgis_comparison/cases/
+benchmarks/arcgis_comparison/fim/
+
+# --- Scratch and build leftovers ------------------------------------------
+cost_*.tif
+*.pyd.*.old
+*.pyd.locked_old
+git_commands.txt
