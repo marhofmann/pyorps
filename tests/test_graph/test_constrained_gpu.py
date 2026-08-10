@@ -1,3 +1,4 @@
+import os
 import unittest
 import numpy as np
 
@@ -7,8 +8,21 @@ try:
 except ImportError:
     HAS_CUPY = False
 
+# The constrained GPU planners V1-V4 are not production code and the plan
+# recommends retiring them (item 3.8: V1 cannot fit 6 GB, V2-managed can
+# exhaust system RAM, V3 hangs on real rasters). Measured 2026-08-10: running
+# them pins the GPU at 100% and 84 C for minutes without completing a single
+# test, and the CUDA context can outlive a killed process, leaving the card
+# clocked up and unusable for anything else. Opt in deliberately:
+#   PYORPS_RUN_CONSTRAINED_GPU=1 pytest tests/test_graph/test_constrained_gpu.py
+RUN_CONSTRAINED_GPU = os.environ.get(
+    "PYORPS_RUN_CONSTRAINED_GPU", "").strip().lower() not in ("", "0", "false")
+_SKIP_REASON = ("constrained GPU planners are unvalidated and can wedge the "
+                "GPU; set PYORPS_RUN_CONSTRAINED_GPU=1 to run")
+
 
 @unittest.skipUnless(HAS_CUPY, "CuPy not available")
+@unittest.skipUnless(RUN_CONSTRAINED_GPU, _SKIP_REASON)
 class TestConstrainedGPU(unittest.TestCase):
     """Tests for GPU constrained delta-stepping kernel."""
 
