@@ -74,6 +74,41 @@ case_studies = [
 additionals = [
     "openpyxl>=3.1.0",
 ]
+gui = [
+    "dash>=3.0.0",
+    "dash-leaflet>=1.1.0",
+    "dash-ag-grid>=31.0.0",
+    "dash-extensions>=1.0.0",
+    "dash-bootstrap-components>=1.6.0",
+    "localtileserver>=0.10.0",
+    "pywebview>=5.0",
+    "pyyaml>=6.0",
+    # performance (2026-07-21 plan): orjson = fast callback/GeoJSON JSON
+    # (Dash auto-uses it), flask-compress = gzip/brotli in browser mode,
+    # pyarrow = pyogrio use_arrow fast reads, waitress = production WSGI
+    # server on Windows, geobuf = binary vector wire format for the map.
+    "orjson>=3.10",
+    "flask-compress>=1.15",
+    "pyarrow>=17.0",
+    "waitress>=3.0",
+    "geobuf>=1.1",
+]
+# deprecated alias of [gui] (kept for one release; pyorps.webviz is deprecated)
+viz = [
+    "dash>=3.0.0",
+    "dash-leaflet>=1.1.0",
+    "dash-ag-grid>=31.0.0",
+    "dash-extensions>=1.0.0",
+    "dash-bootstrap-components>=1.6.0",
+    "localtileserver>=0.10.0",
+    "pywebview>=5.0",
+    "pyyaml>=6.0",
+    "orjson>=3.10",
+    "flask-compress>=1.15",
+    "pyarrow>=17.0",
+    "waitress>=3.0",
+    "geobuf>=1.1",
+]
 gpu = [
     "cupy-cuda12x>=13.0.0",
 ]
@@ -111,12 +146,17 @@ packages = [
     "pyorps.core",
     "pyorps.io",
     "pyorps.raster",
+    "pyorps.webviz",
+    "pyorps.gui",
+    "pyorps.gui.services",
+    "pyorps.gui.callbacks",
 ]
 include-package-data = true
 zip-safe = false
 
 [tool.setuptools.package-data]
 pyorps = ["**/*.pyx", "**/*.pxd", "**/*.pxi"]
+"pyorps.gui" = ["assets/*"]
 
 [tool.coverage.run]
 source = ["pyorps"]
