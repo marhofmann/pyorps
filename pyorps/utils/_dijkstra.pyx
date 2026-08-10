@@ -97,6 +97,16 @@ cdef class DijkstraSolver:
     cdef int32_t[:] prev
     cdef uint8_t[:] visited
 
+    # O(1) target membership for single_source_multi_target: is_target[cell]
+    # is 1 for every cell of the CURRENT target list. Allocated on the first
+    # multi-target query and reused; set and cleared in O(num_targets), never
+    # in O(total_cells). Stale marks left behind by an interrupted query are
+    # harmless - they only make the linear target scan run for a cell that
+    # matches no entry, which changes nothing.
+    cdef object target_map_arr
+    cdef uint8_t[:] is_target
+    cdef bint has_target_map
+
     # Optional gradient terms (feasibility plan section 3.2):
     #   s-bin  b = min(int(|dem[v]-dem[u]| * bin_factor[d]), n_bins-1)
     #   weight w = terrain * mult_lut[b] + add_lut[b] * step_len[d]
@@ -117,6 +127,7 @@ cdef class DijkstraSolver:
         self.visited = np.zeros(n, dtype=np.uint8)
         self.use_gradient = False
         self.grad_n_bins = 0
+        self.has_target_map = False
 
     def set_gradient(self,
                      np.ndarray[float32_t, ndim=2] dem,
@@ -158,6 +169,18 @@ cdef class DijkstraSolver:
         self.dist[:] = np.inf
         self.prev[:] = -1
         self.visited[:] = 0
+
+    cdef _ensure_target_map(self):
+        """Allocate the zero-filled cell -> target lookup on first use.
+
+        Kept out of __cinit__ so single-pair solvers never pay the extra
+        byte per cell.
+        """
+        if not self.has_target_map:
+            self.target_map_arr = np.zeros(self.ctx.total_cells,
+                                           dtype=np.uint8)
+            self.is_target = self.target_map_arr
+            self.has_target_map = True
 
     cdef np.ndarray[uint32_t, ndim=1] _reconstruct_path(self, uint32_t source, uint32_t target):
         """
@@ -345,7 +368,10 @@ cdef class DijkstraSolver:
         cdef uint32_t[:] targets = target_indices
 
         self._reset()
+        self._ensure_target_map()
 
+        cdef uint8_t[:] is_target = self.is_target
+        cdef int total_cells = self.ctx.total_cells
         cdef int rows = self.ctx.rows
         cdef int cols = self.ctx.cols
         cdef uint16_t[:, :] raster = self.ctx.raster_view
@@ -362,6 +388,14 @@ cdef class DijkstraSolver:
         cdef uint8_t[:] target_found = target_found_arr
         cdef int targets_remaining = num_targets
         cdef int t
+
+        # Mark the target cells so the settle loop needs one array lookup
+        # instead of a scan over the whole target list. Indices outside the
+        # raster can never be settled, so they stay unmapped rather than
+        # writing past the end of is_target.
+        for t in range(num_targets):
+            if <uint64_t>targets[t] < <uint64_t>total_cells:
+                is_target[targets[t]] = 1
 
         # Initialize priority queue and set source distance
         cdef BinaryHeap pq
@@ -396,11 +430,15 @@ cdef class DijkstraSolver:
                 continue
             visited[current] = 1
 
-            # Check if current node is any of our targets
-            for t in range(num_targets):
-                if current == targets[t] and target_found[t] == 0:
-                    target_found[t] = 1
-                    targets_remaining -= 1
+            # Check if current node is any of our targets. The list scan runs
+            # only for cells that are in the list, and each cell settles at
+            # most once, so duplicate target entries are still all marked in
+            # the same visit exactly as before.
+            if is_target[current] != 0:
+                for t in range(num_targets):
+                    if current == targets[t] and target_found[t] == 0:
+                        target_found[t] = 1
+                        targets_remaining -= 1
 
             # Continue expanding the search frontier
             unravel_index(current, cols, &current_row, &current_col)
@@ -464,6 +502,11 @@ cdef class DijkstraSolver:
                     dist[neighbor] = new_dist
                     prev[neighbor] = current
                     heap_push(&pq, neighbor, new_dist)
+
+        # Hand the membership map back clean for the next query
+        for t in range(num_targets):
+            if <uint64_t>targets[t] < <uint64_t>total_cells:
+                is_target[targets[t]] = 0
 
         # Reconstruct paths for all targets
         cdef uint32_t target_idx
@@ -720,6 +763,36 @@ cdef _apply_gradient_kwargs(solver, gradient_luts, dem):
     )
 
 
+def make_dijkstra_solver(np.ndarray[uint16_t, ndim=2] raster_arr,
+                         np.ndarray[int8_t, ndim=2] steps_arr,
+                         int64_t max_value=65535,
+                         dem=None, gradient_luts=None):
+    """
+    Build a DijkstraSolver bound to one raster and step set.
+
+    Exposed so callers that issue many queries against the same raster pay
+    the RasterContext build (an O(cells) exclude-mask scan plus the system
+    limits probe) and the dist/prev/visited allocation once instead of once
+    per query. Reuse is exact: every query entry point resets those arrays
+    before it runs, so a solver carries no state between queries.
+
+    Parameters:
+        raster_arr: 2D numpy array (uint16) containing cell traversal costs
+        steps_arr: 2D numpy array (int8) defining movement directions
+        max_value: Cost value representing obstacles (default 65535)
+        dem: Optional float32 DEM aligned to raster_arr (same shape)
+        gradient_luts: Optional GradientLUTs enabling per-edge gradient terms
+
+    Returns:
+        A DijkstraSolver ready for single_pair, single_source_multi_target,
+        multi_source_multi_target and some_pairs queries.
+    """
+    ctx = RasterContext(raster_arr, steps_arr, max_value)
+    solver = DijkstraSolver(ctx)
+    _apply_gradient_kwargs(solver, gradient_luts, dem)
+    return solver
+
+
 def dijkstra_2d_cython(np.ndarray[uint16_t, ndim=2] raster_arr,
                        np.ndarray[int8_t, ndim=2] steps_arr,
                        uint32_t source_idx, uint32_t target_idx,
@@ -749,9 +822,8 @@ def dijkstra_2d_cython(np.ndarray[uint16_t, ndim=2] raster_arr,
     if source_idx == target_idx:
         return np.array([source_idx], dtype=np.uint32)
 
-    ctx = RasterContext(raster_arr, steps_arr, max_value)
-    solver = DijkstraSolver(ctx)
-    _apply_gradient_kwargs(solver, gradient_luts, dem)
+    solver = make_dijkstra_solver(raster_arr, steps_arr, max_value,
+                                  dem, gradient_luts)
     return solver.single_pair(source_idx, target_idx)
 
 
@@ -779,9 +851,8 @@ def dijkstra_single_source_multiple_targets(
     Returns:
         List of numpy arrays, one per target. Empty arrays for unreachable.
     """
-    ctx = RasterContext(raster_arr, steps_arr, max_value)
-    solver = DijkstraSolver(ctx)
-    _apply_gradient_kwargs(solver, gradient_luts, dem)
+    solver = make_dijkstra_solver(raster_arr, steps_arr, max_value,
+                                  dem, gradient_luts)
     return solver.single_source_multi_target(source_idx, target_indices)
 
 
@@ -809,9 +880,8 @@ def dijkstra_multiple_sources_multiple_targets(
         If return_paths=True: List of lists, paths[i][j] = path from source i to target j
         If return_paths=False: 2D cost matrix with distances
     """
-    ctx = RasterContext(raster_arr, steps_arr, max_value)
-    solver = DijkstraSolver(ctx)
-    _apply_gradient_kwargs(solver, gradient_luts, dem)
+    solver = make_dijkstra_solver(raster_arr, steps_arr, max_value,
+                                  dem, gradient_luts)
     return solver.multi_source_multi_target(
         source_indices, target_indices, return_paths)
 
@@ -841,8 +911,7 @@ def dijkstra_some_pairs_shortest_paths(
         If return_paths=True: List of path arrays
         If return_paths=False: 1D array of path costs (inf for no path)
     """
-    ctx = RasterContext(raster_arr, steps_arr, max_value)
-    solver = DijkstraSolver(ctx)
-    _apply_gradient_kwargs(solver, gradient_luts, dem)
+    solver = make_dijkstra_solver(raster_arr, steps_arr, max_value,
+                                  dem, gradient_luts)
     return solver.some_pairs(
         source_indices, target_indices, return_paths)
