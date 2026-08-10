@@ -76,6 +76,8 @@ class GeoRasterizer:
         self.bbox = bbox
         self.mask = mask
         self.metric_stack = None
+        # Phase 2.5: burned class-id band reused across cost-table edits.
+        self._class_band_cache: dict[str, Any] | None = None
 
         if isinstance(cost_assumptions, CostAssumptions):
             self.cost_manager = cost_assumptions
@@ -124,6 +126,7 @@ class GeoRasterizer:
             raise ValueError("No base data loaded to clip")
 
         self.base_dataset.data = self.base_data.clip(clip_geometry)
+        self.invalidate_class_cache()
         return self.base_dataset
 
     @staticmethod
@@ -208,6 +211,81 @@ class GeoRasterizer:
         """
         return self.base_dataset.crs
 
+    # ------------------------------------------------------------------
+    # Burn once, gather K times (performance plan items 2.4/2.5/2.7)
+    #
+    # Every band this class produces is a *scan conversion of the same
+    # geometry sequence* — only the burned value differs. rasterio burns
+    # with ``merge_alg=MergeAlg.replace``, so the feature that owns a cell
+    # is the LAST one in the sequence that covers it, and that choice does
+    # not depend on the value being burned. One index burn therefore
+    # determines the winner for every band at once, and each band is a
+    # numpy gather ``lut[index_band]`` over that single answer. Painting
+    # order is preserved verbatim, so every derived band is bit-identical
+    # to burning it separately.
+    # ------------------------------------------------------------------
+
+    #: Index/class-band sentinel: "no feature covers this cell".
+    _NO_FEATURE = 0
+
+    @staticmethod
+    def _index_band_dtype(n_ids: int) -> str:
+        """Smallest rasterio-supported unsigned dtype holding 0..n_ids."""
+        if n_ids <= np.iinfo(np.uint16).max:
+            return "uint16"
+        if n_ids <= np.iinfo(np.uint32).max:
+            return "uint32"
+        raise ValueError(
+            f"{n_ids} burn ids exceed the uint32 index band capacity.")
+
+    @classmethod
+    def _burn_index_band(
+            cls,
+            geometries,
+            ids,
+            n_ids: int,
+            out_shape: tuple[int, int],
+            transform: Affine,
+    ) -> np.ndarray:
+        """Burn ONE band of 1-based ids (0 = covered by no feature).
+
+        ``geometries`` and ``ids`` are zipped in the given order, which IS
+        the painting order: later entries overwrite earlier ones.
+        """
+        return rasterize(
+            ((geom, int(value)) for geom, value in zip(geometries, ids)),
+            out_shape=out_shape,
+            fill=cls._NO_FEATURE,
+            dtype=cls._index_band_dtype(n_ids),
+            transform=transform,
+        )
+
+    @staticmethod
+    def _gather_band(
+            index_band: np.ndarray,
+            values: np.ndarray,
+            fill,
+            dtype,
+    ) -> np.ndarray:
+        """Derive a value band from an index band by a LUT gather.
+
+        ``values[i]`` belongs to burn id ``i + 1``; id 0 (no feature) picks
+        up ``fill``. The gather reproduces a separate rasterize pass of the
+        same values exactly, because the ids encode the winning feature.
+        """
+        lut = np.empty(len(values) + 1, dtype=dtype)
+        lut[0] = fill
+        lut[1:] = values
+        return lut[index_band]
+
+    def invalidate_class_cache(self) -> None:
+        """Drop the cached class-id band (item 2.5).
+
+        Call this after mutating the base geometries in place — the cache
+        key can only see the GeoDataFrame's identity, length and bounds.
+        """
+        self._class_band_cache = None
+
     def rasterize(
             self,
             field_name: str = 'cost',
@@ -219,6 +297,8 @@ class GeoRasterizer:
             bounding_box: Polygon | None = None,
             preprocessing_function: Callable | None = None,
             preprocessing_kwargs: dict[str, Any] | None = None,
+            *,
+            use_class_cache: bool = True,
     ) -> RasterDataset:
         """
         Rasterize the base dataset based on a specified field.
@@ -235,6 +315,11 @@ class GeoRasterizer:
             argument and other arguments defined in preprocessing_kwargs which will
             be called before rasterization
             preprocessing_kwargs: The keyword arguments passed to preprocessing_function
+            use_class_cache: Reuse a burned class-id band across calls that
+                only change the cost table (item 2.5). The band is re-burned
+                whenever the geometry set, the extent or the cost ORDER of
+                the classes changes; the produced raster is bit-identical to
+                a full re-burn either way. Set False to force a re-burn.
         Returns:
             tuple of (raster_data, transform)
         """
@@ -263,14 +348,20 @@ class GeoRasterizer:
         # Round the values in the specified field and convert to the desired data type
         self.base_data[field_name] = self.base_data[field_name].round().astype(dtype)
 
-        # Sort values by field to ensure higher cost values have higher priority
-        data = self.base_data.sort_values(by=field_name, ascending=True)
-
-        # Apply buffer if needed
+        # Apply buffer if needed. Buffering is strictly row-wise, so doing
+        # it BEFORE the sort yields exactly the frame the previous
+        # sort-then-buffer order produced — but it also leaves an
+        # unsorted, cost-independent row order for the class-band cache
+        # (item 2.5): the sort permutation itself depends on the cost
+        # table, and a cache keyed on it could never hit after a re-cost.
         if geometry_buffer_m > 0:
-            buffered = self.create_buffer(data, geometry_buffer_m, inplace=False)
+            unsorted = self.create_buffer(self.base_data, geometry_buffer_m,
+                                          inplace=False)
         else:
-            buffered = data
+            unsorted = self.base_data
+
+        # Sort values by field to ensure higher cost values have higher priority
+        buffered = unsorted.sort_values(by=field_name, ascending=True)
 
         if bounding_box is None:
             # Calculate the output shape based on the GeoDataFrame's bounds and the
@@ -280,19 +371,6 @@ class GeoRasterizer:
 
             # Create a transformation object to convert between coordinate systems
             self.transform = from_bounds(*buffered.total_bounds, *out_shape[::-1])
-
-            # Create a generator of shapes (geometry, value) pairs for rasterization
-            geometry_field_name = zip(buffered['geometry'], buffered[field_name])
-            shapes = ((geom, value) for geom, value in geometry_field_name)
-
-            # Rasterize the shapes into a 2D array
-            self.raster = rasterize(
-                shapes,
-                out_shape=out_shape,
-                fill=fill_value,
-                dtype=dtype,
-                transform=self.transform
-            )
         else:
             # Calculate the output shape based on the bounding box
             out_shape = self._calculate_out_shape_from_bounding_box(bounding_box,
@@ -301,28 +379,47 @@ class GeoRasterizer:
             # Create a transformation object
             self.transform = from_bounds(*bounding_box.bounds, *out_shape[::-1])
 
-            # Create initial raster with fill value
-            self.raster = rasterize(
-                [(bounding_box, fill_value)],
+            # rasterio.features.rasterize refuses a degenerate output; the
+            # dropped bbox pre-burn (item 2.7b) used to raise this for us.
+            if min(out_shape) == 0:
+                raise ValueError("width and height must be > 0")
+
+        # Item 2.5: reuse a burned class-id band whenever only the cost
+        # table changed. Returns None when no valid cache applies, in which
+        # case we fall through to the single-pass burn below.
+        cache_key = None
+        if use_class_cache and preprocessing_function is None:
+            cache_key = self._class_cache_key(unsorted, field_name, dtype,
+                                              resolution_in_m,
+                                              geometry_buffer_m, bounding_box,
+                                              out_shape)
+        else:
+            self.invalidate_class_cache()
+
+        raster = None
+        if cache_key is not None:
+            raster = self._rasterize_via_class_lut(
+                unsorted, field_name, fill_value, dtype, out_shape,
+                self.transform, cache_key)
+
+        if raster is None:
+            # ONE scan conversion over the ascending-sorted sequence. The
+            # former bounding-box branch pre-burned the bbox polygon with
+            # fill_value into an array already filled with fill_value (a
+            # wasted O(N) pass, item 2.7b) and then looped once per unique
+            # value; both produce the same winner-per-cell as this single
+            # pass, because sorting ascending makes the last feature that
+            # covers a cell the most expensive one either way.
+            shapes = ((geom, value) for geom, value
+                      in zip(buffered['geometry'], buffered[field_name]))
+            raster = rasterize(
+                shapes,
                 out_shape=out_shape,
                 fill=fill_value,
                 dtype=dtype,
                 transform=self.transform
             )
-
-            # Override with dataset values (sorted for deterministic rasterization)
-            for unique_value in sorted(buffered[field_name].unique()):
-                value_geoms = buffered.loc[buffered[field_name] == unique_value]
-                geoms_field_name = zip(value_geoms['geometry'], value_geoms[field_name])
-                shapes = ((geom, value) for geom, value in geoms_field_name)
-                rasterize(
-                    shapes,
-                    out_shape=out_shape,
-                    fill=fill_value,
-                    out=self.raster,
-                    dtype=dtype,
-                    transform=self.transform
-                )
+        self.raster = raster
 
         self.raster_dataset = InMemoryRasterDataset(self.raster,
                                                     self.crs,
@@ -331,6 +428,144 @@ class GeoRasterizer:
         if save_path is not None:
             self.save_raster(save_path)
         return self.raster_dataset
+
+    # ------------------------------------------------------------------
+    # Item 2.5 — class-id band + LUT re-cost
+    #
+    # A cost-table edit changes what a class costs, never which cells a
+    # class occupies. So the scan conversion is burned ONCE as class ids
+    # and every subsequent cost table is applied as ``lut[class_band]``.
+    #
+    # The one way this can go wrong is the legacy paint order: features are
+    # painted by ASCENDING cost, so the most expensive feature wins an
+    # overlap. The burned band froze one particular class ranking; if a new
+    # cost table reorders the classes, the frozen band's winner is no longer
+    # the most expensive one. The validity condition is therefore exactly
+    # "the new cost is non-decreasing along the burned paint order" — which
+    # permits arbitrary value changes (and new ties) but rejects every rank
+    # swap. It is checked in O(number of classes) on every call.
+    # ------------------------------------------------------------------
+
+    def _class_key_columns(self, data: GeoDataFrame) -> list[str]:
+        """Feature columns that determine the cost of a row."""
+        main = self.cost_manager.main_feature
+        side = self.cost_manager.side_features or []
+        return [c for c in [main, *side] if c and c in data.columns]
+
+    def _class_cache_key(self, data, field_name, dtype, resolution_in_m,
+                         geometry_buffer_m, bounding_box, out_shape):
+        """Identity of the burn: everything but the burned VALUES.
+
+        Returns None when the class-band path does not apply at all.
+        """
+        if field_name != 'cost':
+            # Only the cost column is a pure function of the class columns.
+            return None
+        if not self._class_key_columns(data):
+            return None
+        bbox_bounds = (None if bounding_box is None
+                       else tuple(round(v, 9) for v in bounding_box.bounds))
+        return (
+            id(self.base_dataset.data),
+            len(data),
+            field_name,
+            np.dtype(dtype).name,
+            float(resolution_in_m),
+            float(geometry_buffer_m),
+            tuple(round(float(v), 9) for v in data.total_bounds),
+            bbox_bounds,
+            tuple(out_shape),
+        )
+
+    def _row_class_codes(self, data: GeoDataFrame):
+        """Per-row class code (0..C-1) and the class count, or None."""
+        columns = self._class_key_columns(data)
+        if not columns:
+            return None
+        try:
+            codes = data.groupby(columns, sort=False,
+                                 dropna=False).ngroup().to_numpy()
+        except (TypeError, ValueError):
+            # Unhashable feature values (lists from JSON attributes, ...)
+            # cannot be grouped — fall back to a full burn.
+            return None
+        if codes.size == 0 or codes.min() < 0:
+            return None
+        n_classes = int(codes.max()) + 1
+        # Ids burned into the band are ranks 1..C; 0 means "no feature".
+        if n_classes > np.iinfo(np.uint16).max:
+            return None
+        return np.ascontiguousarray(codes, dtype=np.int64), n_classes
+
+    def _rasterize_via_class_lut(self, data, field_name, fill_value,
+                                 dtype, out_shape, transform, cache_key):
+        """Produce the cost raster as ``lut[class_band]``, or None.
+
+        ``data`` must be in the cost-INDEPENDENT base row order (buffered
+        but not sorted), so the per-row codes are stable across cost-table
+        edits; the burn itself is re-sorted by class rank below.
+
+        None means "the class path does not apply here" and the caller must
+        fall back to a full burn. The returned raster is bit-identical to
+        that full burn in every case where this does return an array.
+        """
+        grouping = self._row_class_codes(data)
+        if grouping is None:
+            return None
+        codes, n_classes = grouping
+
+        values = np.ascontiguousarray(data[field_name].to_numpy())
+        # A class must be cost-homogeneous, otherwise it is not a class.
+        # (Scatter the last value per class, then verify every row agrees.)
+        class_values = np.zeros(n_classes, dtype=values.dtype)
+        class_values[codes] = values
+        if not np.array_equal(class_values[codes], values):
+            return None
+
+        cache = self._class_band_cache
+        reusable = (
+            cache is not None
+            and cache['key'] == cache_key
+            and cache['n_classes'] == n_classes
+            and cache['band'].shape == tuple(out_shape)
+            and np.array_equal(cache['codes'], codes)
+        )
+        if reusable:
+            # THE invalidation rule: the burned paint order must still be a
+            # non-decreasing cost order, else a re-ranked class would keep
+            # losing (or start winning) an overlap it no longer should.
+            # float64 (not the band's own unsigned dtype) so the difference
+            # cannot wrap, and not int64 so a float cost column cannot be
+            # truncated into a spurious tie.
+            ordered = class_values[cache['order']].astype(np.float64)
+            reusable = bool(np.all(np.diff(ordered) >= 0))
+
+        if not reusable:
+            # Rank classes by ascending cost — the legacy paint order — and
+            # burn the RANKS, so overlaps resolve exactly as before.
+            order = np.argsort(class_values, kind='stable')
+            rank = np.empty(n_classes, dtype=np.int64)
+            rank[order] = np.arange(n_classes, dtype=np.int64)
+            row_ids = rank[codes] + 1
+            # Paint by rank, not by raw value: two classes that merely TIE
+            # today must still be painted in their ranked order, or a later
+            # re-cost that separates them would pick the wrong winner.
+            paint = np.argsort(row_ids, kind='stable')
+            geometries = data['geometry'].to_numpy()[paint]
+            band = self._burn_index_band(geometries, row_ids[paint],
+                                         n_classes, out_shape, transform)
+            cache = {
+                'key': cache_key,
+                'codes': codes,
+                'order': order,
+                'n_classes': n_classes,
+                'band': band,
+            }
+            self._class_band_cache = cache
+
+        return self._gather_band(cache['band'],
+                                 class_values[cache['order']],
+                                 fill_value, dtype)
 
     def rasterize_metrics(
             self,
@@ -342,12 +577,16 @@ class GeoRasterizer:
     ) -> MetricStack:
         """Rasterize the base dataset into a multi-band :class:`MetricStack`.
 
-        One geometry pass, K value bindings: every metric column written by
-        the cost manager becomes one float32 band, plus an optional
-        feature-class category band for reporting breakdowns. All bands are
-        rasterized from the SAME sorted geometry sequence, so the winning
-        feature on overlaps is identical in every band — the alignment
-        invariant of the feasibility plan (section 6.4).
+        ONE geometry pass, K value bindings: the sorted geometry sequence is
+        scan-converted a single time into a band of row indices (item 2.4 of
+        the 2026-08-07 performance plan), and every metric column written by
+        the cost manager becomes one float32 band — plus an optional
+        feature-class category band for reporting breakdowns — by gathering
+        that index band through a lookup table. Because the index band
+        already encodes the winning feature of the SAME sorted sequence, the
+        winner on overlaps is identical in every band and every band is
+        bit-identical to a separate rasterize pass — the alignment invariant
+        of the feasibility plan (section 6.4).
 
         Cells outside all features are forbidden (as in :meth:`rasterize`,
         where they receive the 65535 fill). Metric bands are NOT rounded —
@@ -403,37 +642,51 @@ class GeoRasterizer:
 
         stack = MetricStack(transform, self.crs)
 
+        # Item 2.4: ONE scan conversion of the sorted geometry sequence,
+        # burning 1-based ROW indices. Every band below is then a numpy
+        # gather over that single answer instead of another full-extent
+        # pass that re-converts all F shapely geometries through the
+        # Python geo-interface. The winning feature per cell is decided by
+        # the paint order alone — identical sequence, identical replace
+        # semantics — so each gathered band is bit-identical to burning it
+        # on its own.
+        n_rows = len(data)
+        index_band = self._burn_index_band(
+            data['geometry'],
+            np.arange(1, n_rows + 1, dtype=np.int64),
+            n_rows,
+            out_shape,
+            transform,
+        )
+
         # Cost band first: its 65535 fill defines the outside-features
         # forbidden area for the whole stack.
-        cost_band = rasterize(
-            zip(data['geometry'], data['cost'].astype(np.float32)),
-            out_shape=out_shape,
-            fill=float(IMPASSABLE_CELL_COST),
-            dtype="float32",
-            transform=transform,
+        cost_band = self._gather_band(
+            index_band,
+            data['cost'].astype(np.float32).to_numpy(),
+            np.float32(IMPASSABLE_CELL_COST),
+            np.float32,
         )
         stack.add_layer('cost', cost_band)
 
         for name in metric_names:
             if name == 'cost':
                 continue
-            band = rasterize(
-                zip(data['geometry'], data[name].astype(np.float32)),
-                out_shape=out_shape,
-                fill=0.0,
-                dtype="float32",
-                transform=transform,
+            band = self._gather_band(
+                index_band,
+                data[name].astype(np.float32).to_numpy(),
+                np.float32(0.0),
+                np.float32,
             )
             stack.add_layer(name, band)
 
         if include_category:
             ids, labels = self._build_category_ids(data)
-            category_band = rasterize(
-                zip(data['geometry'], ids),
-                out_shape=out_shape,
-                fill=0,
-                dtype="uint16",
-                transform=transform,
+            category_band = self._gather_band(
+                index_band,
+                np.asarray(ids, dtype=np.uint16),
+                np.uint16(0),
+                np.uint16,
             )
             stack.attach_category(category_band, labels)
 
@@ -602,12 +855,12 @@ class GeoRasterizer:
             out_shape=self.raster.shape
         )
 
-        if ignore_value is None:
-            ignore_value_mask = np.ones_like(self.raster, dtype=bool)
-        else:
-            ignore_value_mask = self.raster != ignore_value
-
-        mask = mask_array & ignore_value_mask
+        # ``mask_array`` is a freshly allocated boolean band; narrow it in
+        # place instead of allocating an all-True band and a combined one
+        # (item 2.7a — ``x & ones`` is a no-op by construction).
+        mask = mask_array
+        if ignore_value is not None:
+            mask &= self.raster != ignore_value
 
         # Modify the raster values based on the specified parameters
         if multiply:
@@ -695,38 +948,117 @@ class GeoRasterizer:
                 ca = cost_assumptions
 
             ca.apply_to_geodataframe(gdf)
-            for unique_value in gdf['cost'].unique():
-                value_geoms = gdf.loc[gdf['cost'] == unique_value]
-                if value_geoms.empty:
-                    continue
-                # Create a mask from the geometries in the GeoDataFrame
-                mask_array = geometry_mask(
-                    value_geoms['geometry'].values,
-                    transform=self.transform,
-                    invert=True,  # Invert the mask to keep the area inside the polygons
-                    out_shape=self.raster.shape
-                )
-                if ignore_value is None:
-                    ignore_value_mask = np.ones_like(self.raster, dtype=bool)
-                else:
-                    ignore_value_mask = self.raster != ignore_value
-
-                mask = mask_array & ignore_value_mask
-
-                # Modify the raster values based on the specified parameters
-                if multiply:
-                    # Use uint32 intermediate to prevent uint16 overflow
-                    result = np.clip(
-                        self.raster[mask].astype(np.uint32)
-                        * np.uint32(unique_value),
-                        0,
-                        np.iinfo(np.uint16).max
-                    ).astype(self.raster.dtype)
-                    self.raster[mask] = result
-                else:
-                    # Set the raster cells to the new value
-                    self.raster[mask] = unique_value
+            self._apply_cost_groups(gdf, ignore_value, multiply)
         return self.raster
+
+    def _apply_cost_groups(
+            self,
+            gdf: GeoDataFrame,
+            ignore_value: float | None,
+            multiply: bool,
+    ) -> None:
+        """Apply one cost value per group of overlay geometries (item 2.7a).
+
+        The legacy implementation ran a full ``geometry_mask`` plus three
+        further full-raster passes per unique cost value. In *replace* mode
+        that whole loop collapses into ONE scan conversion of a group-id
+        band plus one vectorized apply, with the paint order chosen so the
+        outcome is identical (see ``_group_paint_order``).
+
+        *Multiply* mode is genuinely sequential — a cell covered by two
+        groups is multiplied twice, and a cell clipped up to ``ignore_value``
+        is frozen for later groups — so it keeps the loop and only sheds the
+        redundant allocations.
+        """
+        raster = self.raster
+        groups = []
+        for unique_value in gdf['cost'].unique():
+            value_geoms = gdf.loc[gdf['cost'] == unique_value]
+            if value_geoms.empty:
+                continue
+            groups.append((unique_value, value_geoms))
+        if not groups:
+            return
+
+        if multiply:
+            self._apply_cost_groups_multiply(groups, ignore_value)
+            return
+
+        # Cast the group values exactly as ``raster[mask] = value`` would,
+        # so both the LUT and the ignore_value comparison see the values
+        # that actually land in the raster.
+        lut = np.zeros(len(groups) + 1, dtype=raster.dtype)
+        for index, (unique_value, _) in enumerate(groups):
+            lut[index + 1] = unique_value
+
+        order = self._group_paint_order(lut, ignore_value)
+        shapes = (
+            (geom, int(group_index) + 1)
+            for group_index in order
+            for geom in groups[group_index][1]['geometry'].to_numpy()
+        )
+        band = rasterize(
+            shapes,
+            out_shape=raster.shape,
+            fill=self._NO_FEATURE,
+            dtype=self._index_band_dtype(len(groups)),
+            transform=self.transform,
+        )
+        mask = band != self._NO_FEATURE
+        if ignore_value is not None:
+            mask &= raster != ignore_value
+        raster[mask] = lut[band[mask]]
+
+    @classmethod
+    def _group_paint_order(cls, lut: np.ndarray,
+                           ignore_value: float | None) -> np.ndarray:
+        """Paint order reproducing the legacy sequential overwrite.
+
+        Legacy semantics, per cell, in *replace* mode:
+
+        * a cell already holding ``ignore_value`` is never touched;
+        * otherwise groups are applied in first-appearance order, later
+          ones overwriting earlier ones — EXCEPT that the first group whose
+          value equals ``ignore_value`` freezes the cell, because the very
+          next iteration recomputes ``raster != ignore_value`` and excludes
+          it from then on.
+
+        Moving every ignore-valued group to the end of the paint order makes
+        a single replace burn produce exactly that: an ignore-valued group
+        wins whenever one covers the cell (they all carry the same value, so
+        which one wins is immaterial), and otherwise the last ordinary group
+        wins — which is precisely the legacy outcome.
+        """
+        group_count = len(lut) - 1
+        if ignore_value is None:
+            return np.arange(group_count, dtype=np.int64)
+        frozen = lut[1:] == ignore_value
+        return np.concatenate([np.flatnonzero(~frozen),
+                               np.flatnonzero(frozen)])
+
+    def _apply_cost_groups_multiply(self, groups, ignore_value) -> None:
+        """Sequential multiply-mode application (compounding, per legacy)."""
+        raster = self.raster
+        scratch = None
+        for unique_value, value_geoms in groups:
+            mask = geometry_mask(
+                value_geoms['geometry'].values,
+                transform=self.transform,
+                invert=True,  # keep the area inside the polygons
+                out_shape=raster.shape,
+            )
+            if ignore_value is not None:
+                if scratch is None:
+                    scratch = np.empty(raster.shape, dtype=bool)
+                np.not_equal(raster, ignore_value, out=scratch)
+                mask &= scratch
+            # Use uint32 intermediate to prevent uint16 overflow
+            result = np.clip(
+                raster[mask].astype(np.uint32) * np.uint32(unique_value),
+                0,
+                np.iinfo(np.uint16).max
+            ).astype(raster.dtype)
+            raster[mask] = result
 
     def _modify_raster_from_dataset_simple_cost_assumptions(
             self,
