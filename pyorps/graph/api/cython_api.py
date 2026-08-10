@@ -5,17 +5,21 @@ from numpy import array, astype, ndarray, uint32, uint64
 from pyorps.core.exceptions import AlgorithmNotImplementedError, PairwiseError
 from pyorps.core.types import IMPASSABLE_CELL_COST
 from pyorps.graph.api.graph_api import GraphAPI
+from pyorps.utils._dijkstra import make_dijkstra_solver
 from pyorps.utils._raster_context import NO_EXCLUSION_VALUE
 from pyorps.utils.path_algorithms import (
     delta_stepping_2d_persistent,
     delta_stepping_multiple_sources_multiple_targets_persistent,
     delta_stepping_single_source_multiple_targets_persistent,
     delta_stepping_some_pairs_shortest_paths_persistent,
-    dijkstra_2d_cython,
-    dijkstra_multiple_sources_multiple_targets,
-    dijkstra_single_source_multiple_targets,
-    dijkstra_some_pairs_shortest_paths,
 )
+
+#: Delta-stepping termination margin. The kernels stop once the current
+#: bucket's start distance exceeds ``d(target) * margin``; at margin 1 no
+#: unsettled vertex can improve the target any more, so this is the exact
+#: floor (the kernels clamp anything at or below it to this value). Values
+#: above 1 make the search run LONGER - they buy no exactness.
+EXACT_TERMINATION_MARGIN = 1.00001
 
 
 class CythonAPI(GraphAPI):
@@ -40,6 +44,51 @@ class CythonAPI(GraphAPI):
         if gradient_luts is not None and dem_data is None:
             raise ValueError(
                 "gradient_luts require dem_data aligned to the raster")
+        # Cached Dijkstra context + solver, see _dijkstra_solver().
+        self._solver = None
+        self._solver_state = (None, None, None, None, None)
+
+    def _dijkstra_solver(self):
+        """The RasterContext + DijkstraSolver for this raster, built once.
+
+        Building the context scans the whole raster to derive the exclude
+        mask and the solver allocates dist/prev/visited (13 B/cell); neither
+        depends on the query, and every solver entry point resets its arrays
+        before it runs, so one instance serves any number of queries with
+        identical results.
+
+        The cache keys on the IDENTITY of the arrays this API was given, so
+        replacing raster_data/steps/dem_data rebuilds it. Editing one of them
+        in place does not - call invalidate_solver_cache() if you do. That is
+        the same contract PathFinder already follows: it drops the whole
+        graph API whenever its raster handler is rebuilt.
+        """
+        cached = self._solver_state
+        if (self._solver is None
+                or cached[0] is not self.raster_data
+                or cached[1] is not self.steps
+                or cached[2] is not self.dem_data
+                or cached[3] is not self.gradient_luts
+                or cached[4] != self.max_value):
+            self._solver = make_dijkstra_solver(
+                self.raster_data, self.steps,
+                max_value=self.max_value,
+                dem=self.dem_data,
+                gradient_luts=self.gradient_luts,
+            )
+            self._solver_state = (self.raster_data, self.steps,
+                                  self.dem_data, self.gradient_luts,
+                                  self.max_value)
+        return self._solver
+
+    def invalidate_solver_cache(self):
+        """Drop the cached Dijkstra context/solver.
+
+        Only needed when the raster this API was built on is edited in
+        place; replacing the array object is detected automatically.
+        """
+        self._solver = None
+        self._solver_state = (None, None, None, None, None)
 
     def shortest_path(
             self,
@@ -57,10 +106,11 @@ class CythonAPI(GraphAPI):
             algorithm: Algorithm name ("dijkstra" or "delta-stepping")
             **kwargs: Additional parameters:
                 - pairwise: bool - compute paths pairwise (for multiple sources/targets)
-                - delta: float - bucket width for delta-stepping (default 50)
-                - use_astar: bool - enable A* heuristic for delta-stepping (default True)
+                - delta: float - bucket width for delta-stepping (default 100)
                 - num_threads: int - number of threads for delta-stepping (0=auto)
-                - min_cell_cost: float - minimum cell cost for A* heuristic
+                - margin: float - delta-stepping termination margin; values
+                  above 1 keep the search running past the point where the
+                  target is provably settled (see EXACT_TERMINATION_MARGIN)
 
         Returns:
             List of path indices or list of lists for multiple paths
@@ -117,13 +167,7 @@ class CythonAPI(GraphAPI):
     def _single_path(self, source, target, algo, **kwargs):
         """Single source to single target."""
         if algo == "dijkstra":
-            path = dijkstra_2d_cython(
-                self.raster_data, self.steps,
-                source, target,
-                max_value=self.max_value,
-                dem=self.dem_data,
-                gradient_luts=self.gradient_luts,
-            )
+            path = self._dijkstra_solver().single_pair(source, target)
         else:
             path = delta_stepping_2d_persistent(
                 self.raster_data, self.steps,
@@ -131,20 +175,15 @@ class CythonAPI(GraphAPI):
                 delta=kwargs.get("delta", 100),
                 max_value=self.max_value,
                 num_threads=kwargs.get('num_threads', 0),
-                margin=kwargs.get('margin', 1.1)
+                margin=kwargs.get('margin', EXACT_TERMINATION_MARGIN)
             )
         return list(path)
 
     def _single_to_multi(self, sources, targets, algo, **kwargs):
         """Single source to multiple targets."""
         if algo == "dijkstra":
-            paths = dijkstra_single_source_multiple_targets(
-                self.raster_data, self.steps,
-                sources[0], targets,
-                self.max_value,
-                dem=self.dem_data,
-                gradient_luts=self.gradient_luts,
-            )
+            paths = self._dijkstra_solver().single_source_multi_target(
+                sources[0], targets)
         else:  # delta-stepping
             # Convert to uint64 for delta-stepping
             paths = delta_stepping_single_source_multiple_targets_persistent(
@@ -163,13 +202,7 @@ class CythonAPI(GraphAPI):
             raise PairwiseError()
 
         if algo == "dijkstra":
-            paths = dijkstra_some_pairs_shortest_paths(
-                self.raster_data, self.steps,
-                sources, targets,
-                max_value=self.max_value,
-                dem=self.dem_data,
-                gradient_luts=self.gradient_luts,
-            )
+            paths = self._dijkstra_solver().some_pairs(sources, targets)
         else:  # delta-stepping
             # Convert to uint64 for delta-stepping
             paths = delta_stepping_some_pairs_shortest_paths_persistent(
@@ -178,19 +211,22 @@ class CythonAPI(GraphAPI):
                 array(targets, dtype=uint64),
                 delta=kwargs.get('delta', 100),
                 max_value=self.max_value,
+                # num_threads is deliberately NOT forwarded here. The pairwise
+                # branch has always run at the kernel's auto-detect, and
+                # delta_stepping_2d_persistent is nondeterministically
+                # suboptimal at >=2 threads, so honouring a caller-pinned count
+                # would change which route comes back. Forwarding it is a
+                # behaviour change and belongs in its own commit.
+                margin=kwargs.get('margin', EXACT_TERMINATION_MARGIN),
             )
         return [list(path) for path in paths]
 
     def _multi_to_multi(self, sources, targets, algo, **kwargs):
         """Multiple sources to multiple targets (all pairs)."""
         if algo == "dijkstra":
-            paths = dijkstra_multiple_sources_multiple_targets(
-                self.raster_data, self.steps,
+            paths = self._dijkstra_solver().multi_source_multi_target(
                 astype(sources, uint32),
                 astype(targets, uint32),
-                self.max_value,
-                dem=self.dem_data,
-                gradient_luts=self.gradient_luts,
             )
         else:  # delta-stepping
             # Convert to uint64 for delta-stepping
