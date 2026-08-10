@@ -311,7 +311,7 @@ class PathPlotter:
             return title
         # Otherwise create a default title using path information
         if hasattr(path, 'total_length') and path.total_length is not None:
-            return f"Path {path.path_id} (length: {path.total_length:.2f} units)"
+            return f"Path {path.path_id} (length: {path.total_length:.2f} m)"
         return f"Path {path.path_id} from Source to Target"
 
     def _plot_raster_background(self,

@@ -63,6 +63,39 @@ class TestPostInit(unittest.TestCase):
         )
         self.assertAlmostEqual(path.total_cost, 0.0)
 
+    def test_total_length_auto_computed_when_none(self):
+        """The constrained kernels never run PathFinder's reporting pass.
+
+        Nothing else populates total_length, so before this it stayed None
+        and every consumer summing it accumulated 0.0 in silence.
+        """
+        path = _make_path(
+            path_coords=np.array([[0.0, 0.0], [30.0, 40.0], [30.0, 90.0]]))
+        # 50 (3-4-5 triangle) + 50 straight up.
+        self.assertAlmostEqual(path.total_length, 100.0)
+
+    def test_total_length_is_in_crs_units_not_cells(self):
+        """path_coords are already CRS coordinates, so no cell-size factor.
+
+        The same three cells on a 2 m grid span twice the ground distance,
+        and total_length must follow the ground, not the cell count.
+        """
+        fine = _make_path(
+            path_coords=np.array([[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]]))
+        coarse = _make_path(
+            path_coords=np.array([[0.0, 0.0], [2.0, 0.0], [4.0, 0.0]]))
+        self.assertAlmostEqual(fine.total_length, 2.0)
+        self.assertAlmostEqual(coarse.total_length, 4.0)
+
+    def test_total_length_preserved_when_explicit(self):
+        path = _make_path(total_length=12.5)
+        self.assertAlmostEqual(path.total_length, 12.5)
+
+    def test_total_length_zero_for_a_degenerate_path(self):
+        """A single-cell route has no segments; it must be 0.0, not None."""
+        path = _make_path(path_coords=np.array([[5.0, 5.0]]))
+        self.assertEqual(path.total_length, 0.0)
+
     def test_towers_with_height(self):
         """Towers with height_m set appear in geodataframe."""
         t = Tower(

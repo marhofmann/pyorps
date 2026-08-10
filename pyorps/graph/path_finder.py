@@ -26,8 +26,10 @@ from numpy import (
     uint32,
     unravel_index,
 )
-from rasterio.transform import Affine
-from shapely.geometry import LineString, MultiPoint, Point
+from rasterio.transform import Affine, from_bounds
+from rasterio.windows import bounds as window_bounds
+from rasterio.windows import transform as window_transform
+from shapely.geometry import LineString, MultiPoint, Point, box
 
 from pyorps.core.exceptions import NoPathFoundError, RasterShapeError
 from pyorps.core.metric_stack import MetricStack
@@ -200,6 +202,9 @@ class PathFinder:
     _objective_dirty = False
     _applying_objective = False
     _category_cache = None
+    #: search_space_buffer_m exactly as the caller passed it (see __init__).
+    _explicit_buffer_m = None
+    corridor_first = True
 
     def __init__(
             self,
@@ -225,6 +230,7 @@ class PathFinder:
             gradient_options: dict[str, Any] | None = None,
             metric_layers: dict[str, Any] | None = None,
             weight_precision: str = "uint16",
+            corridor_first: bool = True,
             **kwargs
     ):
         """
@@ -296,6 +302,17 @@ class PathFinder:
                 FLOAT_BACKENDS (library backends, raster_gpu or
                 raster_fim — the eikonal solver consumes float32
                 natively).
+            corridor_first: Restrict the stages BEFORE the search to the
+                search corridor (performance-plan item 2.2): read only the
+                search window out of a raster/DEM file, burn only the
+                corridor of a vector input, and scalarize only the search
+                window of a metric stack. Every one of those steps is
+                applied only where it is provably identical inside the
+                searched window and is skipped otherwise, so leaving it on
+                cannot change a route; it exists as a switch so that the
+                two paths can be compared directly in tests. All of it
+                requires an explicit ``search_space_buffer_m`` — see
+                :meth:`corridor_geometry`.
             **kwargs: Additional keyword arguments to pass to the rasterize function
                 of the RasterHandler (if a VectorDataset or a source to a VectorDataset
                 has been provided with dataset_source) or to the load function of the
@@ -320,6 +337,15 @@ class PathFinder:
         self.source_coords = PathFinder.normalize_coordinates(source_coords)
         self.target_coords = PathFinder.normalize_coordinates(target_coords)
         self.search_space_buffer_m = search_space_buffer_m
+        # The buffer AS THE CALLER GAVE IT. search_space_buffer_m is
+        # overwritten later with whatever the estimator picked, so keying the
+        # corridor-first steps on it would make them switch on halfway
+        # through an object's life — the first route would then see a
+        # different search raster than the second one for the same
+        # objective. The explicit value never changes, so the behaviour of
+        # a finder is fixed at construction.
+        self._explicit_buffer_m = search_space_buffer_m
+        self.corridor_first = bool(corridor_first)
         self.neighborhood_str = neighborhood_str
         self.graph_api_name = graph_api
         self.ignore_max_cost = ignore_max_cost
@@ -408,6 +434,107 @@ class PathFinder:
     #: The cython kernels remain uint16-pinned (RasterContext).
     FLOAT_BACKENDS = ("networkit", "networkx", "igraph", "rustworkx",
                       "raster_gpu", "raster_fim")
+
+    #: Corridor buffer assumed when the caller left ``search_space_buffer_m``
+    #: unset. ``RasterHandler.estimate_buffer_width`` clamps its result to
+    #: [200, 4000] m, so 4000 m is the WIDEST corridor the estimator can ever
+    #: return: a corridor built with it always contains the one the estimator
+    #: would have chosen. That asymmetry is the whole justification — a
+    #: too-wide corridor only costs time, a too-narrow one silently changes
+    #: the answer. See :meth:`corridor_geometry` for why the burn and the
+    #: windowed read still refuse to use it.
+    CORRIDOR_FALLBACK_BUFFER_M = 4000.0
+
+    #: Largest coordinate drift (metres, accumulated across the whole corridor
+    #: raster) accepted when certifying that a corridor burn lands on the same
+    #: grid as the full-extent burn. ``GeoRasterizer.rasterize`` reconstructs
+    #: the pixel size as ``(east - west) / columns``; that division cannot
+    #: always reproduce the full grid's pixel size bit-for-bit, because the
+    #: quantum of a coordinate near 5.6e6 is ~1e-9 m while the quantum of the
+    #: quotient is ~2e-16. Measured worst case over 5000 random extents at
+    #: 0.5-10 m resolution: 9.2e-10 m. Extents whose pixel size IS exactly
+    #: representable (round bounds — precisely the case where scan conversion
+    #: has genuine pixel-centre ties) reproduce the grid exactly. One
+    #: micrometre sits three orders of magnitude below that worst case and six
+    #: below the millimetre precision of cadastral geometry.
+    CORRIDOR_GRID_TOLERANCE_M = 1e-6
+
+    def corridor_geometry(self, buffer_m: float | None = None):
+        """The search corridor — the polygon ``RasterHandler`` windows to.
+
+        Reproduces ``RasterHandler._init_from_metadata`` exactly: a single
+        source/target pair gives the buffered straight line between them,
+        anything else the buffered convex hull of all endpoints, always with
+        ``quad_segs=32``. Having it here as well is what lets the stages in
+        FRONT of the handler — the file read, the burn, the objective
+        combine — see the same corridor the search will use (plan item 2.2).
+
+        Parameters:
+            buffer_m: Buffer width. Defaults to ``search_space_buffer_m``,
+                and to :attr:`CORRIDOR_FALLBACK_BUFFER_M` when that is None.
+
+        Returns:
+            A shapely polygon, or None when the corridor is undefined
+            (missing coordinates, or a non-positive buffer, which is the
+            documented "use the entire raster" request).
+
+        Note:
+            The default is deliberately NOT used by the corridor-first
+            steps. When ``search_space_buffer_m`` is None the handler calls
+            ``estimate_buffer_width``, which samples the raster it is given —
+            and it samples it at indices clamped to the raster SHAPE
+            (``handler.py:388-403`` clips row indices against the height and
+            then indexes ``[cols, rows]``), so the estimate is a function of
+            the extent, not only of the terrain. Shrinking the extent could
+            therefore change the estimated buffer, hence the searched window,
+            hence the route. Every corridor-first step in this class requires
+            an explicit buffer for that reason; the fallback exists for
+            callers that want a corridor for a step which does not feed the
+            estimator (e.g. narrowing a network fetch).
+        """
+        source = self.source_coords
+        target = self.target_coords
+        if source is None or target is None:
+            return None
+        if buffer_m is None:
+            buffer_m = self.search_space_buffer_m
+        if buffer_m is None:
+            buffer_m = self.CORRIDOR_FALLBACK_BUFFER_M
+        if not buffer_m or buffer_m <= 0:
+            return None
+
+        is_single_source = self._is_single_coordinate(source)
+        is_single_target = self._is_single_coordinate(target)
+        if is_single_source and is_single_target:
+            geometry = LineString([tuple(source), tuple(target)])
+        else:
+            points = []
+            for coords, single in ((source, is_single_source),
+                                   (target, is_single_target)):
+                if single:
+                    points.append(tuple(coords))
+                else:
+                    points.extend(tuple(c) for c in coords)
+            geometry = MultiPoint(points).convex_hull
+        return geometry.buffer(distance=buffer_m, quad_segs=32)
+
+    def corridor_bounds(
+            self,
+            buffer_m: float | None = None
+    ) -> tuple[float, float, float, float] | None:
+        """``(minx, miny, maxx, maxy)`` of :meth:`corridor_geometry`."""
+        geometry = self.corridor_geometry(buffer_m)
+        if geometry is None or geometry.is_empty:
+            return None
+        return geometry.bounds
+
+    @staticmethod
+    def _is_single_coordinate(coords) -> bool:
+        """Mirror of RasterHandler's single-vs-many coordinate test."""
+        if isinstance(coords, tuple):
+            return True
+        return (isinstance(coords, list) and len(coords) == 2
+                and not isinstance(coords[0], (list, tuple)))
 
     def _validate_precision_support(self) -> None:
         """Fail fast on unsupported weight_precision configurations."""
@@ -539,15 +666,103 @@ class PathFinder:
         finally:
             self._applying_objective = False
 
+    def _stack_search_window(self, stack):
+        """The window the RasterHandler will cut, on the stack's own grid.
+
+        Returned only when cutting it FIRST provably leaves the handler with
+        exactly the same cells it would have windowed out of the full stack:
+
+        * an explicit ``search_space_buffer_m`` is required, because
+          otherwise the handler estimates the buffer from the raster it is
+          handed and a smaller raster can produce a different estimate
+          (:meth:`corridor_geometry`);
+        * a legacy single-raster alias is left alone — windowing it would
+          materialize the float layers and destroy ``combine``'s zero-copy
+          pass-through of the untouched uint16 raster;
+        * the handler's own window computation is re-run on the sub-grid and
+          must come back as "the whole sub-raster". That check is what makes
+          the pre-window exact rather than merely plausible: ``rowcol`` on
+          the shifted transform is not guaranteed to floor identically, and
+          if it does not, we simply do not pre-window.
+
+        Returns None whenever any of that fails — the caller then combines
+        the full extent, i.e. today's behaviour.
+        """
+        if not getattr(self, "corridor_first", True):
+            return None
+        buffer_m = self._explicit_buffer_m
+        if buffer_m is None or buffer_m <= 0:
+            return None
+        if stack is None or stack.shape is None or stack.is_legacy_alias:
+            return None
+        corridor = self.corridor_geometry(buffer_m)
+        if corridor is None or corridor.is_empty:
+            return None
+
+        window = RasterHandler.window_from_bounds(
+            corridor.bounds, stack.transform, stack.shape)
+        height, width = int(window.height), int(window.width)
+        if height <= 0 or width <= 0:
+            return None
+        if (height, width) == tuple(stack.shape):
+            return None  # nothing to win, and nothing to risk
+
+        sub_transform = window_transform(window, stack.transform)
+        check = RasterHandler.window_from_bounds(
+            corridor.bounds, sub_transform, (height, width))
+        if (int(check.col_off), int(check.row_off),
+                int(check.width), int(check.height)) != (0, 0, width, height):
+            return None
+        return window
+
     def _apply_objective_to_stack(self) -> None:
-        """Combine the stack under the current objective, rebuild handler."""
+        """Combine the stack under the current objective, rebuild handler.
+
+        Window first, then combine (performance-plan item 2.6). The handler
+        discards everything outside the search window anyway, so scalarizing
+        the full extent first is pure waste — 5-30x per objective variant,
+        plus up to ~1 GB of transient float32 at municipality scale. The
+        pre-window is taken only when it is certified to select exactly the
+        cells the handler would have selected (see
+        :meth:`_stack_search_window`); otherwise the full stack is combined,
+        exactly as before.
+
+        SEMANTIC CONSEQUENCE, stated plainly: the uint16 quantization scale
+        is ``65534 / max(F)`` over the traversable cells of whatever extent
+        ``combine`` is called on. Taking the maximum over the search window
+        instead of the whole data extent therefore produces a DIFFERENT — and
+        normally FINER — quantization than before this change, so the
+        combined weight raster is not bit-identical to the one a full-extent
+        combine produced. It is an exact linear scalarization of the same
+        objective, and it is exact with respect to the window that is
+        actually searched; what changes is the rounding grid, which becomes
+        no coarser. The scale in force is recorded on
+        ``CombineResult.scale`` and copied onto
+        ``Path.objective_spec["quantization_scale"]``. Nothing else in the
+        pipeline is affected: the float layers, the per-metric evaluation and
+        the reported feasibility are all computed from the unquantized
+        layers.
+
+        The narrowing is applied to ``self.metric_stack`` itself rather than
+        to a private copy. The corridor is a function of the endpoints and
+        the explicit buffer, both fixed for the finder's lifetime, so the
+        second pass is a no-op and every objective variant sees the same
+        extent. Doing it this way is also what keeps the invariant everything
+        else relies on — ``raster_handler.window`` indexes into
+        ``metric_stack`` — true for subclasses and callers that were never
+        told about this change (``ConstrainedPathFinder._build_tower_cost_
+        raster`` is one). The bands are numpy VIEWS, so nothing is copied.
+        """
         use_float = self.weight_precision == "float32"
-        result = self.metric_stack.combine(self.objective,
-                                           quantize=not use_float)
+        window = self._stack_search_window(self.metric_stack)
+        if window is not None:
+            self.metric_stack = self.metric_stack.window(window)
+        stack = self.metric_stack
+        result = stack.combine(self.objective, quantize=not use_float)
         self._combine_result = result
         self._gradient_dem = None  # rebuilt lazily at graph creation
         dataset = InMemoryRasterDataset(
-            result.weights, self.metric_stack.crs, self.metric_stack.transform)
+            result.weights, stack.crs, stack.transform)
         handler_kwargs = {}
         if use_float:
             # Outside-buffer cells become +inf (the float forbidden
@@ -573,10 +788,18 @@ class PathFinder:
         """Metric-pipeline variant of create_raster_handler (objective set).
 
         Vector input is rasterized into a multi-band MetricStack; raster
-        input becomes a zero-copy legacy alias stack. The stack stays at
-        full extent and unmasked — the RasterHandler owns windowing and
-        buffer masking of the combined weight raster, so objective changes
-        recombine from pristine layers.
+        input becomes a zero-copy legacy alias stack. The stack is built
+        unmasked, so objective changes always recombine from pristine
+        layers; ``_apply_objective_to_stack`` narrows it once to the search
+        corridor (item 2.6, a view — nothing is copied) and the
+        RasterHandler still owns the buffer masking of the combined weight
+        raster. ``raster_save_path`` saves the stack AFTER that narrowing,
+        i.e. the corridor rather than the whole input extent.
+
+        Note that the corridor burn (item 2.2) does not apply here:
+        ``rasterize_metrics`` has no ``bounding_box`` parameter, so the
+        metric bands are still burned over the whole data extent. Only the
+        combine step is corridor-sized on this path.
         """
         if datasets_to_modify:
             raise NotImplementedError(
@@ -647,22 +870,27 @@ class PathFinder:
                     f"a spec dict, got {type(spec)}")
 
             derive = spec.get("derive")
+            # ``owned`` says whether the array was produced for this call and
+            # nobody else holds it — then the stack can adopt it instead of
+            # copying a full-extent float32 band (item 2.6).
             if derive == "slope_from_dem":
                 self._ensure_stack_dem()
                 values = stack.derive_terrain_slope()
+                owned = True
             elif derive is not None:
                 raise ValueError(
                     f"Unknown derive '{derive}' for metric layer "
                     f"'{name}' (supported: 'slope_from_dem')")
             elif "source" in spec:
-                values = self._load_layer_source(name, spec)
+                values, owned = self._load_layer_source(name, spec)
             else:
                 raise ValueError(
                     f"metric_layers['{name}'] needs 'source' or 'derive'")
 
             stack.add_layer(name, values,
                             hard_max=spec.get("hard_max"),
-                            hard_min=spec.get("hard_min"))
+                            hard_min=spec.get("hard_min"),
+                            copy=not owned)
 
     def _ensure_stack_dem(self) -> None:
         """Reproject the DEM dataset onto the stack grid (once)."""
@@ -686,15 +914,22 @@ class PathFinder:
             stack.shape, stack.transform, stack.crs)
         stack.attach_dem(aligned)
 
-    def _load_layer_source(self, name: str, spec: dict) -> ndarray:
-        """Load a prebuilt layer source onto the stack grid."""
+    def _load_layer_source(self, name: str, spec: dict) -> tuple[ndarray, bool]:
+        """Load a prebuilt layer source onto the stack grid.
+
+        Returns:
+            ``(values, owned)`` — ``owned`` is True when the array was
+            allocated here, so the stack may adopt it without copying
+            (item 2.6). It is False for a caller-supplied array handed
+            through unchanged, which must never be written into.
+        """
         from pyorps.core.metric_stack import reproject_to_grid
 
         stack = self.metric_stack
         source = spec["source"]
         if isinstance(source, ndarray):
             if source.shape == stack.shape:
-                return source
+                return source, False
             if "transform" not in spec:
                 raise ValueError(
                     f"metric_layers['{name}'] array shape {source.shape} "
@@ -703,7 +938,7 @@ class PathFinder:
                     f"reprojection.")
             return reproject_to_grid(
                 source, spec["transform"], spec.get("crs", stack.crs),
-                stack.shape, stack.transform, stack.crs)
+                stack.shape, stack.transform, stack.crs), True
         if isinstance(source, str):
             from rasterio import open as rio_open
             with rio_open(source) as src:
@@ -719,7 +954,7 @@ class PathFinder:
                      f"cell(s) outside the source coverage default to 0.",
                      UserWarning, stacklevel=2)
                 aligned[uncovered] = 0.0
-            return aligned
+            return aligned, True
         raise ValueError(
             f"metric_layers['{name}']['source'] must be a path or an "
             f"array, got {type(source)}")
@@ -827,6 +1062,184 @@ class PathFinder:
         # Extract x, y coordinates from each Point object
         return [(point.x, point.y) for point in input_data]
 
+    def _can_read_source_window(self, dataset, read_kwargs) -> bool:
+        """True when RasterHandler can take the window straight off disk.
+
+        Item 2.2/2.3: PathFinder used to call ``load_data()`` on every raster
+        input before handing it to the handler, which pulled the whole
+        GeoTIFF into memory (3.2 GB for a state-wide 40000x40000 raster) so
+        that the handler could slice a few hundred MB out of it. The handler
+        can read the window itself — but only if we do NOT pre-load it.
+
+        Bit-identity: the file's grid is a property of the file, so the
+        window is computed from the same header either way, and
+        ``read_window`` asks rasterio for the stored pixels of exactly that
+        window with no resampling. The cells are therefore the same cells
+        with the same values; only the ones outside the window are never
+        materialized.
+
+        Refused when: the corridor is switched off, the buffer is not
+        explicit (the estimator needs the pixels — see
+        :meth:`corridor_geometry`), the caller passed read options that the
+        windowed read would silently drop, the data is already in memory, or
+        the dataset has no windowed-read API.
+        """
+        if not getattr(self, "corridor_first", True):
+            return False
+        buffer_m = self._explicit_buffer_m
+        if buffer_m is None or buffer_m <= 0:
+            return False
+        if read_kwargs:
+            return False
+        if getattr(dataset, "data", None) is not None:
+            return False
+        return (callable(getattr(dataset, "load_metadata", None))
+                and callable(getattr(dataset, "read_window", None)))
+
+    def _with_corridor_bounding_box(self, rasterize_kwargs: dict) -> dict:
+        """Add ``bounding_box=`` to a rasterize() call when it is certified."""
+        if rasterize_kwargs.get("bounding_box") is not None:
+            return rasterize_kwargs
+        bounding_box = self._certified_corridor_bounding_box(
+            resolution_in_m=rasterize_kwargs.get("resolution_in_m", 1.0),
+            geometry_buffer_m=rasterize_kwargs.get("geometry_buffer_m", 0),
+            preprocessing_function=rasterize_kwargs.get(
+                "preprocessing_function"),
+        )
+        if bounding_box is None:
+            return rasterize_kwargs
+        return {**rasterize_kwargs, "bounding_box": bounding_box}
+
+    def _certified_corridor_bounding_box(
+            self,
+            resolution_in_m: float = 1.0,
+            geometry_buffer_m: float = 0,
+            preprocessing_function: Any | None = None,
+    ):
+        """Burn extent for the corridor, or None when it is not provably safe.
+
+        Item 2.2: only the corridor is ever searched, yet the burn covers the
+        whole data extent — 64 M cells against 13 M for a 5 km route in an
+        8x8 km extent, 13x at municipality scale.
+
+        The catch the plan does not mention is that
+        ``GeoRasterizer.rasterize`` derives BOTH the output shape and the
+        transform from the extent it is given, so a smaller extent normally
+        lands on a different pixel grid — every cell boundary moves by a
+        sub-pixel amount, class assignments flip along polygon edges, and the
+        route changes. Shrinking the burn is only exact if the corridor grid
+        is the same grid, restricted.
+
+        So this method does not guess: it reconstructs the grid the
+        full-extent burn WOULD have produced, snaps the corridor to whole
+        cells of that grid, and then checks — before burning anything — that
+        the extent it is about to pass reproduces
+            * the same output shape as the snapped window, and
+            * the same affine, to within
+              :attr:`CORRIDOR_GRID_TOLERANCE_M` accumulated over the raster,
+              and
+            * a handler window covering the corridor raster completely,
+        falling back to the unchanged full-extent burn if any check fails.
+        The certificate is arithmetic on the header only; it never touches a
+        pixel.
+
+        Returns:
+            A shapely box to pass as ``bounding_box=``, or None.
+        """
+        if not getattr(self, "corridor_first", True):
+            return None
+        buffer_m = self._explicit_buffer_m
+        if buffer_m is None or buffer_m <= 0:
+            # The buffer estimator samples the raster it is handed, at
+            # indices clamped to its SHAPE — a smaller burn could change the
+            # estimated buffer and therefore the answer.
+            return None
+        if preprocessing_function is not None:
+            # The hook runs inside rasterize() and may move geometries, so
+            # the bounds we would compute here are not the bounds it burns.
+            return None
+        corridor = self.corridor_geometry(buffer_m)
+        if corridor is None or corridor.is_empty:
+            return None
+
+        rasterizer = self.geo_rasterizer
+        try:
+            base = getattr(rasterizer, "base_data", None)
+            if base is None or len(base) == 0:
+                return None
+            crs = getattr(base, "crs", None)
+            if crs is None or crs.is_geographic:
+                # rasterize() sizes a geographic frame from a reprojected
+                # copy but anchors the transform on the original bounds;
+                # that path is inconsistent enough already without a second
+                # extent in it.
+                return None
+
+            full_bounds = self._full_burn_bounds(base, geometry_buffer_m)
+            full_shape = rasterizer._calculate_out_shape_from_geodataframe(
+                GeoDataFrame(geometry=[box(*full_bounds)], crs=crs),
+                resolution_in_m)
+            rows, cols = int(full_shape[0]), int(full_shape[1])
+            if rows <= 0 or cols <= 0:
+                return None
+            full_transform = from_bounds(*full_bounds, cols, rows)
+
+            window = RasterHandler.window_from_bounds(
+                corridor.bounds, full_transform, (rows, cols))
+            width, height = int(window.width), int(window.height)
+            if width <= 0 or height <= 0:
+                return None
+            if width >= cols and height >= rows:
+                return None  # the corridor already covers the whole burn
+
+            candidate = box(*window_bounds(window, full_transform))
+            predicted_shape = (
+                rasterizer._calculate_out_shape_from_bounding_box(
+                    candidate, resolution_in_m))
+            if (int(predicted_shape[0]), int(predicted_shape[1])) != (height,
+                                                                      width):
+                return None
+            predicted = from_bounds(*candidate.bounds, width, height)
+            expected = window_transform(window, full_transform)
+            if not self._same_pixel_grid(predicted, expected, width, height):
+                return None
+
+            handler_window = RasterHandler.window_from_bounds(
+                corridor.bounds, predicted, (height, width))
+            if (int(handler_window.col_off), int(handler_window.row_off),
+                    int(handler_window.width),
+                    int(handler_window.height)) != (0, 0, width, height):
+                return None
+        except (AttributeError, TypeError, ValueError):
+            # Any rasterizer/geometry shape we did not anticipate: burn the
+            # full extent, exactly as before.
+            return None
+        return candidate
+
+    @staticmethod
+    def _full_burn_bounds(base, geometry_buffer_m: float):
+        """Bounds ``rasterize()`` would compute for the full extent.
+
+        It burns ``create_buffer(base_data, geometry_buffer_m)`` sorted by
+        cost; sorting does not move bounds and the buffer call is the same
+        one, so this is the identical frame's ``total_bounds``.
+        """
+        if geometry_buffer_m and geometry_buffer_m > 0:
+            return tuple(base.buffer(geometry_buffer_m).total_bounds)
+        return tuple(base.total_bounds)
+
+    @classmethod
+    def _same_pixel_grid(cls, predicted: Affine, expected: Affine,
+                         cols: int, rows: int) -> bool:
+        """Do two affines place every pixel of a cols x rows raster alike?"""
+        tolerance = cls.CORRIDOR_GRID_TOLERANCE_M
+        return (predicted.b == 0.0 and predicted.d == 0.0
+                and expected.b == 0.0 and expected.d == 0.0
+                and abs(predicted.c - expected.c) <= tolerance
+                and abs(predicted.f - expected.f) <= tolerance
+                and abs(predicted.a - expected.a) * cols <= tolerance
+                and abs(predicted.e - expected.e) * rows <= tolerance)
+
     def create_raster_handler(
             self,
             cost_assumptions: CostAssumptionsType | None = None,
@@ -865,7 +1278,14 @@ class PathFinder:
             if isinstance(self.dataset, VectorDataset) and cost_assumptions is not None:
                 # Create a GeoRasterizer and rasterize the vector data
                 self.geo_rasterizer = GeoRasterizer(self.dataset, cost_assumptions)
-                self.geo_rasterizer.rasterize(**kwargs)
+                # Item 2.2: burn the corridor instead of the data extent when
+                # the corridor provably lands on the same pixel grid. Note
+                # that a saved raster (raster_save_path / save_raster) then
+                # covers the corridor rather than the whole input extent —
+                # the searched area, which is what it was always meant to
+                # document.
+                self.geo_rasterizer.rasterize(
+                    **self._with_corridor_bounding_box(kwargs))
 
                 # Apply any additional dataset modifications
                 if datasets_to_modify:
@@ -904,8 +1324,12 @@ class PathFinder:
                         self.search_space_buffer_m
                     )
                 else:
-                    # Direct use of the raster without modifications
-                    self.dataset.load_data(**kwargs)
+                    # Direct use of the raster without modifications. Item
+                    # 2.2/2.3: leave the read to the handler when it can take
+                    # the search window straight out of the file instead of
+                    # loading the whole raster first.
+                    if not self._can_read_source_window(self.dataset, kwargs):
+                        self.dataset.load_data(**kwargs)
 
                     self.raster_handler = RasterHandler(
                         self.dataset,
@@ -945,8 +1369,11 @@ class PathFinder:
             if dem_kwargs is None:
                 dem_kwargs = {}
 
-            # Load DEM data
-            self.dem_dataset.load_data(**dem_kwargs)
+            # Load DEM data — unless the handler can read just the window
+            # (item 2.2/2.3). The DEM handler uses the buffer the main
+            # handler settled on, so its window is unchanged either way.
+            if not self._can_read_source_window(self.dem_dataset, dem_kwargs):
+                self.dem_dataset.load_data(**dem_kwargs)
 
             # Create DEM RasterHandler with same parameters
             self.dem_raster_handler = RasterHandler(
@@ -1609,9 +2036,13 @@ class PathFinder:
         """Describe what Path.total_cost reflects and where it diverges.
 
         total_cost is always recomputed as ``sum(cell value x 2D length)``
-        over the search raster. That is the minimized quantity only in the
-        plain 2D discrete case; the returned list names every term of the
-        actual search objective the number does NOT contain.
+        over the search raster, with the 2D length in CRS units (metres).
+        Even in the plain 2D discrete case that is the minimized quantity
+        only up to the cell-size factor — the kernels accumulate in cell
+        units (cost_factor = sqrt(dr^2+dc^2)) while reporting is metric,
+        the same convention Path.feasibility already follows. The returned
+        list names every term of the actual search objective the number
+        does NOT contain.
 
         Returns:
             (basis, divergences) — *basis* names the quantity total_cost was
@@ -1738,9 +2169,25 @@ class PathFinder:
             # Calculate metrics using Numba-accelerated function; the
             # category table is derived once per raster, not per path.
             categories = self._cached_categories(raster_data)
-            path.total_length, cat, length = calculate_path_metrics_numba(
+            total_length, cat, length = calculate_path_metrics_numba(
                 raster_data, path_indices, categories)
             self._store_categories(raster_data, cat)
+
+            # The kernel is pure cell space (1.0 per orthogonal step, sqrt(2)
+            # per diagonal); it never sees the transform. Convert to CRS
+            # units here so the legacy fields carry the same metre semantics
+            # the evaluator branch already produces (see the cell_size
+            # argument at _evaluate_objective_metrics below) - without it
+            # total_length is a cell count printed with an "m" suffix and
+            # total_cost is EUR/m x cells. Same square-cell assumption as
+            # everywhere else in pyorps: distances use |transform.a|.
+            cell_size = float(abs(self.raster_handler.window_transform.a))
+            path.total_length = total_length * cell_size
+            # Only the lengths. `cat` is the per-raster category table that
+            # _store_categories just cached and every later path over this
+            # buffer reuses, so scaling it would corrupt them all; it holds
+            # cost values anyway, which are already per-metre.
+            length = length * cell_size
 
             # Convert to regular Python dictionary
             path.length_by_category = dict(zip(cat, length))
