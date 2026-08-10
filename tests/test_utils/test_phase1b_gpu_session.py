@@ -47,7 +47,9 @@ except ImportError:
     GPU = False
 
 # Import-safe without CuPy: sssp_gpu guards its cupy import.
-from pyorps.utils.sssp_gpu import _v5_arena_cap, _V5_N_BUCKETS
+from pyorps.utils.sssp_gpu import (
+    _v5_arena_cap, _V5_N_BUCKETS, _V5_DEFAULT_ARENA_FACTOR,
+)
 
 if GPU:
     from pyorps.utils.sssp_gpu import (
@@ -159,14 +161,23 @@ class TestArenaSizing:
             "the refill could drop a vertex, which the rewind cannot "
             "make progress against")
 
-    @pytest.mark.parametrize("n", [1, 1000, 100_000])
+    @pytest.mark.parametrize("n", [1, 1000, 65_536])
     def test_small_rasters_keep_the_4096_floor(self, n):
+        """Below 32*4096/factor pixels the floor, not the factor, decides."""
         assert _v5_arena_cap(n) == 4096
 
     @pytest.mark.parametrize("n", [1_000_000, 25_000_000, 100_000_000])
-    def test_bytes_per_cell_is_four_at_the_default_factor(self, n):
+    def test_bytes_per_cell_matches_the_default_factor(self, n):
+        """Default is 2.0 = 8 B/cell (V5 total 18), measured 2026-08-10.
+
+        The old sizing was 3.0 (12 B/cell). A sweep over 2000^2 and 3000^2
+        on random / heavy-tail / plateau rasters put 2.0 at 0.97-1.01x of
+        3.0 - free within noise - while 1.0 cost up to 5.4% on heavy-tail.
+        See benchmarks/benchmark_arena_factor.py.
+        """
         arena_bytes = _v5_arena_cap(n) * _V5_N_BUCKETS * 4
-        assert arena_bytes / n == pytest.approx(4.0, rel=1e-3)
+        assert arena_bytes / n == pytest.approx(
+            4.0 * _V5_DEFAULT_ARENA_FACTOR, rel=1e-3)
 
     def test_factor_scales_capacity(self):
         n = 10_000_000
@@ -489,6 +500,43 @@ class TestPathLocalRepair:
 # ---------------------------------------------------------------------
 
 @gpu_only
+@gpu_only
+class TestV4TruncationIsLoud:
+    """V4 must not answer with a partial field.
+
+    V4's light phase runs at most ``max_light_iterations * window``
+    iterations per bucket. A 0-cost region puts every edge at weight 0, so
+    the whole raster stays in one bucket and the cap is reached with the
+    frontier still non-empty. Before this guard V4 returned whatever it had
+    settled and left the rest at ``inf`` - indistinguishable from genuinely
+    unreachable. Measured on 700x700 all-zero: 160,801 settled (401^2, i.e.
+    exactly the 400 rings the cap allows) and 329,199 cells silently wrong.
+
+    V4 is only the fallback when V5 will not compile, but a fallback that
+    lies is worse than one that refuses.
+    """
+
+    def test_zero_cost_raster_raises_instead_of_truncating(self):
+        raster = np.zeros((700, 700), dtype=np.uint16)
+        with pytest.raises(RuntimeError, match="abandoned part of the frontier"):
+            sssp_raster_gpu_v4(raster, STEPS_8, 0)
+
+    def test_v5_solves_what_v4_refuses(self):
+        """The same input V4 cannot finish, V5 answers correctly."""
+        raster = np.zeros((700, 700), dtype=np.uint16)
+        with GpuSsspSession(raster, STEPS_8) as session:
+            dist = np.asarray(session.solve(0))
+        assert np.isfinite(dist).all(), "every cell is reachable at cost 0"
+        assert float(dist.max()) == 0.0
+
+    def test_ordinary_raster_is_unaffected(self):
+        """The guard must not fire on a raster that drains normally."""
+        raster = _random_raster(600, 3, lo=1, hi=900)
+        ref = np.asarray(sssp_raster_gpu_v4(raster, STEPS_8, 0))
+        with GpuSsspSession(raster, STEPS_8) as session:
+            _assert_bit_exact(np.asarray(session.solve(0)), ref)
+
+
 class TestArenaOverflow:
     """Rasters whose single delta-bucket dwarfs one ring.
 
