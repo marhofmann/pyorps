@@ -1023,6 +1023,49 @@ __device__ void v5_barrier(volatile int* control, int n_blocks) {
     __syncthreads();
 }
 
+// Reserve a ring slot for `v`, preferring bucket `bidx`.
+//
+// A full bucket spills into the next ring instead of dropping the push.
+// That is sound because bucket order in this kernel is *advisory*: a
+// vertex pulled from a later ring is still relaxed from its current
+// dist[] value, and the label-correcting argument (atomicMin + re-queue)
+// never depended on the order. Spilling turns the arena's capacity
+// bound from "per bucket" into "over the whole ring set", which is what
+// lets the arena be sized at NB*cap >= n_pixels: the span-boundary
+// refill pushes at most one entry per pixel, so with spill it can never
+// drop a vertex.
+//
+// That matters for more than memory. A refill that drops re-raises
+// C5_OVERFLOW, and the resulting rewind rescans from the *same* span
+// base and re-pushes the *same* oversubscribed bucket -- if a single
+// delta-bucket holds more than the whole ring set can take (a 0-cost
+// plateau, or any large region whose edges are tiny next to delta),
+// the rendezvous makes no progress and the kernel spins forever. Every
+// path that reserves a slot must go through here.
+//
+// Returns 1 when placed (the item is now claimable), 0 when every ring
+// is full -- the caller then drops the push and raises C5_OVERFLOW,
+// which the span-boundary rescan repairs losslessly (the dropped
+// vertex kept its improved dist[], and the rewind rescans from
+// base*delta, at or below which no push can land).
+__device__ inline int v5_ring_push(volatile int* wres, int* arena,
+                                   const int cap, const int bidx,
+                                   const int v) {
+    for (int t = 0; t < NB; t++) {
+        int bb = bidx + t;
+        if (bb >= NB) bb -= NB;
+        // Reservations beyond cap are harmless: readers clamp wres to
+        // cap, so nobody ever waits on a slot we did not write.
+        int q = atomicAdd((int*)&wres[bb], 1);
+        if (q < cap) {
+            __threadfence();
+            arena[bb * cap + q] = v;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 // Asynchronous bucket-queue SSSP (ADDS-style, simplified for rasters).
 //
 // Hot path has NO grid-wide barriers: blocks claim chunks from a shared
@@ -1190,10 +1233,7 @@ void sssp_async_v5(
                 int bidx = (int)(d / delta) - new_base;
                 if (bidx < 0) bidx = 0; if (bidx >= NB) bidx = NB - 1;
                 atomicAdd((int*)&control[C5_WORK], 1);
-                int p = atomicAdd((int*)&wres[bidx], 1);
-                if (p < cap) {
-                    arena[bidx * cap + p] = i;
-                } else {
+                if (!v5_ring_push(wres, arena, cap, bidx, i)) {
                     atomicSub((int*)&control[C5_WORK], 1);
                     control[C5_OVERFLOW] = 1;
                 }
@@ -1257,11 +1297,7 @@ void sssp_async_v5(
                         // C5_WORK could read 0 with work still in flight
                         // (rendezvous deadlock).
                         atomicAdd((int*)&control[C5_WORK], 1);
-                        int p = atomicAdd((int*)&wres[bidx], 1);
-                        if (p < cap) {
-                            __threadfence();
-                            arena[bidx * cap + p] = v;
-                        } else {
+                        if (!v5_ring_push(wres, arena, cap, bidx, v)) {
                             atomicSub((int*)&control[C5_WORK], 1);
                             control[C5_OVERFLOW] = 1;
                         }
@@ -1290,7 +1326,76 @@ void sssp_async_v5(
 # their arrival-order tree link. Matching uses a small relative tolerance:
 # this kernel compiles separately from the relax kernel, so FMA
 # contraction may differ by an ulp.
-_V5_PRED_REPAIR_KERNEL = r"""
+# The per-vertex decision, factored out so the full-raster repair and the
+# path-local walk (Phase 1b item 1.4) run *identical* source. pred[v]
+# depends only on the final dist[] (fixed) and on v's own incoming edges
+# plus its own pre-repair pred[v] -- never on any other vertex's pred --
+# which is what makes repairing one chain equivalent to repairing the
+# whole raster, and makes the repair idempotent (a link chosen here
+# validates on re-entry and is kept by the `u == cur` branch).
+_V5_PRED_COMMON = r"""
+__device__ inline int v5_best_pred(
+    const unsigned short* __restrict__ raster,
+    const signed char*    __restrict__ steps,
+    const float*          __restrict__ cost_factors,
+    const signed char*    __restrict__ inter_lut,
+    const int*            __restrict__ n_inter,
+    const int n_steps, const int max_inter_cols,
+    const int rows, const int cols, const int max_cost,
+    const float* __restrict__ dist,
+    const float* __restrict__ dem,
+    const float* __restrict__ grad_lut,
+    const float* __restrict__ grad_bin_factor,
+    const float* __restrict__ grad_step_len,
+    const int grad_n_bins,
+    const int v, const int cur
+) {
+    float target_d = dist[v];
+    unsigned short dv = raster[v];
+    if (dv == max_cost) return -1;
+    int vr = v / cols, vc = v - vr * cols;
+    float vdem = (grad_n_bins > 0) ? dem[v] : 0.0f;
+    float tol = 1e-5f * fmaxf(target_d, 1.0f);
+    int best = -1; float best_diff = 1e30f;
+    for (int s = 0; s < n_steps; s++) {
+        int ur = vr - (int)steps[s*2], uc = vc - (int)steps[s*2+1];
+        if (ur < 0 || ur >= rows || uc < 0 || uc >= cols) continue;
+        int u = ur * cols + uc;
+        unsigned short sv = raster[u]; if (sv == max_cost) continue;
+        float ud = dist[u]; if (ud >= 1e30f) continue;
+        if (ud > target_d) continue;
+        float ic = 0.0f; bool ok = true; int ni = n_inter[s];
+        for (int k = 0; k < ni; k++) {
+            int ir = ur + (int)inter_lut[(s*max_inter_cols+k)*2];
+            int icc = uc + (int)inter_lut[(s*max_inter_cols+k)*2+1];
+            if (ir < 0 || ir >= rows || icc < 0 || icc >= cols) { ok = false; break; }
+            unsigned short iv = raster[ir*cols+icc]; if (iv == max_cost) { ok = false; break; }
+            ic += (float)iv;
+        }
+        if (!ok) continue;
+        float ew = ((float)sv + (float)dv + ic) * cost_factors[s];
+        if (grad_n_bins > 0) {
+            float dh = fabsf(vdem - dem[u]);
+            int gb = (int)(dh * grad_bin_factor[s]);
+            if (gb >= grad_n_bins) gb = grad_n_bins - 1;
+            float gmul = grad_lut[2*gb];
+            if (isinf(gmul)) continue;
+            ew = ew * gmul + grad_lut[2*gb+1] * grad_step_len[s];
+        }
+        float diff = fabsf((ud + ew) - target_d);
+        if (diff > tol) continue;
+        if (u == cur) return u;  // existing link validates
+        // prefer strict-decrease replacements (plateau links only
+        // survive via validation of the race-free hot-path write)
+        if (ud < target_d && diff < best_diff) {
+            best = u; best_diff = diff;
+        }
+    }
+    return best;
+}
+"""
+
+_V5_PRED_REPAIR_KERNEL = _V5_PRED_COMMON + r"""
 extern "C" __global__
 void v5_repair_pred(
     const unsigned short* __restrict__ raster,
@@ -1314,49 +1419,92 @@ void v5_repair_pred(
         if (v == source_idx) { pred[v] = -1; continue; }
         float target_d = dist[v];
         if (target_d >= 1e30f) { pred[v] = -1; continue; }
-        unsigned short dv = raster[v];
-        if (dv == max_cost) { pred[v] = -1; continue; }
-        int vr = v / cols, vc = v - vr * cols;
-        float vdem = (grad_n_bins > 0) ? dem[v] : 0.0f;
-        float tol = 1e-5f * fmaxf(target_d, 1.0f);
         int cur = pred[v];
-        int best = -1; float best_diff = 1e30f;
-        for (int s = 0; s < n_steps; s++) {
-            int ur = vr - (int)steps[s*2], uc = vc - (int)steps[s*2+1];
-            if (ur < 0 || ur >= rows || uc < 0 || uc >= cols) continue;
-            int u = ur * cols + uc;
-            unsigned short sv = raster[u]; if (sv == max_cost) continue;
-            float ud = dist[u]; if (ud >= 1e30f) continue;
-            if (ud > target_d) continue;
-            float ic = 0.0f; bool ok = true; int ni = n_inter[s];
-            for (int k = 0; k < ni; k++) {
-                int ir = ur + (int)inter_lut[(s*max_inter_cols+k)*2];
-                int icc = uc + (int)inter_lut[(s*max_inter_cols+k)*2+1];
-                if (ir < 0 || ir >= rows || icc < 0 || icc >= cols) { ok = false; break; }
-                unsigned short iv = raster[ir*cols+icc]; if (iv == max_cost) { ok = false; break; }
-                ic += (float)iv;
-            }
-            if (!ok) continue;
-            float ew = ((float)sv + (float)dv + ic) * cost_factors[s];
-            if (grad_n_bins > 0) {
-                float dh = fabsf(vdem - dem[u]);
-                int gb = (int)(dh * grad_bin_factor[s]);
-                if (gb >= grad_n_bins) gb = grad_n_bins - 1;
-                float gmul = grad_lut[2*gb];
-                if (isinf(gmul)) continue;
-                ew = ew * gmul + grad_lut[2*gb+1] * grad_step_len[s];
-            }
-            float diff = fabsf((ud + ew) - target_d);
-            if (diff > tol) continue;
-            if (u == cur) { best = u; break; }  // existing link validates
-            // prefer strict-decrease replacements (plateau links only
-            // survive via validation of the race-free hot-path write)
-            if (ud < target_d && diff < best_diff) {
-                best = u; best_diff = diff;
-            }
-        }
-        pred[v] = best;
+        pred[v] = v5_best_pred(
+            raster, steps, cost_factors, inter_lut, n_inter,
+            n_steps, max_inter_cols, rows, cols, max_cost,
+            dist, dem, grad_lut, grad_bin_factor, grad_step_len,
+            grad_n_bins, v, cur);
     }
+}
+"""
+
+# On-device path extraction (Phase 1b items 1.3 + 1.4): one thread per
+# target walks pred[] back to the source, optionally repairing each link
+# it touches with exactly the arithmetic v5_repair_pred uses. Run in three
+# launches: repair only, then count hops, then write the chains at the
+# host-computed offsets. Repairing and counting must NOT share a launch --
+# chains that merge are walked concurrently, so one thread can count a
+# chain through a link another thread is repairing, and the counts then
+# disagree with the write pass. Only the first launch repairs; the two
+# after it read a pred field nobody is writing.
+#
+# Chains are written target-first; the host reverses them. lengths[t] is
+# the hop count + 1, or -1 for "no path" (target out of range /
+# unreachable / broken pred link / cycle) -- the same failure set the
+# host-side pred walk in RasterGPUAPI._extract_path reports.
+_V5_WALK_PRED_KERNEL = _V5_PRED_COMMON + r"""
+extern "C" __global__
+void v5_walk_pred(
+    const unsigned short* __restrict__ raster,
+    const signed char*    __restrict__ steps,
+    const float*          __restrict__ cost_factors,
+    const signed char*    __restrict__ inter_lut,
+    const int*            __restrict__ n_inter,
+    const int n_steps, const int max_inter_cols,
+    const int rows, const int cols, const int max_cost,
+    const float* __restrict__ dist, int* pred,
+    const int n_pixels, const int source_idx,
+    const float* __restrict__ dem,
+    const float* __restrict__ grad_lut,
+    const float* __restrict__ grad_bin_factor,
+    const float* __restrict__ grad_step_len,
+    const int grad_n_bins,
+    const int* __restrict__ targets, const int n_targets,
+    const int do_repair,
+    int* __restrict__ lengths,
+    const int* __restrict__ offsets,
+    const int* __restrict__ limits,
+    int* __restrict__ chains
+) {
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= n_targets) return;
+    int wr = (chains != NULL) ? 1 : 0;
+    // A target that failed the counting pass carries offset -1; never
+    // write for it (its slice does not exist in the chain buffer).
+    if (wr && offsets[t] < 0) { lengths[t] = -1; return; }
+    int tgt = targets[t];
+    if (tgt < 0 || tgt >= n_pixels) { lengths[t] = -1; return; }
+    if (!(dist[tgt] < 1e30f)) { lengths[t] = -1; return; }
+    int base = wr ? offsets[t] : 0;
+    // Writes are hard-bounded by the length the counting pass measured,
+    // so even if the two passes ever disagreed no thread could write
+    // outside its own slice; the host compares the two length arrays
+    // and refuses the result.
+    int limit = wr ? limits[t] : n_pixels;
+    int cnt = 0;
+    int v = tgt;
+    for (;;) {
+        if (wr) {
+            if (cnt >= limit) { lengths[t] = -1; return; }
+            chains[base + cnt] = v;
+        }
+        cnt++;
+        if (v == source_idx) break;
+        if (cnt > n_pixels) { lengths[t] = -1; return; }  // cycle guard
+        int p = pred[v];
+        if (do_repair) {
+            p = v5_best_pred(
+                raster, steps, cost_factors, inter_lut, n_inter,
+                n_steps, max_inter_cols, rows, cols, max_cost,
+                dist, dem, grad_lut, grad_bin_factor, grad_step_len,
+                grad_n_bins, v, p);
+            pred[v] = p;
+        }
+        if (p < 0) { lengths[t] = -1; return; }
+        v = p;
+    }
+    lengths[t] = cnt;
 }
 """
 
@@ -1625,6 +1773,22 @@ def _prepare_gradient_gpu(dem, gradient_luts, raster_shape, n_steps,
                 mean_mult = float(mults.mean())
 
     return d_dem, d_lut, d_bf, d_sl, n_bins, smem_extra, mean_mult
+
+
+def _upload_raster(raster):
+    """Upload the cost raster, casting only when the dtype demands it.
+
+    ``astype`` copies unconditionally; the planning raster is already
+    uint16 in every production path, so the copy was pure host traffic
+    (50 MB at 25 M cells, 200 MB at 100 M). ``ascontiguousarray`` with an
+    explicit dtype is ``astype(copy=False)`` plus the contiguity CuPy
+    needs, and casts identically (same unsafe integer semantics) when the
+    input really is a different dtype.
+    """
+    if np.issubdtype(raster.dtype, np.floating):
+        # Lossless float32 mode (forbidden = +inf) — no uint16 cast.
+        return cp.asarray(np.ascontiguousarray(raster, dtype=np.float32))
+    return cp.asarray(np.ascontiguousarray(raster, dtype=np.uint16))
 
 
 def _init_dist_pred(n_pixels, source_idx, return_predecessor):
@@ -1905,6 +2069,7 @@ def sssp_raster_gpu(
         threads_per_block: int = 256,
         dem: Optional[np.ndarray] = None,
         gradient_luts=None,
+        session: Optional["GpuSsspSession"] = None,
 ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
     """GPU SSSP; uses the v5 async bucket-queue kernel, falling back to
     the v4 persistent kernel, then v3.
@@ -1913,19 +2078,23 @@ def sssp_raster_gpu(
     median 1.77x over V4-with-window-4 across random/heavy-tail at
     1000^2-3000^2, bit-exact dist arrays in every test and measurement
     (see benchmarks/FUSED_KERNEL_FINDINGS.md section 11).
+
+    session: an open :class:`GpuSsspSession` reused across queries
+        (Phase 1b item 1.2). V5-only -- a session cannot be built at all
+        where V5 is unavailable, so there is no fallback to reach.
     """
     if not GPU_AVAILABLE:
         raise RuntimeError(
             "CUDA GPU not available. Install cupy with CUDA support: "
             "pip install cupy-cuda12x"
         )
-    if _check_v5_available():
+    if session is not None or _check_v5_available():
         return sssp_raster_gpu_v5(
             raster, steps, source_idx, delta=delta,
             ignore_max=ignore_max, target_indices=target_indices,
             margin=margin, return_predecessor=return_predecessor,
             threads_per_block=threads_per_block,
-            dem=dem, gradient_luts=gradient_luts)
+            dem=dem, gradient_luts=gradient_luts, session=session)
     if _check_v4_available():
         return sssp_raster_gpu_v4(
             raster, steps, source_idx, delta=delta,
@@ -2049,12 +2218,7 @@ def _common_gpu_setup(raster, steps, source_idx, delta, ignore_max,
     (d_steps, d_cost_factors, d_inter_lut, d_n_inter,
      cost_factors, max_inter_cols, smem_bytes) = _upload_step_data(steps)
     delta = _resolve_delta(delta, raster, cost_factors, ignore_max)
-    if np.issubdtype(raster.dtype, np.floating):
-        # Lossless float32 mode (forbidden = +inf) — no uint16 cast.
-        d_raster = cp.asarray(np.ascontiguousarray(raster,
-                                                   dtype=np.float32))
-    else:
-        d_raster = cp.asarray(raster.astype(np.uint16))
+    d_raster = _upload_raster(raster)
     d_dist, d_pred, pred_arg = _init_dist_pred(
         n_pixels, source_idx, return_predecessor)
     return None, (d_raster, d_steps, d_cost_factors, d_inter_lut, d_n_inter,
@@ -2169,6 +2333,547 @@ def sssp_raster_gpu_v4(
 # V5 entry point — Asynchronous bucket queue (ADDS-style)
 # ============================================================================
 
+_V5_N_BUCKETS = 32
+
+
+def _v5_arena_cap(n_pixels: int, arena_factor: float = 1.0) -> int:
+    """Per-bucket ring capacity for the V5 arena (Phase 1b item 1.11).
+
+    The arena used to be ``max(4096, 3*n_pixels//32)`` per ring, i.e.
+    **12 B/cell** -- over half of V5's 22 B/cell device footprint -- while
+    a real frontier is O(perimeter), not O(area).
+
+    Sizing is expressed as a fraction of one entry per pixel over the
+    whole 32-ring set, because that is the bound that actually matters:
+    the span-boundary refill pushes **at most one entry per pixel**, so
+    with ``arena_factor >= 1.0`` and the spilling ring push
+    (``v5_ring_push``) the refill can never drop a vertex. That is not a
+    memory nicety -- a refill drop re-raises C5_OVERFLOW, and the rewind
+    then rescans the *same* span base and re-pushes the *same*
+    oversubscribed bucket, so the rendezvous makes no progress. (A
+    0-cost plateau larger than the old ``3n/32`` cap reaches that state
+    on today's sizing too.)
+
+    Hot-path pushes are still allowed to overflow -- an improvement
+    landing on a full ring set drops its queue entry, keeps its
+    atomicMin'd dist[], raises C5_OVERFLOW and is recovered by the
+    rewind rescan. That costs one extra rescan and is bounded: a drop
+    can only follow a strict dist improvement, of which there are
+    finitely many. It stays rare because a span holds a frontier band,
+    not the raster.
+
+    Returns ``max(4096, ceil(arena_factor * n_pixels / 32))``: 4 B/cell
+    at the default factor 1.0 (V5 total 22 -> 14 B/cell), and unchanged
+    behaviour below ~131 k pixels where the 4096 floor already exceeds
+    one entry per pixel.
+    """
+    arena_factor = float(arena_factor)
+    if arena_factor < 1.0:
+        # Below 1.0 the ring set can hold fewer entries than the
+        # span-boundary refill pushes, so the refill can drop -- and a
+        # refill drop is what makes the rewind re-push the same
+        # oversubscribed bucket forever. The no-drop guarantee this whole
+        # sizing rests on is only valid at >= 1.0.
+        raise ValueError(
+            f"arena_factor must be >= 1.0 (the span-boundary refill pushes "
+            f"up to one entry per pixel and must never drop), got "
+            f"{arena_factor}")
+    total = int(np.ceil(arena_factor * float(int(n_pixels))))
+    per_bucket = -(-total // _V5_N_BUCKETS)
+    return max(4096, int(per_bucket))
+
+
+class GpuSsspSession:
+    """Device-resident state for repeated V5 solves on one raster.
+
+    Phase 1b item 1.2. Every ``sssp_raster_gpu*`` call re-did the whole
+    host setup: an unconditional ``astype`` copy of the raster, a PCIe
+    upload, a full-raster host mask+mean for auto-delta, and a fresh
+    dist/pred/arena allocation. For a k-pair job on one raster, k-1 of
+    those are waste (~70-200 ms per query at 25 M cells, ~360-1100 ms at
+    100 M). A session pays them once.
+
+    There is deliberately **no module-level cache**: this is a 6 GB card
+    the user shares, so the lifetime is the caller's. Hold one for the
+    length of a routing job and :meth:`close` it (or use it as a context
+    manager).
+
+    Device footprint, steady state (uint16 raster, default
+    ``arena_factor``):
+
+    ==========  =========  ======================================
+    buffer      B/cell     freed by
+    ==========  =========  ======================================
+    raster      2 (4 f32)  ``close()``
+    dist        4          ``close()``
+    pred        4          ``close()`` (allocated on first request)
+    arena       4          ``close()``
+    DEM         4          ``close()`` (only with gradient routing)
+    ==========  =========  ======================================
+
+    Per-call scratch (targets, chain buffers) is O(targets + path) and
+    is released when the call returns.
+    """
+
+    def __init__(
+            self,
+            raster: np.ndarray,
+            steps: np.ndarray,
+            *,
+            ignore_max: bool = True,
+            delta: Union[float, str] = "auto",
+            dem: Optional[np.ndarray] = None,
+            gradient_luts=None,
+            threads_per_block: int = 256,
+            blocks_per_sm: int = 2,
+            chunk: int = 256,
+            arena_factor: float = 1.0,
+    ):
+        if not GPU_AVAILABLE:
+            raise RuntimeError(
+                "CUDA GPU not available: pip install cupy-cuda12x")
+        if not _check_v5_available():
+            raise RuntimeError(
+                "GpuSsspSession requires the V5 async kernel, which could "
+                "not be compiled on this system (cooperative groups). Call "
+                "sssp_raster_gpu() without a session to fall back to V4/V3.")
+
+        raster = np.asarray(raster)
+        if raster.ndim != 2:
+            raise ValueError(f"raster must be 2D, got shape {raster.shape}")
+        rows, cols = int(raster.shape[0]), int(raster.shape[1])
+        self.shape = (rows, cols)
+        self.n_pixels = rows * cols
+        self.ignore_max = bool(ignore_max)
+        self._float_raster = bool(np.issubdtype(raster.dtype, np.floating))
+        # 65536 disables the sentinel: the kernels compare in int domain
+        # (never cast max_cost to unsigned short -- 65536 truncates to 0
+        # and would make value-0 cells impassable).
+        self._max_cost = (int(np.iinfo(np.uint16).max) if self.ignore_max
+                          else int(np.iinfo(np.uint16).max) + 1)
+        # Kept only for the source-cell validation that _validate_source
+        # does on the host; no copy is made.
+        self._raster_host = raster
+
+        (d_steps, d_cost_factors, d_inter_lut, d_n_inter,
+         cost_factors, max_inter_cols, smem_bytes) = _upload_step_data(steps)
+        self._d_steps = d_steps
+        self._d_cost_factors = d_cost_factors
+        self._d_inter_lut = d_inter_lut
+        self._d_n_inter = d_n_inter
+        self.n_steps = int(len(steps))
+        self._max_inter_cols = int(max_inter_cols)
+
+        # Auto-delta: one full-raster host pass, once per session.
+        base_delta = _resolve_delta(delta, raster, cost_factors, ignore_max)
+
+        self._d_raster = _upload_raster(raster)
+
+        (dem_arg, grad_lut_arg, grad_bf_arg, grad_sl_arg, grad_n_bins,
+         smem_extra, grad_mean_mult) = _prepare_gradient_gpu(
+            dem, gradient_luts, self.shape, self.n_steps, max_inter_cols)
+        self._dem_arg = dem_arg
+        self._grad_lut_arg = grad_lut_arg
+        self._grad_bf_arg = grad_bf_arg
+        self._grad_sl_arg = grad_sl_arg
+        self._grad_n_bins = int(grad_n_bins)
+        self.smem_bytes = int(smem_bytes + smem_extra)
+        #: Resolved bucket width actually handed to the kernel (auto-delta
+        #: scaled by the gradient table's mean multiplier).
+        self.delta = float(base_delta * grad_mean_mult)
+
+        self.chunk = max(1, int(chunk))
+        tpb = min(max(32, int(threads_per_block)), 512)
+        bps = min(max(1, int(blocks_per_sm)), 2)
+        # >512 resident threads/SM produces wrong dist arrays on
+        # Blackwell (historical "Bug #3") -- same clamp as V4/V5.
+        while bps > 1 and tpb * bps > 512:
+            bps -= 1
+        self.threads_per_block = tpb
+        self.blocks_per_sm = bps
+        _ensure_cuda_path()
+        self._max_blocks = int(
+            cp.cuda.Device().attributes["MultiProcessorCount"] * bps)
+
+        variant_src = (_float_raster_source if self._float_raster
+                       else (lambda s: s))
+        variant = "f32" if self._float_raster else "u16"
+        self._kernel = _get_sssp_kernel(
+            "sssp_async_v5", variant_src(_ASYNC_SSSP_KERNEL),
+            cooperative=True, variant=variant)
+        self._repair_kernel = _get_sssp_kernel(
+            "v5_repair_pred", variant_src(_V5_PRED_REPAIR_KERNEL),
+            variant=variant)
+        self._walk_kernel = _get_sssp_kernel(
+            "v5_walk_pred", variant_src(_V5_WALK_PRED_KERNEL),
+            variant=variant)
+
+        self.arena_factor = float(arena_factor)
+        self.cap = _v5_arena_cap(self.n_pixels, self.arena_factor)
+        self._d_dist = cp.empty(self.n_pixels, dtype=cp.float32)
+        self._d_pred = None            # allocated on first pred request
+        self._d_arena = cp.empty(_V5_N_BUCKETS * self.cap, dtype=cp.int32)
+        self._d_wres = cp.empty(_V5_N_BUCKETS, dtype=cp.int32)
+        self._d_rres = cp.empty(_V5_N_BUCKETS, dtype=cp.int32)
+        self._d_ctl = cp.empty(_C5_SIZE, dtype=cp.int32)
+        self._pred_source = None       # source the device pred belongs to
+        self._closed = False
+
+    # -- lifecycle ---------------------------------------------------
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    @property
+    def device_bytes(self) -> int:
+        """Bytes of device memory this session holds resident."""
+        total = 0
+        for buf in (self._d_raster, self._d_dist, self._d_pred,
+                    self._d_arena, self._d_wres, self._d_rres, self._d_ctl,
+                    self._d_steps, self._d_cost_factors, self._d_inter_lut,
+                    self._d_n_inter, self._dem_arg, self._grad_lut_arg,
+                    self._grad_bf_arg, self._grad_sl_arg):
+            # np.intp(0) stands in for a null device pointer and has a
+            # nbytes of its own — only real device arrays count.
+            if isinstance(buf, cp.ndarray):
+                total += int(buf.nbytes)
+        return total
+
+    def close(self, free_pool: bool = False) -> None:
+        """Release every device buffer this session holds. Idempotent.
+
+        CuPy returns freed blocks to its memory pool, so the driver still
+        counts them against this process. Pass ``free_pool=True`` to hand
+        them back to the driver as well -- the polite thing to do on a
+        shared 6 GB card once a routing job is finished.
+        """
+        self._d_raster = None
+        self._d_dist = None
+        self._d_pred = None
+        self._d_arena = None
+        self._d_wres = None
+        self._d_rres = None
+        self._d_ctl = None
+        self._d_steps = None
+        self._d_cost_factors = None
+        self._d_inter_lut = None
+        self._d_n_inter = None
+        self._dem_arg = None
+        self._grad_lut_arg = None
+        self._grad_bf_arg = None
+        self._grad_sl_arg = None
+        self._raster_host = None
+        self._pred_source = None
+        self._closed = True
+        if free_pool:
+            cp.get_default_memory_pool().free_all_blocks()
+
+    def __enter__(self) -> "GpuSsspSession":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        self.close()
+        return False
+
+    def check_raster(self, raster: np.ndarray) -> None:
+        """Raise unless ``raster`` matches the one this session uploaded.
+
+        Only the shape and the float/integer kind are compared: comparing
+        values would cost exactly the O(window) pass a session exists to
+        avoid. Mutating the raster behind a live session is the caller's
+        responsibility -- rebuild the session instead.
+        """
+        raster = np.asarray(raster)
+        if raster.shape != self.shape:
+            raise ValueError(
+                f"session was built for a {self.shape} raster, got "
+                f"{raster.shape}; build a new GpuSsspSession")
+        if bool(np.issubdtype(raster.dtype, np.floating)) != self._float_raster:
+            raise ValueError(
+                "session raster dtype kind differs (float32 lossless mode "
+                "vs uint16); build a new GpuSsspSession")
+
+    def _check_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("GpuSsspSession is closed")
+
+    # -- solving -----------------------------------------------------
+
+    def _reset_state(self, need_pred: bool) -> None:
+        """Restore exactly the state a fresh allocation would have."""
+        self._d_dist.fill(np.float32(1e30))
+        if need_pred and self._d_pred is None:
+            self._d_pred = cp.empty(self.n_pixels, dtype=cp.int32)
+        if self._d_pred is not None:
+            self._d_pred.fill(-1)
+        # The arena drains to EMPTY_SLOT at a normal termination (every
+        # reserved slot < cap is claimed and cleared before quiescence),
+        # but re-filling is ~4 B/cell of device writes -- cheap next to
+        # the solve, and it removes a subtle cross-query dependency.
+        self._d_arena.fill(-1)
+        self._d_wres.fill(0)
+        self._d_rres.fill(0)
+        self._d_ctl.fill(0)
+        # base = -NB makes the first rendezvous rescan start at 0, where
+        # it finds the source -- no host-side frontier setup needed.
+        self._d_ctl[_C5_BASE] = -_V5_N_BUCKETS
+
+    def solve(
+            self,
+            source_idx: int,
+            target_indices: Optional[np.ndarray] = None,
+            *,
+            margin: float = 1.00001,
+            return_predecessor: bool = False,
+            download: bool = True,
+            full_repair: bool = True,
+    ):
+        """Run one V5 solve on the session's raster.
+
+        Identical arithmetic to :func:`sssp_raster_gpu_v5` without a
+        session -- same resolved delta, same launch geometry, same
+        kernels; only the host setup and the allocations are reused.
+
+        download=True (default) returns ``dist`` (or ``(dist, pred)``)
+        exactly as the module-level entry points do. download=False
+        returns None and leaves the field on the device for
+        :meth:`extract_paths` -- that is the O(path) route (item 1.3).
+
+        full_repair: run the full-raster ``v5_repair_pred`` post-pass
+        over all n_pixels vertices. Required for a *downloaded* pred
+        array; set False when only paths are wanted, and let
+        :meth:`extract_paths` repair the ~10 k links on the chains
+        instead (item 1.4).
+        """
+        self._check_open()
+        source_idx = int(source_idx)
+        need_pred = bool(return_predecessor) or not download
+        self._reset_state(need_pred)
+        self._pred_source = None
+
+        early = _validate_source(
+            self._raster_host, source_idx, self.n_pixels, self._max_cost,
+            bool(return_predecessor))
+        if early is not None:
+            # Unreachable-everywhere: device state is already all-1e30 /
+            # all -1, so extract_paths reports "no path" for every target.
+            self._pred_source = source_idx if need_pred else None
+            if not download:
+                return None
+            return early
+
+        self._d_dist[source_idx] = np.float32(0.0)
+        _, n_targets, targets_arg = _prepare_v4_targets(target_indices)
+        pred_arg = self._d_pred if need_pred else np.intp(0)
+
+        self._kernel(
+            (self._max_blocks,), (self.threads_per_block,),
+            (self._d_raster, self._d_steps, self._d_cost_factors,
+             self._d_inter_lut, self._d_n_inter,
+             np.int32(self.n_steps), np.int32(self._max_inter_cols),
+             np.int32(self.shape[0]), np.int32(self.shape[1]),
+             np.int32(self._max_cost),
+             self._d_dist, pred_arg, np.float32(self.delta),
+             np.int32(self.n_pixels), np.int32(self.chunk),
+             targets_arg, np.int32(n_targets), np.float32(margin),
+             self._d_ctl, self._d_wres, self._d_rres, self._d_arena,
+             np.int32(self.cap),
+             self._dem_arg, self._grad_lut_arg, self._grad_bf_arg,
+             self._grad_sl_arg, np.int32(self._grad_n_bins)),
+            shared_mem=self.smem_bytes)
+
+        if need_pred:
+            self._pred_source = source_idx
+            if full_repair:
+                self._run_full_repair(source_idx)
+        cp.cuda.Stream.null.synchronize()
+        if not download:
+            return None
+        return _transfer_results(
+            self._d_dist, self._d_pred, bool(return_predecessor))
+
+    def _run_full_repair(self, source_idx: int) -> None:
+        """Validate/repair every pred entry against the final dist.
+
+        The async hot path can leave a raced pred entry pointing at a
+        stale predecessor; this is the O(window x dirs) post-pass that
+        fixes all of them. Only full-field consumers need it.
+        """
+        tpb = self.threads_per_block
+        blocks = min(4096, (self.n_pixels + tpb - 1) // tpb)
+        self._repair_kernel(
+            (blocks,), (tpb,),
+            (self._d_raster, self._d_steps, self._d_cost_factors,
+             self._d_inter_lut, self._d_n_inter,
+             np.int32(self.n_steps), np.int32(self._max_inter_cols),
+             np.int32(self.shape[0]), np.int32(self.shape[1]),
+             np.int32(self._max_cost),
+             self._d_dist, self._d_pred, np.int32(self.n_pixels),
+             np.int32(source_idx),
+             self._dem_arg, self._grad_lut_arg, self._grad_bf_arg,
+             self._grad_sl_arg, np.int32(self._grad_n_bins)))
+
+    # -- O(path) extraction ------------------------------------------
+
+    def extract_paths(
+            self,
+            source_idx: int,
+            target_indices,
+            *,
+            repair: bool = True,
+    ) -> Tuple[list, np.ndarray]:
+        """Walk pred on the device and download only the chains.
+
+        Items 1.3 + 1.4. Operates on whatever the last :meth:`solve`
+        left on the device -- it does not solve. Downloads
+        ``sum(path lengths) + 2*n_targets`` int32 plus one float32 per
+        target, instead of the full dist+pred pair (191 MiB at 5000^2,
+        763 MiB at 10000^2).
+
+        repair: repair each pred link the walk touches with exactly the
+            arithmetic ``v5_repair_pred`` uses (shared device function
+            ``v5_best_pred``), so the chain is the one the full repair
+            would have produced. Pass False only when :meth:`solve` was
+            called with ``full_repair=True``.
+
+        Returns ``(paths, costs)``:
+            paths: list, one entry per target in the given order --
+                an ``np.ndarray(dtype=int32)`` of flat raster indices
+                ordered **source -> target** (both inclusive), or
+                ``None`` where no path exists (unreachable target,
+                broken pred chain, target out of range). ``.tolist()``
+                gives the plain list ``RasterGPUAPI._extract_path``
+                returns today.
+            costs: ``np.ndarray(dtype=float32)`` of ``dist`` at each
+                target with the ``>= 1e29`` sentinel mapped to ``inf``,
+                i.e. bit-identical to the full-download values at those
+                indices.
+        """
+        self._check_open()
+        source_idx = int(source_idx)
+        if self._d_pred is None or self._pred_source != source_idx:
+            raise RuntimeError(
+                "no predecessor field on the device for source "
+                f"{source_idx}; call solve(..., download=False) or "
+                "solve(..., return_predecessor=True) first")
+
+        targets = np.ascontiguousarray(
+            np.asarray(target_indices, dtype=np.int32).ravel())
+        n_targets = int(targets.size)
+        if n_targets == 0:
+            return [], np.empty(0, dtype=np.float32)
+
+        d_targets = cp.asarray(targets)
+        d_lengths = cp.empty(n_targets, dtype=cp.int32)
+        tpb = 64
+        blocks = (n_targets + tpb - 1) // tpb
+        null = np.intp(0)
+
+        # Three launches, not two. Repairing and counting in the SAME launch
+        # is a race: chains that merge are walked concurrently, so thread B
+        # can count a chain through pred[v] = x while thread A repairs that
+        # link to y. The counts then disagree with the write pass and the
+        # reproducibility check below fires on a perfectly legal query. Kernel
+        # launch boundaries give the grid-wide ordering that fixes it, and a
+        # launch over n_targets threads costs microseconds.
+        if repair:
+            # Converge pred to its fixed point. The repair is idempotent (a
+            # link that already satisfies the tolerance takes the `u == cur`
+            # early-accept), so the counting pass below re-reads it unchanged.
+            self._walk_kernel(
+                (blocks,), (tpb,),
+                self._walk_args(source_idx, d_targets, n_targets, 1,
+                                d_lengths, null, null, null))
+        # Count hops against a pred field nobody is writing any more.
+        self._walk_kernel(
+            (blocks,), (tpb,),
+            self._walk_args(source_idx, d_targets, n_targets, 0,
+                            d_lengths, null, null, null))
+        lengths = d_lengths.get()
+
+        ok = lengths > 0
+        offsets = np.full(n_targets, -1, dtype=np.int32)
+        total = int(lengths[ok].sum()) if ok.any() else 0
+        if total:
+            offsets[ok] = (np.cumsum(lengths[ok]) - lengths[ok]).astype(
+                np.int32)
+        # Gather dist only at in-range targets: CuPy's fancy indexing
+        # does not bounds-check, and an out-of-range target is a
+        # "no path" answer, not a device read.
+        in_range = (targets >= 0) & (targets < self.n_pixels)
+        costs = np.full(n_targets, np.inf, dtype=np.float32)
+        if in_range.any():
+            gathered = self._d_dist[
+                cp.asarray(np.ascontiguousarray(targets[in_range]))].get()
+            gathered[gathered >= 1e29] = np.inf
+            costs[in_range] = gathered
+
+        paths = [None] * n_targets
+        if total:
+            d_offsets = cp.asarray(offsets)
+            d_limits = cp.asarray(np.maximum(lengths, 0).astype(np.int32))
+            d_chains = cp.empty(total, dtype=cp.int32)
+            d_lengths2 = cp.empty(n_targets, dtype=cp.int32)
+            # Pass 2: write the chains. repair=0 -- pass 1 already fixed
+            # every link on them, so this walk sees the same vertices and
+            # writes exactly lengths[t] entries into its own slice.
+            self._walk_kernel(
+                (blocks,), (tpb,),
+                self._walk_args(source_idx, d_targets, n_targets, 0,
+                                d_lengths2, d_offsets, d_limits, d_chains))
+            lengths2 = d_lengths2.get()
+            if not np.array_equal(lengths2, lengths):
+                raise RuntimeError(
+                    "on-device pred walk was not reproducible between the "
+                    "counting and writing passes; the predecessor field "
+                    "changed underneath it")
+            chains = d_chains.get()
+            for t in range(n_targets):
+                if not ok[t]:
+                    continue
+                off = int(offsets[t])
+                ln = int(lengths[t])
+                # written target-first; hand back source -> target
+                paths[t] = np.ascontiguousarray(
+                    chains[off:off + ln][::-1])
+        return paths, costs
+
+    def _walk_args(self, source_idx, d_targets, n_targets, do_repair,
+                   d_lengths, offsets_arg, limits_arg, chains_arg):
+        return (
+            self._d_raster, self._d_steps, self._d_cost_factors,
+            self._d_inter_lut, self._d_n_inter,
+            np.int32(self.n_steps), np.int32(self._max_inter_cols),
+            np.int32(self.shape[0]), np.int32(self.shape[1]),
+            np.int32(self._max_cost),
+            self._d_dist, self._d_pred, np.int32(self.n_pixels),
+            np.int32(source_idx),
+            self._dem_arg, self._grad_lut_arg, self._grad_bf_arg,
+            self._grad_sl_arg, np.int32(self._grad_n_bins),
+            d_targets, np.int32(n_targets), np.int32(do_repair),
+            d_lengths, offsets_arg, limits_arg, chains_arg,
+        )
+
+    def solve_paths(
+            self,
+            source_idx: int,
+            target_indices,
+            *,
+            margin: float = 1.00001,
+    ) -> Tuple[list, np.ndarray]:
+        """Solve, then return only the target paths and their costs.
+
+        The O(path) query: no full-raster download (item 1.3) and no
+        full-raster predecessor repair (item 1.4). Same return shape as
+        :meth:`extract_paths`.
+        """
+        self.solve(source_idx, target_indices=target_indices,
+                   margin=margin, return_predecessor=True,
+                   download=False, full_repair=False)
+        return self.extract_paths(source_idx, target_indices, repair=True)
+
+
 def sssp_raster_gpu_v5(
         raster: np.ndarray,
         steps: np.ndarray,
@@ -2183,6 +2888,8 @@ def sssp_raster_gpu_v5(
         chunk: int = 256,
         dem: Optional[np.ndarray] = None,
         gradient_luts=None,
+        session: Optional["GpuSsspSession"] = None,
+        arena_factor: float = 1.0,
 ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
     """V5 asynchronous bucket-queue SSSP. Same API as sssp_raster_gpu.
 
@@ -2197,86 +2904,80 @@ def sssp_raster_gpu_v5(
         frontiers at lower latency; larger values amortize claim
         overhead on wide frontiers. 256 benchmarked best across
         random/heavy-tail x 1000^2-3000^2 (64/128/512/1024 all slower).
+
+    session: an open :class:`GpuSsspSession` holding the device-resident
+        raster/DEM/step tables and the reusable dist/pred/arena buffers
+        (Phase 1b item 1.2). When given, every other configuration
+        argument (delta, ignore_max, dem, gradient_luts, chunk,
+        threads_per_block, blocks_per_sm, arena_factor) comes from the
+        session and the values passed here are ignored; only `raster`'s
+        shape is checked against it. When omitted a session is built for
+        this call and freed on return -- i.e. exactly the pre-1.2
+        behaviour.
+    arena_factor: ring-arena sizing (see :func:`_v5_arena_cap`).
     """
     if not GPU_AVAILABLE:
         raise RuntimeError("CUDA GPU not available: pip install cupy-cuda12x")
 
-    early_exit, ctx = _common_gpu_setup(
-        raster, steps, source_idx, delta, ignore_max, return_predecessor)
-    if early_exit is not None:
-        return early_exit
-    (d_raster, d_steps, d_cost_factors, d_inter_lut, d_n_inter,
-     max_inter_cols, smem_bytes, delta, d_dist, d_pred, pred_arg,
-     rows, cols, n_pixels, n_steps, max_cost) = ctx
-
-    (dem_arg, grad_lut_arg, grad_bf_arg, grad_sl_arg, grad_n_bins,
-     smem_extra, grad_mean_mult) = _prepare_gradient_gpu(
-        dem, gradient_luts, (rows, cols), n_steps, max_inter_cols)
-    smem_bytes += smem_extra
-    delta *= grad_mean_mult
-
-    _, n_targets, targets_arg = _prepare_v4_targets(target_indices)
-
-    n_buckets = 32
-    cap = max(4096, (3 * n_pixels) // n_buckets)
-    d_arena = cp.full(n_buckets * cap, -1, dtype=cp.int32)
-    d_wres = cp.zeros(n_buckets, dtype=cp.int32)
-    d_rres = cp.zeros(n_buckets, dtype=cp.int32)
-    d_ctl = cp.zeros(_C5_SIZE, dtype=cp.int32)
-    # base = -n_buckets makes the first rendezvous rescan start at 0,
-    # where it finds the source -- no host-side frontier setup needed.
-    d_ctl[_C5_BASE] = -n_buckets
-
-    _ensure_cuda_path()
-    if np.issubdtype(np.asarray(raster).dtype, np.floating):
-        kernel = _get_sssp_kernel(
-            "sssp_async_v5", _float_raster_source(_ASYNC_SSSP_KERNEL),
-            cooperative=True, variant="f32")
+    own_session = session is None
+    if own_session:
+        session = GpuSsspSession(
+            raster, steps, ignore_max=ignore_max, delta=delta, dem=dem,
+            gradient_luts=gradient_luts,
+            threads_per_block=threads_per_block,
+            blocks_per_sm=blocks_per_sm, chunk=chunk,
+            arena_factor=arena_factor)
     else:
-        kernel = _get_sssp_kernel(
-            "sssp_async_v5", _ASYNC_SSSP_KERNEL, cooperative=True)
+        session.check_raster(raster)
+    try:
+        return session.solve(
+            source_idx, target_indices=target_indices, margin=margin,
+            return_predecessor=return_predecessor)
+    finally:
+        if own_session:
+            session.close()
 
-    tpb = min(max(32, int(threads_per_block)), 512)
-    blocks_per_sm = min(max(1, int(blocks_per_sm)), 2)
-    # Same >512 resident threads/SM correctness boundary as V4 (the
-    # rendezvous uses the identical barrier protocol) -- clamp.
-    while blocks_per_sm > 1 and tpb * blocks_per_sm > 512:
-        blocks_per_sm -= 1
-    max_blocks = (cp.cuda.Device().attributes["MultiProcessorCount"]
-                  * blocks_per_sm)
-    kernel(
-        (max_blocks,), (tpb,),
-        (d_raster, d_steps, d_cost_factors, d_inter_lut, d_n_inter,
-         np.int32(n_steps), np.int32(max_inter_cols),
-         np.int32(rows), np.int32(cols), np.int32(max_cost),
-         d_dist, pred_arg, np.float32(delta),
-         np.int32(n_pixels), np.int32(max(1, int(chunk))),
-         targets_arg, np.int32(n_targets), np.float32(margin),
-         d_ctl, d_wres, d_rres, d_arena, np.int32(cap),
-         dem_arg, grad_lut_arg, grad_bf_arg, grad_sl_arg,
-         np.int32(grad_n_bins)),
-        shared_mem=smem_bytes)
 
-    if return_predecessor:
-        # Validate/repair pred against the final dist (see the repair
-        # kernel comment: the async hot path can leave a raced pred
-        # entry pointing at a stale predecessor).
-        if np.issubdtype(np.asarray(raster).dtype, np.floating):
-            repair = _get_sssp_kernel(
-                "v5_repair_pred",
-                _float_raster_source(_V5_PRED_REPAIR_KERNEL),
-                variant="f32")
-        else:
-            repair = _get_sssp_kernel(
-                "v5_repair_pred", _V5_PRED_REPAIR_KERNEL)
-        r_blocks = min(4096, (n_pixels + tpb - 1) // tpb)
-        repair(
-            (r_blocks,), (tpb,),
-            (d_raster, d_steps, d_cost_factors, d_inter_lut, d_n_inter,
-             np.int32(n_steps), np.int32(max_inter_cols),
-             np.int32(rows), np.int32(cols), np.int32(max_cost),
-             d_dist, d_pred, np.int32(n_pixels), np.int32(source_idx),
-             dem_arg, grad_lut_arg, grad_bf_arg, grad_sl_arg,
-             np.int32(grad_n_bins)))
-    cp.cuda.Stream.null.synchronize()
-    return _transfer_results(d_dist, d_pred, return_predecessor)
+def sssp_raster_gpu_paths(
+        raster: np.ndarray,
+        steps: np.ndarray,
+        source_idx: int,
+        target_indices: np.ndarray,
+        delta: Union[float, str] = "auto",
+        ignore_max: bool = True,
+        margin: float = 1.00001,
+        threads_per_block: int = 256,
+        blocks_per_sm: int = 2,
+        chunk: int = 256,
+        dem: Optional[np.ndarray] = None,
+        gradient_luts=None,
+        session: Optional["GpuSsspSession"] = None,
+        arena_factor: float = 1.0,
+) -> Tuple[list, np.ndarray]:
+    """Solve and return only the target paths and their costs (item 1.3).
+
+    The O(path) counterpart of :func:`sssp_raster_gpu`: nothing
+    proportional to the raster crosses PCIe. Returns
+    ``(paths, costs)`` -- see :meth:`GpuSsspSession.extract_paths`.
+
+    Requires V5 (the on-device walk lives in the V5 kernel family). For
+    the full cost surface use :func:`sssp_raster_gpu` instead.
+    """
+    if not GPU_AVAILABLE:
+        raise RuntimeError("CUDA GPU not available: pip install cupy-cuda12x")
+    own_session = session is None
+    if own_session:
+        session = GpuSsspSession(
+            raster, steps, ignore_max=ignore_max, delta=delta, dem=dem,
+            gradient_luts=gradient_luts,
+            threads_per_block=threads_per_block,
+            blocks_per_sm=blocks_per_sm, chunk=chunk,
+            arena_factor=arena_factor)
+    else:
+        session.check_raster(raster)
+    try:
+        return session.solve_paths(
+            source_idx, target_indices, margin=margin)
+    finally:
+        if own_session:
+            session.close()
