@@ -12,9 +12,11 @@ from os.path import isfile, splitext
 from typing import Any
 
 import geopandas as gpd
-from numpy import dtype, ndarray
+from numpy import dtype, empty, ndarray
 from rasterio import open as rio_open
 from rasterio.transform import Affine
+from rasterio.windows import Window
+from rasterio.windows import transform as window_transform
 
 # Changed to relative import from the core module
 from ..core.types import BboxType, GeometryMaskType, InputDataType
@@ -174,11 +176,93 @@ class RasterDataset(GeoDataset, ABC):
 
 
 class LocalRasterDataset(RasterDataset):
-    def load_data(self, **kwargs):
+    """A GeoTIFF (or other GDAL raster) on disk.
+
+    Three access modes, all explicit:
+
+    * ``load_data()`` — the historical full read. ``data`` is the whole raster,
+      ``transform``/``shape`` describe the whole raster. Unchanged.
+    * ``load_data(window=w)`` — read only ``w``. ``data`` is the window and
+      ``transform``/``shape`` describe **the window**, so the invariant
+      "``transform`` maps ``data[0, 0]``" holds in both modes. ``window``
+      records which part of the file ``data`` came from.
+    * ``load_metadata()`` + ``read_window(w)`` — header first, then a pure read
+      that returns an array and leaves ``data`` alone. This is what lets a
+      caller derive the search window from the header before paying for any
+      pixels (plan item 2.3); ``data`` keeps meaning "the whole raster" for the
+      full-load callers (``save_raster``, the ``GeoRasterizer`` flows).
+    """
+
+    #: File-space window that :attr:`data` covers; None means the whole raster.
+    window: Window | None = None
+    #: Transform/shape of the file itself, independent of any windowing.
+    file_transform: Affine | None = None
+    file_shape: tuple[int, int] | None = None
+    nodata: Any | None = None
+
+    def load_metadata(self) -> "LocalRasterDataset":
+        """Populate crs/transform/shape/count/dtype from the header only.
+
+        Reads no pixels. After this call the raster's geometry is known, which
+        is all that is needed to compute a search window.
+        """
         with rio_open(self.file_source) as src:
-            self.data = src.read(**kwargs)
             self.crs = src.crs
             self.transform = src.transform
+            self.shape = (src.height, src.width)
+            self.count = src.count
+            self.dtype = dtype(src.dtypes[0])
+            self.nodata = src.nodata
+            self.file_transform = src.transform
+            self.file_shape = (src.height, src.width)
+        return self
+
+    def read_window(self, window: Window, **kwargs) -> ndarray:
+        """Read a single window from the file and return it as (bands, h, w).
+
+        Does not touch :attr:`data`. The returned cells are exactly the cells a
+        full ``read()`` followed by ``[..., row_off:row_off+height,
+        col_off:col_off+width]`` would yield: no resampling is requested, so
+        rasterio hands back the stored pixels verbatim.
+        """
+        height = int(window.height)
+        width = int(window.width)
+        with rio_open(self.file_source) as src:
+            if height <= 0 or width <= 0:
+                # Mirror numpy's empty-slice behaviour instead of asking GDAL
+                # for a zero-sized block.
+                return empty((src.count, max(height, 0), max(width, 0)),
+                             dtype=dtype(src.dtypes[0]))
+            return src.read(window=window, **kwargs)
+
+    def load_data(self, window: Window | None = None, **kwargs):
+        """Read the raster into :attr:`data`.
+
+        Parameters:
+            window: If given, only this window is read and ``transform``/
+                ``shape`` describe the window instead of the file. If None
+                (default) the whole raster is read, byte for byte as before.
+        """
+        with rio_open(self.file_source) as src:
+            if window is None:
+                self.data = src.read(**kwargs)
+            else:
+                height, width = int(window.height), int(window.width)
+                if height <= 0 or width <= 0:
+                    self.data = empty((src.count, max(height, 0),
+                                       max(width, 0)),
+                                      dtype=dtype(src.dtypes[0]))
+                else:
+                    self.data = src.read(window=window, **kwargs)
+            self.crs = src.crs
+            self.nodata = src.nodata
+            self.file_transform = src.transform
+            self.file_shape = (src.height, src.width)
+            self.window = window
+            if window is None:
+                self.transform = src.transform
+            else:
+                self.transform = window_transform(window, src.transform)
             self.count = self.data.shape[0] if len(self.data.shape) > 2 else 1
             if len(self.data.shape) > 2:
                 height = self.data.shape[1]

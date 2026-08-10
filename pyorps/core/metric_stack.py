@@ -203,7 +203,8 @@ class MetricStack:
 
     def add_layer(self, name: str, values: np.ndarray,
                   hard_max: float | None = None,
-                  hard_min: float | None = None) -> None:
+                  hard_min: float | None = None,
+                  *, copy: bool = True) -> None:
         """Add a metric layer (float32; forbidden values join the mask).
 
         The sentinel value 65535 (exactly), inf and NaN mark the cell
@@ -215,6 +216,15 @@ class MetricStack:
             hard_max / hard_min: Optional hard constraints — cells whose
                 value exceeds/undershoots the bound become forbidden
                 (e.g. ``terrain_slope`` with ``hard_max=45``).
+            copy: Copy ``values`` before storing (default — the historical
+                behaviour, the caller's array is never touched). Pass False
+                only when the array was freshly produced FOR this call and
+                nobody else holds a reference: the stack then adopts it and
+                writes the forbidden zeros in place, saving one full-extent
+                float32 copy per layer (256 MB per band at 64 M cells,
+                performance-plan item 2.6). Values that are not already a
+                float32 ndarray are converted, and a conversion allocates
+                anyway, so ``copy`` only matters for float32 input.
         """
         if not isinstance(name, str) or not name:
             raise MetricStackError(
@@ -232,7 +242,16 @@ class MetricStack:
                 f"Layer '{name}' already exists in the stack.")
         self._check_shape(values, f"Layer '{name}'")
 
-        values = np.asarray(values, dtype=np.float32).copy()
+        # np.asarray only allocates when a conversion is required; when it
+        # hands back the caller's own buffer we must not write into it
+        # unless the caller handed over ownership. may_share_memory is the
+        # conservative test (it copies when in doubt), which is the safe
+        # direction here.
+        array = np.asarray(values, dtype=np.float32)
+        if (copy and isinstance(values, np.ndarray)
+                and np.may_share_memory(array, values)):
+            array = array.copy()
+        values = array
         with np.errstate(invalid="ignore"):
             forbidden = (~np.isfinite(values)) | (values == FORBIDDEN_VALUE)
         if np.any(values[np.isfinite(values)] < 0):
@@ -350,6 +369,11 @@ class MetricStack:
 
         One slice operation applied to EVERY band — alignment can not
         drift. Band arrays are views where numpy allows it.
+
+        Windowing BEFORE :meth:`combine` is the cheap order (item 2.6 of
+        the 2026-08-07 performance plan): the scalarization then touches
+        only the cells the search will ever look at. Be aware that it also
+        moves the quantization reference — see :meth:`combine`.
         """
         self._materialize_legacy()
         rows, cols = window.toslices()
@@ -405,6 +429,15 @@ class MetricStack:
         Emits diagnostics (plan section 5.2): a warning when quantization
         collapses distinct feature classes or when the median cell value
         quantizes below 8 levels (one layer dominating the range).
+
+        The quantization scale is ``65534 / max(F)`` over the traversable
+        cells OF THIS STACK. Combining a windowed sub-stack therefore
+        yields a different — normally FINER — scale than combining the
+        full extent and windowing afterwards, because the maximum is taken
+        over fewer cells. Both are exact linear scalarizations of the same
+        objective; the windowed one is exact with respect to the cells that
+        are actually searched, and its scale is recorded on
+        ``CombineResult.scale`` (and on ``Path.objective_spec``).
 
         Parameters:
             quantize: True (default) produces the uint16 search raster.
