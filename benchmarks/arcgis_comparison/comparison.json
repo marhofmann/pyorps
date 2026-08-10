@@ -1,0 +1,45 @@
+{
+ "uniform": {
+  "fim": {
+   "n_cells": 160732,
+   "linf_rel_pct": 4.651544665371779,
+   "mean_rel_pct": 0.6365505235064697,
+   "bias_pct": 0.6365505235064697
+  },
+  "arcgis": "pending"
+ },
+ "radial": {
+  "fim": {
+   "n_cells": 160732,
+   "linf_rel_pct": 12.56174045138889,
+   "mean_rel_pct": 0.9771959323747748,
+   "bias_pct": 0.9771959323747748
+  },
+  "arcgis": "pending"
+ },
+ "snell": {
+  "fim": {
+   "n_cells": 9995,
+   "linf_rel_pct": 4.5868111521565025,
+   "mean_rel_pct": 0.5546333801727796,
+   "bias_pct": 0.5546333801727796
+  },
+  "arcgis": "pending"
+ },
+ "barrier": {
+  "fim": {
+   "probe_mirror_err_pct": 1.9834528618413678,
+   "probe_behind_high_err_pct": 1.66607716899908,
+   "probe_behind_low_err_pct": 2.307364405196059
+  },
+  "arcgis": "pending"
+ },
+ "smooth_random": {
+  "fim": "reference",
+  "arcgis": "pending"
+ },
+ "real_raster": {
+  "fim": "reference",
+  "arcgis": "pending"
+ }
+}
