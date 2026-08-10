@@ -179,6 +179,15 @@ class PathFinder:
         shortest_path_start_time  absolute epoch timestamp of the search start
     """
 
+    # Backing stores for the lazily-materialized objective state (item
+    # 1.10); class-level defaults keep the properties safe for instances
+    # built without running __init__ (test doubles, __new__).
+    _raster_handler = None
+    _combine_result_value = None
+    _objective_dirty = False
+    _applying_objective = False
+    _category_cache = None
+
     def __init__(
             self,
             dataset_source: InputDataType,
@@ -305,6 +314,9 @@ class PathFinder:
         self.objective = self._normalize_objective(objective, gradient_options)
         self.metric_layers = metric_layers
         self.metric_stack = None
+        self._objective_dirty = False
+        self._applying_objective = False
+        self._category_cache = None
         self._combine_result = None
         self._gradient_dem = None
         if metric_layers and self.objective is None:
@@ -461,6 +473,59 @@ class PathFinder:
             raise
         self._apply_objective_to_stack()
 
+    @property
+    def raster_handler(self) -> RasterHandler | None:
+        """The search-raster handler, recombined on demand (item 1.10)."""
+        self._ensure_objective_applied()
+        return self._raster_handler
+
+    @raster_handler.setter
+    def raster_handler(self, value: RasterHandler | None) -> None:
+        # Every handler replacement funnels through here, so dropping the
+        # category cache at this one point is what makes it sound: without it
+        # the cache keys on a buffer address, and a replacement handler that
+        # reuses the freed address would be served the previous raster's value
+        # set - silently dropping metres from length_by_category.
+        self._category_cache = None
+        self._raster_handler = value
+
+    @property
+    def _combine_result(self):
+        """The active combine diagnostics, recombined on demand."""
+        self._ensure_objective_applied()
+        return self._combine_result_value
+
+    @_combine_result.setter
+    def _combine_result(self, value) -> None:
+        self._combine_result_value = value
+
+    def _defer_objective_restore(self, objective: Objective) -> None:
+        """Restore the objective now, defer its combine to first use.
+
+        ``find_route_ensemble`` restores the caller's objective in a
+        ``finally`` block even when the caller never routes again; a full
+        combine plus handler rebuild there is pure waste (item 1.10). The
+        objective itself is restored immediately, so everything that reads
+        ``self.objective`` sees the caller's choice — only the derived
+        state (combined raster, handler, graph, aligned DEM) is marked
+        stale and rebuilt by ``_ensure_objective_applied`` on the first
+        access to ``raster_handler`` or ``_combine_result``.
+        """
+        self.objective = objective
+        self._objective_dirty = True
+        self._graph_api = None
+        self._gradient_dem = None
+
+    def _ensure_objective_applied(self) -> None:
+        """Materialize a deferred objective restore, at most once."""
+        if not self._objective_dirty or self._applying_objective:
+            return
+        self._applying_objective = True
+        try:
+            self._apply_objective_to_stack()
+        finally:
+            self._applying_objective = False
+
     def _apply_objective_to_stack(self) -> None:
         """Combine the stack under the current objective, rebuild handler."""
         use_float = self.weight_precision == "float32"
@@ -483,6 +548,7 @@ class PathFinder:
             **handler_kwargs,
         )
         self._graph_api = None
+        self._objective_dirty = False
 
     def _create_metric_raster_handler(
             self,
@@ -977,7 +1043,9 @@ class PathFinder:
         Variants run SEQUENTIALLY (deliberately — routing shares the
         machine with other work); on the raster-direct backends each
         additional variant costs only combine + search, no graph rebuild.
-        The finder's active objective is restored afterwards.
+        The finder's active objective is restored afterwards; its combine
+        is deferred to the next access that needs the search raster, so a
+        caller that only reads the ensemble pays no restore at all.
 
         Parameters:
             objectives: Mapping name -> Objective/weights-dict, or a list
@@ -1016,8 +1084,9 @@ class PathFinder:
                         "outer loop instead.")
                 ensemble.add(name, path)
         finally:
-            if original_objective is not None:
-                self.set_objective(original_objective)
+            if (original_objective is not None
+                    and self.objective is not original_objective):
+                self._defer_objective_restore(original_objective)
         return ensemble
 
     def compare_optimal(
@@ -1556,6 +1625,53 @@ class PathFinder:
              f"carries this statement on Path.total_cost_basis.",
              UserWarning, stacklevel=3)
 
+    @staticmethod
+    def _category_stamp(raster_data) -> tuple:
+        """Identity of the exact buffer a category table was derived from."""
+        return (raster_data.__array_interface__["data"][0],
+                raster_data.shape, raster_data.strides,
+                raster_data.dtype.str)
+
+    def _cached_categories(self, raster_data):
+        """The sorted unique raster values, or None when not cached.
+
+        The table depends only on the raster, yet the reporting kernel
+        rebuilt it for every path (plan item 1.1). Soundness rests on two
+        things, not one: the key (buffer address plus shape/strides/dtype)
+        and the unconditional drop in the ``raster_handler`` setter, which
+        every handler replacement goes through. The setter is what defeats
+        address reuse; the key alone cannot.
+
+        In-place writes into a handler's buffer are NOT witnessed by the
+        key. One exists: ``_prepare_gradient_inputs`` stamps 65535 into
+        forbidden cells at graph-build time, adding a value to the raster's
+        value set. It is safe only because graph build always precedes the
+        first ``calculate_path_metrics`` on that buffer. Any new
+        post-construction writer must call
+        ``invalidate_category_cache()``, or reported metres will be
+        silently dropped from ``length_by_category``.
+        """
+        cached = self._category_cache
+        if cached is None:
+            return None
+        stamp, _array, categories = cached
+        if stamp != self._category_stamp(raster_data):
+            return None
+        return categories
+
+    def _store_categories(self, raster_data, categories) -> None:
+        """Remember the category table for this exact raster buffer."""
+        self._category_cache = (self._category_stamp(raster_data),
+                                raster_data, categories)
+
+    def invalidate_category_cache(self) -> None:
+        """Forget the cached category table.
+
+        Call this after writing into the search raster in place; the cache
+        key cannot witness such an edit.
+        """
+        self._category_cache = None
+
     def calculate_path_metrics(self, path_indices, path):
         """
         Calculate metrics about the path and add directly to the Path object.
@@ -1581,9 +1697,12 @@ class PathFinder:
         # Legacy category metrics require the uint16 raster; the float32
         # precision mode (Phase 9) relies on the evaluator instead.
         if raster_data.dtype == np.uint16:
-            # Calculate metrics using Numba-accelerated function
+            # Calculate metrics using Numba-accelerated function; the
+            # category table is derived once per raster, not per path.
+            categories = self._cached_categories(raster_data)
             path.total_length, cat, length = calculate_path_metrics_numba(
-                raster_data, path_indices)
+                raster_data, path_indices, categories)
+            self._store_categories(raster_data, cat)
 
             # Convert to regular Python dictionary
             path.length_by_category = dict(zip(cat, length))
