@@ -23,6 +23,7 @@ from libc.math cimport sqrtf, abs
 from cython.parallel cimport prange
 from libc.stdlib cimport malloc, free, calloc
 from openmp cimport omp_get_max_threads, omp_set_num_threads
+from time import monotonic as _monotonic
 
 
 # Import core data structures and utilities from refactored modules
@@ -99,6 +100,144 @@ def set_relaxation_buffer_capacity(int capacity):
 def get_relaxation_stats():
     """Relaxation-buffer bookkeeping of the most recent delta-stepping call."""
     return dict(_relaxation_stats)
+
+
+# ==================== SYSTEM LIMITS MEMO ====================
+#
+# get_system_limits() probes psutil.virtual_memory() on every kernel entry.
+# What it returns are process-wide sizing hints -- an available-memory guard,
+# an iteration cap, a core count -- not per-query facts, so a short
+# time-to-live keeps them honest while taking the probe out of multi-pair
+# loops. The TTL matters exactly where the cost does: it only expires between
+# queries slow enough for a re-probe to be free.
+
+cdef double SYS_LIMITS_TTL_SECONDS = 1.0
+
+cdef SystemLimits _sys_limits_value
+cdef double _sys_limits_expiry = 0.0
+cdef bint _sys_limits_fresh = False
+
+
+cdef SystemLimits system_limits_memoized() except *:
+    """get_system_limits(), re-probed at most once per TTL."""
+    global _sys_limits_value, _sys_limits_expiry, _sys_limits_fresh
+    cdef double now = _monotonic()
+    if _sys_limits_fresh and now < _sys_limits_expiry:
+        return _sys_limits_value
+    _sys_limits_value = get_system_limits()
+    _sys_limits_expiry = now + SYS_LIMITS_TTL_SECONDS
+    _sys_limits_fresh = True
+    return _sys_limits_value
+
+
+def invalidate_system_limits_memo():
+    """Force the next kernel entry to re-probe the system (test hook)."""
+    global _sys_limits_fresh
+    _sys_limits_fresh = False
+
+
+# ==================== PER-RASTER WORKSPACE ====================
+#
+# Every kernel entry re-derives the same per-raster facts and re-allocates the
+# same O(cells) state before a single edge is relaxed:
+#   * the exclude mask, (raster != max_value)
+#   * the P1.3 span statistic, the largest traversable cost in the raster
+#   * the packed dist+pred array (8 B/cell) and the bucket stamps (4 B/cell)
+# At 25 M cells that is ~450 MB of memory traffic per query, and the multi-pair
+# and multi-source drivers below pay all of it once per query on a raster that
+# is identical across the whole loop.
+#
+# KEYING -- why a stale workspace cannot be served:
+#   A workspace is bound to one raster *object* plus one max_value, and the
+#   only code that constructs one is the drivers in this module, which build it
+#   and drop it inside a single call. There is deliberately no process-global
+#   cache: cost rasters are edited in place (the GUI does exactly that) and no
+#   key cheaper than the derivation itself can witness an in-place edit, so a
+#   workspace that outlived its call would be unsound. Within one driver call
+#   the raster provably cannot change -- the drivers never write to it and the
+#   kernels bind it as `const uint16_t[:, :]`. matches() additionally pins the
+#   buffer address and the cell count, so an array re-pointed or resized in
+#   place is rejected rather than reused. Every top-level entry therefore
+#   re-derives the mask and the span statistic from the live raster.
+
+cdef class DeltaWorkspace:
+    """Per-raster derivations and state arrays shared by one driver call.
+
+    Not a public API: pass a workspace only to the kernel it was built for, and
+    never hold one across a point where the raster could be edited.
+    """
+
+    cdef object raster
+    cdef object exclude_mask
+    cdef object dist_pred
+    cdef object last_bucket
+    cdef int64_t max_value
+    cdef size_t data_ptr
+    cdef uint64_t total_cells
+    cdef readonly double max_traversable_cost
+    cdef readonly bint has_traversable
+
+    def __cinit__(self, np.ndarray raster_arr, int64_t max_value):
+        # bool -> uint8 is exactly the 0/1 the kernels read, so the mask is a
+        # zero-copy view of the comparison result rather than an astype copy.
+        traversable = (raster_arr != max_value)
+        self.raster = raster_arr
+        self.max_value = max_value
+        self.data_ptr = <size_t><void*>raster_arr.data
+        self.total_cells = (<uint64_t>raster_arr.shape[0] *
+                            <uint64_t>raster_arr.shape[1])
+        self.exclude_mask = traversable.view(np.uint8)
+        self.dist_pred = None
+        self.last_bucket = None
+        self.has_traversable = <bint>traversable.any()
+        if self.has_traversable:
+            # Equal to np.max(raster_arr[traversable]): costs are uint16 >= 0,
+            # so the identity element 0 can never win. Avoids materialising the
+            # fancy-index copy of every traversable cell.
+            self.max_traversable_cost = <double>np.max(raster_arr, initial=0,
+                                                       where=traversable)
+        else:
+            self.max_traversable_cost = 0.0
+
+    cdef bint matches(self, np.ndarray raster_arr, int64_t max_value):
+        return (raster_arr is self.raster and
+                max_value == self.max_value and
+                <size_t><void*>raster_arr.data == self.data_ptr and
+                (<uint64_t>raster_arr.shape[0] *
+                 <uint64_t>raster_arr.shape[1]) == self.total_cells)
+
+    cdef object take_dist_pred(self, uint64_t init_packed, uint64_t source_idx):
+        """Packed dist+pred array with every element re-initialised.
+
+        fill() writes the whole array, so the reset is complete by
+        construction: there is no touched-region bookkeeping that could leave a
+        settled label from the previous query behind.
+        """
+        cdef object arr = self.dist_pred
+        if arr is None:
+            arr = np.empty(<size_t>self.total_cells, dtype=np.uint64)
+            self.dist_pred = arr
+        arr.fill(init_packed)
+        arr[source_idx] = pack_dist_pred(0.0, 0xFFFFFFFF)
+        return arr
+
+    cdef object take_last_bucket(self):
+        """Bucket stamps with every element reset to -1 (see take_dist_pred)."""
+        cdef object arr = self.last_bucket
+        if arr is None:
+            arr = np.empty(<size_t>self.total_cells, dtype=np.int32)
+            self.last_bucket = arr
+        arr.fill(-1)
+        return arr
+
+
+cdef inline DeltaWorkspace bind_workspace(DeltaWorkspace workspace,
+                                          np.ndarray raster_arr,
+                                          int64_t max_value):
+    """The caller's workspace if it belongs to this raster, else a fresh one."""
+    if workspace is not None and workspace.matches(raster_arr, max_value):
+        return workspace
+    return DeltaWorkspace(raster_arr, max_value)
 
 
 # Work-claim granularity of relax_edges_delta_stepping(). The persistent
@@ -491,7 +630,8 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
                       int64_t max_value=65535,
                       int num_threads=0,
                       size_t max_buckets_in_memory=2048,
-                      float margin=1.00001):
+                      float margin=1.00001,
+                      DeltaWorkspace workspace=None):
     """
     Find the shortest path using parallel delta-stepping with circular buffer.
 
@@ -532,6 +672,8 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
         max_buckets_in_memory: Size of circular buffer (must be power of 2)
         margin: Safety factor for early termination (default 1.0001)
                 Values > 1.0 allow earlier termination with confidence
+        workspace: Optional DeltaWorkspace built for this exact raster object
+                and max_value; ignored (and re-derived) if it does not match
 
     Returns:
         1D numpy array (uint64) of linear indices representing the optimal path.
@@ -546,12 +688,13 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
     # ============= ALL VARIABLE DECLARATIONS AT TOP =============
 
     # System and problem dimensions
-    cdef SystemLimits sys_limits = get_system_limits()
+    cdef SystemLimits sys_limits = system_limits_memoized()
     cdef int rows = <int>raster_arr.shape[0]
     cdef uint64_t cols = <uint64_t>raster_arr.shape[1]
     cdef uint64_t total_cells = <uint64_t>rows * cols
 
     # Preprocessing variables
+    cdef DeltaWorkspace ws
     cdef float computed_delta
     cdef float termination_margin
     cdef np.ndarray[uint8_t, ndim=2] exclude_mask_arr
@@ -631,7 +774,8 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
 
     # ============= PREPROCESSING =============
 
-    exclude_mask_arr = (raster_arr != max_value).astype(np.uint8)
+    ws = bind_workspace(workspace, raster_arr, max_value)
+    exclude_mask_arr = ws.exclude_mask
 
     # Validate delta
     if delta <= 0.0:
@@ -669,8 +813,7 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
         raise OverflowError(
             f"Raster has {total_cells} cells, exceeding uint32 predecessor limit (4294967295)")
     init_packed = pack_dist_pred(INF_F32, 0xFFFFFFFF)
-    dist_pred_arr = np.full(<size_t>total_cells, init_packed, dtype=np.uint64)
-    dist_pred_arr[source_idx] = pack_dist_pred(0.0, 0xFFFFFFFF)
+    dist_pred_arr = ws.take_dist_pred(init_packed, source_idx)
     dist_pred_ptr = <uint64_t*>dist_pred_arr.data
 
     # Create memory views
@@ -684,7 +827,7 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
 
     # P1.3 fix: Validate circular buffer can hold max bucket span
     cdef double _max_step_dist = 0.0
-    cdef double _sd, _dr_f, _dc_f, _max_cell, _max_span
+    cdef double _sd, _dr_f, _dc_f, _max_span
     cdef int _si
     for _si in range(steps_arr.shape[0]):
         _dr_f = <double>steps_arr[_si, 0]
@@ -692,10 +835,8 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
         _sd = (_dr_f * _dr_f + _dc_f * _dc_f) ** 0.5
         if _sd > _max_step_dist:
             _max_step_dist = _sd
-    _valid_mask = (exclude_mask_arr == 1)
-    if np.any(_valid_mask):
-        _max_cell = <double>np.max(raster_arr[_valid_mask])
-        _max_span = _max_cell * _max_step_dist / computed_delta
+    if ws.has_traversable:
+        _max_span = ws.max_traversable_cost * _max_step_dist / computed_delta
         if _max_span >= <double>circular_buffer_size:
             raise ValueError(
                 f"Delta-stepping: max edge/delta ratio ({_max_span:.0f}) "
@@ -704,7 +845,7 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
 
 
     # Initialize last bucket tracking
-    last_bucket_arr = np.full(<size_t>total_cells, -1, dtype=np.int32)
+    last_bucket_arr = ws.take_last_bucket()
     last_bucket = last_bucket_arr
 
     # Add source to first bucket
@@ -934,7 +1075,8 @@ def delta_stepping_single_source_multiple_targets(
         float delta,
         int64_t max_value=65535,
         int num_threads=0,
-        size_t max_buckets_in_memory=2048):
+        size_t max_buckets_in_memory=2048,
+        DeltaWorkspace workspace=None):
     """
     Find optimal paths from single source to multiple targets.
 
@@ -970,6 +1112,8 @@ def delta_stepping_single_source_multiple_targets(
         max_value: Cost value representing obstacles
         num_threads: Number of OpenMP threads (0 = auto-detect)
         max_buckets_in_memory: Size of circular buffer (power of 2)
+        workspace: Optional DeltaWorkspace built for this exact raster object
+            and max_value; ignored (and re-derived) if it does not match
 
     Returns:
         List of numpy arrays, one path per target (empty if no path exists)
@@ -981,13 +1125,14 @@ def delta_stepping_single_source_multiple_targets(
     # ============= ALL VARIABLE DECLARATIONS AT TOP =============
 
     # System and problem dimensions
-    cdef SystemLimits sys_limits = get_system_limits()
+    cdef SystemLimits sys_limits = system_limits_memoized()
     cdef int rows = <int>raster_arr.shape[0]
     cdef uint64_t cols = <uint64_t>raster_arr.shape[1]
     cdef uint64_t total_cells = <uint64_t>rows * cols
     cdef int num_targets = <int>target_indices.shape[0]
 
     # Preprocessing variables
+    cdef DeltaWorkspace ws
     cdef np.ndarray[uint8_t, ndim=2] exclude_mask_arr
     cdef const uint16_t[:, :] raster_view
     cdef const uint8_t[:, :] exclude_view
@@ -1089,7 +1234,8 @@ def delta_stepping_single_source_multiple_targets(
             return [np.empty(0, dtype=np.uint64) for _ in range(num_targets)]
 
     # Create traversability mask
-    exclude_mask_arr = (raster_arr != max_value).astype(np.uint8)
+    ws = bind_workspace(workspace, raster_arr, max_value)
+    exclude_mask_arr = ws.exclude_mask
     source_r = source_idx // cols
     source_c = source_idx % cols
 
@@ -1102,8 +1248,7 @@ def delta_stepping_single_source_multiple_targets(
 
     # Initialize packed distance+predecessor array
     init_packed = pack_dist_pred(INF_F32, 0xFFFFFFFF)
-    dist_pred_arr = np.full(<size_t>total_cells, init_packed, dtype=np.uint64)
-    dist_pred_arr[source_idx] = pack_dist_pred(0.0, 0xFFFFFFFF)
+    dist_pred_arr = ws.take_dist_pred(init_packed, source_idx)
     dist_pred_ptr = <uint64_t*>dist_pred_arr.data
     target_found_arr = np.zeros(num_targets, dtype=np.uint8)
 
@@ -1119,7 +1264,7 @@ def delta_stepping_single_source_multiple_targets(
 
     # P1.3 fix: Validate circular buffer can hold max bucket span
     cdef double _max_step_dist = 0.0
-    cdef double _sd, _dr_f, _dc_f, _max_cell, _max_span
+    cdef double _sd, _dr_f, _dc_f, _max_span
     cdef int _si
     for _si in range(steps_arr.shape[0]):
         _dr_f = <double>steps_arr[_si, 0]
@@ -1127,10 +1272,8 @@ def delta_stepping_single_source_multiple_targets(
         _sd = (_dr_f * _dr_f + _dc_f * _dc_f) ** 0.5
         if _sd > _max_step_dist:
             _max_step_dist = _sd
-    _valid_mask = (exclude_mask_arr == 1)
-    if np.any(_valid_mask):
-        _max_cell = <double>np.max(raster_arr[_valid_mask])
-        _max_span = _max_cell * _max_step_dist / delta
+    if ws.has_traversable:
+        _max_span = ws.max_traversable_cost * _max_step_dist / delta
         if _max_span >= <double>circular_buffer_size:
             raise ValueError(
                 f"Delta-stepping: max edge/delta ratio ({_max_span:.0f}) "
@@ -1139,7 +1282,7 @@ def delta_stepping_single_source_multiple_targets(
 
 
     # Initialize last bucket tracking
-    last_bucket_arr = np.full(<size_t>total_cells, -1, dtype=np.int32)
+    last_bucket_arr = ws.take_last_bucket()
     last_bucket = last_bucket_arr
 
     # Add source to first bucket
@@ -1437,6 +1580,7 @@ def delta_stepping_multiple_sources_multiple_targets(
     cdef list source_paths
     cdef np.ndarray[uint64_t, ndim=1] path
     cdef float cost
+    cdef DeltaWorkspace workspace = None
 
     # ============= MAIN PROCESSING =============
 
@@ -1455,6 +1599,10 @@ def delta_stepping_multiple_sources_multiple_targets(
                 source_idx_map[s] = original_idx
                 break
 
+    # The raster is the same for every source and nothing here writes to it, so
+    # its derivations and state arrays are derived once for the whole loop.
+    workspace = DeltaWorkspace(raster_arr, max_value)
+
     for s in range(num_sources):
         source_idx = sorted_sources[s]
         original_idx = source_idx_map[s]
@@ -1463,7 +1611,8 @@ def delta_stepping_multiple_sources_multiple_targets(
             # Find paths from this source to all targets
             source_paths = delta_stepping_single_source_multiple_targets(
                 raster_arr, steps_arr, source_idx, target_indices,
-                delta, max_value, num_threads, max_buckets_in_memory
+                delta, max_value, num_threads, max_buckets_in_memory,
+                workspace
             )
 
             # Store results in original order
@@ -1567,6 +1716,9 @@ def delta_stepping_some_pairs_shortest_paths(
     # Margin validation
     cdef float validated_margin
 
+    # Per-raster derivations shared by every pair
+    cdef DeltaWorkspace workspace = None
+
     # ============= VALIDATION =============
 
     # Validate and sanitize margin parameter
@@ -1584,6 +1736,10 @@ def delta_stepping_some_pairs_shortest_paths(
 
     # ============= PAIRWISE PROCESSING =============
 
+    # The raster is the same for every pair and nothing here writes to it, so
+    # its derivations and state arrays are derived once for the whole loop.
+    workspace = DeltaWorkspace(raster_arr, max_value)
+
     # Process each source-target pair individually
     # This ensures consistent margin application and simple, predictable behavior
     for i in range(num_pairs):
@@ -1595,7 +1751,8 @@ def delta_stepping_some_pairs_shortest_paths(
         path = delta_stepping_2d(
             raster_arr, steps_arr, source, target,
             delta, max_value, num_threads, max_buckets_in_memory,
-            validated_margin  # MARGIN APPLIED TO EVERY PAIR
+            validated_margin,  # MARGIN APPLIED TO EVERY PAIR
+            workspace
         )
 
         # Store results based on return type preference
@@ -1625,7 +1782,8 @@ def delta_stepping_2d_persistent(
         int64_t max_value=65535,
         int num_threads=0,
         size_t max_buckets_in_memory=2048,
-        float margin=1.00001):
+        float margin=1.00001,
+        DeltaWorkspace workspace=None):
     """
     Persistent-thread-pool variant of delta_stepping_2d.
 
@@ -1642,12 +1800,13 @@ def delta_stepping_2d_persistent(
     # ============= ALL VARIABLE DECLARATIONS AT TOP =============
 
     # System and problem dimensions
-    cdef SystemLimits sys_limits = get_system_limits()
+    cdef SystemLimits sys_limits = system_limits_memoized()
     cdef int rows = <int>raster_arr.shape[0]
     cdef uint64_t cols = <uint64_t>raster_arr.shape[1]
     cdef uint64_t total_cells = <uint64_t>rows * cols
 
     # Preprocessing variables
+    cdef DeltaWorkspace ws
     cdef float computed_delta
     cdef float termination_margin
     cdef np.ndarray[uint8_t, ndim=2] exclude_mask_arr
@@ -1733,7 +1892,8 @@ def delta_stepping_2d_persistent(
 
     # ============= PREPROCESSING (same as original) =============
 
-    exclude_mask_arr = (raster_arr != max_value).astype(np.uint8)
+    ws = bind_workspace(workspace, raster_arr, max_value)
+    exclude_mask_arr = ws.exclude_mask
 
     if delta <= 0.0:
         raise ValueError(f"Invalid delta value: {delta}! Choose a delta > 0.0!")
@@ -1768,8 +1928,7 @@ def delta_stepping_2d_persistent(
         raise OverflowError(
             f"Raster has {total_cells} cells, exceeding uint32 predecessor limit (4294967295)")
     init_packed = pack_dist_pred(INF_F32, 0xFFFFFFFF)
-    dist_pred_arr = np.full(<size_t>total_cells, init_packed, dtype=np.uint64)
-    dist_pred_arr[source_idx] = pack_dist_pred(0.0, 0xFFFFFFFF)
+    dist_pred_arr = ws.take_dist_pred(init_packed, source_idx)
     dist_pred_ptr = <uint64_t*>dist_pred_arr.data
 
     # Create memory views
@@ -1783,7 +1942,7 @@ def delta_stepping_2d_persistent(
 
     # P1.3 fix: Validate circular buffer can hold max bucket span
     cdef double _max_step_dist = 0.0
-    cdef double _sd, _dr_f, _dc_f, _max_cell, _max_span
+    cdef double _sd, _dr_f, _dc_f, _max_span
     cdef int _si
     for _si in range(steps_arr.shape[0]):
         _dr_f = <double>steps_arr[_si, 0]
@@ -1791,10 +1950,8 @@ def delta_stepping_2d_persistent(
         _sd = (_dr_f * _dr_f + _dc_f * _dc_f) ** 0.5
         if _sd > _max_step_dist:
             _max_step_dist = _sd
-    _valid_mask = (exclude_mask_arr == 1)
-    if np.any(_valid_mask):
-        _max_cell = <double>np.max(raster_arr[_valid_mask])
-        _max_span = _max_cell * _max_step_dist / computed_delta
+    if ws.has_traversable:
+        _max_span = ws.max_traversable_cost * _max_step_dist / computed_delta
         if _max_span >= <double>circular_buffer_size:
             raise ValueError(
                 f"Delta-stepping: max edge/delta ratio ({_max_span:.0f}) "
@@ -1803,7 +1960,7 @@ def delta_stepping_2d_persistent(
 
 
     # Initialize last bucket tracking
-    last_bucket_arr = np.full(<size_t>total_cells, -1, dtype=np.int32)
+    last_bucket_arr = ws.take_last_bucket()
     last_bucket = last_bucket_arr
 
     # Add source to first bucket
@@ -2277,7 +2434,8 @@ def delta_stepping_single_source_multiple_targets_persistent(
         float delta,
         int64_t max_value=65535,
         int num_threads=0,
-        size_t max_buckets_in_memory=2048):
+        size_t max_buckets_in_memory=2048,
+        DeltaWorkspace workspace=None):
     """
     Persistent-thread-pool variant of delta_stepping_single_source_multiple_targets.
 
@@ -2289,12 +2447,13 @@ def delta_stepping_single_source_multiple_targets_persistent(
     """
     # ============= ALL VARIABLE DECLARATIONS AT TOP =============
 
-    cdef SystemLimits sys_limits = get_system_limits()
+    cdef SystemLimits sys_limits = system_limits_memoized()
     cdef int rows = <int>raster_arr.shape[0]
     cdef uint64_t cols = <uint64_t>raster_arr.shape[1]
     cdef uint64_t total_cells = <uint64_t>rows * cols
     cdef int num_targets = <int>target_indices.shape[0]
 
+    cdef DeltaWorkspace ws
     cdef np.ndarray[uint8_t, ndim=2] exclude_mask_arr
     cdef const uint16_t[:, :] raster_view
     cdef const uint8_t[:, :] exclude_view
@@ -2385,7 +2544,8 @@ def delta_stepping_single_source_multiple_targets_persistent(
         if target_indices[i] >= total_cells:
             return [np.empty(0, dtype=np.uint64) for _ in range(num_targets)]
 
-    exclude_mask_arr = (raster_arr != max_value).astype(np.uint8)
+    ws = bind_workspace(workspace, raster_arr, max_value)
+    exclude_mask_arr = ws.exclude_mask
     source_r = source_idx // cols
     source_c = source_idx % cols
 
@@ -2396,8 +2556,7 @@ def delta_stepping_single_source_multiple_targets_persistent(
     directions = precompute_directions_optimized(steps_arr, cached_steps)
 
     init_packed = pack_dist_pred(INF_F32, 0xFFFFFFFF)
-    dist_pred_arr = np.full(<size_t>total_cells, init_packed, dtype=np.uint64)
-    dist_pred_arr[source_idx] = pack_dist_pred(0.0, 0xFFFFFFFF)
+    dist_pred_arr = ws.take_dist_pred(init_packed, source_idx)
     dist_pred_ptr = <uint64_t*>dist_pred_arr.data
     target_found_arr = np.zeros(num_targets, dtype=np.uint8)
 
@@ -2411,7 +2570,7 @@ def delta_stepping_single_source_multiple_targets_persistent(
 
     # P1.3 fix: Validate circular buffer can hold max bucket span
     cdef double _max_step_dist = 0.0
-    cdef double _sd, _dr_f, _dc_f, _max_cell, _max_span
+    cdef double _sd, _dr_f, _dc_f, _max_span
     cdef int _si
     for _si in range(steps_arr.shape[0]):
         _dr_f = <double>steps_arr[_si, 0]
@@ -2419,10 +2578,8 @@ def delta_stepping_single_source_multiple_targets_persistent(
         _sd = (_dr_f * _dr_f + _dc_f * _dc_f) ** 0.5
         if _sd > _max_step_dist:
             _max_step_dist = _sd
-    _valid_mask = (exclude_mask_arr == 1)
-    if np.any(_valid_mask):
-        _max_cell = <double>np.max(raster_arr[_valid_mask])
-        _max_span = _max_cell * _max_step_dist / delta
+    if ws.has_traversable:
+        _max_span = ws.max_traversable_cost * _max_step_dist / delta
         if _max_span >= <double>circular_buffer_size:
             raise ValueError(
                 f"Delta-stepping: max edge/delta ratio ({_max_span:.0f}) "
@@ -2430,7 +2587,7 @@ def delta_stepping_single_source_multiple_targets_persistent(
                 f"Increase max_buckets_in_memory or delta.")
 
 
-    last_bucket_arr = np.full(<size_t>total_cells, -1, dtype=np.int32)
+    last_bucket_arr = ws.take_last_bucket()
     last_bucket = last_bucket_arr
 
     physical_bucket_idx = get_circular_index(0, circular_buffer_size)
@@ -2931,6 +3088,7 @@ def delta_stepping_multiple_sources_multiple_targets_persistent(
     cdef list source_paths
     cdef np.ndarray[uint64_t, ndim=1] path
     cdef float cost
+    cdef DeltaWorkspace workspace = None
 
     if num_sources == 0 or num_targets == 0:
         if return_paths:
@@ -2946,6 +3104,10 @@ def delta_stepping_multiple_sources_multiple_targets_persistent(
                 source_idx_map[s] = original_idx
                 break
 
+    # The raster is the same for every source and nothing here writes to it, so
+    # its derivations and state arrays are derived once for the whole loop.
+    workspace = DeltaWorkspace(raster_arr, max_value)
+
     for s in range(num_sources):
         source_idx = sorted_sources[s]
         original_idx = source_idx_map[s]
@@ -2953,7 +3115,8 @@ def delta_stepping_multiple_sources_multiple_targets_persistent(
         try:
             source_paths = delta_stepping_single_source_multiple_targets_persistent(
                 raster_arr, steps_arr, source_idx, target_indices,
-                delta, max_value, num_threads, max_buckets_in_memory
+                delta, max_value, num_threads, max_buckets_in_memory,
+                workspace
             )
 
             if return_paths:
@@ -3006,6 +3169,7 @@ def delta_stepping_some_pairs_shortest_paths_persistent(
     cdef np.ndarray[uint64_t, ndim=1] path
     cdef float path_cost_value
     cdef float validated_margin
+    cdef DeltaWorkspace workspace = None
 
     if margin <= 1.00001:
         validated_margin = 1.00001
@@ -3018,6 +3182,10 @@ def delta_stepping_some_pairs_shortest_paths_persistent(
         else:
             return np.empty(0, dtype=np.float32)
 
+    # The raster is the same for every pair and nothing here writes to it, so
+    # its derivations and state arrays are derived once for the whole loop.
+    workspace = DeltaWorkspace(raster_arr, max_value)
+
     for i in range(num_pairs):
         source = source_indices[i]
         target = target_indices[i]
@@ -3025,7 +3193,8 @@ def delta_stepping_some_pairs_shortest_paths_persistent(
         path = delta_stepping_2d_persistent(
             raster_arr, steps_arr, source, target,
             delta, max_value, num_threads, max_buckets_in_memory,
-            validated_margin
+            validated_margin,
+            workspace
         )
 
         if return_paths:
