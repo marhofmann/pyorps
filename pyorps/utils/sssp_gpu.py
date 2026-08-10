@@ -631,7 +631,8 @@ _CTL_MIN_DIST_INT = 9  # for fallback: min dist as int (IEEE 754)
 _CTL_BARRIER_CNT = 10  # custom barrier: arrival counter
 _CTL_BARRIER_SENSE = 11  # custom barrier: sense-reversing flag
 _CTL_OVERFLOW = 12     # queue reservation exceeded buf_size -> self-heal
-_CTL_SIZE = 13
+_CTL_TRUNCATED = 13    # light loop hit max_light_iters with work still queued
+_CTL_SIZE = 14
 
 _PERSISTENT_SSSP_KERNEL = r"""
 #include <cooperative_groups.h>
@@ -649,6 +650,7 @@ namespace cg = cooperative_groups;
 #define CTL_BARRIER_CNT 10
 #define CTL_BARRIER_SENSE 11
 #define CTL_OVERFLOW 12
+#define CTL_TRUNCATED 13
 
 // Queue-push helper: reservations past buf_size set the overflow flag
 // instead of silently dropping the vertex. The dropped vertex keeps its
@@ -795,6 +797,7 @@ void delta_stepping_persistent(
           if (gtid == 0) control[CTL_SETTLED] = ca < buf_size ? ca : buf_size; }
         grid_barrier(control, n_blocks);
 
+        int drained = 0;
         for (int li = 0; li < max_light_iters; li++) {
             if (gtid == 0) control[CTL_COUNT_B] = 0;
             grid_barrier(control, n_blocks);
@@ -855,13 +858,21 @@ void delta_stepping_persistent(
             }
             grid_barrier(control, n_blocks);
             int nc = control[CTL_COUNT_B]; if (nc > buf_size) nc = buf_size;
-            if (nc == 0) break;
+            if (nc == 0) { drained = 1; break; }
             int* qb2 = swap ? queue_a : queue_b;
             int os = control[CTL_SETTLED];
             for (int i = gtid; i < nc; i += stride) { int d = os + i; if (d < buf_size) settled[d] = qb2[i]; }
             if (gtid == 0) { int ns = os + nc; control[CTL_SETTLED] = ns < buf_size ? ns : buf_size; control[CTL_COUNT_A] = nc; }
             swap ^= 1; grid_barrier(control, n_blocks);
         }
+        // Exhausting max_light_iters with a non-empty frontier means work was
+        // abandoned: the remaining vertices keep whatever dist they had and
+        // are never relaxed again, so the field comes back partial. On a
+        // 0-cost region every edge weighs 0, so the whole raster stays in one
+        // bucket and this fires after exactly max_light_iters rings - which is
+        // how a 700x700 zero-cost raster returned 401^2 settled cells and inf
+        // everywhere else. Record it; the launcher refuses to return the field.
+        if (!drained && gtid == 0) control[CTL_TRUNCATED] = 1;
 
         if (gtid == 0) control[CTL_COUNT_B] = 0;
         grid_barrier(control, n_blocks);
@@ -2326,6 +2337,20 @@ def sssp_raster_gpu_v4(
          np.int32(grad_n_bins)),
         shared_mem=smem_bytes)
     cp.cuda.Stream.null.synchronize()
+    if int(d_ctl[_CTL_TRUNCATED]):
+        # Returning here would hand back a partial distance field with no
+        # indication anything was lost: unreached cells read as inf, which is
+        # indistinguishable from genuinely unreachable. Measured on a 700x700
+        # zero-cost raster, V4 returned 401^2 settled cells and inf for the
+        # other 329,199 - a wrong answer delivered silently. Fail instead.
+        raise RuntimeError(
+            f"V4 abandoned part of the frontier: the light phase hit its "
+            f"{max_light_iterations * max(1, window)}-iteration cap with work "
+            f"still queued, so the returned distances would be partial. This "
+            f"happens when a single delta-bucket cannot drain - typically a "
+            f"large 0-cost region, where every edge weighs 0 and the whole "
+            f"raster stays in one bucket. Use the V5 kernel (the default), or "
+            f"raise max_light_iterations, or increase delta.")
     return _transfer_results(d_dist, d_pred, return_predecessor)
 
 
@@ -2335,8 +2360,21 @@ def sssp_raster_gpu_v4(
 
 _V5_N_BUCKETS = 32
 
+#: Ring-arena size as entries per pixel across the whole 32-ring set.
+#:
+#: Measured 2026-08-10 (benchmarks/benchmark_arena_factor.py, 2000^2 and
+#: 3000^2, random / heavy-tail / 0-cost-plateau, median of 5, field identical
+#: in all 18 cases) against the pre-Phase-1b sizing of 3.0:
+#:   2.0 -> 0.97-1.01x   free within noise, arena 12 -> 8 B/cell
+#:   1.0 -> 0.93-1.05x   up to 5.4% slower on heavy-tail, arena -> 4 B/cell
+#: So 2.0 is the default: it halves the arena at no measurable cost. Pass
+#: arena_factor=1.0 explicitly when VRAM matters more than a few percent
+#: (V5 total 18 -> 14 B/cell, i.e. 1.4 GB instead of 1.8 GB at 100M cells).
+_V5_DEFAULT_ARENA_FACTOR = 2.0
 
-def _v5_arena_cap(n_pixels: int, arena_factor: float = 1.0) -> int:
+
+def _v5_arena_cap(n_pixels: int,
+                  arena_factor: float = _V5_DEFAULT_ARENA_FACTOR) -> int:
     """Per-bucket ring capacity for the V5 arena (Phase 1b item 1.11).
 
     The arena used to be ``max(4096, 3*n_pixels//32)`` per ring, i.e.
@@ -2427,7 +2465,7 @@ class GpuSsspSession:
             threads_per_block: int = 256,
             blocks_per_sm: int = 2,
             chunk: int = 256,
-            arena_factor: float = 1.0,
+            arena_factor: float = _V5_DEFAULT_ARENA_FACTOR,
     ):
         if not GPU_AVAILABLE:
             raise RuntimeError(
@@ -2889,7 +2927,7 @@ def sssp_raster_gpu_v5(
         dem: Optional[np.ndarray] = None,
         gradient_luts=None,
         session: Optional["GpuSsspSession"] = None,
-        arena_factor: float = 1.0,
+        arena_factor: float = _V5_DEFAULT_ARENA_FACTOR,
 ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
     """V5 asynchronous bucket-queue SSSP. Same API as sssp_raster_gpu.
 
@@ -2952,7 +2990,7 @@ def sssp_raster_gpu_paths(
         dem: Optional[np.ndarray] = None,
         gradient_luts=None,
         session: Optional["GpuSsspSession"] = None,
-        arena_factor: float = 1.0,
+        arena_factor: float = _V5_DEFAULT_ARENA_FACTOR,
 ) -> Tuple[list, np.ndarray]:
     """Solve and return only the target paths and their costs (item 1.3).
 
