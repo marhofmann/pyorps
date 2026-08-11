@@ -196,7 +196,7 @@ class TestGeoRasterizer(unittest.TestCase):
         # Create a bounding box
         bounding_box = box(0, 0, 2, 2)
 
-        # Mock rasterio's rasterize function for both calls
+        # Mock rasterio's rasterize function
         with patch('pyorps.raster.rasterizer.rasterize') as mock_rasterize:
             # Configure mock to return a test raster
             mock_raster = np.ones((20, 20), dtype=np.uint16)
@@ -209,8 +209,13 @@ class TestGeoRasterizer(unittest.TestCase):
                 bounding_box=bounding_box
             )
 
-            # Check that rasterize was called twice (once for the box, once for the data)
-            self.assertEqual(mock_rasterize.call_count, 2)
+            # ONE scan conversion. The bounding-box branch used to pre-burn the
+            # bbox polygon with fill_value into an array already filled with
+            # fill_value, then loop once per unique value; item 2.7b dropped
+            # that wasted full-extent pass. Sorting ascending already makes the
+            # most expensive covering feature win, so a single pass produces the
+            # same winner per cell.
+            self.assertEqual(mock_rasterize.call_count, 1)
 
             # Check that the result is a RasterDataset
             self.assertIsInstance(result, InMemoryRasterDataset)
@@ -699,9 +704,15 @@ class TestModifyRasterFromDatasetCostAssumptionsGeometryMask(unittest.TestCase):
                 with patch.object(rasterizer, 'create_bounds_geodataframe',
                                   return_value=mock_bounds_gdf):
                     try:
+                        # multiply=True: the REPLACE path no longer calls
+                        # geometry_mask at all (item 2.7a collapsed its
+                        # per-cost-value loop into one group-id rasterize), so
+                        # the tuple bug is only reachable through the multiply
+                        # branch, which is still genuinely sequential.
                         rasterizer.modify_raster_from_dataset(
                             'test.shp',
-                            cost_assumptions=mock_ca
+                            cost_assumptions=mock_ca,
+                            multiply=True
                         )
                     except TypeError as e:
                         if "tuple" in str(e).lower():
