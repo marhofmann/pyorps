@@ -52,3 +52,8 @@ cost_*.tif
 *.pyd.*.old
 *.pyd.locked_old
 git_commands.txt
+
+# Duplicate of docs/source/_static/images (Sphinx reads the _static copy).
+docs/images/
+# Generated case-study routing results; reproducible from the inputs.
+case_studies/*/results/
