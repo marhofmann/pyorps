@@ -57,3 +57,5 @@ git_commands.txt
 docs/images/
 # Generated case-study routing results; reproducible from the inputs.
 case_studies/*/results/
+docs/source/generated/
+docs/api/
