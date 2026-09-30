@@ -2555,6 +2555,7 @@ class GpuSsspSession:
         self._d_rres = cp.empty(_V5_N_BUCKETS, dtype=cp.int32)
         self._d_ctl = cp.empty(_C5_SIZE, dtype=cp.int32)
         self._pred_source = None       # source the device pred belongs to
+        self._full_field = False       # True after a no-target (session) solve
         self._closed = False
 
     # -- lifecycle ---------------------------------------------------
@@ -2656,6 +2657,7 @@ class GpuSsspSession:
         # base = -NB makes the first rendezvous rescan start at 0, where
         # it finds the source -- no host-side frontier setup needed.
         self._d_ctl[_C5_BASE] = -_V5_N_BUCKETS
+        self._full_field = False
 
     def solve(
             self,
@@ -2687,6 +2689,16 @@ class GpuSsspSession:
         self._check_open()
         source_idx = int(source_idx)
         need_pred = bool(return_predecessor) or not download
+        n_requested = (0 if target_indices is None
+                       else int(np.asarray(target_indices).size))
+        # Session-mode full field: a later solve of the same root with no
+        # targets must not wipe labels — extract_paths reads them.
+        if (self._full_field and self._pred_source == source_idx
+                and n_requested == 0 and self._d_pred is not None):
+            if not download:
+                return None
+            return _transfer_results(
+                self._d_dist, self._d_pred, bool(return_predecessor))
         self._reset_state(need_pred)
         self._pred_source = None
 
@@ -2725,6 +2737,7 @@ class GpuSsspSession:
             self._pred_source = source_idx
             if full_repair:
                 self._run_full_repair(source_idx)
+        self._full_field = (n_targets == 0)
         cp.cuda.Stream.null.synchronize()
         if not download:
             return None

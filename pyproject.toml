@@ -37,8 +37,16 @@ dependencies = [
     "numpy>=2.0.0",
     "pandas>=2.2.0",
     "geopandas>=1.0.0",
+    # Direct dependency since the bulk GeoJSON path (pyorps/raster/_geojson.py)
+    # calls shapely.to_ragged_array; 2.0 is also geopandas 1.0's own floor.
+    "shapely>=2.0.0",
     "numba>=0.61.0",
     "rasterio>=1.4.0",
+    # Direct dependency since the forbidden-burn detector (raster/thinness.py)
+    # calls scipy.ndimage.label for the corner-touching check. Without it that
+    # half of the check silently does less, which is the cry-wolf-in-reverse
+    # failure the detector exists to remove.
+    "scipy>=1.11",
     "matplotlib>=3.10.0",
     "requests>=2.32.0",
     "defusedxml>=0.7.0",
@@ -146,6 +154,10 @@ packages = [
     "pyorps.core",
     "pyorps.io",
     "pyorps.raster",
+    "pyorps.siting",
+    "pyorps.collector",
+    "pyorps.costmodel",
+    "pyorps.certify",
     "pyorps.webviz",
     "pyorps.gui",
     "pyorps.gui.services",

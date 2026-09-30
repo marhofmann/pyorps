@@ -9,6 +9,7 @@ from shapely.geometry import Point, LineString
 
 from pyorps.core.constrained_path import Tower, ConstrainedPath
 from pyorps.core.infrastructure_profile import InfrastructureProfile
+from pyorps.core.types import IMPASSABLE_CELL_COST
 from pyorps.graph.path_finder import PathFinder
 
 
@@ -24,8 +25,12 @@ class ConstrainedPathFinder(PathFinder):
     optimization at any raster resolution.
     """
 
+    # raster_gpu_v3 was removed 2026-08-11: it returned an empty path on an
+    # obstacle-free raster at both production tuning values, and v4 does not
+    # build on it. The unconstrained SSSP "V3" kernel in sssp_gpu.py is a
+    # different lineage and is unaffected.
     SUPPORTED_BACKENDS = ("cython", "cython_parallel", "raster_gpu",
-                          "raster_gpu_v3", "raster_gpu_v4")
+                          "raster_gpu_v4")
 
     def __init__(self, dataset_source, source_coords, target_coords,
                  profile, graph_api="cython", neighborhood_str="r2",
@@ -111,6 +116,7 @@ class ConstrainedPathFinder(PathFinder):
         self._angle_cost_lut, self._angle_valid_lut = (
             self._profile.precompute_angle_lut(self.steps)
         )
+        self._assert_neighborhood_allows_turns()
         cell_size = abs(self.raster_handler.window_transform.a)
         self._cell_size = cell_size
         self._step_distances = self._profile.compute_step_distances(
@@ -171,6 +177,37 @@ class ConstrainedPathFinder(PathFinder):
                 self._tower_terrain_costs = (
                     self._tower_terrain_costs * w_tower)
                 self._tower_angle_costs = self._tower_angle_costs * w_tower
+
+    def _assert_neighborhood_allows_turns(self) -> None:
+        """Warn when a neighborhood is too coarse for ``hard_angle_limit_deg``.
+
+        ``r0``/``r1`` space their directions 90 deg / 45 deg apart. When
+        that spacing exceeds the profile's ``hard_angle_limit_deg``, every
+        OFF-axis turn in ``_angle_valid_lut`` is invalid -- the router can
+        only continue straight in whatever direction it started. A route
+        colinear with one of those directions still finds a route (no
+        turn needed, see ``test_end_to_end_with_380kv_profile``'s pure
+        diagonal), so this cannot be a hard error; but any OTHER source/
+        target pair fails with an opaque ``NoPathFoundError`` far from the
+        actual cause. Measured on the shipped 110 kV profile (r1 45 deg
+        spacing vs a 40 deg hard limit): every non-straight turn invalid.
+        """
+        valid = self._angle_valid_lut
+        n_dirs = valid.shape[0]
+        if n_dirs == 0:
+            return
+        off_diagonal = valid & ~np.eye(n_dirs, dtype=bool)
+        if not off_diagonal.any():
+            warnings.warn(
+                f"neighborhood_str={self.neighborhood_str!r} ({n_dirs} "
+                f"directions) cannot satisfy hard_angle_limit_deg="
+                f"{self._profile.hard_angle_limit_deg} -- every turn "
+                f"between distinct directions is invalid, so a route "
+                f"will only be found if source and target are exactly "
+                f"colinear with one direction. Use a finer neighborhood "
+                f"(e.g. 'r2') or raise hard_angle_limit_deg in the "
+                f"profile if that is not intentional.",
+                UserWarning, stacklevel=2)
 
     def _load_obstacle_data(self):
         """Load DSM and compute obstacle heights (DSM - DEM).
@@ -670,23 +707,6 @@ class ConstrainedPathFinder(PathFinder):
                     f"GPU v2 unavailable ({e}), falling back to Cython")
                 backend = "cython"
 
-        if backend == "raster_gpu_v3":
-            try:
-                from pyorps.utils.constrained_sssp_gpu_v3 import (
-                    constrained_sssp_raster_gpu_v3,
-                )
-                return self._run_gpu_backend(
-                    constrained_sssp_raster_gpu_v3,
-                    raster, source_row, source_col, target_row, target_col,
-                    n_span_bins, span_bin_size, min_span, max_span,
-                    dem_data, dem_kwargs,
-                    extra_kwargs={'max_visited_fraction': 1.0},
-                )
-            except (ImportError, RuntimeError) as e:
-                warnings.warn(
-                    f"GPU v3 unavailable ({e}), falling back to Cython")
-                backend = "cython"
-
         if backend == "raster_gpu_v4":
             try:
                 from pyorps.utils.constrained_sssp_gpu_v4 import (
@@ -941,6 +961,29 @@ class ConstrainedPathFinder(PathFinder):
             "tower_type_costs": tower_type_costs,
         }
 
+    def _terrain_eur(self, raster, path_indices, ignore=(IMPASSABLE_CELL_COST,)):
+        """Distance-weighted EUR for a path over this finder's search raster.
+
+        Matches how ``Path.total_cost`` prices an unconstrained route:
+        ``category_value (EUR/m) x category_length (m)``, summed over every
+        category the path touches -- not a raw per-endpoint cell-value sum
+        (which is dimensionless and skips every intermediate cell of a
+        multi-cell r2+ step). ``length_by_category`` from
+        ``calculate_path_metrics_numba`` is in CELL units, so it is scaled
+        by ``cell_size`` here, mirroring ``path_finder.py``'s own scaling.
+        """
+        from pyorps.utils._traversal import calculate_path_metrics_numba
+        if len(path_indices) < 2:
+            return 0.0
+        cell_size = abs(self.raster_handler.window_transform.a)
+        _, categories, lengths = calculate_path_metrics_numba(
+            np.ascontiguousarray(raster, dtype=np.uint16),
+            np.asarray(path_indices, dtype=np.uint32), None)
+        return float(sum(
+            float(c) * float(length) * cell_size
+            for c, length in zip(categories, lengths) if int(c) not in ignore
+        ))
+
     def _build_constrained_path(self, path_indices, tower_cell_indices,
                                  raster, source, target, t_pathfinding,
                                  tower_heights_arr=None):
@@ -994,10 +1037,7 @@ class ConstrainedPathFinder(PathFinder):
 
         # Cost breakdown
         total_tower_cost = sum(t.total_cost for t in towers)
-        total_terrain_cost = sum(
-            float(raster[int(idx) // ncols, int(idx) % ncols])
-            for idx in path_indices
-        )
+        total_terrain_cost = self._terrain_eur(raster, path_indices)
 
         stats = self._compute_span_statistics(towers)
 

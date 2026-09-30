@@ -11,6 +11,7 @@ import functools
 import ipaddress
 import logging
 import tempfile
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -757,14 +758,21 @@ def _load_data_in_parallel(
 
     # Track chunks to process and processed chunks
     # Each entry is (chunk_bbox, x_div, y_div, depth)
-    chunks_to_process = [(chunk, 2, 2, 0) for chunk in initial_chunks]
+    # A deque, not a list: the batch is taken from the FRONT on every
+    # iteration, and slicing a list to do that copies the whole queue each
+    # time. A failing server subdivides to MAX_CHUNK_DEPTH, which queues up
+    # to sum(4**d for d in 0..8) = 87 381 chunks; at max_workers=1 the list
+    # version rebuilt that queue once per chunk -- O(n^2), ~3.8e9 element
+    # copies, which reads as a hang rather than a slow call.
+    chunks_to_process = deque((chunk, 2, 2, 0) for chunk in initial_chunks)
     processed_chunks = set()
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         while chunks_to_process:
             # Take a batch of chunks for parallel processing
-            current_batch = chunks_to_process[:max_workers]
-            chunks_to_process = chunks_to_process[max_workers:]
+            current_batch = [chunks_to_process.popleft()
+                             for _ in range(min(max_workers,
+                                                len(chunks_to_process)))]
 
             # Skip any chunks that have been processed before
             filtered_batch = [
@@ -992,9 +1000,25 @@ def _parse_xml_response(response: requests.Response) -> gpd.GeoDataFrame | None:
             try:
                 # pyogrio Arrow fast path (2-4x documented) when available
                 import pyarrow  # noqa: F401
-                return gpd.read_file(temp_file, use_arrow=True)
+                use_arrow = True
             except ImportError:
-                return gpd.read_file(temp_file)
+                use_arrow = False
+            if use_arrow:
+                try:
+                    return gpd.read_file(temp_file, use_arrow=True)
+                except NotImplementedError as exc:
+                    # MEASURED (2026-08-20) against the LGL-BW ALKIS WFS
+                    # ("Tatsaechliche Nutzung"): pyogrio's Arrow path raises
+                    # this for plain, non-curved gml:Polygon features too --
+                    # fiona and pyogrio's classic (non-Arrow) path both read
+                    # the identical response correctly (886/886 features,
+                    # all simple Polygon). A GDAL/pyogrio Arrow-export quirk
+                    # for this GML driver output, not a real curved-geometry
+                    # limitation. Retry without Arrow rather than dropping
+                    # the whole response.
+                    if "nonlinear" not in str(exc).lower():
+                        raise
+            return gpd.read_file(temp_file, use_arrow=False)
     except (OSError, IndexError):
         return None
 
