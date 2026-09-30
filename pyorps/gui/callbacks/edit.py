@@ -1,4 +1,4 @@
-﻿"""
+"""
 PYORPS GUI callbacks: route editing with lineage (R11, Sections 10.7 + 18).
 
 Routes are immutable once computed: click-to-place moves (8.4 default) and

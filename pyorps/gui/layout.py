@@ -1,4 +1,4 @@
-﻿"""
+"""
 PYORPS GUI: layout construction (pure components, no callbacks).
 
 Left: the Leaflet map. The background map is a SINGLE ``basemap-tile`` layer

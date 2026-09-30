@@ -1,4 +1,4 @@
-﻿"""Phase 4: click dispatcher (8.1/8.2), route builder (C13/C14, F1/F5/F8)."""
+"""Phase 4: click dispatcher (8.1/8.2), route builder (C13/C14, F1/F5/F8)."""
 import json
 
 import pytest
