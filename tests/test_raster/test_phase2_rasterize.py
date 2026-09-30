@@ -12,6 +12,13 @@ Every test here therefore builds the LEGACY result explicitly and asserts the
 new one is bit-identical to it, rather than asserting properties of the new
 code. The reference implementations below are deliberate copies of the code
 that was removed; they must not be refactored to call the production helpers.
+
+Every call here pins ``all_touched=False``. The forbidden all-touched overlay
+that ships as the default is a LATER, deliberate departure from the legacy
+burn — it repaints the rim of every forbidden feature so a sub-cell barrier
+cannot vanish (``tests/test_raster/test_barrier_connectivity.py``). Comparing
+it against a legacy reference that predates it would only re-measure that
+departure; these tests are about the index-burn/LUT equivalence underneath it.
 """
 import unittest
 
@@ -127,8 +134,13 @@ def legacy_apply_cost_groups(raster, transform, gdf, ignore_value, multiply):
             ignore_value_mask = raster != ignore_value
         mask = mask_array & ignore_value_mask
         if multiply:
+            # Carries the same correction as production: the factor is widened
+            # to float, never cast to an integer. The removed loop cast it to
+            # uint32, which truncated every fractional factor -- these tests
+            # only ever passed integer costs, so the equivalence they assert
+            # was blind to it.
             raster[mask] = np.clip(
-                raster[mask].astype(np.uint32) * np.uint32(unique_value),
+                np.rint(raster[mask].astype(np.float64) * float(unique_value)),
                 0, np.iinfo(np.uint16).max).astype(raster.dtype)
         else:
             raster[mask] = unique_value
@@ -166,7 +178,8 @@ class TestIndexBurnEquivalence(unittest.TestCase):
     def setUp(self):
         self.gdf = overlapping_features()
         self.rasterizer = make_rasterizer(self.gdf, METRIC_ASSUMPTIONS)
-        self.stack = self.rasterizer.rasterize_metrics(resolution_in_m=1.0)
+        self.stack = self.rasterizer.rasterize_metrics(resolution_in_m=1.0,
+                                                      all_touched=False)
         self.reference = self._legacy_stack()
 
     def _legacy_stack(self):
@@ -314,18 +327,18 @@ class TestClassBandLutRecost(unittest.TestCase):
 
     def test_first_burn_matches_legacy(self):
         rasterizer = make_rasterizer(self.gdf, COSTS_BASE)
-        rasterizer.rasterize(resolution_in_m=1.0)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0)
         assert_bit_identical(self, rasterizer.raster,
                              self.reference_raster(COSTS_BASE), "first burn")
         self.assertIsNotNone(rasterizer._class_band_cache)
 
     def test_recost_with_unchanged_order_reuses_the_band(self):
         rasterizer = make_rasterizer(self.gdf, COSTS_BASE)
-        rasterizer.rasterize(resolution_in_m=1.0)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0)
         burned = rasterizer._class_band_cache["band"]
 
         rasterizer.cost_manager = CostAssumptions(COSTS_RESCALED)
-        rasterizer.rasterize(resolution_in_m=1.0)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0)
 
         self.assertIs(rasterizer._class_band_cache["band"], burned,
                       "the class band was re-burned although the cost order "
@@ -336,14 +349,14 @@ class TestClassBandLutRecost(unittest.TestCase):
 
     def test_cost_order_change_invalidates_the_cache(self):
         rasterizer = make_rasterizer(self.gdf, COSTS_BASE)
-        rasterizer.rasterize(resolution_in_m=1.0)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0)
         burned = rasterizer._class_band_cache["band"]
         order = rasterizer._class_band_cache["order"].copy()
         codes_len = len(rasterizer._class_band_cache["codes"])
         self.assertGreater(codes_len, 0)
 
         rasterizer.cost_manager = CostAssumptions(COSTS_SWAPPED)
-        rasterizer.rasterize(resolution_in_m=1.0)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0)
 
         self.assertIsNot(rasterizer._class_band_cache["band"], burned,
                          "a rank swap did NOT invalidate the class band")
@@ -363,7 +376,7 @@ class TestClassBandLutRecost(unittest.TestCase):
         cost VALUES instead of a changed cost ORDER.
         """
         rasterizer = make_rasterizer(self.gdf, COSTS_BASE)
-        rasterizer.rasterize(resolution_in_m=1.0)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0)
         cache = rasterizer._class_band_cache
         band, order, codes = cache["band"], cache["order"], cache["codes"]
 
@@ -387,11 +400,11 @@ class TestClassBandLutRecost(unittest.TestCase):
         without reordering them still resolves overlaps correctly.
         """
         rasterizer = make_rasterizer(self.gdf, COSTS_TIED)
-        rasterizer.rasterize(resolution_in_m=1.0)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0)
         burned = rasterizer._class_band_cache["band"]
 
         rasterizer.cost_manager = CostAssumptions(COSTS_UNTIED)
-        rasterizer.rasterize(resolution_in_m=1.0)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0)
 
         self.assertIs(rasterizer._class_band_cache["band"], burned)
         assert_bit_identical(self, rasterizer.raster,
@@ -400,7 +413,7 @@ class TestClassBandLutRecost(unittest.TestCase):
 
     def test_use_class_cache_false_matches_and_clears(self):
         rasterizer = make_rasterizer(self.gdf, COSTS_BASE)
-        rasterizer.rasterize(resolution_in_m=1.0, use_class_cache=False)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0, use_class_cache=False)
         self.assertIsNone(rasterizer._class_band_cache)
         assert_bit_identical(self, rasterizer.raster,
                              self.reference_raster(COSTS_BASE),
@@ -408,10 +421,10 @@ class TestClassBandLutRecost(unittest.TestCase):
 
     def test_invalidate_class_cache_forces_a_reburn(self):
         rasterizer = make_rasterizer(self.gdf, COSTS_BASE)
-        rasterizer.rasterize(resolution_in_m=1.0)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0)
         burned = rasterizer._class_band_cache["band"]
         rasterizer.invalidate_class_cache()
-        rasterizer.rasterize(resolution_in_m=1.0)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0)
         self.assertIsNot(rasterizer._class_band_cache["band"], burned)
         assert_bit_identical(self, rasterizer.raster,
                              self.reference_raster(COSTS_BASE),
@@ -419,8 +432,8 @@ class TestClassBandLutRecost(unittest.TestCase):
 
     def test_resolution_change_rebuilds_the_band(self):
         rasterizer = make_rasterizer(self.gdf, COSTS_BASE)
-        rasterizer.rasterize(resolution_in_m=1.0)
-        rasterizer.rasterize(resolution_in_m=2.0)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=2.0)
         assert_bit_identical(self, rasterizer.raster,
                              self.reference_raster(COSTS_BASE, 2.0),
                              "burn at a second resolution")
@@ -428,7 +441,7 @@ class TestClassBandLutRecost(unittest.TestCase):
     def test_geometry_buffer_matches_legacy(self):
         """Buffering moved before the sort; the burn must not notice."""
         rasterizer = make_rasterizer(self.gdf, COSTS_BASE)
-        rasterizer.rasterize(resolution_in_m=1.0, geometry_buffer_m=1.5)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0, geometry_buffer_m=1.5)
 
         data = legacy_prepared(self.gdf, COSTS_BASE)
         buffered = data.copy()
@@ -454,22 +467,22 @@ class TestBoundingBoxBranch(unittest.TestCase):
 
     def test_bbox_burn_matches_legacy_pre_burn_plus_loop(self):
         rasterizer = make_rasterizer(self.gdf, COSTS_BASE)
-        rasterizer.rasterize(resolution_in_m=1.0, bounding_box=self.bbox)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0, bounding_box=self.bbox)
         assert_bit_identical(self, rasterizer.raster, self._legacy(COSTS_BASE),
                              "bounding-box burn")
 
     def test_bbox_recost_matches_legacy(self):
         rasterizer = make_rasterizer(self.gdf, COSTS_BASE)
-        rasterizer.rasterize(resolution_in_m=1.0, bounding_box=self.bbox)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0, bounding_box=self.bbox)
         rasterizer.cost_manager = CostAssumptions(COSTS_SWAPPED)
-        rasterizer.rasterize(resolution_in_m=1.0, bounding_box=self.bbox)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0, bounding_box=self.bbox)
         assert_bit_identical(self, rasterizer.raster,
                              self._legacy(COSTS_SWAPPED),
                              "bounding-box re-cost")
 
     def test_area_outside_every_feature_is_the_fill_value(self):
         rasterizer = make_rasterizer(self.gdf, COSTS_BASE)
-        rasterizer.rasterize(resolution_in_m=1.0, bounding_box=self.bbox)
+        rasterizer.rasterize(all_touched=False, resolution_in_m=1.0, bounding_box=self.bbox)
         # The bbox reaches 6 m past the data on the right; that column band
         # can only hold the fill value.
         self.assertTrue(np.all(rasterizer.raster[:, -4:] == FILL))
