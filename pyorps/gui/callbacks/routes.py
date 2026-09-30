@@ -1,4 +1,4 @@
-﻿"""
+"""
 PYORPS GUI callbacks: the route builder (R7/R8/R9, Sections 10.6 + 17.6).
 
 Waypoints are chained ``source -> w1 -> ... -> target`` per pair (C13); the

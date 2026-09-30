@@ -1,4 +1,4 @@
-﻿"""Phase 1: layer host render (C1), Layers tab, attribute inspector."""
+"""Phase 1: layer host render (C1), Layers tab, attribute inspector."""
 import json
 
 import pytest

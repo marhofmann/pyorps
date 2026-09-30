@@ -1,4 +1,4 @@
-﻿"""
+"""
 Playwright E2E tests — the handful of flows that must work in a real browser
 (Section 13.3). Skipped cleanly when playwright/chromium isn't available.
 
