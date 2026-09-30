@@ -1,3 +1,12 @@
+---
+title: "Cost Semantics and the Feasibility Objective"
+summary: "How cost, metrics and weights decide where a route goes and what is reported."
+status: unreleased
+since: "unreleased"
+available_in: source
+module: "pyorps.core.objective"
+api: []
+---
 # Cost Semantics & the Feasibility Objective
 
 PYORPS routes by minimizing a **feasibility objective**
@@ -7,6 +16,7 @@ $$F(\text{path}) = \sum_k w_k \cdot M_k(\text{path})$$
 a user-weighted combination of named metrics. The default,
 `objective={"cost": 1.0}`, reproduces classic cost-optimal routing exactly.
 
+(cost-semantics-two-questions-two-kinds-of-numbers)=
 ## Two questions, two kinds of numbers
 
 1. **Where should the route go?** — decided by the *objective* during the
@@ -18,6 +28,7 @@ a user-weighted combination of named metrics. The default,
 Nothing about the route choice is ever post-processed — every criterion
 acts inside the search kernels. The evaluator only *reports*.
 
+(cost-semantics-cell-metrics-vs-edge-metrics)=
 ## Cell metrics vs. edge metrics
 
 | Kind | Examples | How it enters the search |
@@ -31,6 +42,7 @@ every cell has the same steepness, but a step along the contour is level
 while a step up the fall line is steep — only the kernels can tell the
 difference.
 
+(cost-semantics-defining-metrics)=
 ## Defining metrics
 
 Cost-assumption leaves carry named values (scalars stay valid and mean
@@ -51,6 +63,7 @@ or NaN in *any* layer) is absolute regardless of weights. Additional
 layers come from `metric_layers=` (prebuilt rasters, arrays, or
 `{"derive": "slope_from_dem"}` with optional `hard_max`/`hard_min`).
 
+(cost-semantics-slope-geometry-vs-response)=
 ## Slope: geometry vs. response
 
 With a DEM, **slope always affects the path length** — the 3D stretch
@@ -71,6 +84,7 @@ PathFinder(..., dem="dgm1.tif",
 Supported on the `cython`, graph-library and `raster_gpu` backends, all
 consuming the same discretized response tables (provable parity).
 
+(cost-semantics-reading-results)=
 ## Reading results
 
 ```python
@@ -93,6 +107,3 @@ Two rules for interpretation:
   non-cost weight is positive, a cheaper route may exist *by design* —
   compare `metrics["cost"]` across objective variants to price your
   policy.
-
-> Design rationale and implementation phases:
-> `docs/superpowers/plans/2026-08-04-feasibility-multi-objective-routing.md`
