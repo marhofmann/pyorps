@@ -1,5 +1,15 @@
+---
+title: "Architecture"
+summary: "How the modules of PYORPS fit together."
+status: stable
+since: "0.2.1"
+available_in: pypi
+module: "pyorps"
+api: []
+---
 # 🏛️ Architecture
 
+(architecture-data-flow)=
 ## Data Flow
 
 The PYORPS routing pipeline transforms geospatial input data into optimized power line
@@ -20,6 +30,7 @@ Input (raster/vector/WFS/in-memory)
 :width: 100%
 ```
 
+(architecture-package-structure)=
 ## Package Structure
 
 | Package | Purpose |
@@ -30,6 +41,7 @@ Input (raster/vector/WFS/in-memory)
 | `pyorps/graph/` | PathFinder + `api/` subpackage with pluggable backends |
 | `pyorps/utils/` | Performance-critical code: Cython extensions, Numba JIT |
 
+(architecture-key-classes)=
 ## Key Classes
 
 `PathFinder`
@@ -55,6 +67,7 @@ Input (raster/vector/WFS/in-memory)
 : Dataclass results carrying geometry, total cost, and routing metrics. Exportable
   as GeoJSON, Shapefile, or GeoPackage.
 
+(architecture-graph-backend-system)=
 ## Graph Backend System
 
 All backends implement the abstract `GraphAPI` base class. `GraphLibraryAPI` is an
@@ -68,6 +81,7 @@ intermediate base for external-library backends.
 | NetworkXAPI | `networkx_api.py` | Pure Python reference implementation |
 | iGraphAPI | `igraph_api.py` | C-backed |
 
+(architecture-cython-extensions)=
 ## Cython Extensions
 
 Seven compiled C++20 extensions live in `pyorps/utils/`, organized in dependency layers:
@@ -111,11 +125,13 @@ Platform-specific flags:
 | Linux (GCC) | `-O3 -ffast-math -fopenmp -std=c++20` |
 | macOS (Clang) | `-O3 -ffast-math -std=c++20` |
 
+(architecture-type-system)=
 ## Type System
 
 Cost values use `uint16` representation where the maximum value 65535 denotes
 forbidden/impassable terrain. Type aliases are defined in `core/types.py`.
 
+(architecture-exception-hierarchy)=
 ## Exception Hierarchy
 
 ```text

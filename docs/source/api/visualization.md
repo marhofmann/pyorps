@@ -1,7 +1,17 @@
+---
+title: "Visualization"
+summary: "Plot routes and cost rasters with the built-in helpers."
+status: stable
+since: "0.2.1"
+available_in: pypi
+module: "pyorps.core.path"
+api: []
+---
 # 🎨 Visualization
 
 PYORPS provides built-in plotting capabilities to visualize computed routes overlaid on the cost raster. The `plot_paths()` method supports customization of colors, markers, layout, and more.
 
+(visualization-quick-plot)=
 ## Quick Plot
 
 After computing a route, call `plot_paths()` to display it:
@@ -13,6 +23,7 @@ path_finder.plot_paths()
 
 This renders the route on top of the cost raster with default styling: green source marker, red target marker, and an automatically chosen path color.
 
+(visualization-customization)=
 ## Customization
 
 Adjust colors, markers, line width, and other visual properties:
@@ -31,6 +42,7 @@ path_finder.plot_paths(
 )
 ```
 
+(visualization-plotpaths-parameters)=
 ## `plot_paths()` Parameters
 
 | Parameter | Type | Default | Description |
@@ -48,6 +60,7 @@ path_finder.plot_paths(
 | `sup_title` | str | None | Overall figure title |
 | `reverse_colors` | bool | False | Reverse raster colormap |
 
+(visualization-multiple-paths)=
 ## Multiple Paths
 
 When working with multiple routes (from multi-source/target routing), you can choose between subplots and overlay display.
@@ -79,6 +92,7 @@ path_finder.plot_paths(
 ```
 :::
 
+(visualization-plotting-specific-paths)=
 ## Plotting Specific Paths
 
 Select individual paths by ID instead of plotting all stored results:
@@ -91,6 +105,7 @@ path_finder.plot_paths(path_id=0)
 path_finder.plot_paths(path_id=[0, 2])
 ```
 
+(visualization-example-gallery)=
 ## Example Gallery
 
 ```{image} ../_static/generated/viz_gallery_1.png

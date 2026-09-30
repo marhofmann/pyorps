@@ -1,9 +1,28 @@
+---
+title: "GeoDataset and Data Input"
+summary: "Load raster, vector, WFS and in-memory data through the GeoDataset hierarchy, including windowed reads."
+status: stable
+since: "0.2.1"
+available_in: pypi
+module: "pyorps.io.geo_dataset"
+api:
+  - pyorps.GeoDataset
+  - pyorps.VectorDataset
+  - pyorps.RasterDataset
+  - pyorps.InMemoryVectorDataset
+  - pyorps.LocalVectorDataset
+  - pyorps.WFSVectorDataset
+  - pyorps.LocalRasterDataset
+  - pyorps.InMemoryRasterDataset
+  - pyorps.initialize_geo_dataset
+---
 # 📁 Data Input
 
 PYORPS accepts geospatial data in multiple formats: raster files, vector files, remote Web Feature Services, and in-memory objects. The `PathFinder` class auto-detects the input type and creates the appropriate internal dataset representation.
 
 ---
 
+(geo-dataset-raster-input)=
 ## Raster Input
 
 GeoTIFF files (or other rasterio-supported formats) can be passed directly. The raster values are interpreted as cell costs.
@@ -35,6 +54,7 @@ pf = PathFinder(
 )
 ```
 
+(geo-dataset-vector-input)=
 ## Vector Input
 
 Shapefiles, GeoJSON, and GeoPackage files require `cost_assumptions` to map feature attributes to numeric cost values.
@@ -50,6 +70,7 @@ pf = PathFinder(
 
 Supported vector formats: `.shp`, `.geojson`, `.json`, `.gpkg`, `.gml`, `.kml`.
 
+(geo-dataset-wfs-remote-input)=
 ## WFS Remote Input
 
 Data from a Web Feature Service can be loaded by passing a dictionary with `url` and `layer` keys.
@@ -68,6 +89,7 @@ pf = PathFinder(
 )
 ```
 
+(geo-dataset-in-memory-input)=
 ## In-Memory Input
 
 GeoDataFrames and numpy arrays can be passed directly without writing to disk.
@@ -103,6 +125,29 @@ pf = PathFinder(
 
 ---
 
+(geo-dataset-windowed)=
+## Windowed Raster Reads
+
+```{pyorps-status} unreleased source
+```
+
+`LocalRasterDataset` can read only a part of a raster, so a very large GeoTIFF does not have to fit in memory.
+
+- `load_metadata()` reads no pixels; afterwards the raster geometry (transform, shape, CRS) is known, which is all that is needed to compute a search window.
+- `read_window(window, **kwargs)` returns the cells of a `rasterio.windows.Window` without touching `dataset.data`. The cells are exactly those a full read followed by slicing would give.
+- `load_data(window=window)` loads only that window; `transform` and `shape` then describe the window instead of the file.
+
+```python
+from rasterio.windows import Window
+from pyorps import LocalRasterDataset
+
+ds = LocalRasterDataset("cost_raster.tiff").load_metadata()
+tile = ds.read_window(Window(col_off=0, row_off=0, width=512, height=512))
+```
+
+`PathFinder` uses these methods by default (`windowed_read=True` in {doc}`raster_handler`).
+
+(geo-dataset-geodataset-class-hierarchy)=
 ## GeoDataset Class Hierarchy
 
 Internally, PYORPS normalizes all inputs through the `initialize_geo_dataset()` factory function. It inspects the input type and returns the appropriate `GeoDataset` subclass:
@@ -126,6 +171,7 @@ dataset.load_data()
 
 ---
 
+(geo-dataset-coordinate-input-formats)=
 ## Coordinate Input Formats
 
 Source and target coordinates accept a variety of Python types:
@@ -144,6 +190,7 @@ A single coordinate (tuple or Point) defines one source or target. A collection 
 
 ---
 
+(geo-dataset-bounding-box-and-mask)=
 ## Bounding Box and Mask
 
 You can restrict the area of interest using `bbox` or `mask` parameters.

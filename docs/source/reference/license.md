@@ -1,3 +1,12 @@
+---
+title: "License"
+summary: "The license of PYORPS."
+status: stable
+since: "0.2.1"
+available_in: pypi
+module: "pyorps"
+api: []
+---
 # ⚖️ License
 
 PYORPS is released under the MIT License.

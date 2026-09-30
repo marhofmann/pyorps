@@ -1,3 +1,13 @@
+---
+title: "GeoRasterizer"
+summary: "Turn vector layers and cost assumptions into a cost raster."
+status: stable
+since: "0.2.1"
+available_in: pypi
+module: "pyorps.raster.rasterizer"
+api:
+  - pyorps.GeoRasterizer
+---
 # 🗺️ Rasterization
 
 Rasterization converts vector geodata (polygons, lines) into a cost raster that the routing algorithms operate on. The `GeoRasterizer` class handles this conversion, applying cost assumptions to map feature attributes to numeric cell values.
@@ -10,6 +20,7 @@ Rasterization converts vector geodata (polygons, lines) into a cost raster that 
 
 ---
 
+(geo-rasterizer-basic-workflow)=
 ## Basic Workflow
 
 ```python
@@ -39,6 +50,7 @@ When you pass vector data directly to `PathFinder`, rasterization happens automa
 
 ---
 
+(geo-rasterizer-resolution-control)=
 ## Resolution Control
 
 The `resolution_in_m` parameter controls the spatial resolution of the output raster in meters per pixel. Lower values produce finer-grained rasters but increase memory usage and computation time.
@@ -55,6 +67,7 @@ If the input CRS uses geographic coordinates (degrees), the rasterizer auto-repr
 
 ---
 
+(geo-rasterizer-geometry-buffering)=
 ## Geometry Buffering
 
 Vector geometries can be expanded before rasterization using the `geometry_buffer_m` parameter. This is useful for linear features (roads, rivers) that need a spatial extent.
@@ -70,6 +83,51 @@ The buffer is applied in the dataset's CRS units (typically meters for projected
 
 ---
 
+(geo-rasterizer-forbidden-features-narrower-than-a-cell)=
+## Forbidden Features Narrower Than a Cell
+
+A cell is normally burned only if its **centre** falls inside the polygon. A
+forbidden feature narrower than one cell can therefore slip between the cell
+centres and disappear from the raster entirely — measured: a 0.8 m barrier on a
+1 m grid burned 60 cells at one sub-pixel alignment and **zero cells at 3 of 7**
+alignments tested.
+
+**By default `rasterize()` repairs nothing.** The burned array is bit-identical
+to a plain GDAL burn, and PYORPS *warns* that a forbidden feature did not
+survive. The fix that is correct rather than a trade is **a finer cell size** —
+`suggest_resolution()` computes it, and reports what it would cost in cells.
+
+```python
+rasterizer.rasterize(
+    resolution_in_m=1.0,
+    widen_thin_forbidden=False,   # default: opt-in repair, widens sub-cell forbidden geometry
+    all_touched=False,            # default: opt-in repair, forbidden features grow to every touched cell
+    on_thin_features="warn",      # 'warn' | 'raise' | 'ignore'
+)
+```
+
+:::{danger}
+Both repairs also **seal legitimate sub-cell openings** — a gate, a culvert, a
+gap between parcels — because at a fixed cell size a sub-cell barrier and a
+sub-cell gap are the same geometry seen from opposite sides. Swept over 8 gate
+widths × 8 sub-pixel offsets under **four different gate-width sets**, counting
+only configurations the plain rule leaves passable: in a 0.4 m wall
+`widen_thin_forbidden=True` sealed **38–100 %** of them and `all_touched=True`
+**31–100 %** — indistinguishable. In a 2 m wall widening seals **0 %** under
+every set (it never touches a fat feature) and `all_touched=True` **17–100 %**.
+The percentages move with the gate widths swept, so only the structure
+transfers; the table and the exact widths are in
+{doc}`thin_forbidden_features`. Turning one on can turn a solvable problem into
+`NoPathFoundError`, so PYORPS emits a `SealedOpeningWarning` when a repair
+disconnects free space that the plain burn left connected.
+:::
+
+See {doc}`thin_forbidden_features` for the full explanation, the five available
+options and their effects, and the measured overhead.
+
+---
+
+(geo-rasterizer-fill-value)=
 ## Fill Value
 
 Cells that fall outside all vector geometries receive the `fill_value`. By default, this is `65535` (impassable), meaning areas not covered by any input feature are treated as forbidden.
@@ -83,6 +141,7 @@ rasterizer.rasterize(
 
 ---
 
+(geo-rasterizer-multi-layer-rasterization)=
 ## Multi-Layer Rasterization
 
 After creating the base raster, additional vector datasets can overlay or modify cell values using `modify_raster_from_dataset()`. This allows you to build up a cost raster from multiple data sources.
@@ -119,8 +178,19 @@ rasterizer.save_raster("combined_cost_raster.tiff")
 The `ignore_value` parameter (default: `65535`) prevents modification of cells that are already marked as impassable. Set `ignore_value=None` to modify all cells regardless of their current value.
 :::
 
+:::{warning}
+Overlays applied with `modify_raster_from_dataset()` use the pixel-centre rule
+and are **not** covered by the all-touched treatment that `rasterize()` gives
+forbidden features. A forbidden zone narrower than one cell that is stamped in
+this way can still vanish silently. Either include such a layer in the base
+burn, or give it a `geometry_buffer_m` of at least
+`safe_forbidden_width_m(resolution) / 2`. See
+{doc}`thin_forbidden_features`.
+:::
+
 ---
 
+(geo-rasterizer-clipping)=
 ## Clipping
 
 Restrict the raster to a specific geometry using `clip_to_area()`:
@@ -140,6 +210,7 @@ rasterizer.shrink_raster(exclude_value=65535)
 
 ---
 
+(geo-rasterizer-full-pipeline-example)=
 ## Full Pipeline Example
 
 A complete workflow from WFS download through rasterization to routing:
@@ -186,6 +257,7 @@ result = pf.find_route()
 
 ---
 
+(geo-rasterizer-building-comprehensive-cost-rasters-from-multipl)=
 ## Building Comprehensive Cost Rasters from Multiple Data Sources
 
 Real-world infrastructure planning requires integrating multiple geospatial datasets into a single cost raster. Each layer adds domain-specific information — land use categories, environmental protection zones, soil conditions, and regulatory constraints — to produce a comprehensive cost surface.

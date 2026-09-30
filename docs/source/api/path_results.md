@@ -1,7 +1,19 @@
+---
+title: "Results and Export"
+summary: "The Path and PathCollection result objects and how to export them."
+status: stable
+since: "0.2.1"
+available_in: pypi
+module: "pyorps.core.path"
+api:
+  - pyorps.Path
+  - pyorps.PathCollection
+---
 # 📊 Results & Export
 
 After computing a route, PYORPS returns structured result objects that provide access to path geometry, cost metrics, and runtime information. Results can be exported to standard geospatial formats for use in GIS software.
 
+(path-results-path-object)=
 ## Path Object
 
 A single `Path` object is returned by `find_route()` for single source-target routing. It contains all information about the computed route.
@@ -31,6 +43,7 @@ print(result.path_geometry)       # Shapely LineString
 print(result.runtimes)            # {"graph_creation": 0.5, "shortest_path": 1.2, ...}
 ```
 
+(path-results-path-metrics)=
 ## Path Metrics
 
 Each `Path` provides a breakdown of the route length by cost category. This is useful for understanding how much of the route passes through different land-use types or cost zones.
@@ -49,6 +62,7 @@ result.length_by_category_percent
 Use `length_by_category` to assess how much of a route traverses expensive areas (e.g., nature reserves, urban zones) and whether alternative routes might reduce exposure to high-cost regions.
 :::
 
+(path-results-pathcollection)=
 ## PathCollection
 
 For multi-source or multi-target routing, `find_route()` returns a `PathCollection` that holds multiple `Path` objects.
@@ -67,6 +81,7 @@ for path in paths:
 single = paths.get(path_id=0)
 ```
 
+(path-results-geodataframe-creation)=
 ## GeoDataFrame Creation
 
 Convert results to a GeoPandas `GeoDataFrame` for further analysis or integration with other geospatial workflows:
@@ -79,6 +94,7 @@ print(gdf.columns)
 
 The GeoDataFrame includes one row per path with columns for source/target coordinates, length, cost, and the route geometry as a Shapely `LineString`.
 
+(path-results-export-formats)=
 ## Export Formats
 
 Save results directly to standard geospatial file formats:
@@ -98,6 +114,7 @@ path_finder.save_paths("routes.gpkg")
 The export format is determined automatically from the file extension. All formats supported by GeoPandas/Fiona are available.
 :::
 
+(path-results-working-with-results-in-gis)=
 ## Working with Results in GIS
 
 Exported files can be opened directly in GIS applications such as QGIS or ArcGIS for further analysis and visualization:

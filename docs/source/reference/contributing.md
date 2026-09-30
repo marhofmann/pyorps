@@ -1,5 +1,15 @@
+---
+title: "Contributing"
+summary: "How to set up a development environment and contribute."
+status: stable
+since: "0.2.1"
+available_in: pypi
+module: "pyorps"
+api: []
+---
 # 💻 Contributing
 
+(contributing-development-setup)=
 ## Development Setup
 
 ```bash
@@ -12,6 +22,7 @@ pip install -e .[dev,full]
 python setup.py build_ext --inplace
 ```
 
+(contributing-running-tests)=
 ## Running Tests
 
 ```bash
@@ -19,6 +30,7 @@ pytest tests/ -v
 pytest --cov=pyorps
 ```
 
+(contributing-code-style)=
 ## Code Style
 
 PYORPS follows PEP 8 with a maximum line length of 88 (Black convention).
@@ -29,6 +41,7 @@ isort pyorps/
 flake8 pyorps/
 ```
 
+(contributing-commit-format)=
 ## Commit Format
 
 Use conventional commits:
@@ -40,6 +53,7 @@ Use conventional commits:
 - `test:` -- adding or updating tests
 - `chore:` -- maintenance tasks
 
+(contributing-pull-request-checklist)=
 ## Pull Request Checklist
 
 - Code follows the style guidelines above
@@ -48,6 +62,7 @@ Use conventional commits:
 - Documentation updated if needed
 - New tests added for new features
 
+(contributing-cython-contributions)=
 ## Cython Contributions
 
 After modifying any `.pyx` file, rebuild the extensions before testing:

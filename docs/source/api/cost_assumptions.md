@@ -1,3 +1,16 @@
+---
+title: "Cost Assumptions"
+summary: "Per-class costs from a dictionary or file, including several metrics with metrics=."
+status: stable
+since: "0.2.1"
+available_in: pypi
+module: "pyorps.core.cost_assumptions"
+api:
+  - pyorps.CostAssumptions
+  - pyorps.get_zero_cost_assumptions
+  - pyorps.detect_feature_columns
+  - pyorps.save_empty_cost_assumptions
+---
 # 💰 Cost Assumptions
 
 Cost assumptions map geospatial features (land use categories, protection zones, etc.) to numeric cost values. These values drive the least-cost path algorithm: lower cost means the route prefers that area, higher cost means it avoids it, and `65535` marks a cell as forbidden/impassable.
@@ -8,6 +21,7 @@ Cost values use `uint16` representation, so valid values range from `0` to `6553
 
 ---
 
+(cost-assumptions-dictionary-input)=
 ## Dictionary Input
 
 The most direct way to define costs is with a Python dictionary. The top-level key is the feature column name; the values map feature categories to costs.
@@ -49,6 +63,7 @@ When side features are present, an empty string `""` acts as a wildcard default 
 
 ---
 
+(cost-assumptions-file-based-input)=
 ## File-Based Input
 
 Cost assumptions can be loaded from CSV, Excel, or JSON files.
@@ -118,6 +133,7 @@ Or a plain dictionary (legacy format) without the metadata wrapper.
 
 ---
 
+(cost-assumptions-auto-detection-and-template-generation)=
 ## Auto-Detection and Template Generation
 
 When working with unfamiliar vector data, PYORPS can analyze the attribute columns and suggest which ones to use as features. It can also generate a template file with zero costs that you fill in.
@@ -143,6 +159,38 @@ The `detect_feature_columns()` function uses statistical analysis (Shannon entro
 
 ---
 
+(cost-assumptions-multiple-metrics-metrics)=
+## Multiple Metrics (`metrics=`)
+
+```{pyorps-status} unreleased source
+```
+
+`CostAssumptions(source=None, metrics=None)` accepts an optional list of metric names. A leaf of the cost dictionary may then be a dict of named values instead of a single number:
+
+```python
+from pyorps.core.cost_assumptions import CostAssumptions
+
+costs = CostAssumptions(
+    {"land_use": {
+        "Forest": {"cost": 365, "landscape": 0.9},
+        "Grassland": 130,          # scalar leaf: cost = 130
+        "Residential": 65535,      # forbidden in all metrics
+    }},
+    metrics=["landscape"],
+)
+print(costs.metric_names)          # ['cost', 'landscape']
+```
+
+- A dict leaf is recognized by the reserved keys `cost`, `factor` or `weight`, or when all its keys are declared in `metrics`.
+- Declaring `metrics` names the extra metrics explicitly and forces multi-metric mode; a key that is neither declared nor reserved raises `FormatError`.
+- Unspecified metric values default to 0, and a value of 65535 (or `inf`) in any metric marks the class as forbidden in all metrics.
+- `apply_to_geodataframe` then writes one column per metric.
+
+Without `metrics=` and without dict leaves, behavior is unchanged: a single `cost` metric. What the metrics mean for routing (cell versus edge metrics, weights, the feasibility objective) is described in {doc}`../concepts/cost_semantics`.
+
+---
+
+(cost-assumptions-cost-modifiers-datasetstomodify)=
 ## Cost Modifiers (`datasets_to_modify`)
 
 After the base raster is created, additional datasets can overlay or modify cost values. This is useful for protection zones, buffer areas, or other constraints that add cost on top of the base land-use costs.
@@ -200,6 +248,7 @@ Modifiers are applied in order. Place broad, low-impact modifiers first and spec
 
 ---
 
+(cost-assumptions-saving-and-exporting-cost-assumptions)=
 ## Saving and Exporting Cost Assumptions
 
 The `CostAssumptions` class can export its contents to different formats:

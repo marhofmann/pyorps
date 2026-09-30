@@ -1,7 +1,17 @@
+---
+title: "Neighborhoods"
+summary: "How many neighbouring cells each cell connects to and what that does to path shape and speed."
+status: stable
+since: "0.2.1"
+available_in: pypi
+module: "pyorps.graph.path_finder"
+api: []
+---
 # 🔗 Neighborhoods
 
 Neighborhood connectivity defines which adjacent cells can be reached from any given cell during routing. A larger neighborhood produces smoother, more realistic paths at the cost of additional computation time.
 
+(neighborhoods-overview)=
 ## Overview
 
 In a raster grid, each cell has a set of reachable neighbors. The simplest case (R0) allows movement only in the four cardinal directions, producing staircase-like paths. Adding diagonal connections (R1) improves this, and extending to knight's-move-like steps (R2 and beyond) produces progressively smoother results.
@@ -12,6 +22,47 @@ In a raster grid, each cell has a set of reachable neighbors. The simplest case 
 :align: center
 ```
 
+(neighborhoods-intermediate-cells-routes-never-cut-corners)=
+## Intermediate Cells: Routes Never Cut Corners
+
+Every step larger than one cell passes *over* cells on its way, and PYORPS
+tracks them as the step's **intermediate cells** (the figure above). They serve
+two purposes: they contribute their share of the cost, and they decide whether
+the step is allowed at all.
+
+> A step is admissible only if **all** of its intermediate cells are passable.
+
+For a single diagonal step, the intermediate cells are exactly its **two
+flanking cells**. So a diagonal is rejected whenever either flank is
+impassable — which is stricter than the usual "no corner cutting" rule, that
+only rejects when *both* flanks are blocked. A route can never squeeze
+diagonally between two impassable cells that touch at a corner.
+
+This is an emergent consequence of how intermediate cells are handled, not a
+separate check. Measured on a grid with an impassable main diagonal offering 46
+opportunities to cut a corner, all edge builders produced **zero**
+corner-cutting edges at r1, r2 and r3, and every **discrete** solver — Cython
+Dijkstra and delta-stepping, NetworkX, NetworKit, the GPU raster backends and
+the constrained CPU planners — reported no path across a sealed thin diagonal
+barrier.
+
+The **eikonal/FIM backend is a separate case, immune for a different reason.**
+It has no edges and no intermediate cells, so the mechanism above simply does
+not apply to it; instead its Godunov update reads only the four axis
+neighbours, so the solver has no diagonal move to cut a corner with. It also
+reported no path across the same sealed barrier, and across one with a cheap
+lane running alongside. Treat that as an observation about the 4-point stencil
+rather than as the same guarantee: FIM approximates a continuous PDE, and its
+behaviour at features one cell wide is governed by the discretization, not by
+edge admissibility.
+
+:::{note}
+This guarantee protects you against a *fragmented* barrier — one burned as a
+corner-touching staircase. It cannot protect you against a barrier that is
+**absent** from the raster. See {doc}`../api/thin_forbidden_features`.
+:::
+
+(neighborhoods-predefined-neighborhoods)=
 ## Predefined Neighborhoods
 
 PYORPS provides eight predefined neighborhood configurations, named R0 through R7:
@@ -33,6 +84,7 @@ PYORPS provides eight predefined neighborhood configurations, named R0 through R
 :align: center
 ```
 
+(neighborhoods-usage)=
 ## Usage
 
 ### Using a Predefined Neighborhood
@@ -63,6 +115,7 @@ custom_steps = np.array([
 pf = PathFinder(..., steps=custom_steps)
 ```
 
+(neighborhoods-choosing-a-neighborhood)=
 ## Choosing a Neighborhood
 
 The choice of neighborhood involves a trade-off between path quality and computation time:
@@ -77,6 +130,7 @@ The choice of neighborhood involves a trade-off between path quality and computa
 Start with R2 (the default). If the resulting paths show visible angular artifacts, try R3. Going beyond R3 rarely provides noticeable improvement for most practical applications.
 :::
 
+(neighborhoods-performance-vs-quality)=
 ## Performance vs. Quality
 
 Larger neighborhoods increase the number of edges in the graph, which directly affects memory usage and computation time. The relationship is roughly linear: R3 processes approximately twice as many edges as R2.
