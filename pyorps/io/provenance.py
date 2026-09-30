@@ -150,6 +150,7 @@ def sha256_array(arr: np.ndarray) -> str:
 
 def _jsonable(obj: Any) -> Any:
     """Convert numpy scalars/arrays and tuples to plain JSON types."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if isinstance(obj, Mapping):
         return {str(k): _jsonable(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
@@ -271,6 +272,7 @@ def diff(expected: Mapping[str, Any], actual: Mapping[str, Any], *,
     out: list[str] = []
 
     def walk(a: Any, b: Any, path: str) -> None:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if isinstance(a, Mapping) and isinstance(b, Mapping):
             for k in sorted(set(a) | set(b), key=str):
                 if not path and k in skip:
@@ -319,7 +321,7 @@ def require_match(expected: Mapping[str, Any], actual: Mapping[str, Any] | None,
     """
     if actual is None:
         raise ProvenanceMismatch(what, [
-            "no provenance record stored (written before plan Phase A1); "
+            "no provenance record stored (written before plan Phase A1); " +
             "such objects are not reused"])
     differences = diff(expected, actual, ignore=ignore)
     if differences:

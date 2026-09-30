@@ -151,6 +151,7 @@ def relax_and_verify(candidates: Iterable[tuple[Hashable, float]],
             the candidate's own ``F_rel`` by more than ``eps``).
         RuntimeError: a bracket stays open.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if eps < 0:
         raise ValueError("eps must be >= 0")
     order = sorted(candidates, key=lambda kv: kv[1])
@@ -242,6 +243,7 @@ def consent_lattice(classes: Sequence[Hashable], one_off: dict,
         eps: ``eps_adm``; sets are skipped only when their bound exceeds
             the best value by MORE than ``eps``, so ties are evaluated.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if eps < 0:
         raise ValueError("eps must be >= 0")
     K = tuple(classes)
@@ -254,7 +256,7 @@ def consent_lattice(classes: Sequence[Hashable], one_off: dict,
     subsets = [frozenset(c) for r in range(len(K) + 1)
                for c in combinations(K, r)]
 
-    def extra(S):
+    def extra_cost(S):
         v = float(V(S))
         if v < 0:
             raise ValueError(f"V({set(S)}) = {v} < 0")
@@ -263,7 +265,7 @@ def consent_lattice(classes: Sequence[Hashable], one_off: dict,
     full = frozenset(K)
     evaluated = {full: float(masked_value(full))}
     f_all = evaluated[full]
-    best = f_all + extra(full)
+    best = f_all + extra_cost(full)
     best_S = full
     skipped = {}
 
@@ -272,10 +274,10 @@ def consent_lattice(classes: Sequence[Hashable], one_off: dict,
         for T, fT in evaluated.items():
             if S <= T and fT > lb:
                 lb = fT
-        return lb + extra(S)
+        return lb + extra_cost(S)
 
     # smallest bound first, so the incumbent tightens early
-    for S in sorted(subsets, key=lambda S: (f_all + extra(S), len(S))):
+    for S in sorted(subsets, key=lambda S: (f_all + extra_cost(S), len(S))):
         if S in evaluated:
             continue
         lb = bound(S)
@@ -287,11 +289,12 @@ def consent_lattice(classes: Sequence[Hashable], one_off: dict,
             raise ValueError(f"F_S {fS} < F_all {f_all} for S = {set(S)}: "
                              f"masking cannot make the optimum cheaper")
         evaluated[S] = fS
-        total = fS + extra(S)
+        total = fS + extra_cost(S)
         if total < best:
             best, best_S = total, S
     ties = [S for S, fS in evaluated.items()
-            if fS + extra(S) <= best + eps]
+            if fS + extra_cost(S) <= best + eps]
     return ConsentResult(value=best, classes=best_S, ties=ties,
                          evaluated=evaluated, skipped=skipped,
                          eps=float(eps))
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

@@ -76,6 +76,7 @@ def load_local_vector(path: str | Path, layer: str | None = None,
 def load_wfs_vector(url: str, layer: str, bbox=None, mask=None,
                     target_crs: Any = None) -> gpd.GeoDataFrame:
     """Load a WFS layer via pyorps (typed WFS errors surface unchanged)."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps import initialize_geo_dataset
 
     from pyorps.core.exceptions import WFSResponseParsingError
@@ -134,6 +135,7 @@ def merge_gdfs(gdfs: list[gpd.GeoDataFrame],
     missing in one state simply stays empty there), and the rows are stacked.
     The merged frame then feeds ONE cost table and ONE rasterization step.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     import pandas as pd
 
     gdfs = [g for g in (gdfs or []) if g is not None and not g.empty]

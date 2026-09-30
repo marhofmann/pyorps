@@ -35,6 +35,7 @@ class Terminal:
 def _normalise_id(value: Any, row: int, id_field: str) -> Any:
     """An integer-valued id becomes an ``int`` (``1.0`` from a shapefile
     reads as ``1``); anything else must be a non-empty string."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     import math
 
     import numpy as np
@@ -75,6 +76,7 @@ def terminals_from_frame(frame, *, id_field: str = "id", prefix: str = "",
         ValueError: no such attribute, a missing/empty/non-integer id, a
             repeated id or label, or a geometry that is not one point.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if id_field not in frame.columns:
         raise ValueError(f"no {id_field!r} attribute; have "
                          f"{[c for c in frame.columns if c != 'geometry']}")

@@ -88,7 +88,7 @@ EXCEPTION_RULES: list[tuple[type, str | None, _Builder]] = [
         "error", "Can't reach the WFS server",
         "The server didn't respond (down, wrong URL, or you're offline).",
         "No data was loaded from this source.",
-        "Check the URL and your internet connection; try again later or load "
+        "Check the URL and your internet connection; try again later or load " +
         "a local file instead.", "tab-data")),
     (pex.WFSLayerNotFoundError, None, _wfs_layer_notice),
     # empty answer for THIS area is benign (layer just doesn't cover it) — a
@@ -96,23 +96,23 @@ EXCEPTION_RULES: list[tuple[type, str | None, _Builder]] = [
     # BEFORE the generic "couldn't be read" rule below.
     (pex.WFSResponseParsingError, "returned no data", _n(
         "warning", "No data here for this layer",
-        "The WFS answered, but this layer has no features in your study area "
+        "The WFS answered, but this layer has no features in your study area " +
         "(e.g. a Hessen layer with an area outside Hessen).",
         "No data was loaded from this layer.",
-        "Move/enlarge the study area to where the layer has data, or pick a "
+        "Move/enlarge the study area to where the layer has data, or pick a " +
         "layer that covers your region.", "tab-data")),
     (pex.WFSResponseParsingError, "returned no features", _n(
         "warning", "No data here for this layer",
-        "The WFS answered, but this layer has no features in your study area "
+        "The WFS answered, but this layer has no features in your study area " +
         "(e.g. a Hessen layer with an area outside Hessen).",
         "No data was loaded from this layer.",
-        "Move/enlarge the study area to where the layer has data, or pick a "
+        "Move/enlarge the study area to where the layer has data, or pick a " +
         "layer that covers your region.", "tab-data")),
     (pex.WFSResponseParsingError, None, _n(
         "error", "The server's response couldn't be read",
         "The WFS returned unexpected or invalid XML.",
         "No data was loaded.",
-        "Try a smaller area or a different WFS version; the server may be "
+        "Try a smaller area or a different WFS version; the server may be " +
         "misconfigured — contact the data provider.", "tab-data")),
     (pex.WFSError, None, _n(
         "error", "WFS request failed",
@@ -130,19 +130,19 @@ EXCEPTION_RULES: list[tuple[type, str | None, _Builder]] = [
         "error", "Cost source not supported",
         "The cost input isn't a table file or a valid mapping.",
         "The cost model was not built.",
-        "Load a CSV/JSON/XLSX cost table, or edit costs directly in the "
+        "Load a CSV/JSON/XLSX cost table, or edit costs directly in the " +
         "table.", "tab-cost")),
     (pex.FileLoadError, None, _n(
         "error", "Couldn't read the cost file",
         "The file's encoding, delimiter or format couldn't be parsed.",
         "The cost model was not loaded.",
-        "Confirm it's a valid CSV/JSON/XLSX; re-export it from the cost table "
+        "Confirm it's a valid CSV/JSON/XLSX; re-export it from the cost table " +
         "and retry.", "tab-cost")),
     (pex.FormatError, None, _n(
         "error", "Cost table format is wrong",
         "The table is missing the cost column or a category column.",
         "Costs can't be mapped to the data.",
-        "Ensure one numeric cost column and at least one category column; "
+        "Ensure one numeric cost column and at least one category column; " +
         "select the feature column(s).", "tab-cost")),
     (pex.CostAssumptionsError, None, _n(
         "error", "Cost model problem",
@@ -168,10 +168,10 @@ EXCEPTION_RULES: list[tuple[type, str | None, _Builder]] = [
     # ---- routing ------------------------------------------------------------
     (pex.NoPathFoundError, None, _n(
         "error", "No route could be found",
-        "The source/target is blocked, outside the search window, or "
+        "The source/target is blocked, outside the search window, or " +
         "separated by forbidden areas.",
         "No route was produced for this pair.",
-        "Increase the search buffer, move the point off a forbidden cell, or "
+        "Increase the search buffer, move the point off a forbidden cell, or " +
         "check the cost raster for a barrier.", "tab-routes")),
     (pex.PairwiseError, None, _n(
         "error", "Source and target counts don't match",
@@ -181,10 +181,10 @@ EXCEPTION_RULES: list[tuple[type, str | None, _Builder]] = [
         "tab-routes")),
     (pex.AlgorithmNotImplementedError, None, _n(
         "error", "That algorithm isn't available on this backend",
-        "The selected algorithm has no implementation in the selected "
+        "The selected algorithm has no implementation in the selected " +
         "graph backend.",
         "No route was computed.",
-        "Pick a valid algorithm for this backend — the dropdown filters "
+        "Pick a valid algorithm for this backend — the dropdown filters " +
         "them.", "tab-routes")),
     (pex.RasterShapeError, None, _n(
         "error", "Unexpected raster shape",
@@ -209,7 +209,7 @@ EXCEPTION_RULES: list[tuple[type, str | None, _Builder]] = [
         "error", "Unsupported file type",
         "pyorps couldn't tell what kind of dataset this is.",
         "The file wasn't loaded.",
-        "Use a supported vector (.shp/.geojson/.gpkg) or raster (.tif) "
+        "Use a supported vector (.shp/.geojson/.gpkg) or raster (.tif) " +
         "format.", "tab-data")),
     (ValueError, "hostname", _n(
         "error", "That WFS URL looks invalid",
@@ -231,17 +231,17 @@ EXCEPTION_RULES: list[tuple[type, str | None, _Builder]] = [
         "tab-routes")),
     (ValueError, "unknown angle cost function", _n(
         "error", "Unknown angle-cost function",
-        "The infrastructure profile names an angle-cost function that "
+        "The infrastructure profile names an angle-cost function that " +
         "doesn't exist.",
         "Constrained routing can't run.",
         "Pick linear, quadratic or piecewise.", "tab-routes")),
     # ---- OpenStreetMap / Overpass (matched by message substring) -----------
     (ValueError, "overpass", _n(
         "warning", "OpenStreetMap server is busy",
-        "The public Overpass API rate-limited or couldn't be reached "
+        "The public Overpass API rate-limited or couldn't be reached " +
         "(the exact HTTP code is in Details).",
         "No OSM features were loaded.",
-        "Wait a moment and retry, draw a smaller study area, or narrow the "
+        "Wait a moment and retry, draw a smaller study area, or narrow the " +
         "tag (e.g. highway=primary instead of highway=*).", "tab-data")),
     (ValueError, "no osm features", _n(
         "warning", "No OSM features in this area",
@@ -250,10 +250,10 @@ EXCEPTION_RULES: list[tuple[type, str | None, _Builder]] = [
         "Try a different feature type or a larger study area.", "tab-data")),
     (MemoryError, None, _n(
         "error", "Out of memory",
-        "The operation needed more RAM than is available (raster too large "
+        "The operation needed more RAM than is available (raster too large " +
         "or search window too big).",
         "The operation failed part-way.",
-        "Increase the resolution value (coarser), shrink the study area, or "
+        "Increase the resolution value (coarser), shrink the study area, or " +
         "set a smaller search buffer.", "tab-raster")),
     # ---- pyorps base fallback ----------------------------------------------
     (pex.PyorpsError, None, _n(
@@ -318,9 +318,9 @@ WARNING_RULES: list[tuple[type, str, Callable[[str], Notice]]] = [
         "Set a search-space buffer in the Routes tab.", "tab-routes")),
     (Warning, "maximum cost value", _w(
         "info", "Source/target moved to the nearest routable cell",
-        "A point was on a forbidden/no-data cell, so it was snapped to the "
+        "A point was on a forbidden/no-data cell, so it was snapped to the " +
         "nearest valid cell.",
-        "The route starts/ends slightly off your click (shift shown in "
+        "The route starts/ends slightly off your click (shift shown in " +
         "Details).",
         "If the shift matters, move the point onto a routable area.",
         "tab-routes")),

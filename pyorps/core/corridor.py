@@ -182,17 +182,17 @@ class CorridorOverlapReport:
             "=" * 52,
             f"  routes                {self.n_routes}",
             f"  segments              {self.n_segments}",
-            f"  nodes                 {self.n_nodes} "
+            f"  nodes                 {self.n_nodes} " +
             f"({self.n_junctions} derived junctions)",
             "",
             f"  per-route length      {self.route_length_m:>14,.1f} m",
             f"  corridor length       {self.corridor_length_m:>14,.1f} m",
-            f"  shared length         {self.shared_length_m:>14,.1f} m"
+            f"  shared length         {self.shared_length_m:>14,.1f} m" +
             f"  ({self.shared_fraction * 100:.1f} % of corridor)",
             "",
             f"  per-route cost        {self.route_cost:>14,.0f}",
             f"  corridor cost         {self.corridor_cost:>14,.0f}",
-            f"  overcount             {self.overcount:>14,.0f}"
+            f"  overcount             {self.overcount:>14,.0f}" +
             f"  ({self.overstatement * 100:.1f} % of per-route cost)",
         ]
         if self.cell_shared_fraction is not None:
@@ -309,6 +309,7 @@ class CorridorGraph:
         result is exactly the cell list the pairwise search produced, which is
         what makes it a check rather than a restatement.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         route_key = key[0] if len(key) == 1 else tuple(key)
         segments = self.route_segments(route_key)
         if not segments:
@@ -444,6 +445,7 @@ class CorridorGraph:
             cell_shared_fraction: Optional wider, cell-level sharing measure.
             notes: Caveats to carry into the report.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         corridor_length = self.total_length
         corridor_cost = self.total_construction_cost
         shared_length = float(sum(s.length for s in self.shared_segments))

@@ -1,4 +1,6 @@
 """Backward-compatibility shim — imports from new OO modules."""
+# ruff: noqa: F401
+# pylint: disable=unused-import
 from pyorps.utils._heap import PyBinaryHeap64, py_ravel_index, py_unravel_index
 from pyorps.utils._raster_context import (
     create_exclude_mask,

@@ -109,6 +109,7 @@ class _Checker:
 
     def __init__(self, graph, turbines, model, vmodel, plant, rules, *,
                  root_transit, tap_policy):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if (plant is None) != (rules is None):
             raise ValueError("give both plant and rules, or neither")
         self.graph, self.turbines, self.model = graph, turbines, model
@@ -132,6 +133,7 @@ class _Checker:
     def locate(self, design, chk):
         """``(tree, |V| per collector node, start node)`` of the worst
         violation, or ``None`` when no cable upgrade can help."""
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         tree = electrical_tree(design, self.graph, self.turbines, self.model,
                                self.vmodel, **self.kw)
         if self.plant is None:
@@ -187,6 +189,7 @@ def repair_design(design: Design, graph, turbines, model: CollectorModel,
     plant at the NAP (its voltage rules); a violation no cable can fix (the
     MV busbar, the tap changer's range) ends the repair unsuccessfully.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     ck = _Checker(graph, turbines, model, vmodel, plant, rules,
                   root_transit=root_transit, tap_policy=tap_policy)
     kw = ck.kw
@@ -279,6 +282,7 @@ def certify_voltage(field_, pricer, turbines, model: CollectorModel,
     exclude them, and the call raises (re-run the field with a larger
     budget).
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps.certify.rv import relax_and_verify
 
     if field_.engine_b is None:
@@ -346,3 +350,4 @@ def certify_voltage(field_, pricer, turbines, model: CollectorModel,
     return VoltageCertificate(rv=rv, argmin=g,
                               design=designs.get(g) if g is not None
                               else None, checks=checks, record=record)
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

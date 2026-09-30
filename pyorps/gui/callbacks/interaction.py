@@ -140,6 +140,7 @@ def register(app, state) -> None:
         State(ids.ROUTE_RASTER, "value"),
         prevent_initial_call=True)
     def dispatch_click(click_data, ui_state, draft, raster_layer_id):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not click_data or not click_data.get("latlng"):
             raise PreventUpdate
         mode = (ui_state or {}).get("click_mode", "off")

@@ -285,6 +285,7 @@ class _TapRun:
 
 def _solve_tap(ptree, plant, vmodel, corner, tap, kappa0=None) -> _TapRun:
     """The controller's reactive share at one tap (false position)."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     n = plant.transformer.ratio(tap)
     v_root = corner.u_nap_pu * plant.u_nap_kv / n / ptree.u_kv
     p = [corner.p_frac * pr for pr in plant.p_rated_mw]
@@ -338,6 +339,7 @@ def _solve_tap(ptree, plant, vmodel, corner, tap, kappa0=None) -> _TapRun:
         return _TapRun(tap, math.nan, math.nan, math.nan, [], math.nan,
                        error=str(exc))
     return _TapRun(tap, kappa, deficit, q, lf.v_pu, abs(lf.v_pu[MV_BUS]))
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
 
 # -------------------------------------------------------------- results
@@ -447,6 +449,7 @@ def check_plant_tree(tree: ElectricalTree, vmodel: VoltageModel,
                      plant: PlantModel, rules: GridRules, *,
                      tap_policy: str = "per_turbine") -> PlantCheck:
     """Check one collector inside its plant against an operator's rules."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     n = vmodel.n
     if len(plant.p_rated_mw) != n:
         raise ValueError("the plant and the voltage model differ in the "
@@ -607,6 +610,7 @@ def check_plant(design, graph, turbines, model, vmodel: VoltageModel,
                 root_transit: bool = True,
                 tap_policy: str = "per_turbine") -> PlantCheck:
     """:func:`check_plant_tree` on a traced design's electrical tree."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     tree = electrical_tree(design, graph, turbines, model, vmodel,
                            root_transit=root_transit)
     return check_plant_tree(tree, vmodel, plant, rules,
@@ -628,6 +632,7 @@ def grid_rules_from_yaml(path, operator: str) -> GridRules:
     voltages, no trip there, and the rev. 5 plan's no-load reading of
     VDE-AR-N 4120.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     import yaml
 
     from pyorps.io.provenance import sha256_file

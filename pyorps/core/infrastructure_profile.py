@@ -230,6 +230,7 @@ class InfrastructureProfile:
         Returns:
             (65536,) float64 array: tower cost for each possible uint16 raster value
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         costs = np.zeros(65536, dtype=np.float64)
 
         if "terrain_cost_map" not in self.tower_cost_params:

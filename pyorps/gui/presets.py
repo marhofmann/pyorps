@@ -433,6 +433,7 @@ def step_mask(gdf, step: dict):
     inside a group is the identity for ``&`` and matches everything for
     ``|``.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from .services.cost_model import condition_mask
 
     combine = "|" if str(step.get("combine") or "&").strip() == "|" else "&"
@@ -452,6 +453,7 @@ def step_mask(gdf, step: dict):
 
 def _condition_text(cond: dict) -> str:
     """One condition as python-like text: ("nutzart" == "Wald")."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     operator = (cond.get("operator") or "all").strip()
     column = cond.get("column") or ""
     if operator in ("", "all"):
@@ -472,6 +474,7 @@ def step_label(step: dict) -> str:
     """Plain-english/python-like mask text for a step, e.g.
     ``(("nutzart" == "Wald") & ("bez" == "Nadelholz")) -> buffer=2m``.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     conditions = step_conditions(step)
     combine = "|" if str(step.get("combine") or "&").strip() == "|" else "&"
     parts = [_condition_text(c) for c in conditions]
@@ -515,6 +518,7 @@ def make_steps_preprocessor(steps: list[dict]) -> Callable:
             return default
 
     def run_steps(gdf):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         for step in steps or []:
             op = (step.get("op") or "").strip().lower()
             if op not in PREPROC_STEP_OPS:

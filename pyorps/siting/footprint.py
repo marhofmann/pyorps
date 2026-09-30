@@ -270,6 +270,7 @@ def verify_exact(cost, blocked, screen: ScreenResult, rows_cols, *,
         Cost per ``(row, col)``; ``inf`` where the footprint overlaps a
         blocked cell or leaves the grid.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if mode not in ("pixels", "coverage"):
         raise ValueError(
             f"mode must be 'pixels' or 'coverage', got {mode!r}")

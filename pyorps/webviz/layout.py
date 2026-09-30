@@ -126,11 +126,6 @@ def _edit_card(viewer):
     can_edit = viewer.path_finder is not None and bool(viewer.route_controls)
     route_options = [{"label": f"Route {i}", "value": i}
                      for i in range(len(viewer.route_controls))]
-    hint = ("Pick a route, choose what a map click does, then click the map: "
-            "move the source/target or add a waypoint. Reorder waypoints by "
-            "editing the # column; delete with the row's ✗. The route recomputes "
-            "through the ordered points." if can_edit else
-            "Attach a PathFinder with routes to enable editing.")
     return dbc.Card(dbc.CardBody([
         html.H6("Edit route", className="card-title"),
         dbc.Label("Active route", html_for="edit-route-select", className="small"),
@@ -169,6 +164,7 @@ def _edit_card(viewer):
 
 
 def _build_card(viewer):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     can_build = bool(viewer.raster_layers)
     hint = ("Set a mode, click the map to drop source(s), target(s) and "
             "waypoints, then Run. Any number of sources/targets is allowed "

@@ -189,7 +189,7 @@ def _serve(app: Dash, host: str, port: int, debug: bool) -> None:
     simultaneous callback + GeoJSON/tile traffic) when available, the
     Flask dev server for ``debug`` or as fallback."""
     if debug:
-        app.run(host=host, port=port, debug=True)
+        app.run(host=host, port=port, debug=True)  # nosec B201 - development server, only when debug mode is requested
         return
     try:
         from waitress import serve
@@ -243,6 +243,6 @@ def launch(state: ProjectState | None = None, *, host: str = "127.0.0.1",
 
     try:
         window.events.closing += _confirm_close
-    except Exception:          # older pywebview without the closing event
+    except Exception:          # older pywebview without the closing event  # nosec B110
         pass
     webview.start()

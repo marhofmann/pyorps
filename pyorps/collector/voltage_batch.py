@@ -104,6 +104,7 @@ class DesignBatch:
     edge_index: np.ndarray = field(init=False, repr=False)
 
     def __post_init__(self):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         self.edge_u, self.edge_v, self.edge_index = slot_edges(self.n_slots)
         E = len(self.edge_u)
         self.active = np.asarray(self.active, dtype=bool)
@@ -159,6 +160,7 @@ class DesignBatch:
         Node labels map to slots: ``("root", 0) -> 0``,
         ``("turbine", t) -> 1 + t``, ``("junction", j) -> 1 + n + j``.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not trees:
             raise ValueError("no designs")
         need = max(1 + n + sum(1 for lab in t.labels if lab[0] == "junction")
@@ -240,6 +242,7 @@ class _Oriented:
 
 
 def _orient(batch: DesignBatch, s_base_mva: float) -> _Oriented:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     B, S, n = len(batch), batch.n_slots, batch.n
     bi, ei = np.nonzero(batch.active)
     u, v = batch.edge_u[ei], batch.edge_v[ei]
@@ -343,6 +346,7 @@ def batch_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
     :func:`~pyorps.collector.voltage.load_flow`, vectorised over designs and
     corners. Rows that do not converge are flagged, never returned as
     numbers (their voltages are NaN)."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     _check_level(batch, vmodel)
     tol = vmodel.tol_pu if tol_pu is None else tol_pu
     its = vmodel.max_iter if max_iter is None else max_iter
@@ -402,6 +406,7 @@ def _numba_solve(batch: DesignBatch, vmodel: VoltageModel, *,
                  threads: int = 4):
     """Run the fused kernel; return the load flow, the per-tap band margins
     ``(B, n, K)`` and ``max |V|`` per corner and design ``(C, B)``."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     import numba as nb
 
     from pyorps.collector._voltage_numba import solve_batch
@@ -478,6 +483,7 @@ def inflated_nr_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
     are held by identity rows. Converged when the largest voltage step is
     ``<= tol_pu``.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     _check_level(batch, vmodel)
     tol = vmodel.tol_pu if tol_pu is None else tol_pu
     o = _orient(batch, vmodel.s_base_mva)

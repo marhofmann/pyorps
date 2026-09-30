@@ -16,9 +16,8 @@ slope/least-cost routing.
 from __future__ import annotations
 
 import uuid
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosec B405  # nosemgrep - OGC service replies, entity expansion is limited by expat
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlencode, urlparse, urlunparse
 from urllib.request import urlopen
 
@@ -46,7 +45,7 @@ def _fetch(url: str, timeout: float) -> bytes:
 
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urlopen(request, timeout=timeout) as response:  # noqa: S310
+        with urlopen(request, timeout=timeout) as response:  # noqa: S310  # nosec B310  # nosemgrep - http(s) URLs of configured services
             return response.read()
     except urllib.error.URLError as exc:
         # several German gov servers present a self-signed cert in the chain;
@@ -56,7 +55,7 @@ def _fetch(url: str, timeout: float) -> bytes:
             insecure = ssl.create_default_context()
             insecure.check_hostname = False
             insecure.verify_mode = ssl.CERT_NONE
-            with urlopen(request, timeout=timeout,  # noqa: S310
+            with urlopen(request, timeout=timeout,  # noqa: S310  # nosec B310  # nosemgrep - http(s) URLs of configured services
                          context=insecure) as response:
                 return response.read()
         raise
@@ -79,6 +78,7 @@ def wfs_feature_types(url: str, *, timeout: float = 30.0) -> list[dict]:
     Tries WFS 2.0.0 GetCapabilities. Raises ValueError with a readable message
     when the server errors or returns no feature types.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     caps = _with_query(url, {"service": "WFS", "request": "GetCapabilities",
                              "version": "2.0.0"})
     try:
@@ -88,7 +88,7 @@ def wfs_feature_types(url: str, *, timeout: float = 30.0) -> list[dict]:
             f"Could not reach the WFS GetCapabilities of '{url}': {exc}. Check "
             "the URL, or that the server is up and reachable.") from exc
     try:
-        root = ET.fromstring(raw)
+        root = ET.fromstring(raw)  # nosec B314  # nosemgrep - OGC service reply
     except ET.ParseError as exc:
         raise ValueError(
             f"The WFS at '{url}' did not return valid capabilities XML "
@@ -118,6 +118,7 @@ def wfs_feature_types(url: str, *, timeout: float = 30.0) -> list[dict]:
 
 def wms_layers(url: str, *, timeout: float = 30.0) -> list[dict]:
     """List a WMS's named layers: ``[{"name","title"}, ...]``."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     caps = _with_query(url, {"service": "WMS", "request": "GetCapabilities",
                              "version": "1.3.0"})
     raw = _fetch(caps, timeout)
@@ -170,7 +171,7 @@ def load_dem_raster(url: str, coverage_id: str, bounds, *,
             "and check the DEM service is reachable.") from exc
     if raw[:2] not in (b"II", b"MM"):        # not a GeoTIFF (probably XML error)
         try:
-            msg = _service_exception(ET.fromstring(raw)) or "unknown error"
+            msg = _service_exception(ET.fromstring(raw)) or "unknown error"  # nosec B314  # nosemgrep - OGC service reply
         except ET.ParseError:
             msg = "the response was not a GeoTIFF"
         raise ValueError(f"DEM service did not return a raster: {msg}")

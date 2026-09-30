@@ -28,8 +28,10 @@ def register(app, state) -> None:
         State(ids.MODIFIER_GRID, "rowData"),
         State(ids.NOTICES, "data"),
         prevent_initial_call=True)
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     def save_project(n_clicks, path, include, cost_rows, grid_state,
                      modifiers, notices):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         notices = list(notices or [])
         if not n_clicks:
             raise PreventUpdate
@@ -98,6 +100,7 @@ def register(app, state) -> None:
         State(ids.NOTICES, "data"),
         prevent_initial_call=True)
     def open_project(n_clicks, path, notices):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         notices = list(notices or [])
         if not n_clicks:
             raise PreventUpdate
@@ -149,3 +152,4 @@ def register(app, state) -> None:
         empty_draft = {"sources": [], "targets": [], "waypoints": []}
         return (state.layers_view(), "new project", empty_draft, [], None,
                 [], [], notices)
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

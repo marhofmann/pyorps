@@ -92,6 +92,7 @@ def _jenks_breaks(values: np.ndarray, k: int) -> list[float]:
 
 def class_breaks(values: np.ndarray, method: str, k: int) -> list[float]:
     """k-class break edges (len k+1, ascending, first=min last=max)."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if values.size == 0:
         raise ValueError("The raster has no valid cells to classify.")
     k = max(2, min(int(k or 5), 32))

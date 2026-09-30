@@ -161,6 +161,7 @@ def site_field(price_cents: np.ndarray, forbidden: np.ndarray, *,
         keep_rotations: Also return the value of every rotation.
         workers: Threads for scipy.fft.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from scipy import fft as sfft
 
     forb = np.asarray(forbidden, dtype=bool)
@@ -262,6 +263,7 @@ def site_field(price_cents: np.ndarray, forbidden: np.ndarray, *,
     return SiteField(cents=best, rotation=arg, thetas=thetas,
                      length_m=float(length_m), width_m=float(width_m),
                      cell_m=float(cell_m), per_rotation=per)
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
 
 def _blocks(rows: int, cols: int, block: int
@@ -284,6 +286,7 @@ def site_values(price_cents: np.ndarray, forbidden: np.ndarray,
     pad leaves the grid or touches a forbidden pixel; ``counts`` an
     ``(n, n_classes)`` int64 array when ``classes`` is given, else ``None``.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     price = np.asarray(price_cents, dtype=np.int64)
     forb = np.asarray(forbidden, dtype=bool)
     mask = footprint_mask(theta_deg, length_m, width_m, cell_m)

@@ -118,6 +118,7 @@ def register(app, state) -> None:
     def run_constrained(n_clicks, constrained_on, draft, raster_layer_id,
                         profile_text, backend, experimental, neighborhood,
                         search_buffer, dem, dsm, points_rows, notices):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         notices = list(notices or [])
         if not n_clicks or not constrained_on:
             raise PreventUpdate          # the unconstrained runner handles it

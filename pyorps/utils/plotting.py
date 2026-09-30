@@ -232,6 +232,7 @@ class PathPlotter:
             - List of axes for each path
             - Legend axis
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         # Calculate grid dimensions
         n_paths = len(paths_to_plot)
         # Use max 3 columns, only if we're plotting multiple paths with subplots

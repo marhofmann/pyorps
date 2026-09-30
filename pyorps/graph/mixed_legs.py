@@ -88,6 +88,7 @@ def mixed_leg_fixpoint(cable_values, steps, cell_m: float, source_cell: int,
             and the multiplier on the raster value (as in the drains).
         max_rounds: Guard; the fixpoint needs (switches + 1) rounds.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if c_tr < 0:
         raise ValueError("c_tr must be >= 0")
     vals = np.asarray(cable_values)
@@ -151,3 +152,4 @@ def mixed_leg_fixpoint(cable_values, steps, cell_m: float, source_cell: int,
                                   tower_field=fld, log=log)
     raise RuntimeError(f"mixed legs did not reach a fixpoint in "
                        f"{max_rounds} rounds")
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

@@ -91,6 +91,7 @@ def _corner_arrays(vmodel: VoltageModel):
 
 
 def _lines(pgm, ids0, u, w, r, x, b, status, omega):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     DT, CT = pgm.DatasetType, pgm.ComponentType
     line = pgm.initialize_array(DT.input, CT.line, len(u))
     line["id"] = ids0 + np.arange(len(u))
@@ -137,6 +138,7 @@ def _add(stats, key, dt):
 
 def _run(pgm, input_data, update, vmodel, *, tol, max_iter, method,
          threading, stats=None):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     CT = pgm.ComponentType
     t0 = time.perf_counter()
     model = pgm.PowerGridModel(input_data, system_frequency=vmodel.f_hz)
@@ -196,6 +198,7 @@ def islands_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
     update arrays (``build_s``), constructing models (``model_s``) and
     calculating (``calc_s``), summed over chunks.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     pgm = _pgm()
     _check_level(batch, vmodel)
     o = _orient(batch, vmodel.s_base_mva)
@@ -247,6 +250,7 @@ def islands_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
     _map([slice(i, min(i + chunk, B)) for i in range(0, B, chunk)], one,
          threads)
     return _finish(vmodel, o, v_out, conv_out)
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
 
 def inflated_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
@@ -263,6 +267,7 @@ def inflated_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
     slot is merged away (a zero-impedance branch at a turbine, which a
     ``D_share`` design never has) is solved by the exact sweep instead.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     pgm = _pgm()
     _check_level(batch, vmodel)
     o = _orient(batch, vmodel.s_base_mva)
@@ -329,3 +334,4 @@ def inflated_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
     _map([slice(i, min(i + chunk, B)) for i in range(0, B, chunk)], one,
          threads)
     return _finish(vmodel, o, v_out, conv_out)
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

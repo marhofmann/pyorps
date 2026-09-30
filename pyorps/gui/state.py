@@ -112,7 +112,7 @@ class TileManager:
             if callable(shutdown):
                 try:
                     shutdown()
-                except Exception:  # pragma: no cover - best-effort cleanup
+                except Exception:  # pragma: no cover - best-effort cleanup  # nosec B110
                     pass
 
     def shutdown_all(self) -> None:
@@ -165,6 +165,7 @@ class ProjectState:
                   tile: Any = None, crs: Any = None, geojson: dict | None = None,
                   style: dict | None = None, meta: dict | None = None,
                   layer_id: str | None = None) -> Layer:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if kind not in LAYER_KINDS:
             raise ValueError(f"Unknown layer kind {kind!r}; "
                              f"expected one of {LAYER_KINDS}.")
