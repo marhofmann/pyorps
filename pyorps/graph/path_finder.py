@@ -43,6 +43,7 @@ from pyorps.core.types import (
     CoordinateList,
     CoordinateTuple,
     CostAssumptionsType,
+    IMPASSABLE_CELL_COST,
     GeometryMaskType,
     InputDataType,
     Node,
@@ -59,6 +60,7 @@ from pyorps.io.geo_dataset import (
 )
 from pyorps.raster.handler import RasterHandler
 from pyorps.raster.rasterizer import GeoRasterizer
+from pyorps.utils._raster_context import NO_EXCLUSION_VALUE
 from pyorps.utils.neighborhood import get_neighborhood_steps
 from pyorps.utils.traversal import (
     calculate_path_metrics_numba,
@@ -77,6 +79,12 @@ MAX_SAFE_CELLS = iinfo(uint32).max  # 2**32 - 1 = 4_294_967_295
 #: absolute timestamp ("shortest_path_start_time"), and must never be added.
 RUNTIME_PHASES = ("raster_loading", "graph_build", "shortest_path",
                   "path_metrics")
+
+#: Phases recorded in runtimes but DELIBERATELY excluded from the total.
+#: "corridor_build" times build_corridor_graph, which is not part of routing a
+#: Path; adding it would inflate the total of every Path found afterwards on
+#: the same finder.
+NON_PATH_RUNTIME_PHASES = ("corridor_build",)
 
 
 @contextmanager
@@ -205,6 +213,9 @@ class PathFinder:
     #: search_space_buffer_m exactly as the caller passed it (see __init__).
     _explicit_buffer_m = None
     corridor_first = True
+    #: Last graph built by build_corridor_graph (the shared-trench
+    #: sense of 'corridor', not the search window).
+    corridor_graph = None
 
     def __init__(
             self,
@@ -248,11 +259,20 @@ class PathFinder:
             target_coords: CoordinateInput
                 Can be: tuple, list of tuples, array of arrays, shapely Point,
                 shapely MultiPoint, GeoSeries of points, or GeoDataFrame of points.
-            search_space_buffer_m: Buffer around the source and target coordinates in
-                meters. If set to 0, the entire Raster will be considered!
-                WARNING: Setting to None uses the full raster which can cause
-                excessive memory usage and long computation times for large rasters.
-                Always set an appropriate buffer for production use.
+            search_space_buffer_m: Buffer in metres around the convex hull of the
+                source and target coordinates; the search window is that buffered
+                hull, clipped to the raster.
+                ``None`` (the default) does NOT mean the full raster -- it calls
+                :meth:`RasterHandler.estimate_buffer_width`, which samples the
+                raster and returns something between 200 m and 4000 m sized for
+                ONE source/target pair. That is the wrong shape for a
+                :class:`~pyorps.graph.search_session.CostField` querying
+                candidates spread across the raster.
+                ``0`` means a zero-width buffer, i.e. the hull itself -- the
+                SMALLEST search space, not the largest. With a single pair of
+                points (or collinear ones) the hull has no area and ``0`` raises.
+                For the whole raster pass
+                :func:`~pyorps.graph.search_session.full_window_buffer_m`.
             neighborhood_str: Neighborhood type. Defaults to "r2".
             steps: Steps which define the neighborhood. If None,
                 will be created from neighborhood_str.
@@ -317,7 +337,19 @@ class PathFinder:
                 of the RasterHandler (if a VectorDataset or a source to a VectorDataset
                 has been provided with dataset_source) or to the load function of the
                 RasterDataset (if a source to a RasterDataset has been provided with
-                dataset_source).
+                dataset_source). On the vector path this includes the sub-cell
+                forbidden-feature knobs ``widen_thin_forbidden`` and
+                ``all_touched`` (both default False, i.e. a plain GDAL burn)
+                and ``on_thin_features`` (default 'warn'). A forbidden feature
+                narrower than one cell vanishes from the cost surface at some
+                sub-pixel alignments and then cannot block a route; the default
+                DETECTS that and warns, because both repairs also seal
+                legitimate sub-cell OPENINGS (measured over four gate-width
+                sets: 38-100 % of the gates for widening, 31-100 % for
+                all_touched, on a thin wall) and the only fix that is
+                not a trade is a finer cell size. See
+                :meth:`pyorps.raster.GeoRasterizer.rasterize` and the
+                "Thin Barriers & Forbidden Zones" documentation page.
 
         Minimal example:
         >>> from pyorps import PathFinder
@@ -366,7 +398,7 @@ class PathFinder:
         self._validate_precision_support()
 
         if steps is None and neighborhood_str:
-            directed = self.graph_api_name in ("cython", "raster_gpu", "raster_gpu_v3", "cugraph")
+            directed = self.graph_api_name in ("cython", "raster_gpu", "cugraph")
             self.steps = get_neighborhood_steps(neighborhood_str, directed=directed)
         else:
             self.steps = steps
@@ -383,6 +415,7 @@ class PathFinder:
         self.dem_dataset = None
         self.dem_raster_handler = None
         self.dem_kwargs = dem_kwargs
+        self._search_sessions: list = []
 
         # Load the dataset
         self.dataset = initialize_geo_dataset(dataset_source, crs, bbox, mask,
@@ -811,9 +844,15 @@ class PathFinder:
             if cost_assumptions is None:
                 msg = "Cost assumptions must be provided when using vector data"
                 raise ValueError(msg)
+            # The sub-cell forbidden-feature knobs (all_touched /
+            # widen_thin_forbidden / on_thin_features) are listed here so the
+            # objective pipeline exposes the same barrier semantics as the
+            # legacy one - a barrier that vanishes from the cost band is
+            # invisible to the search on BOTH paths.
             allowed = {"resolution_in_m", "geometry_buffer_m",
                        "include_category", "preprocessing_function",
-                       "preprocessing_kwargs"}
+                       "preprocessing_kwargs", "all_touched",
+                       "widen_thin_forbidden", "on_thin_features"}
             unknown = set(kwargs) - allowed
             if unknown:
                 raise ValueError(
@@ -1453,6 +1492,13 @@ class PathFinder:
             extra_kwargs["dem_kwargs"] = self.dem_kwargs
         if gradient_luts is not None:
             extra_kwargs["gradient_luts"] = gradient_luts
+        if self.graph_api_name == "raster_fim" and dem_data is not None:
+            # Tier A needs metres: the eikonal metric M = c^2 (I + grad_z
+            # grad_z^T) is built from an elevation gradient in metres of
+            # rise per metre of run. RasterFIMAPI cross-checks this
+            # against GradientLUTs.inv_horiz_m.
+            extra_kwargs["cell_size"] = float(
+                abs(self.raster_handler.window_transform.a))
 
         # Create graph using the graph API
         self._graph_api = graph_api_class_constructor(raster_data,
@@ -1647,6 +1693,11 @@ class PathFinder:
         nothing else changes, and no result differs. Backends with no
         device state (cython, the graph libraries) are unaffected.
         """
+        for session in getattr(self, "_search_sessions", []):
+            close_session = getattr(session, "close", None)
+            if close_session is not None:
+                close_session()
+        self._search_sessions = []
         api = self._graph_api
         close = getattr(api, "close", None)
         if close is None:
@@ -1655,6 +1706,102 @@ class PathFinder:
             close(free_pool=free_pool)
         except TypeError:          # a backend whose close() takes no kwargs
             close()
+
+    def search_session(self, algorithm: str = "dijkstra", **kwargs):
+        """Open an incremental :class:`~pyorps.graph.search_session.SearchSession`.
+
+        Retains the settled search field so later source/target/waypoint
+        edits extract or resume instead of starting from scratch.
+        ``find_route`` stays one-shot; this is the opt-in retention seam.
+        """
+        from pyorps.graph.search_session import SearchSession
+        if self.raster_handler is None:
+            self.create_raster_handler()
+        session = SearchSession(self, algorithm=algorithm, **kwargs)
+        sessions = getattr(self, "_search_sessions", None)
+        if sessions is None:
+            self._search_sessions = []
+            sessions = self._search_sessions
+        sessions.append(session)
+        return session
+
+    def cost_fields(self, origins, algorithm: str = "auto", **kwargs):
+        """Settle ONE field per fixed terminal, then price every candidate.
+
+        The entry point for substation siting and anything shaped like
+        it. A candidate position may be anywhere; the turbines and grid
+        connection points do not move, so the search is rooted at THEM
+        and read in the other direction. Ten terminals against forty
+        million candidates is ten searches, not forty million::
+
+            with finder.cost_fields(turbines + pccs, labels=names) as f:
+                costs = f.costs_to(candidates)     # (n_terminals, n)
+                leg = f.path_to("WT0", best_site)  # cells, coords, m, EUR
+
+        Fields are settled with delta-stepping unless told otherwise, and
+        are held in memory when they fit and paged through disk when they
+        do not -- see :class:`~pyorps.graph.search_session.CostFieldSet`
+        for the labels, cache and spill controls.
+
+        Use ``cost_field`` for a single root, and ``search_session`` when
+        one route's control points are being dragged.
+        """
+        from pyorps.graph.search_session import CostFieldSet
+        if self.raster_handler is None:
+            self.create_raster_handler()
+        fields = CostFieldSet(self, origins, algorithm=algorithm, **kwargs)
+        sessions = getattr(self, "_search_sessions", None)
+        if sessions is None:
+            self._search_sessions = []
+            sessions = self._search_sessions
+        sessions.append(fields)
+        return fields
+
+    def cost_field(self, origin, algorithm: str = "auto", **kwargs):
+        """Open a rooted :class:`~pyorps.graph.search_session.CostField`.
+
+        One search field from a terminal that does NOT move, then O(1)
+        pricing of arbitrarily many moving endpoints against it --
+        substation siting, service areas, k-candidate ranking. The raster
+        graph is undirected with symmetric weights, so a field rooted at
+        the fixed terminal answers every query in both directions; the
+        field checks that precondition and raises when it does not hold.
+
+        Use ``search_session`` instead when the route is one polyline
+        whose control points are being dragged.
+
+        Parameters:
+            origin: The fixed terminal, ``(x, y)`` in the raster CRS.
+            algorithm: ``"auto"`` (default) picks the fastest FULL-FIELD
+                kernel -- delta-stepping on the CPU, the GPU kernel when
+                ``graph_api="raster_gpu"``. That is what a field is
+                almost always for, and on 41.8 M cells at r2 on an idle
+                16-core machine it is 4.7 s against 38.1 s for the
+                serial Dijkstra, or 2.6 s on the GPU. The parallel
+                kernel is exact: verified bit-identical at 1, 8 and 12
+                threads and against the float64 Dijkstra over 35.6 M
+                reachable cells. Pass ``"dijkstra"`` for the one case it
+                does not cover -- pricing two or three candidates, where
+                only Dijkstra can stop early.
+            **kwargs: Passed to the kernel, e.g. ``delta=`` and
+                ``num_threads=`` for delta-stepping. Under ``"auto"``
+                the thread count defaults to three quarters of the
+                cores: the kernel's bucket barrier collapses if no core
+                is left free, and that leaves the machine usable.
+
+        Registered on ``_search_sessions`` so
+        ``release_device_resources`` frees it.
+        """
+        from pyorps.graph.search_session import CostField
+        if self.raster_handler is None:
+            self.create_raster_handler()
+        field = CostField(self, origin, algorithm=algorithm, **kwargs)
+        sessions = getattr(self, "_search_sessions", None)
+        if sessions is None:
+            self._search_sessions = []
+            sessions = self._search_sessions
+        sessions.append(field)
+        return field
 
     def get_node_indices_from_coords(
             self,
@@ -1948,7 +2095,7 @@ class PathFinder:
     def _extract_path_results(self, path_indices, algorithm, calculate_metrics):
         results = PathCollection()
         for path in path_indices:
-            if not path:
+            if not path or len(path) < 2:
                 continue
             source = self.get_coords_from_node_indices(path[0])[0]
             target = self.get_coords_from_node_indices(path[-1])[0]
@@ -1974,6 +2121,10 @@ class PathFinder:
         """
         # Convert path indices to coordinates
         path_coords = self.get_coords_from_node_indices(path_indices)
+        if path_coords is None or len(path_coords) == 0:
+            path_coords = [tuple(source), tuple(target)]
+        elif len(path_coords) < 2:
+            path_coords = [path_coords[0], path_coords[0]]
 
         # Calculate the Euclidean distance
         euclidean_distance = sqrt((path_coords[0][0] - path_coords[-1][0]) ** 2 +
@@ -2242,6 +2393,451 @@ class PathFinder:
             # precision mode the legacy 2D metric is skipped entirely,
             # so the evaluator supplies the length either way.
             path.total_length = evaluation.total_length_3d
+
+    # ------------------------------------------------------------- corridors
+    #
+    # NOTE ON THE WORD "CORRIDOR". Everywhere else in this class a corridor is
+    # the SEARCH-WINDOW polygon around the source/target set
+    # (`corridor_geometry`, `corridor_bounds`, `corridor_first`,
+    # `_certified_corridor_bounding_box`). The three methods below use the
+    # other sense: a corridor is a stretch of ground that several routes have
+    # in common, i.e. one trench serving more than one connection. They have
+    # nothing to do with the search window.
+
+    def build_corridor_graph(
+            self,
+            terminals: CoordinateInput | None = None,
+            *,
+            k_per_pair: int = 1,
+            min_shared_length_m: float = 0.0,
+            max_pair_distance: float | None = None,
+            validate_pair_costs: bool = False,
+    ) -> "CorridorGraph":
+        """Derive the graph of shared trenches between a set of terminals.
+
+        Not the search window (see the note above this method): the object
+        returned here has the terminals plus every cell where least-cost routes
+        MERGE or DIVERGE as its nodes, and the stretches between them as its
+        edges, each carrying its construction cost once however many
+        connections run over it.
+
+        One multi-source sweep seeds every terminal at distance 0 and labels
+        each cell with the terminal that reaches it most cheaply, which
+        partitions the raster into routing-metric Voronoi regions. Every step
+        whose two ends fall in different regions is a candidate connection
+        priced at ``dist[u] + step(u->v) + dist[v]``; keeping the cheapest per
+        terminal pair is Mehlhorn's terminal distance network [1]. The routes
+        those steps stand for are then overlaid and cut where their membership
+        changes, which is the contraction.
+
+        There is no tolerance parameter anywhere in the construction. A raster
+        route is an ordered list of cells over one grid, so "these two routes
+        coincide here" is an identity, not a proximity test - which is the
+        property a corridor definition derived from terrain has to have if it
+        is to be reproducible.
+
+        Parameters:
+            terminals: Points to connect. Accepts everything ``source``/
+                ``target`` accept. When None, the finder's own source and
+                target coordinates are concatenated.
+            k_per_pair: Keep the k cheapest boundary steps per terminal pair
+                rather than only the cheapest. Note what that actually buys:
+                the k cheapest crossings of ONE Voronoi boundary are usually
+                adjacent cells on the same stretch, so the extra routes are
+                near-duplicates of the first, not genuinely different
+                corridors, and they inflate the segment count without adding
+                structure. Raise it only when the boundary is long and you
+                want the optimiser to see more than one crossing of it.
+            min_shared_length_m: Discard a shared run shorter than this and
+                revert those steps to per-route membership, so that two routes
+                grazing for a couple of cells do not generate a junction. 0
+                (the default) keeps the construction exact.
+            max_pair_distance: Drop candidate connections costing more than
+                this (in the search's CELL units). None keeps all of them.
+            validate_pair_costs: Also run the pairwise search for every
+                recovered pair and record the gap in ``provenance``. The
+                distance network is an approximation of the true pairwise
+                metric and the size of that gap is a reportable number, not a
+                bug - but it costs one Dijkstra per terminal.
+
+        Returns:
+            A :class:`~pyorps.core.corridor.CorridorGraph` with
+            ``construction='distance_network'``.
+
+        Raises:
+            NotImplementedError: on any backend but ``cython``. ``raster_gpu``
+                would need multi-source seeding in ``GpuSsspSession.solve``
+                (it takes one source today) and ``raster_fim`` would need a
+                region label propagated through the FIM sweep kernels; both
+                are real work, and falling back silently to a different edge
+                model would make the corridor disagree with ``find_route``.
+
+        References:
+            [1] Mehlhorn, K.: 'A faster approximation algorithm for the Steiner
+                problem in graphs', Inf. Process. Lett., 1988, 27, (3),
+                pp. 125-128
+        """
+        from pyorps.graph.corridor import corridor_graph_from_routes
+
+        if type(self) is not PathFinder:
+            # ConstrainedPathFinder overrides find_route to run the
+            # extended-state kernels and never touches self.graph_api, so the
+            # backend check below would pass while this method quietly built a
+            # plain terrain corridor with none of the span, angle, tower or
+            # clearance constraints the subclass exists to enforce. Refuse
+            # rather than export an unconstrained graph as if it were one.
+            raise NotImplementedError(
+                f"build_corridor_graph is implemented for PathFinder only; "
+                f"{type(self).__name__} routes with a different edge model "
+                f"(extended state, not a plain cell graph) and the "
+                f"multi-source sweep has no equivalent for it. The corridor "
+                f"would silently drop every constraint.")
+
+        if self.graph_api_name != "cython":
+            raise NotImplementedError(
+                f"build_corridor_graph is implemented for the 'cython' "
+                f"backend only; this finder uses '{self.graph_api_name}'. "
+                f"The multi-source label propagation the construction needs "
+                f"does not exist on the GPU backends (raster_gpu seeds one "
+                f"source per solve, raster_fim carries no region label), and "
+                f"substituting a different edge model would make the corridor "
+                f"disagree with find_route.")
+
+        if terminals is None:
+            source = self.source_coords
+            target = self.target_coords
+            if source is None or target is None:
+                raise ValueError(
+                    "build_corridor_graph needs terminals: pass terminals= or "
+                    "construct the finder with source and target coordinates.")
+            merged: list = []
+            for coords in (source, target):
+                if PathFinder._is_single_coordinate(coords):
+                    merged.append(tuple(coords))
+                else:
+                    merged.extend(tuple(c) for c in coords)
+            terminal_coords = merged
+        else:
+            terminal_coords = PathFinder.normalize_coordinates(terminals)
+            if PathFinder._is_single_coordinate(terminal_coords):
+                terminal_coords = [tuple(terminal_coords)]
+
+        # Deduplicate while preserving order: two terminals on one cell would
+        # seed a region the second one can never own, and the numbering has to
+        # stay a function of the input.
+        seen: set = set()
+        unique_coords = []
+        for coord in terminal_coords:
+            key = (float(coord[0]), float(coord[1]))
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_coords.append(key)
+        if len(unique_coords) < 2:
+            raise ValueError(
+                f"build_corridor_graph needs at least two distinct terminals, "
+                f"got {len(unique_coords)}")
+
+        if self.raster_handler is None:
+            self.create_raster_handler()
+
+        # Dereferenced BEFORE the corridor timer for the same reason find_route
+        # does it: building the backend is the "graph_build" phase and must not
+        # be charged to the corridor.
+        graph_api = self.graph_api
+
+        node_indices = self.get_node_indices_from_coords(unique_coords)
+        terminal_cells = {i: int(cell) for i, cell in enumerate(node_indices)}
+        if len(set(terminal_cells.values())) != len(terminal_cells):
+            # Distinct coordinates can still land on one cell, and
+            # _correct_max_cost_positions can push two of them onto the same
+            # replacement. Collapse rather than fail: the caller gets a graph
+            # whose terminal table says which inputs merged.
+            collapsed: dict[int, int] = {}
+            for tid in sorted(terminal_cells):
+                cell = terminal_cells[tid]
+                if cell not in collapsed.values():
+                    collapsed[tid] = cell
+            warn(f"{len(terminal_cells) - len(collapsed)} terminal(s) resolved "
+                 f"onto a cell already taken by another terminal and were "
+                 f"dropped from the corridor graph.", UserWarning, stacklevel=2)
+            terminal_cells = collapsed
+
+        with timed("corridor_build", self.runtimes):
+            result = self._build_corridor_graph(
+                graph_api, terminal_cells, k_per_pair, max_pair_distance,
+                validate_pair_costs)
+        routes, provenance, solver = result
+
+        raster_data = self.raster_handler.data[0]
+        graph = corridor_graph_from_routes(
+            routes,
+            raster_data,
+            self.raster_handler.window_transform,
+            crs=self.dataset.crs,
+            steps=self.steps,
+            max_value=IMPASSABLE_CELL_COST,
+            ignore_max_cost=self.ignore_max_cost,
+            dem=graph_api.dem_data,
+            gradient_luts=graph_api.gradient_luts,
+            terminal_cells=terminal_cells,
+            min_shared_length_m=min_shared_length_m,
+            price_routing_cost=True,
+            # Reuse the sweep's own solver: a second one over the same window
+            # would allocate another 17 B/cell and rescan the exclude mask for
+            # nothing, and the search window here is routinely tens of
+            # millions of cells.
+            pricer=solver,
+            provenance=provenance,
+        )
+        graph.construction = "distance_network"
+        graph.runtimes = {"corridor_build": self.runtimes.get(
+            "corridor_build", 0.0)}
+        self.corridor_graph = graph
+        return graph
+
+    def _build_corridor_graph(self, graph_api, terminal_cells, k_per_pair,
+                              max_pair_distance, validate_pair_costs):
+        """Multi-source sweep, boundary reduction and route recovery.
+
+        Split out of build_corridor_graph so the timer wraps exactly the work
+        and nothing else.
+        """
+        from pyorps.utils._dijkstra import make_multi_source_solver
+
+        terminal_ids = sorted(terminal_cells)
+        seeds = np.array([terminal_cells[t] for t in terminal_ids],
+                         dtype=np.uint32)
+
+        max_value = (IMPASSABLE_CELL_COST if self.ignore_max_cost
+                     else NO_EXCLUSION_VALUE)
+        solver = make_multi_source_solver(
+            graph_api.raster_data, self.steps, max_value=max_value,
+            dem=graph_api.dem_data, gradient_luts=graph_api.gradient_luts)
+
+        notes: list[str] = []
+        if solver.has_zero_cost_steps():
+            notes.append(
+                "the search raster holds zero-cost cells, so the "
+                "lexicographic tie-break is not provably independent of the "
+                "terminal order here")
+
+        settled = solver.solve(seeds)
+        boundary = solver.boundary_steps()
+
+        # k cheapest per unordered terminal pair.
+        order = np.argsort(boundary["cost"], kind="stable")
+        per_pair: dict[tuple[int, int], list[int]] = {}
+        for position in order:
+            cost = float(boundary["cost"][position])
+            if max_pair_distance is not None and cost > max_pair_distance:
+                break
+            pair = (terminal_ids[int(boundary["region_u"][position])],
+                    terminal_ids[int(boundary["region_v"][position])])
+            bucket = per_pair.setdefault(pair, [])
+            if len(bucket) < k_per_pair:
+                bucket.append(int(position))
+
+        routes: dict = {}
+        recovered_costs: dict[tuple[int, int], float] = {}
+        for pair, positions in per_pair.items():
+            for rank, position in enumerate(positions):
+                left = solver.path_to_root(
+                    np.uint32(boundary["cell_u"][position]))
+                right = solver.path_to_root(
+                    np.uint32(boundary["cell_v"][position]))
+                if left.size == 0 or right.size == 0:
+                    continue
+                cells = np.concatenate([left, right[::-1]])
+                key = pair if rank == 0 else (*pair, rank)
+                routes[key] = cells
+                if rank == 0:
+                    recovered_costs[pair] = float(boundary["cost"][position])
+
+        if not routes:
+            reason = (" No two terminals share a region boundary, so no pair "
+                      "is connected in the search window. Widen the search "
+                      "space buffer or check the exclusion mask.")
+            if max_pair_distance is not None and boundary["cost"].size:
+                reason = (f" Every candidate connection costs more than "
+                          f"max_pair_distance={max_pair_distance} (the "
+                          f"cheapest is {float(boundary['cost'].min()):.6g} "
+                          f"in CELL units); raise it or pass None.")
+            raise NoPathFoundError(
+                list(terminal_cells.values()), list(terminal_cells.values()),
+                reason)
+
+        unreached = [t for t in terminal_ids
+                     if not any(t in key[:2] for key in routes)]
+        if unreached:
+            notes.append(
+                f"terminals {unreached} appear in no pair: they are isolated "
+                f"in the search window, or every route to them runs through "
+                f"another terminal's region")
+
+        provenance: dict = {
+            "backend": "cython",
+            "neighborhood": self.neighborhood_str,
+            "k_per_pair": int(k_per_pair),
+            "settled_cells": int(settled),
+            "boundary_candidates": int(len(boundary["cost"])),
+            "n_terminals": len(terminal_ids),
+            "n_pairs": len(recovered_costs),
+            "notes": notes,
+        }
+
+        if validate_pair_costs:
+            provenance["pair_cost_gap"] = self._pair_cost_gap(
+                terminal_cells, recovered_costs, graph_api, max_value)
+
+        return routes, provenance, solver
+
+    def _pair_cost_gap(self, terminal_cells, recovered_costs, graph_api,
+                       max_value):
+        """How much the distance network overprices each recovered pair.
+
+        The distance network connects a and b through the cheapest step on
+        their shared Voronoi boundary. That is a real route, so it is an upper
+        bound on the true a-b distance, and it is TIGHT whenever the true
+        shortest path crosses the bisector - which it does for any pair whose
+        regions touch along that path. Where it is not tight the gap is a
+        property of the construction worth reporting, not a defect.
+        """
+        from pyorps.utils._dijkstra import make_dijkstra_solver
+
+        reference = make_dijkstra_solver(
+            graph_api.raster_data, self.steps, max_value=max_value,
+            dem=graph_api.dem_data, gradient_luts=graph_api.gradient_luts)
+
+        gaps: dict[str, float] = {}
+        by_source: dict[int, list[int]] = {}
+        for a, b in recovered_costs:
+            by_source.setdefault(a, []).append(b)
+
+        for a, others in by_source.items():
+            reference.reset_root(np.uint32(terminal_cells[a]))
+            for b in others:
+                reference.search_until(np.uint32(terminal_cells[b]))
+                true_cost = float(reference.peek_dist(
+                    np.uint32(terminal_cells[b])))
+                if not np.isfinite(true_cost) or true_cost <= 0.0:
+                    continue
+                excess = (recovered_costs[(a, b)] - true_cost) / true_cost
+                gaps[f"{a}-{b}"] = excess
+
+        # NOT floored at 0: a negative excess would mean the "upper bound"
+        # came back cheaper than the true shortest path, which is impossible
+        # for a real route and is exactly the breakage worth witnessing.
+        values = list(gaps.values())
+        return {"per_pair": gaps,
+                "max_excess": max(values) if values else 0.0,
+                "min_excess": min(values) if values else 0.0,
+                "mean_excess": float(np.mean(values)) if values else 0.0}
+
+    def save_corridor_graph(self, save_file_path: str | None = None,
+                            corridor_graph: "CorridorGraph | None" = None
+                            ) -> None:
+        """Write the corridor graph as two layers of one GeoPackage.
+
+        Layers ``corridor_segments`` (one row per trench, with its length,
+        construction cost and how many routes use it) and ``corridor_nodes``
+        (terminals and derived junctions). Mirrors :meth:`save_paths`.
+        """
+        graph = corridor_graph or getattr(self, "corridor_graph", None)
+        if graph is None:
+            raise ValueError(
+                "No corridor graph to save - call build_corridor_graph first "
+                "or pass corridor_graph=.")
+        if not save_file_path:
+            return
+        graph.save(save_file_path)
+
+    def plot_corridor_graph(
+            self,
+            corridor_graph: "CorridorGraph | None" = None,
+            ax=None,
+            figsize: tuple[int, int] = (12, 10),
+            show_raster: bool = True,
+            shared_color: str = "#c1121f",
+            single_color: str = "#4c6ef5",
+            junction_color: str = "#c1121f",
+            terminal_color: str = "#111111",
+            title: str | None = None,
+    ):
+        """Draw the corridor graph over the search raster.
+
+        Shared segments are drawn thicker and in ``shared_color``, and the
+        derived junctions are marked: that picture is the whole argument, so it
+        is worth one method. Mirrors :meth:`plot_paths` in taking an optional
+        axes and returning it.
+        """
+        import matplotlib.pyplot as plt
+
+        from pyorps.core.corridor import NODE_TERMINAL
+
+        graph = corridor_graph or getattr(self, "corridor_graph", None)
+        if graph is None:
+            raise ValueError(
+                "No corridor graph to plot - call build_corridor_graph first "
+                "or pass corridor_graph=.")
+
+        if ax is None:
+            _fig, ax = plt.subplots(figsize=figsize)
+
+        if show_raster and self.raster_handler is not None:
+            raster_data = self.raster_handler.data[0]
+            left, bottom, right, top = window_bounds(
+                self.raster_handler.window,
+                self.raster_handler.raster_dataset.transform)
+            values = np.asarray(raster_data, dtype=float)
+            values[~np.isfinite(values)] = np.nan
+            # Forbidden cells are drawn as their own class. Leaving them in the
+            # ramp makes 65535 the whole dynamic range and flattens every real
+            # cost difference to white, which is exactly the terrain the reader
+            # is being asked to look at.
+            forbidden = values >= float(IMPASSABLE_CELL_COST)
+            passable = values.copy()
+            passable[forbidden] = np.nan
+            if np.isfinite(passable).any():
+                low, high = np.nanpercentile(passable, (2, 98))
+                if high <= low:
+                    low, high = np.nanmin(passable), np.nanmax(passable)
+            else:
+                low, high = 0.0, 1.0
+            ax.imshow(passable, extent=(left, right, bottom, top),
+                      cmap="Greys", interpolation="nearest", alpha=0.6,
+                      vmin=low, vmax=high)
+            if forbidden.any():
+                overlay = np.zeros(values.shape + (4,), dtype=float)
+                overlay[forbidden] = (0.35, 0.10, 0.10, 0.55)
+                ax.imshow(overlay, extent=(left, right, bottom, top),
+                          interpolation="nearest")
+
+        widest = max((s.use_count for s in graph.segments.values()),
+                     default=1)
+        for segment in graph.segments.values():
+            xs, ys = zip(*segment.coords)
+            shared = segment.use_count > 1
+            ax.plot(xs, ys,
+                    color=shared_color if shared else single_color,
+                    linewidth=1.2 + 2.2 * (segment.use_count - 1) / max(
+                        widest - 1, 1),
+                    solid_capstyle="round", zorder=3 if shared else 2)
+
+        for node in graph.nodes.values():
+            if node.kind == NODE_TERMINAL:
+                ax.plot(node.coords[0], node.coords[1], marker="s",
+                        color=terminal_color, markersize=7, zorder=5)
+            else:
+                ax.plot(node.coords[0], node.coords[1], marker="o",
+                        color=junction_color, markersize=5,
+                        markeredgecolor="white", markeredgewidth=0.8, zorder=4)
+
+        ax.set_title(title or (
+            f"Corridor graph: {len(graph.segments)} segments, "
+            f"{len(graph.junctions)} derived junctions"))
+        ax.set_aspect("equal")
+        return ax
 
     def get_path(self, path_id=None, source=None, target=None):
         """
