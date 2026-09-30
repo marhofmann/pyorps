@@ -59,3 +59,6 @@ docs/images/
 case_studies/*/results/
 docs/source/generated/
 docs/api/
+# Agent working files (kept in a private archive)
+CLAUDE.md
+docs/superpowers/

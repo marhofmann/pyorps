@@ -78,6 +78,11 @@ class Path:
             return self.cost_labels
         return {}
 
+    # Simplification metadata (populated when find_route(simplify=...) is used)
+    simplification_method: Optional[str] = None
+    simplification_tolerance: Optional[float] = None
+    original_path_geometry: Optional[LineString] = field(default=None, repr=False)
+
     def analyze(
             self,
             cost_assumptions: CostAssumptions | None = None,
@@ -157,6 +162,19 @@ class Path:
                 shown = label if len(label) <= 35 else label[:32] + "..."
                 lines.append(
                     f"    {shown:<35} {meters:>10,.1f} m  {pct:>5.1f}%")
+        if self.simplification_method is not None:
+            lines.append("")
+            lines.append(
+                f"  Simplification:     {self.simplification_method} "
+                f"(tolerance={self.simplification_tolerance})"
+            )
+            if self.original_path_geometry is not None:
+                vbefore = len(self.original_path_geometry.coords)
+                vafter = len(self.path_geometry.coords)
+                lines.append(
+                    f"  Vertices:           {vbefore} -> {vafter} "
+                    f"({100.0 * (1 - vafter / vbefore):.1f}% removed)"
+                )
 
         if self.length_by_category:
             lines.append("")
@@ -201,6 +219,8 @@ class Path:
             "search_space_buffer_m": self.search_space_buffer_m,
             "euclidean_distance": self.euclidean_distance,
             "neighborhood": self.neighborhood,
+            "simplification_method": self.simplification_method,
+            "simplification_tolerance": self.simplification_tolerance,
         })
 
         # Add metrics if they exist
