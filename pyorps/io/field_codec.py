@@ -223,6 +223,7 @@ def encode_field(values, *, codec: str = "fixed-quantum",
         metadata a decoder needs. ``meta["codec"]`` is what
         :func:`decode_field` dispatches on.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     arr = np.asarray(values, dtype=np.float64)
     if arr.ndim != 2:
         raise ValueError(f"expected a 2-D field, got shape {arr.shape}")

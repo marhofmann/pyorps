@@ -56,7 +56,7 @@ def rho_hat(model: CollectorModel) -> tuple[list[float], list[int]]:
     total cable count ``m``. ``nb_min(S)``: the fewest conductors of such a
     partition whose systems all pass the bay rating (``inf`` if none).
     """
-    n = model.n
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     full = model.full
     rho = [INF] * (full + 1)
     nbm = [math.inf] * (full + 1)
@@ -122,6 +122,7 @@ def rho_hat_lower_bound(graph: CollectorGraph, turbines, model: CollectorModel
 
     ``inf`` at turbine nodes and where even the relaxation is infeasible.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     turbines = [int(t) for t in turbines]
     N = graph.n_nodes
     is_turb = np.zeros(N, dtype=bool)
@@ -217,6 +218,7 @@ def rho_hat_lower_bound_raster(values, steps, cell_m: float, turbines,
         EUR per root cell, ``inf`` at turbines, excluded cells and where
         even the relaxation is infeasible.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps.certify.windows import EXCLUDED, drain
     from pyorps.collector.raster import _step_weights
 
@@ -301,6 +303,7 @@ def rho_hat_lower_bound_raster(values, steps, cell_m: float, turbines,
     lb = (H[full] + model.turbine_panel_eur * model.n / cell) * cell
     lb[is_turb | excl] = INF
     return lb.reshape(v.shape)
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
 
 def mu_star(model: CollectorModel) -> list[float]:

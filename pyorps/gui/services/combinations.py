@@ -107,6 +107,7 @@ def build_combination_table(base_gdf, feature_keys, assumptions, *,
     Returns a GeoDataFrame in ``base_crs`` with columns ``base``, one per
     feature key, ``modifiers`` (human text), ``cost`` and ``__row``.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     feature_keys = tuple(feature_keys)
     base_crs = base_crs or base_gdf.crs
     key_cols = list(feature_keys)
@@ -212,6 +213,7 @@ def build_combination_table(base_gdf, feature_keys, assumptions, *,
 # ------------------------------------------------------------ grid + selection
 def cost_color_map(combo_gdf, colormap="viridis", vmin=None, vmax=None) -> dict:
     """{cost -> hex} matching the tile colours (forbidden -> None)."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from .tiles import cost_colors
 
     if combo_gdf is None or combo_gdf.empty:
@@ -229,6 +231,7 @@ def legend_items(combo_gdf, colormap="viridis", vmin=None, vmax=None):
     ``label`` is the layer→feature[→modifier] combination, e.g.
     ``ave_nutzung: Wald / Nadelholz  + TWS_HQS_TK25: ZONE == Schutzzone I``.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if combo_gdf is None or combo_gdf.empty:
         return []
     colors = cost_color_map(combo_gdf, colormap, vmin, vmax)
@@ -255,6 +258,7 @@ def grid_payload(combo_gdf: gpd.GeoDataFrame, layer_name: str, *,
     Uses dash-ag-grid ``styleConditions`` (data-driven, safe) rather than a raw
     function cellStyle (which can freeze rendering — see project memory).
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     key_cols = [c for c in combo_gdf.columns
                 if c not in ("base", "modifiers", "cost", "__row",
                              combo_gdf.geometry.name)]

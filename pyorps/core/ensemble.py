@@ -77,6 +77,7 @@ class RouteEnsemble:
         Adds ``same_route_as`` (first variant with the identical route,
         empty otherwise) and the routing runtime.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not self._variants:
             return pd.DataFrame()
 
@@ -114,6 +115,7 @@ class RouteEnsemble:
         listed metric and strictly better in at least one — or when it
         duplicates an earlier variant's metric values exactly.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not metrics:
             raise EnsembleError("pareto_front needs at least one metric")
 
@@ -143,3 +145,4 @@ class RouteEnsemble:
             front.add(name, self._variants[name])
             kept_values.append(mine)
         return front
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

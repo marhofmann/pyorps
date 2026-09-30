@@ -85,6 +85,7 @@ def _walk_predecessors(
     "no path": target out of range, unreachable target, a broken
     predecessor link, or a cycle.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     source = int(source)
     target = int(target)
     if target < 0 or target >= len(dist):
@@ -166,6 +167,7 @@ class RasterGPUAPI(GraphAPI):
             arena_factor: float = 1.0,
             **kwargs,
     ):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not RASTER_GPU_AVAILABLE:
             raise ImportError(
                 "Raster GPU backend requires CuPy with CUDA support. "
@@ -296,7 +298,7 @@ class RasterGPUAPI(GraphAPI):
         # rebuild, so refcounting is the primary release path.
         try:
             self.close()
-        except Exception:  # pragma: no cover - interpreter teardown
+        except Exception:  # pragma: no cover - interpreter teardown  # nosec B110
             pass
 
     # ------------------------------------------------------------------

@@ -83,6 +83,7 @@ def exact_collector_field(values, steps, cell_m: float, turbines,
         keep_trace: Keep B's trace codes so the exact designs can be
             traced and re-priced (plan D7).
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if eps < 0:
         raise ValueError("eps must be >= 0 (the safe sign)")
     v = np.asarray(values)

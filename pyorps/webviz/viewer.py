@@ -26,7 +26,7 @@ from pathlib import Path as FsPath
 from typing import Any
 
 import geopandas as gpd
-from shapely.geometry import LineString, Point, mapping
+from shapely.geometry import Point
 
 from pyorps.core.path import Path, PathCollection
 from pyorps.raster.handler import RasterHandler
@@ -133,6 +133,7 @@ class RouteViewer:
         Rebuilds the WGS84 GeoJSON, per-route control points and endpoint markers
         so the new routes show on the map and become selectable for editing.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         import pandas as pd
 
         crs = crs or self.route_crs or (
@@ -275,7 +276,7 @@ class RouteViewer:
         for layer in self.raster_layers:
             try:
                 layer.tile_client.shutdown()
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
 

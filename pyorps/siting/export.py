@@ -241,6 +241,7 @@ def export_tower_fields(candidates, fields, *, link_type: str = "overhead",
         A :class:`SitingExport` with one block per terminal, already
         checked for ``lb <= ub``.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     exp = SitingExport(candidates)
     pts = candidates.points
     for name, pair in fields.items():

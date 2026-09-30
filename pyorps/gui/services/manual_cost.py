@@ -65,6 +65,7 @@ def sync_manual_layer(state, features, *, project_crs, default_cost, mode,
     the layer. Returns ``(layer_or_None, grid_rows)`` where each grid row is
     ``{"__row", "name", "cost"}``.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from .geo import gdf_to_wgs84_geojson
 
     prev = prev_rows or []

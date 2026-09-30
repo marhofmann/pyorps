@@ -72,6 +72,7 @@ def line_to_cell_indices(line: LineString,
     Returns the flat indices (row * width + col) into ``handler.data[0]`` and the
     number of vertices that fell outside the raster window (clipped).
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     coords = [(float(x), float(y)) for x, y in line.coords]
     # coords_to_indices returns window-local (row, col) pairs.
     rc = handler.coords_to_indices(coords)

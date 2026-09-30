@@ -38,6 +38,7 @@ def solve_batch(ptr, eu, ev, zser, ysh, S, n, s_slot, v0, tol, max_iter,
             highest ``|V|`` over used slots; out_margin: ``(B, n, K)`` band
             margin, min over corners; out_err: ``(B,)`` error code.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     B = ptr.shape[0] - 1
     C = s_slot.shape[0]
     K = zt.shape[0]

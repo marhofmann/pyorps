@@ -112,6 +112,7 @@ def uncovered_categories(gdf, feature_keys: tuple[str, ...],
     Returns human-readable labels of uncovered categories that would become
     NaN -> fill_value (forbidden) during rasterization.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if gdf is None or not feature_keys or not isinstance(assumptions, dict):
         return []
     main = feature_keys[0]

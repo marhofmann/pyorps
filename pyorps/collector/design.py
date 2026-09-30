@@ -136,6 +136,7 @@ def layout(design: Design, graph, turbines, model: CollectorModel, *,
     passing a turbine or the root); the pricing rules (derating, R-once,
     panels, bays) stay in :func:`reprice`.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     price = _edge_pricer(graph)
     tn = design.tnodes
     root = design.root_tnode
@@ -277,6 +278,7 @@ def reprice(design: Design, graph, turbines, model: CollectorModel, *,
     Returns ``(cost, breakdown)`` with the trench, cable, turbine-panel,
     station and bay parts.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     lay = layout(design, graph, turbines, model, root_transit=root_transit)
     priced, outs, ins = lay.priced, lay.outs, lay.ins
     ups, dns = lay.ups, lay.dns

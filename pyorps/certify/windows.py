@@ -119,6 +119,7 @@ def drain(values: np.ndarray, steps, seeds, labels, *, length_rate=0.0,
     own label won (a seed wins ties) and where nothing arrived -- the
     trace code of the drain (plan section 3.2, item 7).
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     vals = np.asarray(values)
     ras = np.asarray(vals, dtype=np.uint16).copy()
     if excluded is not None:
@@ -153,6 +154,7 @@ def drain(values: np.ndarray, steps, seeds, labels, *, length_rate=0.0,
 
 def _python_drain(ras, steps, seeds, labels, length_rate, weight_mult,
                   no_transit, return_prev=False):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     rows, cols = ras.shape
     blocked = ras == EXCLUDED
     nt = np.zeros_like(blocked)
@@ -244,6 +246,7 @@ def certify_path_field(values: np.ndarray, steps, inside: np.ndarray, seeds,
             ``beta_out``.
         excluded: Cells no walk may enter anywhere.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     vals = np.asarray(values)
     inside = np.asarray(inside, dtype=bool)
     rows, cols = inside.shape
@@ -325,6 +328,7 @@ def certify_tree_field(values: np.ndarray, steps, inside: np.ndarray,
         mu_min: The cheapest per-metre rate of any label
             (``min(mu_star(model)[1:])``).
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     vals = np.asarray(values)
     inside = np.asarray(inside, dtype=bool)
     turb = np.asarray(turbines, dtype=np.int64).ravel()

@@ -109,6 +109,7 @@ def bulk_geojson(geometries):
     shapely objects (GeoSeries, GeometryArray or object ndarray); a generator
     cannot be typed in bulk and is rejected via the ndim guard.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     array = np.asarray(geometries, dtype=object)
     if array.ndim != 1 or array.size == 0:
         # 0-d means a generator slipped through; empty means nothing to gain

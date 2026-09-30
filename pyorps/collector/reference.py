@@ -233,6 +233,7 @@ class _SetAlgebra(_Algebra):
 
     def valid(self, S, U, D, *, node):
         """A's rules R1-R4 (R5 unless ``node``)."""
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         acc = 0
         for t in U:
             if t[0] & acc:
@@ -268,6 +269,7 @@ class _SetAlgebra(_Algebra):
         and only pairs whose needs are met are tried (review 2026-09-24:
         without it n = 5 made 2.8 M merge calls per level, 0.17 % useful).
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         groups: dict = {}
         ups2 = []
         for j, b2 in enumerate(L2s):
@@ -308,6 +310,7 @@ class _SetAlgebra(_Algebra):
 
     def junctions(self, L):
         """(L2, conductors connected) for every Ja/Jb at one node."""
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         S, U, D = L
         out = []
         occupied = S | self.union(D)
@@ -393,6 +396,7 @@ class _CountAlgebra(_Algebra):
         return self._rep[key]
 
     def valid(self, S, U, D, *, node):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         s = popcount(S)
         su = sum(t[0] for t in U)
         sd = sum(t[0] for t in D)
@@ -432,6 +436,7 @@ class _CountAlgebra(_Algebra):
         return out
 
     def junctions(self, L):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         S, U, D = L
         out = []
         n = self.m.n
@@ -610,6 +615,7 @@ def solve_collector(graph: CollectorGraph, turbines: Sequence[int],
         keep_trace: Keep predecessor records so :meth:`CollectorResult.design`
             works (set mode only).
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if engine not in ("A", "B"):
         raise ValueError("engine must be 'A' or 'B'")
     tokens = tokens or ("set" if engine == "B" else "count")
@@ -677,6 +683,7 @@ class _Solver:
         return self._root()
 
     def _level(self, S):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         alg, N = self.alg, self.N
         dist: dict = {}
         heap: list = []
@@ -771,6 +778,7 @@ class _Solver:
                 if not L[2]:
                     self._arrival(L, a)
         self.by_S[S] = labels
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
     def _arrival(self, L, a):
         """Aarr(L, y) for every node y: one last step into y."""
@@ -793,6 +801,7 @@ class _Solver:
 
     def _turbine_seeds(self, S, i):
         """(label, cost, trace record) for turbine i at its node."""
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         alg, model = self.alg, self.model
         t = self.A[i]
         Y = S & ~(1 << i)
@@ -857,6 +866,7 @@ class _Solver:
 
     def _root(self):
         """MV(g) = cheapest partition of A into feeders arriving at g."""
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         model, alg = self.model, self.alg
         N = self.N
         best = {}
@@ -933,6 +943,7 @@ class _Solver:
             return len(tnodes) - 1
 
         def rooted(L, st, v, top=None):
+            # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
             first = top = new_node(v) if top is None else top
             # grow chains iterate: a trench path of thousands of steps must
             # not cost thousands of stack frames (review 2026-09-24)

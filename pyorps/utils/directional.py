@@ -216,6 +216,7 @@ def _segmented_block_scans(a, p, q, w, combine, neutral, track_arg):
 
 
 def _ray_window(a, p, q, m_lo, m_hi, *, kind, return_arg):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     a = np.asarray(a, dtype=np.float64)
     if a.ndim != 2:
         raise ValueError(f"expected a 2-D grid, got shape {a.shape}")

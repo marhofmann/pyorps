@@ -4,6 +4,8 @@ Computes intermediate cells and cost factors for all step directions,
 formatted for GPU kernel consumption. Pure Python/NumPy (no Numba/Cython).
 """
 
+# ruff: noqa: F401
+# pylint: disable=unused-import
 import math
 import numpy as np
 

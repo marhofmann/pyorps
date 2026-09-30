@@ -26,6 +26,7 @@ def run_routing(raster_path, *, sources, targets, waypoints=None,
                 algorithm="delta-stepping", hardware="cpu",
                 neighborhood="r2", pairwise=False, search_buffer_m=None):
     """v1-compatible wrapper: returns (finder, [BuiltRoute])."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     finder, results, _failed = _run_routing(
         raster_path, sources=sources, targets=targets, waypoints=waypoints,
         algorithm=algorithm, hardware=hardware, neighborhood=neighborhood,

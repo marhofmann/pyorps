@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -53,6 +53,7 @@ def config_hash(*, feature_keys, assumptions, resolution_in_m, fill_value,
                 preprocessor_params, modifier_meta, n_features,
                 preprocessor_steps=None) -> str:
     """Stable hash of everything that changes the raster (cache key)."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     payload = json.dumps({
         "keys": list(feature_keys), "assumptions": assumptions,
         "res": resolution_in_m, "fill": fill_value, "dtype": dtype,
@@ -83,6 +84,7 @@ def build_cost_raster(*, base_gdf, assumptions: dict,
     ``save_path=None`` resolves to a config-hashed file in ``work_dir`` (F2:
     pyorps itself is never called with a None save path / CWD default).
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps import CostAssumptions, GeoRasterizer, initialize_geo_dataset
 
     modifiers = list(modifiers or [])
@@ -169,3 +171,4 @@ def build_cost_raster(*, base_gdf, assumptions: dict,
     rasterizer.save_raster(str(final_path))          # F2: explicit path
     log.append(f"saved {final_path}")
     return str(final_path), log
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

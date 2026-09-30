@@ -93,6 +93,7 @@ class CostCatalogue:
     @classmethod
     def load(cls, path) -> CostCatalogue:
         """Read and validate a catalogue YAML."""
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         try:
             import yaml
         except ImportError as exc:                      # pragma: no cover
@@ -182,6 +183,7 @@ def _item(node: Mapping, key: str, items: dict, problems: list,
           inherited: tuple[tuple[str, ...], str] | None = None) -> None:
     """One sourced item. Nested mappings inside it become child items that
     inherit its source and tier; text fields are kept as ``text``."""
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if inherited is None:
         conf = str(node["confidence"]).upper()
         src = node["source"]

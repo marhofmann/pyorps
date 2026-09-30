@@ -82,6 +82,7 @@ class RasterHandler:
                 Setting it False restores the historical zero-copy view and is only
                 allowed together with ``apply_mask=False``.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         # Determine the type of input we're working with
         self.raster_dataset = raster_source
         self.windowed_source_read = False
@@ -130,6 +131,7 @@ class RasterHandler:
                 file-backed dataset (see :meth:`__init__`)
             copy_window: Give ``self.data`` its own memory (see :meth:`__init__`)
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if apply_mask and not copy_window:
             raise ValueError(
                 "copy_window=False is only allowed with apply_mask=False: masking "
@@ -439,6 +441,7 @@ class RasterHandler:
         Returns:
             Estimated optimal buffer width in meters
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         forbidden_value = np.iinfo(self.raster_dataset.dtype).max
         points, euclidean_dist = RasterHandler.max_distance_pair(source_coords,
                                                                  target_coords)

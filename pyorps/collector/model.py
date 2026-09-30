@@ -150,6 +150,7 @@ class CollectorModel:
                                                    compare=False)
 
     def __post_init__(self):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         full = 1 << self.n
         if len(self.current_a) != full or len(self.loss_weight) != full:
             raise ValueError(
@@ -292,6 +293,7 @@ class CollectorModel:
         more, and keeping ``p`` leaves every trench's count unchanged. So
         only ``kappa*_p(X, m)`` for ``m = p .. m_cap`` can be optimal.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         out = []
         for p in range(1, self.p_max + 1):
             for m in range(p, self.m_cap() + 1):

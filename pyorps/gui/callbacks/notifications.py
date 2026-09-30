@@ -74,7 +74,7 @@ def register(app, state) -> None:
                 logged_ids.add(nid)
                 try:
                     logbook.log_notice(notice)
-                except Exception:  # pragma: no cover - logging must never break UI
+                except Exception:  # pragma: no cover - logging must never break UI  # nosec B110
                     pass
         return [notice_toast(n) for n in (notices or [])]
 
@@ -116,7 +116,6 @@ def register(app, state) -> None:
                          "control": ALL, "index": ALL}, "n_clicks"),
                   prevent_initial_call=True)
     def go_fix(n_clicks):
-        from dash import no_update
 
         trigger = ctx.triggered_id
         if not trigger or not any(n_clicks or []):

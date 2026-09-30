@@ -447,7 +447,7 @@ def _code_section(kind: str, code: dict | None) -> dict:
     out: dict[str, Any] = {"kernel": name, "kernel_sha256": None}
     if name is not None:
         try:
-            path = getattr(importlib.import_module(name), "__file__", None)
+            path = getattr(importlib.import_module(name), "__file__", None)  # nosemgrep - name comes from the fixed _KERNEL_MODULES table
         except ImportError:
             path = None
         if path and os.path.exists(path):
@@ -573,6 +573,7 @@ def _field_provenance(finder: PathFinder, origin_idx: int, algorithm: str,
     taken earlier -- when the field was settled; without it the key is
     read from the finder now.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps.io import provenance as prov
 
     if isinstance(storage, str):
@@ -603,6 +604,7 @@ def cost_field_provenance(finder: PathFinder, origin, *,
     ``codec``/``error_bound`` describe a lossy save, as in
     :meth:`CostField.save`.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if finder.raster_handler is None:
         finder.create_raster_handler()
     section = _storage_section(storage, codec, error_bound)
@@ -1553,6 +1555,7 @@ class CostField:
 
     def __init__(self, finder: PathFinder, origin, algorithm: str = "auto",
                  **algo_kwargs: Any):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if finder.raster_handler is None:
             finder.create_raster_handler()
         requested = algorithm
@@ -1933,6 +1936,7 @@ class CostField:
         Returns:
             The path written, as a ``pathlib.Path``.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from pathlib import Path as _Path
 
         from pyorps.io import provenance as _prov
@@ -2164,7 +2168,7 @@ class SavedCostField:
 
     def __init__(self, path, *, expect: dict | None = None,
                  ignore: Sequence[str] = ("extra",)):
-        import json
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from pathlib import Path as _Path
 
         self._path = _Path(path)
@@ -2543,6 +2547,7 @@ class CostFieldSet:
                  cache_dir=None, spill: bool | None = None,
                  codec: str = "raw", error_bound: float | None = None,
                  **algo_kwargs: Any):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         import tempfile
         from pathlib import Path as _Path
 

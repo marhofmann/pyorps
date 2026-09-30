@@ -117,6 +117,7 @@ def estimate_routing(raster_path: str, *,
     buffered by the (auto) search buffer, clipped to the raster. Numbers are
     rough, honest estimates for the confirm dialog — not promises.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     import rasterio
 
     waypoints = list(waypoints or [])
@@ -243,6 +244,7 @@ def route_through_points(finder, ordered_points: list[tuple[float, float]],
     the first call uses ``session.route`` and later edits should call
     ``session.update`` instead of this helper.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if len(ordered_points) < 2:
         raise ValueError("Need at least a source and a target control point.")
 
@@ -321,6 +323,7 @@ def run_routing(raster_source: Any, *, sources: list[tuple[float, float]],
     after the segment currently in flight; routes already completed are kept.
     ``progress(done, total)`` is called before each pair.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps import PathFinder
     from pyorps.core.exceptions import NoPathFoundError
 

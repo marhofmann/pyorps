@@ -64,6 +64,7 @@ def _generate_full_steps(k: int, memo: dict[int, set[tuple[int, int]]], directed
     References:
         [1]
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if k in memo:
         return memo[k]
 

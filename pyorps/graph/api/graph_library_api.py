@@ -140,6 +140,7 @@ class GraphLibraryAPI(GraphAPI):
                 the theoretical maximum and will exhaust memory).
 
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         super().__init__(raster_data, steps, ignore_max, dem_data)
 
         check_library_backend_size(
@@ -371,6 +372,7 @@ class GraphLibraryAPI(GraphAPI):
         Returns:
             List of node indices representing the shortest path(s)
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         source_has_len = hasattr(source_indices, '__len__')
         target_has_len = hasattr(target_indices, '__len__')
 

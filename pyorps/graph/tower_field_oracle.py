@@ -106,6 +106,7 @@ def score_tower_chain(cells, *, values, tower_cost, lattice: TowerLattice,
         route is outside the field's feasible set instead of merely
         disagreeing with it.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     values = np.asarray(values, dtype=np.float64)
     tower_cost = np.asarray(tower_cost, dtype=np.float64)
     pts = [(int(r), int(c)) for r, c in cells]
@@ -235,6 +236,7 @@ def kernel_objective(raster, source, target, *, directions, sigma_m,
             to zero cost, everything allowed, zero tower type cost --
             the tier-1 regime.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps.utils._constrained_dijkstra import constrained_dijkstra_2d
 
     raster = np.ascontiguousarray(raster, dtype=np.uint16)
@@ -326,6 +328,7 @@ def compare_with_kernel(raster, *, source, targets, tower_value_lut,
     kernel's ``towers`` array excludes the two ends, so the field's
     sequence has its terminals dropped before counting.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     raster = np.ascontiguousarray(raster, dtype=np.uint16)
     dirs = np.asarray(directions, dtype=np.int64).reshape(-1, 2)
     lut = np.asarray(tower_value_lut, dtype=np.float64)
@@ -406,6 +409,7 @@ def compare_with_find_route(finder, targets: Sequence, *,
         The router's own reported cost next to the scored one, so the
         terminal-tower difference is visible instead of implicit.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps.graph.tower_field import (
         angle_tables_from_profile, tower_field_from_raster)
 

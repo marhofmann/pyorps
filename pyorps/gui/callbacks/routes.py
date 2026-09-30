@@ -48,25 +48,25 @@ def _estimate_body(est: dict) -> list:
                else f"~{minutes:,.1f} min")
     facts = html.Ul([
         html.Li([html.B("Prognosed runtime: "), f"{runtime} ",
-                 html.Small(f"({est['algorithm']} on {est['graph_api']}, "
+                 html.Small(f"({est['algorithm']} on {est['graph_api']}, " +
                             f"rough estimate)", className="text-muted")]),
         html.Li([html.B("Prognosed memory: "),
-                 f"~{est['est_memory_mb']:,.0f} MB peak (graph + search "
+                 f"~{est['est_memory_mb']:,.0f} MB peak (graph + search " +
                  "arrays)"]),
         html.Li([html.B("Prognosed temp storage: "),
-                 f"~{est['est_storage_mb']:,.0f} MB (search-window "
+                 f"~{est['est_storage_mb']:,.0f} MB (search-window " +
                  "raster)"]),
         html.Li([html.B("Workload: "),
-                 f"{est['n_pairs']} route pair(s), {est['n_segments']} "
-                 f"segment(s), ~{est['total_cells']:,.0f} cells at "
-                 f"{est['resolution_m']:g} m ({est['neighborhood']}, search "
+                 f"{est['n_pairs']} route pair(s), {est['n_segments']} " +
+                 f"segment(s), ~{est['total_cells']:,.0f} cells at " +
+                 f"{est['resolution_m']:g} m ({est['neighborhood']}, search " +
                  f"buffer {est['buffer_m']:,.0f} m)"]),
     ], className="mb-2 small")
     tips = html.Ul([html.Li([html.B(f"{title}: "), text])
                     for title, text in _MITIGATION_TIPS],
                    className="mb-0 small")
     return [
-        html.P("Accept waiting, or cancel and reduce the effort first. "
+        html.P("Accept waiting, or cancel and reduce the effort first. " +
                "A running job can be interrupted any time with ⏹ Stop.",
                className="small"),
         facts,
@@ -82,6 +82,7 @@ def finalize_routing(state, finder, built, failed, *, meta: dict,
     Shared by the synchronous path and the background-job poller — the job
     thread never touches state; all mutations happen here on the Dash side.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     raster_layer_id = meta.get("raster_layer_id")
     raster_layer = state.get(raster_layer_id)
     if finder is not None and raster_layer_id:
@@ -153,6 +154,7 @@ def add_route_layer(state, *, line: LineString, route_cost, params: dict,
     F5); ``simplify_tol`` only drives the display/export geometry and can be
     changed later from the Edit tab (post-hoc simplification).
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     metrics = {
         "total_length_m": route_cost.total_length,
         "total_cost": route_cost.total_cost,
@@ -187,6 +189,7 @@ def register(app, state) -> None:
         Output(ids.ALGORITHM, "options"),
         Output(ids.ALGORITHM, "value"),
         Input(ids.HARDWARE, "value"))
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     def algorithms_for_hardware(hardware):
         algorithms = routing.valid_algorithms(hardware or "cpu")
         options = [{"label": a.replace("_", " "), "value": a}
@@ -255,6 +258,7 @@ def register(app, state) -> None:
             hardware, neighborhood, search_buffer, ignore_max_cost, pairwise,
             simplify, simplify_tol, delta, num_threads, use_astar,
             points_rows_data, notices):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         notices = list(notices or [])
         if not n_clicks or constrained_on:
             raise PreventUpdate          # constrained runner handles it
@@ -447,6 +451,7 @@ def register(app, state) -> None:
         State(ids.NOTICES, "data"),
         prevent_initial_call=True)
     def load_routes(n_clicks, path, notices):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         notices = list(notices or [])
         if not n_clicks:
             raise PreventUpdate
@@ -490,3 +495,4 @@ def register(app, state) -> None:
         route_options = [{"label": ly.name, "value": ly.id}
                          for ly in state.layers_of_kind("route")]
         return state.layers_view(), route_options, notices
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

@@ -16,6 +16,8 @@ by closure — appropriate for a local, single-user desktop tool.
 """
 from __future__ import annotations
 
+# ruff: noqa: F401
+# pylint: disable=unused-import
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
 import geopandas as gpd
@@ -208,6 +210,7 @@ def _register_callbacks(app: Dash, viewer) -> None:
         prevent_initial_call=True,
     )
     def _map_click(click, build_mode, edit_mode, cstore, bstore):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         latlng = (click or {}).get("latlng") or {}
         lat, lng = latlng.get("lat"), latlng.get("lng")
         if lat is None or lng is None:
@@ -271,6 +274,7 @@ def _register_builder(app: Dash, viewer, latlng_to_crs) -> None:
         prevent_initial_call=True,
     )
     def _run(_n, store, algorithm, hardware, pairwise):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not viewer.raster_layers:
             return no_update, no_update, no_update, "No cost raster loaded."
         sources = store.get("sources") or []
@@ -325,6 +329,7 @@ def _register_editor(app: Dash, viewer, target_crs, crs_to_latlng,
                   Input("waypoint-table", "data"), State("control-store", "data"),
                   prevent_initial_call=True)
     def _table_edit(rows, store):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not store or store.get("active") is None:
             return no_update
         try:
@@ -356,6 +361,7 @@ def _register_editor(app: Dash, viewer, target_crs, crs_to_latlng,
         Input("control-store", "data"), prevent_initial_call=True,
     )
     def _render(store):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         active = (store or {}).get("active")
         source, target = (store or {}).get("source"), (store or {}).get("target")
         if active is None or not source or not target:

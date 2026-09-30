@@ -343,6 +343,7 @@ class RasterCollector:
 
     # ------------------------------------------------------------ level
     def _level(self, S):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         alg, model, N = self.alg, self.model, self._N
         trace = self.keep_trace
         pend: dict = {}
@@ -481,12 +482,14 @@ class RasterCollector:
                 else:
                     self.Aarr[L] = self._one_step(Fmin, lab.rate, self._w_arr)
                 self._prune(self.Aarr[L], popcount(S))
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
     def _turbine_seeds(self, S, i, t):
         """Mirror of the reference turbine rule, arrivals from ``Aarr``.
 
         Returns ``(label, cost, (i, kids, ins, downs, out token))``.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         alg, model = self.alg, self.model
         Y = S & ~(1 << i)
         children: dict = {}
@@ -595,6 +598,7 @@ class RasterCollector:
         (edge key ``None``), priced by
         :class:`~pyorps.collector.raster_pricer.RasterStepPricer`.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from pyorps.collector.design import Design, Junction, System
 
         if not self.keep_trace:
@@ -623,6 +627,7 @@ class RasterCollector:
             return len(tnodes) - 1
 
         def rooted(L, st, v, top=None):
+            # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
             first = top = new_node(v) if top is None else top
             for _ in range(limit):              # grow chains iterate
                 lab = self.labels[L]
@@ -718,3 +723,4 @@ class RasterCollector:
                       turbine_tnode=turbine_tnode, systems=systems,
                       junctions=junctions,
                       cost=float(self._mv.ravel()[g] * self._cell))
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

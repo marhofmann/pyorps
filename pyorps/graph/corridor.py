@@ -72,6 +72,7 @@ def _normalize_routes(routes) -> list[tuple[Any, np.ndarray]]:
     caller identified the route by: a ``(terminal_a, terminal_b)`` tuple from a
     mapping, the ``path_id`` of a Path, or the position in a plain list.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if isinstance(routes, PathCollection):
         routes = list(routes)
 
@@ -242,6 +243,7 @@ def corridor_graph_from_routes(
     Returns:
         A :class:`~pyorps.core.corridor.CorridorGraph`.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     normalized = _normalize_routes(routes)
     raster = np.ascontiguousarray(raster)
     if raster.ndim != 2:
@@ -416,6 +418,7 @@ def corridor_graph_from_routes(
         construction="overlay",
         provenance=prov,
     )
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
 
 def _canonical(run: np.ndarray) -> tuple[int, ...]:
@@ -459,6 +462,7 @@ def _short_shared_runs(
     stretch there, so the prune can never turn a long shared stretch into an
     unshared one.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     keep_shared: set[tuple[int, int]] = set()
     candidates: set[tuple[int, int]] = set()
 

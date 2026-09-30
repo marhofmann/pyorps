@@ -149,6 +149,7 @@ def _resolve_source(raster_source: Any, crs: Any, transform: Any,
     Accepts: a file path, a RasterHandler, a RasterDataset/InMemoryRasterDataset,
     or a raw numpy array (requires crs + transform).
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     work_dir.mkdir(parents=True, exist_ok=True)
 
     if isinstance(raster_source, (str, Path)):

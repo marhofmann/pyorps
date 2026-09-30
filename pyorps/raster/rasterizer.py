@@ -477,6 +477,7 @@ class GeoRasterizer:
         * option C — the plain sequence is re-burned as a 1-byte
           passable/forbidden band (see :meth:`_burn_plain_passable`).
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if on_thin_features not in ("warn", "raise", "ignore"):
             # Validated even when nothing is forbidden, so a typo cannot lurk
             # until the day a cost table first marks something impassable.
@@ -626,6 +627,7 @@ class GeoRasterizer:
         Returns:
             tuple of (raster_data, transform)
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if self.base_data.shape[0] == 0:
             raise ValueError("Base data is empty - nothing to rasterize!")
 
@@ -846,6 +848,7 @@ class GeoRasterizer:
         fall back to a full burn. The returned raster is bit-identical to
         that full burn in every case where this does return an array.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         grouping = self._row_class_codes(data)
         if grouping is None:
             return None
@@ -964,6 +967,7 @@ class GeoRasterizer:
             The rasterized :class:`MetricStack` (also stored as
             ``self.metric_stack``).
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if self.base_dataset is None or self.base_dataset.data is None:
             raise ValueError("No base dataset loaded to rasterize")
         if self.base_data.shape[0] == 0:
@@ -1085,6 +1089,7 @@ class GeoRasterizer:
         Ids follow the same row order as the value bindings, so the
         category band picks the same winning feature as the metric bands.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         main = self.cost_manager.main_feature
         side = self.cost_manager.side_features or []
         columns = [c for c in [main, *side] if c in data.columns]
@@ -1313,6 +1318,7 @@ class GeoRasterizer:
         Returns:
             The modified raster
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if self.raster is None or self.transform is None:
             msg = "No raster data available to modify. Call rasterize() first."
             raise ValueError(msg)
@@ -1368,6 +1374,7 @@ class GeoRasterizer:
         is frozen for later groups — so it keeps the loop and only sheds the
         redundant allocations.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         raster = self.raster
         groups = []
         for unique_value in gdf['cost'].unique():

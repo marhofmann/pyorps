@@ -71,6 +71,7 @@ def register(app, state) -> None:
         State(ids.LAYERS_GRID, "selectedRows"),
         prevent_initial_call=True)
     def inspect_feature(click_datas, layer_selection):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         trigger = ctx.triggered_id
         if not trigger:
             raise PreventUpdate

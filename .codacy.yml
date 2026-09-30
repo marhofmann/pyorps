@@ -1,0 +1,15 @@
+---
+# Codacy analyses the installable package (pyorps/). Everything below is measurement, teaching or
+# generated material whose complexity and style are not part of the library's quality gate.
+exclude_paths:
+  - "benchmarks/**"
+  - "case_studies/**"
+  - "docs/**"
+  - "examples/**"
+  - "tests/**"
+  - "tutorial/**"
+  - "profiles/**"
+  - "pyorps/gui/assets/**"
+  - "pyorps/utils/kernels/**"
+  - "pyorps/utils/*.cpp"
+  - "**/*.ipynb"

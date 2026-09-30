@@ -75,6 +75,7 @@ def combine_rasters(paths: list[str | Path], operation: str, *,
     keeps the reference dtype and CRS. See the module docstring for how each
     operation treats forbidden cells.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if operation not in OPERATIONS:
         raise ValueError(
             f"Unknown raster operation '{operation}'. Use one of: "

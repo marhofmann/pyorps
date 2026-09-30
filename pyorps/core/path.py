@@ -106,6 +106,7 @@ class Path:
         Returns:
             Formatted string with path analysis.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         labels = self._resolve_labels(cost_assumptions, cost_labels)
 
         lines = []
@@ -205,6 +206,7 @@ class Path:
         Returns:
             dictionary with path data formatted for GeoDataFrame
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         # Add runtime information
         result = {f"runtime_{key}": value for key, value in self.runtimes.items()}
 
