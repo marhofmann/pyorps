@@ -248,7 +248,8 @@ cdef _dijkstra_dense(
     for dd in range(n_dirs):
         if directions[dd].cost_factor < min_cf:
             min_cf = directions[dd].cost_factor
-    cdef double delta = max(1.0, 2.0 * min_raster_val_d * min_cf * (1.0 - 1e-9))
+    cdef double delta = max(
+        1.0, 2.0 * min_raster_val_d * min_cf * <double>cell_size * (1.0 - 1e-9))
 
     # Circular bucket queue — power-of-2 size for fast modulo.
     cdef size_t n_phys_buckets = 65536  # 2^16
@@ -433,7 +434,7 @@ cdef _dijkstra_dense(
 
                     terrain_cost = (<double>cur_raster_val +
                                    <double>intermediate_cost_f +
-                                   <double>raster_ptr[nb_cell]) * <double>nb.cost_factor
+                                   <double>raster_ptr[nb_cell]) * <double>nb.cost_factor * <double>cell_size
                     if grad_penalty_ptr != NULL:
                         terrain_cost = terrain_cost * <double>grad_penalty_ptr[cache_idx]
                     edge_cost = terrain_cost + <double>nb.angle_cost
@@ -814,7 +815,7 @@ cdef _dijkstra_sparse(
 
             terrain_cost = (<double>cur_raster_val +
                            <double>intermediate_cost_f +
-                           <double>raster_ptr[nb_cell]) * <double>nb.cost_factor
+                           <double>raster_ptr[nb_cell]) * <double>nb.cost_factor * <double>cell_size
             if grad_penalty_ptr != NULL:
                 terrain_cost = terrain_cost * <double>grad_penalty_ptr[cache_idx]
             edge_cost = terrain_cost + <double>nb.angle_cost

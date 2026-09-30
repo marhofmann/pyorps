@@ -402,6 +402,8 @@ class MetricStack:
         if shape is None:
             raise MetricStackError("Cannot mask an empty stack")
         self._materialize_legacy()
+        # One caller-supplied geometry of arbitrary type: the bulk GeoJSON
+        # path (pyorps.raster._geojson) has nothing to amortize here.
         inside = rio_rasterize(
             [(geometry, 1)],
             out_shape=shape,

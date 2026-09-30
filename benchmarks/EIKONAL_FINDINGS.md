@@ -635,3 +635,432 @@ residual transfers/prep.
   warp-parallel step evaluation is the remaining idea (plan §8).
 - Host-side residuals (~30 ms at 4096²: slowness-prep numpy view +
   polyline rasterize + Python) — diminishing returns.
+
+
+---
+
+## 13. Tier A - slope-aware (3D-length) anisotropic solver (2026-08-11)
+
+Implements `docs/superpowers/plans/2026-08-11-tier-a-3d-fim-implementation.md`.
+Machine: RTX PRO 500 Blackwell Laptop, 6113 MiB, 14 SMs, CUDA 13.0.
+Every GPU number below is MEASURED on this machine; nothing here is
+carried over from the plan's predictions.
+
+### 13.0 What was built
+
+With a DEM the solve becomes Riemannian with metric
+`M(x) = c(x)^2 (I + grad_z grad_z^T)`, which is exactly - and only - the
+unconditional 3D-length stretch `sqrt(1 + (s/100)^2)` that is pyorps'
+default `GradientOptions`. Configured multiplier curves and the additive
+exposure term are refused (they are not of the form `sqrt(d^T M d)`; a
+continuum solver would silently solve the convexified problem). The hard
+grade limit is enforced OUTSIDE the solver by a solve/check/mask/re-solve
+loop. Local solver: 8 angularly-ordered offsets, 8 one-sided edge
+candidates + 8 simplex candidates with a mandatory causality test.
+Isotropic behaviour is untouched - a separate kernel, not a special case.
+
+Scope of that last sentence, since "untouched" invites over-reading. What
+is measured is: with `dem=None` the anisotropic code is not reachable
+(different kernel, same tuning defaults), and with an EXACTLY CONSTANT
+DEM at the SAME tiling the field is BIT-identical to the no-DEM solve.
+The bit-identity is a statement about the operator, and it only survives
+where the block schedule is reproducible: on a uniform cost raster it
+held at every size tried (up to 256^2), but on random / barrier cost
+rasters it held 24/24 at <= 160 px per side, 23/24 at 176 and 13/24 at
+192. The solve is chaotic relaxation with an atomic active list, so above
+that the run-to-run field is not bit-reproducible either (identical
+through 192^2, differing at 208^2 and above, max |dT| 2.4e-3 on fields of
+O(10^3)) - a scheduling artefact bounded by the convergence epsilon, not
+a correctness bug. The two assertions in
+`tests/test_utils/test_eikonal_gpu_anisotropic.py` carry the regime as
+`BITWISE_DETERMINISTIC_MAX_DIM` and refuse to run outside it.
+
+### 13.1 The stencil result (why 8 simplices, not 4)
+
+A simplex `(e1, e2)` is metric-acute iff `e1^T M e2 >= 0`. For the four
+AXIS QUADRANTS that quantity is `+-c^2 q_r q_c`, so **two of the four are
+obtuse for every non-axis-aligned slope** - the 4-point quadrant stencil
+the parent plan proposed is biased at every slope azimuth. Maximum
+relative over-estimate on EXACT LINEAR FIELDS (721 gradient directions x
+37 slope azimuths, `c = 1`; reproduced in-repo by
+`tests/test_utils/test_eikonal_gpu_anisotropic.py::TestSimplexExactnessOnLinearFields`):
+
+| grade | kappa | 8-simplex | 4-simplex |
+|---|---|---|---|
+| 10 % | 1.0050 | **0.0000 %** | 0.0012 % |
+| 20 % | 1.0198 | **0.0000 %** | 0.0192 % |
+| 50 % | 1.1180 | **0.0000 %** | 0.6231 % |
+| 100 % | 1.4142 | **0.0000 %** | 6.0660 % |
+| 141 % | 1.7321 | **0.0000 %** | 15.4701 % |
+| 200 % | 2.2361 | **0.0000 %** | 28.7290 % |
+| 220 % | 2.4142 | **0.0000 %** | 34.9591 % |
+| 250 % | 2.6926 | 0.5960 % | 41.7828 % |
+| 300 % | 3.1623 | 3.6650 % | 57.6221 % |
+| 400 % | 4.1231 | 14.6690 % | 87.7806 % |
+
+(The 4-simplex column is larger than the parent plan's figures because it
+is normalised against the neighbour-value scale rather than a modelled
+path cost; the ordering and the conclusion are identical.)
+
+Acuteness for the (axis, adjacent-diagonal) pairs reduces to
+`|q_r q_c| <= 1 + min(q_r^2, q_c^2)`, which holds for all
+`|q| <= sqrt(2(1+sqrt2)) = 2.19737` (`kappa <= 1+sqrt2 = 2.41421`).
+Numerical sweep on a 0.01 grid: **first failure at `|q| = 2.20`,
+kappa = 2.4166** - the derived threshold, confirmed. pyorps' default
+`s_max_pct = 200 %` is inside the provably exact regime, so the guard
+never fires by default; above it the solver RAISES rather than
+over-pricing silently.
+
+Supporting identities, verified: Sherman-Morrison `max |M M^-1 - I| =
+7.5e-16`; the 3D-length identity `hypot(|d|, q.d) = sqrt(d^T (I+qq^T) d)`
+to 1.8e-15. `det(Gram) = 1 + |q|^2` exactly and `S = 1 + q_axis^2`, so
+neither can vanish and neither is a difference of large numbers - that is
+what keeps the float32 update well conditioned at planning-raster cost
+magnitudes.
+
+### 13.2 Accuracy: calibration anchors (constant-slope plane, 301^2)
+
+The referee is the analytic 3D length, never the discrete cost.
+
+| grade | case | exact | FIM | R2 | FIM gain over R2 |
+|---|---|---|---|---|---|
+| 10 % | A3 axis-aligned | 300.749 | **+0.000 %** | +0.004 % | +0.003 % |
+| 10 % | A4 exact R2 direction (1,2) | 336.916 | +0.125 % | -0.010 % | -0.135 % |
+| 10 % | A5 R2 worst direction | 308.937 | +0.121 % | **+2.732 %** | **+2.608 %** |
+| 25 % | A5 R2 worst direction | 314.668 | +0.118 % | +2.658 % | +2.537 % |
+| 50 % | A5 R2 worst direction | 334.337 | +0.109 % | +2.461 % | +2.349 % |
+| 100 % | A5 R2 worst direction | 401.664 | +0.081 % | +1.853 % | +1.770 % |
+
+- **A3 is exact to 0.000 %** - the calibration gate (<= 1e-5 rel) passes.
+  A plane sloping along the traverse is priced at exactly
+  `sqrt(1 + (s/100)^2)` per cell of run: Tier A and nothing else.
+- **The harness validates against the isotropic record**: R2's worst
+  direction at 10 % grade measures **+2.732 %**, reproducing section 3's
+  isotropic +2.75 % metrication figure.
+- **The plan's predicted gain (2.77 % -> 4.93 %, RISING with grade) is
+  wrong in its trend.** Measured: **2.61 % -> 1.77 %, FALLING with
+  grade.** The reason is clean: as the slope steepens more of the cost is
+  vertical rise, and the discrete kernel gets the rise exactly right
+  (the height difference between two cells is not a metrication
+  estimate). Only the horizontal component carries the elongation bias,
+  so its relative weight - and the gap - shrinks. Honest headline: **a
+  ~1.8-2.6 % correction on a planar slope, largest on gentle terrain**;
+  not a step change.
+
+**Neighborhood refinement** (50 % grade, R2 worst direction, exact =
+360.064) - the operational meaning of "agrees with the discrete kernels":
+
+| | cost | vs exact | vs FIM |
+|---|---|---|---|
+| FIM | 360.480 | +0.116 % | - |
+| R1 | 385.250 | +6.995 % | +6.871 % |
+| R2 | 363.736 | +1.020 % | +0.903 % |
+| R3 | 360.705 | +0.178 % | +0.062 % |
+| R4 | 360.705 | +0.178 % | +0.062 % |
+
+`discrete_R` approaches the FIM value **monotonically from above**. That
+is the contract of the plan's section 8.1, and it holds.
+
+**Contour test** (pure hillside, slope along rows only, 301^2):
+
+| grade | traverse | exact | FIM+DEM | R2+DEM | 2D-only (no DEM) |
+|---|---|---|---|---|---|
+| 20 % | contour (across the slope) | 300.000 | +0.000 % | +0.000 % | +0.000 % |
+| 20 % | fall line (down the slope) | 305.941 | +0.000 % | +0.024 % | **-1.942 %** |
+| 50 % | contour | 300.000 | +0.000 % | +0.000 % | +0.000 % |
+| 50 % | fall line | 335.410 | -0.000 % | +0.050 % | **-10.557 %** |
+
+Tier A is exact on both traverses at both grades. A DEM-less solve is
+exact on the contour and under-prices the fall line by up to 10.6 % -
+the direction dependence a per-cell slope layer structurally cannot see.
+
+**Realistic terrain, random cost raster** (401^2, 12 random pairs, peak
+grade 50 %): `T_FIM <= R2` on **12/12** pairs, mean gain **+30.6 %**, min
++19.5 %. This is far larger than the planar figure and it is NOT a slope
+effect: on a high-contrast random cost surface the continuum threads
+between expensive cells at any angle while R2 is confined to 16
+directions. Quote the planar ~2 % as the slope-accuracy number and this
+as a raster-roughness number; they measure different things.
+
+### 13.3 Performance
+
+**P4 - q-build (gate <= 5 ms at 3000^2): MET.**
+
+| size | cells | total ms | of which H2D | kernel ms | kernel GB/s |
+|---|---|---|---|---|---|
+| 1000^2 | 1.0 M | 0.64 | 0.33 | 0.05 | 241 |
+| 2000^2 | 4.0 M | 1.75 | 1.73 | 0.30 | 173 |
+| 3000^2 | 9.0 M | **3.72** | 3.56 | 0.69 | 169 |
+
+The kernel is bandwidth-bound and essentially free; the step is dominated
+by the DEM upload. *Trap found and fixed:* computing the float32
+reference elevation with a full-array `isfinite` + boolean gather cost
+**25 ms at 9 M cells - 36x the kernel** and made the step look
+bandwidth-bound when it was not. It is taken from a strided subsample now
+(it only has to be a representative offset).
+
+**P1 - anisotropic vs isotropic solve (gate <= 3x): MISSED, reported.**
+
+| size | class | iso ms | aniso ms | ratio | iso upd/cell | aniso upd/cell |
+|---|---|---|---|---|---|---|
+| 3000^2 | uniform | 19.8 | 88.1 | 4.44 | 39.7 | 24.4 |
+| 3000^2 | random | 57.2 | 484.5 | **8.48** | 212.8 | 194.4 |
+| 3000^2 | heavy_tail | 66.1 | 440.0 | 6.66 | 244.6 | 187.6 |
+| 3000^2 | smooth | 68.2 | 344.8 | 5.06 | 237.1 | 148.7 |
+| 2000^2 | random | 26.9 | 187.2 | 6.96 | 220.5 | 176.7 |
+| 1000^2 | random | 9.3 | 50.7 | 5.47 | 281.1 | 182.2 |
+
+Ratio **1.8-8.5x** against a gate of 3x - missed on every class except
+uniform at 2000^2. Two things are worth separating:
+
+- **Iteration count went DOWN, not up.** `updates_per_cell` is 194 vs 213
+  (random, 3000^2) and 24 vs 40 (uniform). The parent plan predicted
+  +25-35 % from Fu/Kirby/Whitaker; the implementation plan's section 4.4
+  predicted the opposite sign, because every 8-simplex update raises `T`
+  by at least `c * 1` (the chords are the edges of the square [-1,1]^2;
+  minimum M-distance measured 1.0000) against the 4-point diamond's
+  `c/sqrt(2)`. **Section 4.4's prediction is the one that held.**
+- So the whole cost is per-update arithmetic: 16 candidates, 8 runtime
+  square roots, ~64 registers against the isotropic 30. Register count is
+  what binds - see the tuning result.
+
+**Tuning: the anisotropic optimum is NOT the isotropic one.** 3000^2,
+random: `B=16, n_inner=32` (isotropic default) = 1009 ms; `B=12,
+n_inner=16` = 527 ms; `B=8, n_inner=12` = 550 ms. B=12 wins on every
+class tested. Two effects: at 64 registers a 256-thread tile (B=16) drops
+to 4 blocks/SM where B=12 gets 7; and the larger per-update reach means
+`n_inner = 2B` runs iterations that no longer buy anything. New defaults
+WITH a DEM: **`tile = 12`, `n_inner = 4B/3`**. The isotropic defaults
+(16, 2B) are untouched.
+
+Optimisations applied and their measured worth: hoisting the T-independent
+metric algebra out of the inner loop (removes 8 of the 16 sqrt) - small,
+the compiler was already doing much of it; exploiting the **period-4
+symmetry** of the metric (offset k+4 is the negation of offset k, so the
+diagonal, edge, off-diagonal and S tables all repeat) to halve its
+register footprint; the tile/n_inner retune - **2x, the only large win**.
+
+**P2 - end-to-end vs Cython Dijkstra R2 WITH THE SAME DEM (gate >= 4x):
+MET with margin.** Single pair, corner to corner, targeted early exit.
+
+| size | class | FIM ms | V5+DEM ms | Cython R2+DEM ms | vs V5 | vs Cython |
+|---|---|---|---|---|---|---|
+| 1000^2 | uniform | 26.7 | 26.9 | 919.8 | 1.01 | 34.4 |
+| 1000^2 | random | 66.9 | 37.7 | 1059.8 | 0.56 | 15.8 |
+| 1000^2 | heavy_tail | 64.5 | 41.4 | 1269.0 | 0.64 | 19.7 |
+| 1000^2 | smooth | 50.0 | 46.2 | 1103.4 | 0.92 | 22.1 |
+| 2000^2 | uniform | 100.6 | 88.3 | 4507.5 | 0.88 | 44.8 |
+| 2000^2 | random | 230.2 | 119.0 | 4603.9 | 0.52 | 20.0 |
+| 2000^2 | heavy_tail | 234.1 | 131.5 | 7201.7 | 0.56 | 30.8 |
+| 2000^2 | smooth | 175.4 | 145.0 | 5507.4 | 0.83 | 31.4 |
+| 3000^2 | uniform | 135.0 | 219.9 | 13601.9 | **1.63** | **100.7** |
+| 3000^2 | random | 488.7 | 264.1 | 11536.1 | **0.54** | 23.6 |
+| 3000^2 | heavy_tail | 483.5 | 258.2 | 13222.4 | 0.53 | 27.4 |
+| 3000^2 | smooth | 362.5 | 268.0 | 10923.5 | 0.74 | 30.1 |
+
+**P3 - vs V5 + DEM: LOST on high-contrast rasters. That is the finding,
+and it is a change of sign from the isotropic case.** Isotropically the
+FIM backend beat V5 at 3000^2 (1.28x uniform, 1.06x smooth, 0.82x
+random). With the DEM it is **0.52-0.74x on random / heavy_tail / smooth**
+and wins only on `uniform` (1.63x at 3000^2). V5's cost rises modestly
+when a DEM is added (its per-edge LUT lookup is cheap) while the FIM
+solve pays 5-8x. Recommendation: **with a DEM, `raster_gpu` (V5) is the
+faster single-pair backend on rough cost surfaces**; `raster_fim` is
+chosen for accuracy (no metrication bias) and for multi-target work.
+
+**P6 - multi-target amortisation** (2000^2, one FIM field vs k V5
+solves):
+
+| k targets | FIM ms | V5 ms | speedup |
+|---|---|---|---|
+| 1 | 193.8 | 121.7 | 0.63 |
+| 2 | 193.1 | 124.0 | 0.64 |
+| 4 | 208.4 | 322.5 | 1.55 |
+| 8 | 228.0 | 748.5 | 3.28 |
+| 16 | 242.0 | 1191.8 | **4.93** |
+
+**Break-even at k ~ 3.** One field serves every target of a source at
+essentially constant cost (194 -> 242 ms from k=1 to k=16, all of the
+growth in tracing); the discrete backends pay per pair. The structural
+advantage, quantified rather than asserted.
+
+**Memory** (measured, CuPy pool high-water): **19.0 B/cell** with the DEM
+against 10.4 B/cell isotropic - 163 MB at 3000^2, 453 MB at 5000^2. The
+plan predicted 17 B/cell; the excess is pool granularity. The DEM is
+uploaded in 1024-row slabs so it is never resident in full alongside the
+metric planes.
+
+### 13.4 The grade limit: solve, check, mask, re-solve
+
+`max_gradient_pct` is enforced outside the solver. Each returned cell path
+is verified with the DISCRETE kernel's own binned arithmetic (slope bin =
+int(height difference * 100 / (step length in cells * cell size * bin
+width)), clamped to the last bin, forbidden iff that bin's multiplier is
+infinite) before it is returned - deliberately binned rather than
+compared against the raw limit, so a route accepted here is the route a
+discrete re-check accepts.
+
+Measured (2000^2, terrain peak grade 90 %, 8 random pairs):
+
+| limit | mode | feasible | median iters | p95 iters | ms/pair | mean cost |
+|---|---|---|---|---|---|---|
+| 15 % | lazy | 1/8 | 5.5 | 6.6 | 124.6 | 4674.6 |
+| 15 % | eager | 1/8 | 0 | 0 | 10.1 | 4793.3 |
+| 30 % | lazy | 5/8 | 2.0 | 6.6 | 85.5 | 5649.2 |
+| 30 % | eager | 5/8 | 0 | 0 | 16.8 | 5676.1 |
+
+- Typical iteration counts (median 2-5.5) are near the plan's guess
+  (0-3), slightly above it.
+- Lazy buys a **2.5 % cheaper route** than eager for ~8x the wall clock.
+- **Worst case measured: 22 iterations** on a synthetic Gaussian hill at
+  a 20 % limit, and the plan's minimal endpoint-only mask rule **blew the
+  32-iteration cap entirely** at a 12 % limit. The shipped rule therefore
+  also masks the steep cells ON THE ROUTE JUST TRIED - every masked cell
+  still individually exceeds the limit, and only cells on routes actually
+  attempted are ever masked, so it remains strictly lazy. With it the
+  12 % case converges in 24 iterations to a route costing 93.30 against
+  eager's 95.67.
+- The cap **raises**; it never escalates to `eager` automatically,
+  because that is a strictly smaller feasible set and substituting it
+  silently is the failure class this increment exists to prevent.
+
+**What this is honestly worth — measured, not asserted.** The returned
+route is never invalid, and it is optimal for the MASKED problem. But the
+masked problem is a long way from the rule, and "slightly conservative"
+(the wording this section used to carry) is wrong by a factor of roughly
+ten.
+
+Differential fuzz against the Cython kernel, 4 seeds x 300 trials, 40x40
+rasters, r1 steps on BOTH sides, identical `GradientLUTs`, limits {8, 12,
+20, 30} %, terrain = smooth hills / white noise / plane+fault / random
+walk (`benchmarks/fuzz_grade_limit_differential.py`, seeds 0-3):
+
+| | routes found |
+|---|---|
+| Cython kernel (the rule, exactly) | 662 / 1200 |
+| raster_fim grade-limit loop, verified | 342 / 662 |
+| **false negatives** | **320 / 662 = 48.3 %** |
+
+Per seed: 50.9 %, 40.6 %, 51.7 %, 49.7 % - the seed-to-seed spread is
+real (11 points), so the pooled number is the one to quote. Seed 0 by
+terrain: hills 10/29, white noise 33/38, plane+fault 5/28, random walk
+34/66; by limit: 8 % 15/23, 12 % 24/37, 20 % 24/48, 30 % 19/53. White
+noise is the worst family in every seed, smooth hills the best - the
+rougher the terrain, the more the legal route depends on per-step
+direction control that a cell mask cannot express.
+
+**Why it misses.** The limit forbids STEPS - it is direction-dependent -
+and the solver can only be told to avoid CELLS. Forbidding a cell also
+forbids the contour-following traverse across it that the rule allows. On
+the failing cases 89-100 % of the cells of the Cython route are "steep"
+(they have at least one illegal chord), so *any* cell mask that makes
+progress deletes the legal route. This was checked, not assumed: three
+mask rules were implemented and fuzzed - endpoints-only, escalating
+(endpoints first, route-steep cells after k iterations), and
+connectivity-preserving - and on the seed-0 sample they span 50.9 %
+to 55.6 %. The gap is
+masking cells against a rule on steps, not the choice of rule.
+
+**What changed as a result** (the recall was not fixable; the diagnosis
+was):
+
+- the loop never masks a cell whose removal would disconnect source from
+  target in the legal-chord graph. Before, 82 of 87 failures were
+  reported as "reachability was lost" - a verdict the loop had inflicted
+  on itself. After, that is 3, and the rest say the mask cannot grow
+  without cutting the last legal corridor;
+- a patience cut-off (12 consecutive iterations without reducing the
+  number of illegal steps) ends a hopeless run instead of grinding to the
+  32-iteration cap: same recall as no cut-off at all (seed 0: 82/161
+  either way),
+  20.6 s instead of 38.6 s over the fuzz, 7 cap-outs instead of 50;
+- every failure message, the module docstring and `_MASK_CAVEAT` now
+  carry the 48.3 % figure and name the discrete backends as the
+  authority.
+
+**So**: a route this backend RETURNS is verified against the discrete
+rule and is safe to use. A FAILURE is not a verdict on the problem -
+about half of them are routes `cython` / `raster_gpu` find. The loop is a
+screen; the discrete kernel is the authority on `max_gradient_pct`.
+
+The infeasibility certificates are exact, and are now taken over the
+CALLER's own step set rather than a hardcoded 8-neighbourhood. That was a
+real defect: PathFinder's default neighborhood is `r2`, and a single 2 m
+rise at 10 m cells is illegal for every 8-chord at a 10 % limit (axis
+20 %, diagonal 14.1 %) but legal for every knight move (8.9 %) - so the
+certificate declared problems INFEASIBLE that the default configuration
+routes across.
+
+The one genuine advantage over the discrete backends is that the
+continuum has no stencil, hence no neighbourhood-radius reachability
+limit `r >= sqrt((s_max/limit)^2 - 1)` - **but that advantage is still
+derived, not observed**; the discrete reachability failure it depends on
+has not been confirmed here, and the 48.3 % false-negative rate above is
+the opposite result on the same axis.
+
+### 13.5 Engineering notes (for the next kernel author)
+
+1. **The corner halo was a real bug waiting to happen.** The isotropic
+   sweep loads edge halo only and says so ("the 4-point stencil needs no
+   corners"), leaving the four corner slots of the shared tile **never
+   written**. The 8-simplex stencil reads them, and stale values from the
+   previous tile of the same block are sometimes small - silently
+   under-priced routes. `fim_sweep_aniso` loads them (threads 0-3); there
+   is a regression test whose only viable route runs diagonally across
+   tile corners.
+2. **The admissibility test is not an optimisation.** An inadmissible
+   simplex root is the minimum over the extended LINE through the two
+   offsets rather than the segment, and can be strictly below the truth.
+   Dropping it under-prices silently.
+3. **The metric needs no halo.** Only the updated cell's own M enters its
+   own update, so it is 2 registers per thread and never crosses a tile
+   boundary.
+4. **The tracer change is the silent one.** Steepest descent must become
+   the Riemannian tangent; the field stays correct and every polyline
+   goes wrong. Measured on the corrugated-ramp analytic case (a cylinder,
+   isometric to the plane by unrolling, so geodesics are straight in the
+   unrolled frame and curved in the raster frame): the correct tracer
+   deviates **0.71 cells** from the analytic geodesic, the old isotropic
+   tracer **14.33 cells**. The suite keeps that as a mandatory CONTROL -
+   a tracer test the old code also passes proves nothing.
+
+   It bit once already. `RasterFIMAPI._paths_from_field` re-uploaded an
+   older CACHED field for tracing and passed `q_device=(None, None)` with
+   it, which is exactly how `trace_paths_gpu` decides between `-grad T`
+   and `-M^-1 grad T` - so a pairwise multi-source call whose source
+   repeated traced under the wrong tangent and returned the 14.33-cell
+   polyline silently. The fix is structural rather than local: the metric
+   depends only on the DEM, never on the field, so it is cached once
+   (`_trace_metric`) and every trace under a DEM uses it; there is no
+   code path left that can hand the tracer a DEM-solved field without its
+   metric. Regression: exercise the CACHED path and compare against the
+   analytic geodesic, so a silent fallback shows up as a distance error
+   rather than as a well-formed wrong path.
+5. **`cell_size` is the highest-probability silent bug.** The elevation
+   gradient must be rise per METRE of run, not per cell. `RasterFIMAPI`
+   recovers the cell size from `GradientLUTs.inv_horiz_m` and refuses a
+   mismatch at construction, for free.
+6. **Acceptance is decided from the LUT ARRAYS, not the option names** -
+   the only check a `Callable` multiplier cannot bypass. A callable that
+   happens to BE the identity is accepted, correctly: Tier A is defined
+   by the metric produced, not by how the user spelled it.
+
+### 13.6 Open / not measured
+
+- ArcGIS vertical-factor comparison - harness exists, cases still
+  "pending".
+- Whether the derived discrete reachability limit
+  `r >= sqrt((s_max/limit)^2 - 1)` is real (section 13.4 depends on it).
+- Whether a direction-aware relaxation could close the 48.3 % grade-limit
+  false-negative gap. A soft anisotropic penalty (inflating `q` on steep
+  cells instead of masking them) is expressible as a metric and would
+  keep contour traverses available, but it changes the objective the
+  field reports and is bounded by the acuteness limit `|q| <= 2.19737`;
+  not attempted. Cell masking has been fuzzed to exhaustion - three rules,
+  all within 5 points of each other.
+- A real 1 m DGM window with Tier A end to end (the section 13.2
+  realistic case is synthetic terrain).
+- Whether the P1 gap can be closed: remaining levers are a
+  `__launch_bounds__` register cap, a half-precision metric, and skipping
+  simplex candidates whose two neighbours are both already above the
+  running best (not branch-free, so it needs measuring, not reasoning).

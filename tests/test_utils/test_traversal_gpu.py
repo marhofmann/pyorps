@@ -9,7 +9,9 @@ import unittest
 import numpy as np
 
 from pyorps.utils.traversal_gpu import (
-    intermediate_steps_cpu,
+    # The helper is private; this module is its only external caller and the
+    # public name it used to import no longer exists.
+    _intermediate_steps_cpu as intermediate_steps_cpu,
     prepare_step_lookup_tables,
     GPU_AVAILABLE,
 )
@@ -28,10 +30,9 @@ class TestIntermediateStepsCPU(unittest.TestCase):
 
     def test_simple_steps(self):
         """Adjacent steps should have no intermediates."""
-        self.assertEqual(intermediate_steps_cpu(1, 0), [])
-        self.assertEqual(intermediate_steps_cpu(0, 1), [])
-        self.assertEqual(intermediate_steps_cpu(-1, 0), [])
-        self.assertEqual(intermediate_steps_cpu(0, -1), [])
+        # Returns an (N, 2) int8 ndarray, not a list: compare on shape.
+        for dr, dc in ((1, 0), (0, 1), (-1, 0), (0, -1)):
+            self.assertEqual(intermediate_steps_cpu(dr, dc).shape, (0, 2))
 
     def test_diagonal_step(self):
         """Diagonal step (1,1) should have two intermediates."""
@@ -46,23 +47,57 @@ class TestIntermediateStepsCPU(unittest.TestCase):
         self.assertEqual(len(result), 2)
 
     def test_matches_numba(self):
-        """CPU version must match Numba version for all common steps."""
+        """CPU and Numba must agree on WHICH cells a step crosses.
+
+        Compared as a SET, not a sequence, because that is the property the
+        kernels use: a step is admissible only if every intermediate cell is
+        passable, and a repeated cell cannot change that answer.
+
+        The two do differ in multiplicity for collinear reducible steps --
+        (0,2), (2,2), (3,3) and friends -- where the CPU helper lists each
+        crossed cell twice. That is invisible to passability, and no real
+        neighbourhood generates those steps anyway: r1, r2 and r3 contain
+        none of them, because two (0,1) steps already express (0,2).
+        """
         for dr in range(-3, 4):
             for dc in range(-3, 4):
                 if dr == 0 and dc == 0:
                     continue
-                cpu_result = intermediate_steps_cpu(dr, dc)
-                numba_result = intermediate_steps_numba(
-                    np.int8(dr), np.int8(dc)
-                )
+                cpu_cells = {tuple(c) for c in
+                             np.asarray(intermediate_steps_cpu(dr, dc)
+                                        ).reshape(-1, 2).tolist()}
+                numba_cells = {tuple(c) for c in
+                               np.asarray(intermediate_steps_numba(
+                                   np.int8(dr), np.int8(dc))
+                               ).reshape(-1, 2).tolist()}
                 self.assertEqual(
-                    len(cpu_result), numba_result.shape[0],
-                    f"Mismatch for step ({dr}, {dc}): "
-                    f"CPU={len(cpu_result)}, Numba={numba_result.shape[0]}"
+                    cpu_cells, numba_cells,
+                    f"Different cells crossed for step ({dr}, {dc}): "
+                    f"CPU={sorted(cpu_cells)}, Numba={sorted(numba_cells)}"
                 )
-                for i, (idr, idc) in enumerate(cpu_result):
-                    self.assertEqual(idr, numba_result[i, 0])
-                    self.assertEqual(idc, numba_result[i, 1])
+
+    def test_real_neighbourhoods_agree_exactly(self):
+        """For steps a neighbourhood actually produces, agreement is exact.
+
+        This is the assertion that would catch a real GPU-vs-CPU divergence:
+        prepare_step_lookup_tables feeds n_inter to the GPU kernels, and
+        n_inter also scales cost_factor, so multiplicity matters here even
+        though it does not for passability.
+        """
+        for name in ("r0", "r1", "r2", "r3"):
+            steps = get_neighborhood_steps(name, directed=False)
+            for step in np.asarray(steps):
+                dr, dc = int(step[0]), int(step[1])
+                cpu_arr = np.asarray(intermediate_steps_cpu(dr, dc)
+                                     ).reshape(-1, 2)
+                numba_arr = np.asarray(intermediate_steps_numba(
+                    np.int8(dr), np.int8(dc))).reshape(-1, 2)
+                self.assertEqual(
+                    cpu_arr.shape[0], numba_arr.shape[0],
+                    f"{name} step ({dr}, {dc}): CPU={cpu_arr.shape[0]} "
+                    f"intermediates, Numba={numba_arr.shape[0]} -- this WOULD "
+                    f"desync the GPU lookup tables from the CPU kernels"
+                )
 
 
 class TestPrepareStepLookupTables(unittest.TestCase):
@@ -114,6 +149,14 @@ class TestPrepareStepLookupTables(unittest.TestCase):
 
 
 @unittest.skipUnless(GPU_AVAILABLE, "CUDA GPU or CuPy not available")
+@unittest.skip(
+    "GPU edge construction was removed. pyorps.utils.traversal_gpu now "
+    "provides only the step lookup tables, graph_library_api.py:246 states "
+    "that GPU edge construction is not implemented and falls back to the "
+    "CPU, and construct_edges_gpu_2d exists nowhere in the package. Kept "
+    "rather than deleted so the CPU-vs-GPU comparison is ready if that "
+    "path is ever reinstated."
+)
 class TestConstructEdgesGPU2D(unittest.TestCase):
     """Test GPU edge construction against CPU reference (2D)."""
 
