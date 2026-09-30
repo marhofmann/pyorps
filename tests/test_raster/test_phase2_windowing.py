@@ -530,3 +530,45 @@ def test_window_from_bounds_matches_legacy_arithmetic():
         assert RasterHandler.window_from_bounds(geom.bounds, transform,
                                                 shape) == legacy_window(
             geom, transform, shape)
+
+
+def test_covering_window_covers_the_bounds_it_was_given():
+    """Floor the near corner, ceil the far one -- cover, never clip.
+
+    The pitfall it replaces is ``rasterio.windows.from_bounds``, whose
+    fractional offsets put ``window_transform``'s origin half a pixel off
+    the raster grid, so a floor-indexed lookup reads the neighbouring
+    cell. Anisotropic pixels on purpose: the two sizes must not be mixed
+    up between the row and column axes.
+    """
+    from affine import Affine
+
+    sx, sy = 2.0, 3.0
+    transform = Affine(sx, 0.0, ORIGIN_X, 0.0, -sy, ORIGIN_Y)
+    bounds = (ORIGIN_X + 10.5, ORIGIN_Y - 40.5, ORIGIN_X + 33.5,
+              ORIGIN_Y - 12.5)
+    win, win_transform = RasterHandler.covering_window(bounds, transform)
+
+    # the window's own transform sits exactly on the raster grid
+    assert (win_transform.c - transform.c) % sx == pytest.approx(0.0)
+    assert (transform.f - win_transform.f) % sy == pytest.approx(0.0)
+    assert (win_transform.a, win_transform.e) == (transform.a, transform.e)
+
+    # and it covers every requested corner, with room to spare from ceil
+    left, top = win_transform.c, win_transform.f
+    right = left + win.width * sx
+    bottom = top - win.height * sy
+    assert left <= bounds[0] and bottom <= bounds[1]
+    assert right >= bounds[2] and top >= bounds[3]
+
+    padded, _ = RasterHandler.covering_window(bounds, transform, pad=10.0)
+    assert padded.width > win.width and padded.height > win.height
+
+    # shape clips; omitting it leaves the window for a boundless read
+    off_grid = (ORIGIN_X - 50.0, ORIGIN_Y - 40.5, ORIGIN_X + 33.5,
+                ORIGIN_Y + 50.0)
+    loose, _ = RasterHandler.covering_window(off_grid, transform)
+    clipped, _ = RasterHandler.covering_window(off_grid, transform,
+                                               shape=(HEIGHT, WIDTH))
+    assert loose.col_off < 0 and loose.row_off < 0
+    assert (clipped.col_off, clipped.row_off) == (0, 0)

@@ -697,3 +697,43 @@ class TestTransformCoords(unittest.TestCase):
         result = RasterHandler._transform_coords(coords, "EPSG:4326", "EPSG:32632")
         self.assertEqual(len(result), 2)
         self.assertIsInstance(result[0], tuple)
+
+
+class TestZeroBufferEmptySearchSpace(unittest.TestCase):
+    """``search_space_buffer_m=0`` must explain itself, not crash in rasterio.
+
+    Buffer 0 is a zero-width buffer around the convex hull of the points, so
+    for a single source/target pair the hull is a LineString, ``buffer(0)`` is
+    the empty geometry and its bounds are NaN. Before the guard that surfaced
+    three frames down as rasterio's "Number of columns or rows must be
+    non-negative", which names neither the parameter nor the cause -- and the
+    docs claimed 0 meant the WHOLE raster, which is the opposite.
+    """
+
+    def setUp(self):
+        self.dataset = InMemoryRasterDataset(
+            np.ones((1, 20, 20), dtype=np.uint16),
+            "EPSG:32632",
+            from_origin(500000, 5600000, 10, 10),
+        )
+
+    def test_single_pair_zero_buffer_raises_actionable_error(self):
+        with self.assertRaises(ValueError) as ctx:
+            RasterHandler(self.dataset, (500050, 5599950), (500150, 5599850),
+                          search_space_buffer_m=0)
+        msg = str(ctx.exception)
+        self.assertIn("search_space_buffer_m=0", msg)
+        self.assertIn("empty search space", msg)
+        self.assertIn("full_window_buffer_m", msg)
+
+    def test_hull_with_area_still_works_at_zero_buffer(self):
+        """Three non-collinear points give a real polygon; 0 stays legal."""
+        handler = RasterHandler(
+            self.dataset,
+            [(500050, 5599950), (500050, 5599850)],
+            (500150, 5599850),
+            search_space_buffer_m=0,
+        )
+        self.assertFalse(handler.buffer_geometry.is_empty)
+        self.assertGreater(handler.window.width, 0)
+        self.assertGreater(handler.window.height, 0)

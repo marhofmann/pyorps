@@ -36,6 +36,14 @@ from pyorps.io.geo_dataset import (
     VectorDataset,
     initialize_geo_dataset,
 )
+from pyorps.raster._geojson import geojson_shapes
+from pyorps.raster.thinness import (
+    ForbiddenBurnReport,
+    is_thin,
+    report_forbidden_burn_defects,
+    report_repair_seals,
+    widen_thin_features,
+)
 
 
 class GeoRasterizer:
@@ -78,6 +86,7 @@ class GeoRasterizer:
         self.metric_stack = None
         # Phase 2.5: burned class-id band reused across cost-table edits.
         self._class_band_cache: dict[str, Any] | None = None
+        self.last_forbidden_burn_report: ForbiddenBurnReport | None = None
 
         if isinstance(cost_assumptions, CostAssumptions):
             self.cost_manager = cost_assumptions
@@ -252,8 +261,12 @@ class GeoRasterizer:
         ``geometries`` and ``ids`` are zipped in the given order, which IS
         the painting order: later entries overwrite earlier ones.
         """
+        # Bulk GeoJSON conversion instead of rasterio's per-geometry
+        # ``__geo_interface__`` call; order preserving, so the painting
+        # order above is untouched (see ``pyorps.raster._geojson``).
         return rasterize(
-            ((geom, int(value)) for geom, value in zip(geometries, ids)),
+            ((geom, int(value)) for geom, value
+             in zip(geojson_shapes(geometries), ids)),
             out_shape=out_shape,
             fill=cls._NO_FEATURE,
             dtype=cls._index_band_dtype(n_ids),
@@ -278,6 +291,249 @@ class GeoRasterizer:
         lut[1:] = values
         return lut[index_band]
 
+    # ------------------------------------------------------------------
+    # Sub-cell forbidden features (options A/C/D/E; see raster.thinness)
+    #
+    # GDAL burns a cell iff its CENTRE falls inside the polygon, so a
+    # forbidden feature narrower than one cell burns 60 cells at one
+    # sub-pixel alignment and ZERO at the next. The route stays optimal for
+    # the raster that was burned; the raster is what is wrong.
+    #
+    # NEITHER REPAIR IS THE DEFAULT. C widens the forbidden features that are
+    # ACTUALLY thinner than sqrt(2) cells before the burn; D is a SECOND,
+    # ALL_TOUCHED scan conversion of the whole forbidden subset painted over
+    # the finished raster. Both make sub-cell barriers survive, and both close
+    # sub-cell OPENINGS while doing it, because at a fixed cell size a
+    # sub-cell barrier and a sub-cell gap are the same geometry seen from
+    # opposite sides. Swept over 8 gate widths x 8 sub-pixel offsets and
+    # counting only the configurations the plain rule leaves passable, under
+    # four different gate-width sets (raster.thinness carries the table;
+    # tests/test_raster/sweep_forbidden_repair_tradeoff.py reproduces it): on a
+    # FAT 2 m wall C seals 0 % under every set while D seals 17-100 %; on a
+    # THIN 0.4 m wall C seals 38-100 % and D 31-100 %, i.e. the two are not
+    # distinguishable there. A single percentage is NOT a property of the
+    # repair - it moves with the gate widths swept. So the default DETECTS and
+    # changes nothing, the two repairs are opt-in with that range on the
+    # parameter, and the only correct fix — a finer cell size — is what
+    # suggest_resolution() computes.
+    #
+    # Neither touches ordinary land-use classes: passing all_touched=True to
+    # the MAIN burn would fatten every class boundary, and widening an
+    # ordinary class would move its boundary for no reason. Painting
+    # forbidden last is exactly the existing contract: features are burned
+    # in ASCENDING cost order, so the most expensive one already wins an
+    # overlap, and IMPASSABLE_CELL_COST is the most expensive value there is.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _forbidden_rows(values: np.ndarray) -> np.ndarray:
+        """Row mask of the features that burn as impassable.
+
+        The burned VALUE defines forbidden-ness, not the feature class: a
+        cost table edit can make any class impassable and any impassable
+        class ordinary. Note that a dtype too narrow to hold
+        IMPASSABLE_CELL_COST (uint8, say) simply yields an empty subset,
+        which is correct — nothing in such a raster is forbidden.
+        """
+        return np.asarray(values) == IMPASSABLE_CELL_COST
+
+    @staticmethod
+    def _overlay_forbidden(raster, geometries, out_shape, transform, value):
+        """Paint every cell the forbidden geometries TOUCH (option D).
+
+        Grows a forbidden zone by at most one cell, and only there: a
+        boolean hit mask is burned separately and used as an index, so no
+        cell outside a forbidden feature is written at all.
+        """
+        if len(geometries) == 0:
+            return raster
+        hit = rasterize(
+            ((geom, 1) for geom in geojson_shapes(geometries)),
+            out_shape=out_shape,
+            fill=0,
+            dtype="uint8",
+            transform=transform,
+            all_touched=True,
+        )
+        raster[hit.astype(bool)] = value
+        return raster
+
+    @staticmethod
+    def _widen_forbidden_rows(data: GeoDataFrame, forbidden: np.ndarray,
+                              resolution_in_m: float) -> GeoDataFrame:
+        """Return ``data`` with thin forbidden geometries widened (option C).
+
+        Only forbidden rows are ever touched, and among them only the ones
+        :func:`is_thin` actually flags — a fat forbidden feature keeps its
+        geometry, which is why it seals fewer legitimate sub-cell openings than
+        an all-touched overlay of the whole forbidden subset. That advantage is
+        real only where the difference lies: on a FAT (2 m) wall this option
+        sealed 0 % of the gates the plain rule leaves passable under every
+        gate-width set swept, against 17-100 % for the overlay. On a THIN
+        (0.4 m) wall — the only case where it acts at all — it sealed 38-100 %
+        against the overlay's 31-100 %, so there it is no better. Fewer is not
+        none, which is why it is opt-in; see raster.thinness for the sweep.
+
+        Returns the SAME object when nothing needed widening. Callers use that
+        identity to decide whether the class-band cache survives; a copy every
+        time would throw the cache away on every burn of a layer that merely
+        HAS forbidden features.
+
+        The caller MUST already have computed out_shape/transform from the
+        unwidened frame: widening a forbidden feature that sits on the data's
+        outer edge would otherwise enlarge total_bounds, shift the origin and
+        change every cell of the output — a worse silent failure than the one
+        being fixed.
+        """
+        if not forbidden.any():
+            return data
+        geometries = data['geometry'].to_numpy()
+        subset = geometries[forbidden]
+        thin = is_thin(subset, resolution_in_m)
+        if not thin.any():
+            return data
+        widened = data.copy()
+        new_geometries = widened['geometry'].to_numpy()
+        new_geometries[forbidden] = widen_thin_features(
+            subset, resolution_in_m, thin=thin)
+        widened['geometry'] = new_geometries
+        return widened
+
+    @staticmethod
+    def _burn_plain_passable(geometries, forbidden, out_shape, transform):
+        """The PLAIN burn's passable mask, from the un-repaired geometries.
+
+        The seal check needs to know which cells the pixel-centre rule left
+        walkable, and that cannot be read off the finished raster: the fill
+        value IS ``IMPASSABLE_CELL_COST``, so a cell no feature covers and a
+        cell a forbidden feature covers are the same number (see
+        :func:`~pyorps.raster.thinness.detect_repair_seals`). So the plain burn
+        is really re-done — but only its passable/impassable verdict is needed,
+        so it burns a 1-byte band over the SAME ascending-cost sequence:
+        1 for an ordinary feature, 2 for a forbidden one, 0 for no feature.
+        Same order, same replace semantics, so the winner per cell is the one
+        the plain cost burn would have picked, and ``band == 1`` is exactly
+        ``plain_raster != IMPASSABLE_CELL_COST``.
+
+        Only runs when a repair is EXPLICITLY enabled, and only for widening —
+        the all-touched overlay hands over the pre-overlay raster instead,
+        which is the plain burn already.
+
+        It is not even a net cost. Measured on a synthetic layer of 4401 / 8801
+        features (10 % of them forbidden fences, half sub-cell) at 3000x3000 and
+        6000x6000 cells, best of 3:
+
+            9.0 M cells   this re-burn 40.8 ms | the two forbidden id-band
+                          burns the withdrawn reconstruction needed 58.0 ms
+                          | the whole plain cost burn 60.3 ms
+            36.0 M cells  155.4 ms | 193.3 ms | 156.6 ms
+
+        so replacing the reconstruction with a real burn made the seal check
+        CHEAPER, and what dominates it is neither: the two
+        ``scipy.ndimage.label`` passes cost 302 ms and 1157 ms respectively.
+        """
+        values = np.where(np.asarray(forbidden), 2, 1).astype(np.uint8)
+        band = rasterize(
+            ((geom, int(v)) for geom, v
+             in zip(geojson_shapes(geometries), values)),
+            out_shape=out_shape,
+            fill=0,
+            dtype="uint8",
+            transform=transform,
+        )
+        return band == 1
+
+    def _finish_forbidden(self, raster, data, field_name, out_shape,
+                          transform, resolution_in_m, all_touched,
+                          on_thin_features, value=IMPASSABLE_CELL_COST,
+                          plain_geometries=None):
+        """Apply option D, report what the plain burn did (A), and what a
+        repair did to free space.
+
+        Two detectors, because a repair is a trade and each of them can only
+        see one side of it:
+
+        * Option A asks whether the burn represents every forbidden feature.
+          Under the default (no repair) that is the whole story. Under option C
+          it inspects the WIDENED geometry, which is defect-free by
+          construction — it can confirm the widening worked, never that it went
+          too far. Under option D it has nothing left to find at all and is
+          skipped.
+        * The seal check asks the opposite question: did the repair disconnect
+          free space that the plain pixel-centre burn left connected? It runs
+          exactly when a repair is active, since with no repair the answer is
+          trivially no.
+
+        ``plain_geometries`` carries the forbidden geometries as DIGITIZED,
+        which the caller must hand over when it widened them — ``data`` by then
+        holds the repaired ones, and the seal check needs both.
+
+        The seal check also needs the PLAIN burn's passable mask, which is NOT
+        recoverable from the finished raster (fill == IMPASSABLE_CELL_COST ==
+        a forbidden burn). It is obtained the only unambiguous way:
+
+        * option D — the raster as it stands BEFORE the overlay pass IS the
+          plain burn, so the mask is one comparison and costs no burn at all;
+        * option C — the plain sequence is re-burned as a 1-byte
+          passable/forbidden band (see :meth:`_burn_plain_passable`).
+        """
+        if on_thin_features not in ("warn", "raise", "ignore"):
+            # Validated even when nothing is forbidden, so a typo cannot lurk
+            # until the day a cost table first marks something impassable.
+            raise ValueError(
+                "on_thin_features must be 'warn', 'raise' or 'ignore', got "
+                f"{on_thin_features!r}")
+        forbidden = self._forbidden_rows(data[field_name].to_numpy())
+        if not forbidden.any():
+            return raster
+        geometries = data['geometry'].to_numpy()[forbidden]
+        # Both reports return immediately under 'ignore'. Checking here as
+        # well keeps a silenced caller from paying for the masks and the
+        # re-burn they would have been handed.
+        detect = on_thin_features != "ignore"
+        plain_passable = None
+        if all_touched:
+            if detect and plain_geometries is None:
+                # Snapshot BEFORE the overlay: this is the plain burn itself.
+                # With BOTH repairs on it is not — the burn underneath is
+                # already widened — so that case falls through to the re-burn.
+                plain_passable = raster != value
+            raster = self._overlay_forbidden(raster, geometries, out_shape,
+                                             transform, value)
+        elif detect:
+            self.last_forbidden_burn_report = report_forbidden_burn_defects(
+                geometries, out_shape, transform,
+                resolution_in_m=resolution_in_m,
+                bounds=tuple(data.total_bounds),
+                on_thin_features=on_thin_features,
+                stacklevel=4,
+                # A sub-cell arm can only hole a barrier where the raster is
+                # walkable; without this, an arm running through NODATA reads
+                # as a hole because nodata burns IMPASSABLE_CELL_COST too.
+                passable=raster != value,
+            )
+        if detect and plain_geometries is not None and plain_passable is None:
+            # Option C. The widened geometries live in `data`; putting the
+            # digitized ones back in their rows reproduces the exact sequence
+            # the plain burn would have scan-converted.
+            plain_sequence = data['geometry'].to_numpy().copy()
+            plain_sequence[forbidden] = plain_geometries
+            plain_passable = self._burn_plain_passable(
+                plain_sequence, forbidden, out_shape, transform)
+        if all_touched or plain_geometries is not None:
+            report_repair_seals(
+                raster,
+                geometries if plain_geometries is None else plain_geometries,
+                geometries, out_shape, transform,
+                all_touched=all_touched,
+                impassable=value,
+                resolution_in_m=resolution_in_m,
+                on_thin_features=on_thin_features,
+                stacklevel=4,
+                plain_passable=plain_passable,
+            )
+        return raster
+
     def invalidate_class_cache(self) -> None:
         """Drop the cached class-id band (item 2.5).
 
@@ -299,6 +555,9 @@ class GeoRasterizer:
             preprocessing_kwargs: dict[str, Any] | None = None,
             *,
             use_class_cache: bool = True,
+            all_touched: bool = False,
+            widen_thin_forbidden: bool = False,
+            on_thin_features: str = "warn",
     ) -> RasterDataset:
         """
         Rasterize the base dataset based on a specified field.
@@ -320,6 +579,50 @@ class GeoRasterizer:
                 whenever the geometry set, the extent or the cost ORDER of
                 the classes changes; the produced raster is bit-identical to
                 a full re-burn either way. Set False to force a re-burn.
+            all_touched: OPT-IN (option D). Burn FORBIDDEN features (those
+                whose value is IMPASSABLE_CELL_COST) into every cell they
+                intersect, via a second overlay pass after the ordinary burn.
+                Ordinary classes always keep GDAL's pixel-centre rule and stay
+                bit-identical; only cells a forbidden feature touches can
+                change, so a forbidden zone grows by at most one cell.
+                TRADE-OFF, and the reason this is not the default: it fattens
+                EVERY forbidden feature, fat ones included, so it also SEALS
+                legitimate sub-cell OPENINGS — a gate, a culvert, a gap
+                between parcels. Swept over 8 gate widths x 8 sub-pixel
+                offsets under four different gate-width sets, counting only the
+                configurations the plain rule leaves passable, this option
+                SEALED 31-100 % of them in a 0.4 m wall and 17-100 % in a 2 m
+                wall (widen_thin_forbidden: 38-100 % and 0 %; the default: 0 %
+                and 0 %, by construction). The FAT-wall column is the robust
+                difference between the two repairs; on a thin wall they are
+                indistinguishable. See ``pyorps.raster.thinness`` for the table
+                and the exact gate widths — a bare percentage from one sweep
+                does not transfer. Enable this only when you want maximum
+                conservatism and every opening narrower than a cell may be
+                treated as closed.
+            widen_thin_forbidden: OPT-IN (option C). Before burning, buffer
+                forbidden features narrower than sqrt(2) cells up to that
+                width. It repairs exactly the features that the pixel-centre
+                rule cannot represent and touches no other forbidden feature,
+                which makes it the better of the two repairs on FAT features —
+                but not a safe one: in the sweep above it still sealed 38-100 %
+                of the gates in a 0.4 m wall, no better than the overlay there,
+                because a sub-cell barrier and a sub-cell gap are the same
+                geometry seen from opposite sides. The only fix that is correct
+                rather than a trade is a finer cell size; see
+                ``suggest_resolution``. When this actually widens something it
+                disables the class-band cache for that call: which features are
+                forbidden depends on the cost table, so the burned geometry
+                would too.
+            on_thin_features: 'warn' (default), 'raise' or 'ignore' — what to
+                do when the burn does not faithfully represent the vector data.
+                That covers both directions: a forbidden feature dropped, holed
+                or fragmented by the pixel-centre rule (checked whenever
+                ``all_touched`` is off), and a repair that SEALED passable free
+                space the plain burn left connected (checked whenever a repair
+                is on). Under the default — no repair — the raster is
+                bit-identical to a plain GDAL burn and only the first check can
+                fire.
         Returns:
             tuple of (raster_data, transform)
         """
@@ -360,8 +663,12 @@ class GeoRasterizer:
         else:
             unsorted = self.base_data
 
-        # Sort values by field to ensure higher cost values have higher priority
-        buffered = unsorted.sort_values(by=field_name, ascending=True)
+        # Sort values by field to ensure higher cost values have higher priority.
+        # kind='stable': pandas defaults to an UNSTABLE quicksort, which leaves
+        # the paint order among equal-cost features at the mercy of the input
+        # row order. See the note on the same sort in rasterize_metrics.
+        buffered = unsorted.sort_values(by=field_name, ascending=True,
+                                        kind='stable')
 
         if bounding_box is None:
             # Calculate the output shape based on the GeoDataFrame's bounds and the
@@ -383,6 +690,27 @@ class GeoRasterizer:
             # dropped bbox pre-burn (item 2.7b) used to raise this for us.
             if min(out_shape) == 0:
                 raise ValueError("width and height must be > 0")
+
+        # Option C. Strictly AFTER out_shape/self.transform above: widening
+        # a forbidden feature on the outer edge would otherwise enlarge
+        # total_bounds and move every cell of the raster.
+        plain_geometries = None
+        if widen_thin_forbidden:
+            forbidden = self._forbidden_rows(buffered[field_name].to_numpy())
+            widened = self._widen_forbidden_rows(buffered, forbidden,
+                                                 resolution_in_m)
+            if widened is not buffered:
+                # Kept for the seal check: once `buffered` is the widened
+                # frame the digitized geometry is gone, and the check needs
+                # both to say what the repair COST.
+                plain_geometries = buffered['geometry'].to_numpy()[forbidden]
+                buffered = widened
+                # The class band caches GEOMETRY, and widening depends on
+                # which features the current cost table calls forbidden — so
+                # a cached band from a different cost table would be wrong.
+                # Only a burn that actually widened something pays this;
+                # otherwise the geometry is the one the cache was burned from.
+                use_class_cache = False
 
         # Item 2.5: reuse a burned class-id band whenever only the cost
         # table changed. Returns None when no valid cache applies, in which
@@ -411,7 +739,8 @@ class GeoRasterizer:
             # pass, because sorting ascending makes the last feature that
             # covers a cell the most expensive one either way.
             shapes = ((geom, value) for geom, value
-                      in zip(buffered['geometry'], buffered[field_name]))
+                      in zip(geojson_shapes(buffered['geometry'].to_numpy()),
+                             buffered[field_name]))
             raster = rasterize(
                 shapes,
                 out_shape=out_shape,
@@ -419,6 +748,14 @@ class GeoRasterizer:
                 dtype=dtype,
                 transform=self.transform
             )
+
+        # Hook AFTER the raster is final, so the class-LUT path above and the
+        # plain burn are covered by the same call.
+        raster = self._finish_forbidden(raster, buffered, field_name,
+                                        out_shape, self.transform,
+                                        resolution_in_m, all_touched,
+                                        on_thin_features,
+                                        plain_geometries=plain_geometries)
         self.raster = raster
 
         self.raster_dataset = InMemoryRasterDataset(self.raster,
@@ -574,6 +911,10 @@ class GeoRasterizer:
             include_category: bool = True,
             preprocessing_function: Callable | None = None,
             preprocessing_kwargs: dict[str, Any] | None = None,
+            *,
+            all_touched: bool = False,
+            widen_thin_forbidden: bool = False,
+            on_thin_features: str = "warn",
     ) -> MetricStack:
         """Rasterize the base dataset into a multi-band :class:`MetricStack`.
 
@@ -599,6 +940,25 @@ class GeoRasterizer:
             preprocessing_function: Optional hook called with the base
                 GeoDataFrame before applying cost assumptions.
             preprocessing_kwargs: Keyword arguments for the hook.
+            all_touched: OPT-IN. Overlay forbidden features (cost ==
+                IMPASSABLE_CELL_COST) onto the COST band with an all-touched
+                pass. It sealed 31-100 % of the measured sub-cell openings in a
+                thin wall and 17-100 % in a fat one, the range being over four
+                gate-width sets — see the trade-off documented on
+                :meth:`rasterize`. The other metric bands are deliberately
+                left alone: forbidden-ness rides the cost band alone, and
+                repainting e.g. a gradient band on the extra rim would invent
+                values no feature ever supplied.
+            widen_thin_forbidden: OPT-IN. Widen the forbidden features that
+                are actually narrower than sqrt(2) cells before the burn
+                (option C), which repairs a vanishing barrier without fattening
+                the fat ones — and still sealed 38-100 % of those thin-wall
+                openings. Not the default for that reason; see
+                :meth:`rasterize`.
+            on_thin_features: 'warn' (default), 'raise' or 'ignore' when the
+                burn does not faithfully represent the vector data — a
+                forbidden feature dropped, holed or fragmented by the
+                pixel-centre rule, or a repair that sealed passable free space.
 
         Returns:
             The rasterized :class:`MetricStack` (also stored as
@@ -631,7 +991,16 @@ class GeoRasterizer:
 
         # ONE ordering for every band: ascending cost, so on overlaps the
         # more expensive feature wins — exactly as in rasterize().
-        data = data.sort_values(by='cost', ascending=True)
+        #
+        # kind='stable' is load-bearing here, not tidiness. Ties are common
+        # (many classes share a cost) and the band below burns ROW INDICES, so
+        # which of several equal-cost features wins a cell decides that cell's
+        # value in every OTHER metric band. Under pandas' default quicksort
+        # that winner depends on the input row order, so a reader change
+        # (pyogrio vs fiona) or a geopandas upgrade silently alters the
+        # non-cost bands — measured at 8.1 % of covered cells. The cost band
+        # itself is unaffected either way: equal cost, equal burn value.
+        data = data.sort_values(by='cost', ascending=True, kind='stable')
 
         if geometry_buffer_m > 0:
             data = self.create_buffer(data, geometry_buffer_m, inplace=False)
@@ -639,6 +1008,18 @@ class GeoRasterizer:
         out_shape = self._calculate_out_shape_from_geodataframe(
             data, resolution_in_m)
         transform = from_bounds(*data.total_bounds, *out_shape[::-1])
+
+        # Option C, strictly after the frame is fixed — see the note in
+        # _widen_forbidden_rows on why the order matters.
+        plain_geometries = None
+        if widen_thin_forbidden:
+            forbidden = self._forbidden_rows(data['cost'].to_numpy())
+            widened = self._widen_forbidden_rows(data, forbidden,
+                                                 resolution_in_m)
+            if widened is not data:
+                # See rasterize(): the seal check needs the digitized geometry.
+                plain_geometries = data['geometry'].to_numpy()[forbidden]
+                data = widened
 
         stack = MetricStack(transform, self.crs)
 
@@ -667,6 +1048,11 @@ class GeoRasterizer:
             np.float32(IMPASSABLE_CELL_COST),
             np.float32,
         )
+        cost_band = self._finish_forbidden(
+            cost_band, data, 'cost', out_shape, transform, resolution_in_m,
+            all_touched, on_thin_features,
+            value=np.float32(IMPASSABLE_CELL_COST),
+            plain_geometries=plain_geometries)
         stack.add_layer('cost', cost_band)
 
         for name in metric_names:
@@ -847,9 +1233,11 @@ class GeoRasterizer:
         if self.raster is None or self.transform is None:
             raise ValueError("No raster data available to modify")
 
-        # Create a mask from the geometries in the GeoDataFrame
+        # Create a mask from the geometries in the GeoDataFrame.
+        # ``geometry_mask`` takes BARE geometries (no (geom, value) tuples),
+        # so the bulk conversion feeds it bare GeoJSON dicts.
         mask_array = geometry_mask(
-            gdf['geometry'].values,
+            geojson_shapes(gdf['geometry'].values),
             transform=self.transform,
             invert=True,  # Invert the mask to keep the area inside the polygons
             out_shape=self.raster.shape
@@ -864,13 +1252,23 @@ class GeoRasterizer:
 
         # Modify the raster values based on the specified parameters
         if multiply:
-            # Use uint32 intermediate to prevent uint16 overflow, then clip
-            result = np.clip(
-                self.raster[mask].astype(np.uint32) * np.uint32(value),
-                0,
-                np.iinfo(np.uint16).max
-            ).astype(self.raster.dtype)
-            self.raster[mask] = result
+            # Widen to float to prevent uint16 overflow, then round and clip.
+            # The FACTOR must not be cast to an integer. Cost factors are
+            # routinely fractional -- 1.15 for a drinking-water zone, 1.8 for
+            # a soil class -- and ``np.uint32(1.15) == 1`` silently turned
+            # every one of them into a no-op, while 2.5 became 2. Only the
+            # product ever needed widening; the factor never did.
+            # One float64 buffer, then multiply/round/clip in place. The
+            # chained-expression form allocates a fresh temporary per step:
+            # measured over 70 M selected cells that was 1.52 s and 1120 MB
+            # against 1.06 s and 700 MB here, for a bit-identical result.
+            # Peak memory is what rules the full 1.045e9-cell raster out, so
+            # it is the number worth spending a line on.
+            buf = self.raster[mask].astype(np.float64)
+            buf *= float(value)
+            np.rint(buf, out=buf)
+            np.clip(buf, 0, np.iinfo(np.uint16).max, out=buf)
+            self.raster[mask] = buf.astype(self.raster.dtype)
         else:
             # Set the raster cells to the new value
             self.raster[mask] = value
@@ -992,10 +1390,19 @@ class GeoRasterizer:
             lut[index + 1] = unique_value
 
         order = self._group_paint_order(lut, ignore_value)
+        # Flatten the per-group geometries into ONE array in exactly
+        # ``order`` before converting: the bulk GeoJSON path is order
+        # preserving, so materializing the paint sequence up front is what
+        # keeps the burn identical (a permutation here would silently move
+        # which group wins an overlap).
+        per_group = [groups[group_index][1]['geometry'].to_numpy()
+                     for group_index in order]
+        geometries = (np.concatenate(per_group) if len(per_group) > 1
+                      else per_group[0])
+        ids = np.repeat(order + 1, [len(part) for part in per_group])
         shapes = (
-            (geom, int(group_index) + 1)
-            for group_index in order
-            for geom in groups[group_index][1]['geometry'].to_numpy()
+            (geom, int(value))
+            for geom, value in zip(geojson_shapes(geometries), ids)
         )
         band = rasterize(
             shapes,
@@ -1042,7 +1449,7 @@ class GeoRasterizer:
         scratch = None
         for unique_value, value_geoms in groups:
             mask = geometry_mask(
-                value_geoms['geometry'].values,
+                geojson_shapes(value_geoms['geometry'].values),
                 transform=self.transform,
                 invert=True,  # keep the area inside the polygons
                 out_shape=raster.shape,
@@ -1052,13 +1459,16 @@ class GeoRasterizer:
                     scratch = np.empty(raster.shape, dtype=bool)
                 np.not_equal(raster, ignore_value, out=scratch)
                 mask &= scratch
-            # Use uint32 intermediate to prevent uint16 overflow
-            result = np.clip(
-                raster[mask].astype(np.uint32) * np.uint32(unique_value),
-                0,
-                np.iinfo(np.uint16).max
-            ).astype(raster.dtype)
-            raster[mask] = result
+            # Widen to float, not to an integer: casting the factor truncated
+            # every fractional cost factor away. See modify_raster_with_
+            # geodataframe for the full note.
+            # In-place on one float64 buffer; see modify_raster_with_
+            # geodataframe for the measurement behind this shape.
+            buf = raster[mask].astype(np.float64)
+            buf *= float(unique_value)
+            np.rint(buf, out=buf)
+            np.clip(buf, 0, np.iinfo(np.uint16).max, out=buf)
+            raster[mask] = buf.astype(raster.dtype)
 
     def _modify_raster_from_dataset_simple_cost_assumptions(
             self,

@@ -6,6 +6,7 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
+import math
 import warnings
 from typing import Any
 
@@ -190,6 +191,19 @@ class RasterHandler:
             self.search_space_buffer_m = search_space_buffer_m
         self.buffer_geometry = buffer_geom.buffer(distance=self.search_space_buffer_m,
                                                   quad_segs=32)
+        if self.buffer_geometry.is_empty:
+            # A zero-width buffer around a hull that has no area -- one pair of
+            # points, or collinear ones -- is the empty geometry, whose bounds
+            # are NaN. Left alone that surfaces three frames down as rasterio's
+            # "Number of columns or rows must be non-negative", which says
+            # nothing about the cause. Buffer 0 is NOT "the whole raster".
+            raise ValueError(
+                f"search_space_buffer_m={self.search_space_buffer_m} leaves an "
+                f"empty search space: the source/target hull is a "
+                f"{buffer_geom.geom_type} with no area, so buffering it by "
+                f"zero removes it. Pass a positive buffer, or "
+                f"pyorps.full_window_buffer_m(dataset) to search the whole "
+                f"raster.")
 
         # Calculate pixel bounds for the buffered geometry
         transform = self.raster_dataset.transform
@@ -269,6 +283,56 @@ class RasterHandler:
         max_col = min(shape[1], max_col)
 
         return Window(min_col, min_row, max_col - min_col, max_row - min_row)
+
+    @staticmethod
+    def covering_window(
+            bounds: tuple[float, float, float, float],
+            transform: Affine,
+            shape: tuple[int, int] | None = None,
+            pad: float = 0.0
+    ) -> tuple[Window, Affine]:
+        """Whole-pixel window COVERING ``bounds``, plus its exact transform.
+
+        The trap this closes is ``rasterio.windows.from_bounds``: it
+        returns FRACTIONAL row/column offsets, and ``window_transform``
+        then hands back an origin half a pixel off the raster grid, so
+        floor-indexing into the array it produces silently reads the
+        neighbouring cell. Measured on the CIRED 2026 cable routes, that
+        put 54 of one route's 4 895 vertices on exclusion cells the route
+        never touched and over-priced it by 173 %. ``rowcol`` snaps to
+        integers, which is why every library path goes through it.
+
+        The snapping is asymmetric on purpose: the near corner FLOORS and
+        the far corner CEILS, so the window covers everything asked for
+        and never less -- the right default for a general-purpose read.
+        :meth:`window_from_bounds` floors BOTH corners, which clips
+        instead of covering; that is the search window's own convention
+        and is deliberately left as it is.
+
+        Parameters:
+            bounds: (minx, miny, maxx, maxy) in the raster CRS
+            transform: Affine transform of the raster
+            shape: (height, width); pass it to CLIP the window to the
+                raster, omit it for a ``boundless=True`` read that
+                fills beyond the edge
+            pad: Extra margin on every side, in CRS units
+
+        Returns:
+            (window, window_transform) -- the transform is exactly the
+            one of the array that reading ``window`` returns
+        """
+        minx, miny, maxx, maxy = (float(v) for v in bounds)
+        row0, col0 = rowcol(transform, minx - pad, maxy + pad, op=math.floor)
+        row1, col1 = rowcol(transform, maxx + pad, miny - pad, op=math.ceil)
+        row0, col0 = int(row0), int(col0)
+        row1, col1 = int(row1), int(col1)
+        if shape is not None:
+            row0, col0 = max(0, row0), max(0, col0)
+            row1 = min(int(shape[0]) - 1, row1)
+            col1 = min(int(shape[1]) - 1, col1)
+        window = Window(col0, row0,
+                        max(0, col1 - col0 + 1), max(0, row1 - row0 + 1))
+        return window, transform_window(window, transform)
 
     def _prepare_windowed_source(
             self,
@@ -390,8 +454,8 @@ class RasterHandler:
 
         # Convert bounds to pixel coordinates
         height, width = self.raster_dataset.shape
-        x_samples = np.clip(rows, 0, height - 1)
-        y_samples = np.clip(cols, 0, width - 1)
+        x_samples = np.clip(cols, 0, width - 1)
+        y_samples = np.clip(rows, 0, height - 1)
 
         if len(self.raster_dataset.data.shape) == 3:
             raster_array = self.raster_dataset.data[0]
@@ -524,7 +588,10 @@ class RasterHandler:
         if outside_value is None:
             outside_value = np.iinfo(self.data.dtype).max
 
-        # Create a mask using rasterization
+        # Create a mask using rasterization. Deliberately NOT routed through
+        # pyorps.raster._geojson: that trades one ~50 us __geo_interface__
+        # call for a shapely round trip, so it is pure overhead on a single
+        # geometry (always the search-space buffer polygon here).
         mask = rasterize(
             [(geometry, 1)],
             out_shape=(self.window.height, self.window.width),
