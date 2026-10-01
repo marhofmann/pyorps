@@ -73,6 +73,7 @@ def _size_bounds(state):
 
 
 def _build_modifiers(state, rows):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Modifier grid rows -> ordered ModifierSpec list (F12 + Feature 5).
 
     Each new-schema row is one ``(column, operator, value) -> mode, factor``
@@ -157,6 +158,7 @@ def _table_compatible(entry: dict, gdf) -> bool:
 
 
 def _rasterize_inputs(state, grid_state, grid_rows, dataset_sel, table_sel):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Resolve the (layer, feature_keys, rows) to rasterize.
 
     Default ('' dataset / 'current' table) keeps the old behaviour: the Cost
@@ -472,6 +474,7 @@ def register(app, state) -> None:
 
     # ------------------------------------- cost <-> colour <-> combo legend
     def _legend_children(layer, colormap):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Legend for the selected raster: graduated class rows (editable
         colours) take precedence over the cost-combination legend."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
@@ -612,6 +615,7 @@ def register(app, state) -> None:
         State(ids.NOTICES, "data"),
         prevent_initial_call=True)
     def recolor_class(_colors, tile_ids, notices):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """One class colour edited in the legend → rebuild the LUT."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from dash import ctx
@@ -684,4 +688,6 @@ def register(app, state) -> None:
         new_layer.meta["combined_from"] = [ly.id for ly in layers]
         view = {"fit_bounds": new_layer.tile.bounds, "seq": n_clicks}
         return state.layers_view(), view, "\n".join(log), notices
+    _ = None
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

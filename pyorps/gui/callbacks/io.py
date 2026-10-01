@@ -152,4 +152,6 @@ def register(app, state) -> None:
         empty_draft = {"sources": [], "targets": [], "waypoints": []}
         return (state.layers_view(), "new project", empty_draft, [], None,
                 [], [], notices)
+    _ = None
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

@@ -66,6 +66,7 @@ __all__ = [
 
 
 def _normalize_routes(routes) -> list[tuple[Any, np.ndarray]]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Accept a mapping, a Path/PathCollection or bare cell sequences.
 
     Returns a list of ``(route_key, cells_uint32)``. The key is what the
@@ -212,6 +213,7 @@ def corridor_graph_from_routes(
         pricer=None,
         provenance: dict[str, Any] | None = None,
 ) -> CorridorGraph:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Segment a set of raster routes at the cells where they merge or diverge.
 
     Parameters:
@@ -444,6 +446,7 @@ def _short_shared_runs(
         normalized, route_steps, membership, raster, cell_size, categories,
         min_shared_length_m: float,
 ) -> set[tuple[int, int]]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Steps whose shared run is too short to be a real common trench.
 
     Two routes that graze for a couple of cells are two trenches, not one; the

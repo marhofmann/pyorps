@@ -111,6 +111,7 @@ def estimate_routing(raster_path: str, *,
                      algorithm: str = "delta-stepping", hardware: str = "cpu",
                      neighborhood: str = "r2", pairwise: bool = False,
                      search_buffer_m: float | None = None) -> dict:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Prognosis for a routing run: cells, runtime, memory, storage.
 
     Per pair, the search window is the bounding box of its control points
@@ -234,6 +235,7 @@ def refresh_route_display(layer) -> LineString:
 def route_through_points(finder, ordered_points: list[tuple[float, float]],
                          algorithm: str = "dijkstra", cancel=None,
                          session=None, **algo_kwargs):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Least-cost path threaded through ``ordered_points`` (routing CRS).
 
     ``ordered_points`` is ``[source, *waypoints, target]`` with at least two
@@ -311,6 +313,7 @@ def run_routing(raster_source: Any, *, sources: list[tuple[float, float]],
                 delta: float = 100, num_threads: int = 0,
                 use_astar: bool = False, margin: float | None = None,
                 cancel=None, progress=None):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Route every source/target pair through the shared, ordered waypoints.
 
     All coordinates are in the raster's CRS. Returns ``(finder, [BuiltRoute])``

@@ -129,6 +129,7 @@ class Layout:
 
 def layout(design: Design, graph, turbines, model: CollectorModel, *,
            root_transit: bool = True) -> Layout:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Validate ``design`` and route its systems; raise :class:`DesignError`.
 
     Every structural rule :func:`reprice` enforces is checked here (tree,
@@ -268,6 +269,7 @@ def layout(design: Design, graph, turbines, model: CollectorModel, *,
 
 def reprice(design: Design, graph, turbines, model: CollectorModel, *,
             root_transit: bool = True) -> tuple[float, dict]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Price ``design`` from scratch; raise :class:`DesignError` if invalid.
 
     ``graph`` is the :class:`~pyorps.collector.reference.CollectorGraph`

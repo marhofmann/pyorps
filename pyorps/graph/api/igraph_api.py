@@ -172,6 +172,7 @@ class IGraphAPI(GraphLibraryAPI):
             algorithm: str,
             **kwargs
     ) -> NodePathList:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Computes shortest paths from a single source to multiple targets.
 

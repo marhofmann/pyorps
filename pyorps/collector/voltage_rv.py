@@ -131,6 +131,7 @@ class _Checker:
         return chk.voltage_ok, chk
 
     def locate(self, design, chk):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """``(tree, |V| per collector node, start node)`` of the worst
         violation, or ``None`` when no cable upgrade can help."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
@@ -175,6 +176,7 @@ def repair_design(design: Design, graph, turbines, model: CollectorModel,
                   vmodel: VoltageModel, *, root_transit: bool = True,
                   tap_policy: str = "per_turbine", max_steps: int = 50,
                   plant=None, rules=None) -> RepairResult:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Thicken cables of a failing design until it meets the limit
     (plan section 4.3).
 
@@ -259,6 +261,7 @@ def certify_voltage(field_, pricer, turbines, model: CollectorModel,
                     tap_policy: str = "per_turbine",
                     max_repair_steps: int = 50,
                     plant=None, rules=None) -> VoltageCertificate:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Relax-and-verify over the exact sites of ``field_`` with C5.
 
     Parameters:

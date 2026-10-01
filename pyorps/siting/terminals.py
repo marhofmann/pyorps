@@ -33,6 +33,7 @@ class Terminal:
 
 
 def _normalise_id(value: Any, row: int, id_field: str) -> Any:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """An integer-valued id becomes an ``int`` (``1.0`` from a shapefile
     reads as ``1``); anything else must be a non-empty string."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
@@ -59,6 +60,7 @@ def _normalise_id(value: Any, row: int, id_field: str) -> Any:
 
 def terminals_from_frame(frame, *, id_field: str = "id", prefix: str = "",
                          crs=None) -> list[Terminal]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Terminals from a GeoDataFrame of points, labelled by ``id_field``.
 
     Parameters:

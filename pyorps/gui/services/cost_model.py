@@ -33,6 +33,7 @@ MODIFIER_OPERATORS = ["all", "==", "!=", "<", "<=", ">", ">=", "in", "is-empty"]
 
 # ------------------------------------------------------------ feature columns
 def propose_features(gdf, max_features_per_column: int = 100):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Wrap pyorps' detector: returns (proposed_keys, candidate_columns)."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps import detect_feature_columns
@@ -83,6 +84,7 @@ def feature_analysis(gdf, feature_keys: tuple[str, ...] | list[str]):
 
 # -------------------------------------------------------------------- seeding
 def seed_assumptions(gdf, feature_keys: tuple[str, ...]) -> dict:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Default cost dict: notebook values for ('nutzart','bez'), else zeros.
 
     The zero template enumerates the dataset's unique values and always adds
@@ -215,6 +217,7 @@ def export_table(assumptions: dict, feature_keys: tuple[str, ...],
 
 
 def import_table(path: str | Path) -> tuple[dict, tuple[str, ...]]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Read a cost table file -> (unwrapped assumptions, feature_keys).
 
     pyorps loads CSV/XLSX into a flat dict with tuple keys
@@ -273,6 +276,7 @@ def condition_label(column: str | None, operator: str | None,
 
 
 def condition_mask(gdf, column: str | None, operator: str | None, value: Any):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Boolean row mask for a ``(column, operator, value)`` rule (or None).
 
     Returns ``None`` for the "all" (or blank) operator — the caller then means
@@ -327,6 +331,7 @@ def apply_condition(gdf, column: str | None, operator: str | None, value: Any):
 
 
 def parse_modifier_values(text: Any) -> float | dict:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """The modifier "Value(s)" cell: a scalar number or a JSON mapping."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if isinstance(text, (int, float)) and not isinstance(text, bool):

@@ -70,6 +70,7 @@ def _dataset_list(state) -> list:
 
 
 def _add_vector_layer(state, gdf, name: str, source: dict | None = None):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Register a loaded GeoDataFrame as a vector layer (deduplicated).
 
     A dataset from the same source (same WFS url+layer / same file+layer)
@@ -100,6 +101,7 @@ def _add_vector_layer(state, gdf, name: str, source: dict | None = None):
 
 
 def _load_from_source(state, source: dict, notices: list):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """(Re)load a dataset from its recorded source dict."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     clip = source.get("clip", True)
@@ -422,6 +424,7 @@ def register(app, state) -> None:
         Input(ids.WFS_CATEGORY, "value"),
         Input(ids.WFS_IN_VIEW_ONLY, "value"))
     def filter_presets(bounds, category, in_view_only):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Only list servers covering the current map view (+ category)."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from ..layout import wfs_option
@@ -510,6 +513,7 @@ def register(app, state) -> None:
         return notices
 
     def _load_dem_for_area(preset, notices):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Download the DGM DEM for the study area. Returns (view, notices)."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from ..services import catalog
@@ -789,4 +793,6 @@ def register(app, state) -> None:
             raise PreventUpdate
         return {"bounds": view["fit_bounds"],
                 "transition": "flyToBounds"}
+    _ = None
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

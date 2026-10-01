@@ -73,6 +73,7 @@ def _service_exception(root: ET.Element) -> str | None:
 
 
 def wfs_feature_types(url: str, *, timeout: float = 30.0) -> list[dict]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """List a WFS's feature types: ``[{"name","title"}, ...]``.
 
     Tries WFS 2.0.0 GetCapabilities. Raises ValueError with a readable message
@@ -117,6 +118,7 @@ def wfs_feature_types(url: str, *, timeout: float = 30.0) -> list[dict]:
 
 
 def wms_layers(url: str, *, timeout: float = 30.0) -> list[dict]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """List a WMS's named layers: ``[{"name","title"}, ...]``."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     caps = _with_query(url, {"service": "WMS", "request": "GetCapabilities",

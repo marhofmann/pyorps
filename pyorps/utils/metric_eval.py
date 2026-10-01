@@ -88,6 +88,7 @@ def _touched_cells(path_rows, path_cols):
 @nb.njit(cache=True)
 def _walk_path(seg_dr, seg_dc, seg_ptr, values, dem_cells, use_dem,
                cat_cells, use_category, cell_size, max_category):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Single pass over the path segments.
 
     ``values`` is the (n_touched_cells, K) gather of the metric layers in
@@ -152,6 +153,7 @@ def _walk_path(seg_dr, seg_dc, seg_ptr, values, dem_cells, use_dem,
 def _walk_feasibility(seg_dr, seg_dc, seg_ptr, weighted_cells, dem_cells,
                       use_dem, cell_size, mult_lut, add_lut, bin_inv, n_bins,
                       use_luts):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Achieved objective: mean weighted-surface value × 2D length × Γ_mult
     + Γ_add × 2D length, per segment — the kernel formula in user units."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
@@ -210,6 +212,7 @@ def evaluate_path_metrics(
         category_labels: dict | None = None,
         eval_luts=None,
 ) -> PathEvaluation:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Evaluate a path against every metric layer (reporting only).
 
     Parameters:

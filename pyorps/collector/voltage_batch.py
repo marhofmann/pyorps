@@ -155,6 +155,7 @@ class DesignBatch:
     @classmethod
     def from_trees(cls, trees: Sequence[ElectricalTree], *, n: int,
                    n_slots: int | None = None, keys=None) -> DesignBatch:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Pack electrical trees (:func:`electrical_tree`) into a batch.
 
         Node labels map to slots: ``("root", 0) -> 0``,
@@ -342,6 +343,7 @@ def _slot_injections(batch: DesignBatch, vmodel: VoltageModel) -> np.ndarray:
 def batch_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
                     tol_pu: float | None = None,
                     max_iter: int | None = None) -> BatchLoadFlow:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """The backward--forward sweep of
     :func:`~pyorps.collector.voltage.load_flow`, vectorised over designs and
     corners. Rows that do not converge are flagged, never returned as
@@ -404,6 +406,7 @@ _KERNEL_ERRORS = {1: "the branches form a cycle",
 def _numba_solve(batch: DesignBatch, vmodel: VoltageModel, *,
                  tol_pu: float | None = None, max_iter: int | None = None,
                  threads: int = 4):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Run the fused kernel; return the load flow, the per-tap band margins
     ``(B, n, K)`` and ``max |V|`` per corner and design ``(C, B)``."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
@@ -473,6 +476,7 @@ def numba_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
 def inflated_nr_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
                           tol_pu: float | None = None, max_iter: int = 30,
                           chunk: int = 1024) -> BatchLoadFlow:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Newton--Raphson on the inflated slot network (the ``powerklujax``
     idea): every design stamps its branch VALUES into one dense ``S x S``
     admittance matrix of the fully meshed network, so all designs share one

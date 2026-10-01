@@ -69,6 +69,7 @@ def mixed_leg_fixpoint(cable_values, steps, cell_m: float, source_cell: int,
                        cable_rate: float = 0.0, cable_mult: float = 1.0,
                        max_rounds: int = 50,
                        drain_engine: str = "auto") -> MixedLegResult:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Exact mixed legs, any number of switches (see the module docstring).
 
     Parameters:

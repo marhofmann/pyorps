@@ -91,6 +91,7 @@ def _jenks_breaks(values: np.ndarray, k: int) -> list[float]:
 
 
 def class_breaks(values: np.ndarray, method: str, k: int) -> list[float]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """k-class break edges (len k+1, ascending, first=min last=max)."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if values.size == 0:

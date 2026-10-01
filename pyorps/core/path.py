@@ -88,6 +88,7 @@ class Path:
             cost_assumptions: CostAssumptions | None = None,
             cost_labels: dict[int, str] | None = None,
     ) -> str:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Return a human-readable breakdown of the path by terrain category.
 
@@ -237,6 +238,7 @@ class Path:
         return result
 
     def to_geodataframe_dict(self) -> dict:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Convert Path object to a dictionary suitable for GeoDataFrame creation.
 

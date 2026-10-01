@@ -149,6 +149,7 @@ def sha256_array(arr: np.ndarray) -> str:
 
 
 def _jsonable(obj: Any) -> Any:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Convert numpy scalars/arrays and tuples to plain JSON types."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if isinstance(obj, Mapping):

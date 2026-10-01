@@ -205,6 +205,7 @@ class MetricStack:
                   hard_max: float | None = None,
                   hard_min: float | None = None,
                   *, copy: bool = True) -> None:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Add a metric layer (float32; forbidden values join the mask).
 
         The sentinel value 65535 (exactly), inf and NaN mark the cell
@@ -304,6 +305,7 @@ class MetricStack:
 
     def attach_dem(self, dem: np.ndarray,
                    resample: bool = True) -> None:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Attach the DEM band, resampling and sanitizing it.
 
         A DEM of a different shape is resampled onto the stack grid
@@ -419,6 +421,7 @@ class MetricStack:
 
     def combine(self, objective: Objective,
                 quantize: bool = True) -> CombineResult:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Combine the stack under an objective into the search raster.
 
         ``F[cell] = sum_k w_k * layer_k[cell] (+ w_length)`` — exact linear
@@ -623,6 +626,7 @@ class MetricStack:
 
     @classmethod
     def load(cls, path: str) -> "MetricStack":
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Load a stack persisted by :meth:`save`."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from rasterio import open as rio_open

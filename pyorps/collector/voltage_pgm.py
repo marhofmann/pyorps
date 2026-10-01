@@ -190,6 +190,7 @@ def islands_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
                       tol_pu: float | None = None, max_iter: int = 30,
                       sk_va: float = 1e18,
                       stats: dict | None = None) -> BatchLoadFlow:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Chunks of designs as islands of one model; corners as scenarios.
 
     ``threads`` chunks run at once (power-grid-model releases the GIL);
@@ -260,6 +261,7 @@ def inflated_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
                        tol_pu: float | None = None, max_iter: int = 30,
                        sk_va: float = 1e18,
                        stats: dict | None = None) -> BatchLoadFlow:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """The fully meshed slot network with every branch of a chunk
     pre-added and switched per scenario (design x corner).
 

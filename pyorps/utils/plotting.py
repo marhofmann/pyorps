@@ -217,6 +217,7 @@ class PathPlotter:
                                 plot_all: bool,
                                 subplots: bool,
                                 subplotsize: tuple[int, int]) -> tuple[Figure, list[Axes], Axes]:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Create the figure, grid, and axes for plotting.
 

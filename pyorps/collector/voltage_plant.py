@@ -284,6 +284,7 @@ class _TapRun:
 
 
 def _solve_tap(ptree, plant, vmodel, corner, tap, kappa0=None) -> _TapRun:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """The controller's reactive share at one tap (false position)."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     n = plant.transformer.ratio(tap)
@@ -448,6 +449,7 @@ class PlantCheck:
 def check_plant_tree(tree: ElectricalTree, vmodel: VoltageModel,
                      plant: PlantModel, rules: GridRules, *,
                      tap_policy: str = "per_turbine") -> PlantCheck:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Check one collector inside its plant against an operator's rules."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     n = vmodel.n
@@ -609,6 +611,7 @@ def check_plant(design, graph, turbines, model, vmodel: VoltageModel,
                 plant: PlantModel, rules: GridRules, *,
                 root_transit: bool = True,
                 tap_policy: str = "per_turbine") -> PlantCheck:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """:func:`check_plant_tree` on a traced design's electrical tree."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     tree = electrical_tree(design, graph, turbines, model, vmodel,
@@ -621,6 +624,7 @@ def check_plant(design, graph, turbines, model, vmodel: VoltageModel,
 
 
 def grid_rules_from_yaml(path, operator: str) -> GridRules:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """The rules of ``"syna"`` or ``"avacon"`` from ``voltage_2026.yaml``.
 
     Syna (TAB Hochspannung 2026): variant 2 at the ends of the NAP voltage

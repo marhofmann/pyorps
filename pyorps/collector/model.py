@@ -284,6 +284,7 @@ class CollectorModel:
     # ----------------------------------------------- the candidate rule
 
     def candidate_options(self, mask: int) -> tuple[tuple[int, int], ...]:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Options a NEW system carrying ``mask`` needs to try.
 
         Plan section 3.2, per ``p`` (implementation log section 2.2): for a

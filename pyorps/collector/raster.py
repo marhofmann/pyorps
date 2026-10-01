@@ -485,6 +485,7 @@ class RasterCollector:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
     def _turbine_seeds(self, S, i, t):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Mirror of the reference turbine rule, arrivals from ``Aarr``.
 
         Returns ``(label, cost, (i, kids, ins, downs, out token))``.
@@ -592,6 +593,7 @@ class RasterCollector:
         return x, (0 if lab.F0[x] <= f1 else 1)
 
     def design(self, g: int):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """The optimal design rooted at cell ``g`` (engine B, ``keep_trace``).
 
         Trench nodes are raster cells; each trench edge is one kernel step

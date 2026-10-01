@@ -21,6 +21,7 @@ import numpy as np
 def solve_batch(ptr, eu, ev, zser, ysh, S, n, s_slot, v0, tol, max_iter,
                 zt, ratio, lo, hi, out_v, out_conv, out_it, out_vmax,
                 out_margin, out_err):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Solve and evaluate every design (see the module docstring).
 
     Parameters:

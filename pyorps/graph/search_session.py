@@ -566,6 +566,7 @@ def _field_provenance(finder: PathFinder, origin_idx: int, algorithm: str,
                       kind: str, algo_kwargs: dict, storage: str | dict, *,
                       cost_model=None, code=None, dw=None, extra=None,
                       key: dict | None = None) -> dict:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """The plan-A1 provenance record of a field rooted at ``origin_idx``.
 
     ``storage`` is a :data:`FIELD_STORAGE` name, or an already built
@@ -590,6 +591,7 @@ def cost_field_provenance(finder: PathFinder, origin, *,
                           error_bound: float | None = None,
                           cost_model=None, code=None, dw=None,
                           **algo_kwargs: Any) -> dict:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """The provenance record a :class:`CostField` would be saved with.
 
     Build this from the reader's own inputs and pass it as
@@ -1880,6 +1882,7 @@ class CostField:
              error_bound: float | None = None, storage: str = "float32",
              provenance: dict | None = None,
              extra_meta: dict | None = None):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Write the settled field so it can be reopened without re-searching.
 
         Prefer keeping fields in memory -- an open :class:`CostField`

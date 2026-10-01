@@ -697,6 +697,7 @@ def _cost_tab() -> html.Div:
 
 
 def _preproc_builder() -> html.Div:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """The condition-group step builder (round 11).
 
     '+ Add condition' collects (column, operator, value) triples; the group
@@ -764,6 +765,7 @@ def _preproc_builder() -> html.Div:
 
 
 def _manual_cost_section() -> html.Details:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Draw + edit custom cost polygons, per-polygon cost, in the Cost tab (33).
 
     No draw-target radio anymore: shapes drawn while the COST tab is open

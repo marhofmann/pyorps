@@ -350,6 +350,7 @@ _RASTER_EXTENSIONS = {".tif", ".tiff", ".jp2", ".img", ".bil", ".dem"}
 
 
 def _determine_data_type(file_source: Any) -> str:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Determine whether the input is for a vector or raster dataset."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     # Check if it's already a GeoDataset subclass

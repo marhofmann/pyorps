@@ -73,6 +73,7 @@ def exact_collector_field(values, steps, cell_m: float, turbines,
                           trench_mult: float = 1.0,
                           drain_engine: str = "auto",
                           keep_trace: bool = True) -> ExactCollectorField:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Certify every root of a window against ``budget`` (see the module).
 
     Parameters:

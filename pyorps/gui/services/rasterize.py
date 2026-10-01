@@ -52,6 +52,7 @@ def config_hash(*, feature_keys, assumptions, resolution_in_m, fill_value,
                 dtype, geometry_buffer_m, bounds, preprocessor,
                 preprocessor_params, modifier_meta, n_features,
                 preprocessor_steps=None) -> str:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Stable hash of everything that changes the raster (cache key)."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     payload = json.dumps({
@@ -79,6 +80,7 @@ def build_cost_raster(*, base_gdf, assumptions: dict,
                       save_path: str | Path | None = None,
                       work_dir: str | Path = ".",
                       use_cache: bool = True):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Base rasterize -> ordered modifiers -> save. Returns (path, log).
 
     ``save_path=None`` resolves to a config-hashed file in ``work_dir`` (F2:

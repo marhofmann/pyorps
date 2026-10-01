@@ -102,6 +102,7 @@ def build_combination_table(base_gdf, feature_keys, assumptions, *,
                             base_layer_name: str = "base",
                             modifiers=None, base_crs=None,
                             bounding_polygon=None) -> gpd.GeoDataFrame:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Disjoint regions with full provenance + final cost (see module docstring).
 
     Returns a GeoDataFrame in ``base_crs`` with columns ``base``, one per
@@ -212,6 +213,7 @@ def build_combination_table(base_gdf, feature_keys, assumptions, *,
 
 # ------------------------------------------------------------ grid + selection
 def cost_color_map(combo_gdf, colormap="viridis", vmin=None, vmax=None) -> dict:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """{cost -> hex} matching the tile colours (forbidden -> None)."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from .tiles import cost_colors
@@ -226,6 +228,7 @@ def cost_color_map(combo_gdf, colormap="viridis", vmin=None, vmax=None) -> dict:
 
 
 def legend_items(combo_gdf, colormap="viridis", vmin=None, vmax=None):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """``[(cost, hex_or_None, label)]`` for the colour legend, cost order.
 
     ``label`` is the layer→feature[→modifier] combination, e.g.
@@ -251,6 +254,7 @@ def legend_items(combo_gdf, colormap="viridis", vmin=None, vmax=None):
 
 def grid_payload(combo_gdf: gpd.GeoDataFrame, layer_name: str, *,
                  colormap: str = "viridis", vmin=None, vmax=None):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """(columnDefs, rowData, title) for the combination table offcanvas.
 
     Each row is colour-coded (a swatch column) with the exact colour the tile

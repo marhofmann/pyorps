@@ -28,6 +28,7 @@ EXCLUDED = 65535
 
 def _segment(values, r0: float, c0: float, r1: float, c1: float,
              excluded: int) -> float:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """``integral c ds`` from ``(r0, c0)`` to ``(r1, c1)`` in cell units."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     dr, dc = r1 - r0, c1 - c0

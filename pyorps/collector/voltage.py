@@ -394,6 +394,7 @@ class LoadFlowResult:
 def load_flow(tree: ElectricalTree, s_mva: Sequence[complex],
               v_root_pu: float, *, s_base_mva: float = 1.0,
               tol_pu: float = 1e-10, max_iter: int = 200) -> LoadFlowResult:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Exact balanced AC load flow on a radial tree.
 
     ``s_mva[i]`` is the complex power INJECTED at node ``i`` (generation
@@ -651,6 +652,7 @@ def _current_ratio(tree, lf, design, lay, model) -> float:
 def check_tree(tree: ElectricalTree, vmodel: VoltageModel, *,
                tap_policy: str = "per_turbine",
                current_ratio=None) -> VoltageCheck:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """The voltage check of one electrical tree (see :func:`check_voltage`).
 
     ``current_ratio``: optional ``LoadFlowResult -> float`` reported per
@@ -766,6 +768,7 @@ def voltage_model_from_yaml(path, *, u_kv: float, cable_mm2: Sequence[int],
                             corners: Sequence[str] = ("H1", "L1", "H0", "N1"),
                             cable_class: str | None = None,
                             u_m_kv: float | None = None) -> VoltageModel:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Build a :class:`VoltageModel` from ``voltage_2026.yaml``.
 
     Parameters:

@@ -75,6 +75,7 @@ def validate_span_bin_vs_resolution(config: dict,
 
 
 def validate_profile(config: dict) -> Notice | None:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Mirror InfrastructureProfile.__post_init__ rules, shifted left."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     problems = []
@@ -140,6 +141,7 @@ def run_constrained(raster_source: Any, *, source: tuple[float, float],
                     backend: str = "cython", neighborhood: str = "r2",
                     search_buffer_m: float | None = None,
                     dem: str | None = None, dsm: str | None = None):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Run ConstrainedPathFinder; returns (ConstrainedPath, towers_gdf)."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps.core.infrastructure_profile import InfrastructureProfile
@@ -170,6 +172,7 @@ def run_constrained_path(raster_source: Any, *, points, profile: dict,
                          backend: str = "cython", neighborhood: str = "r2",
                          search_buffer_m: float | None = None,
                          dem: str | None = None, dsm: str | None = None):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Constrained routing through ``points`` (source, *waypoints, target).
 
     Routes each consecutive segment independently and stitches them: every

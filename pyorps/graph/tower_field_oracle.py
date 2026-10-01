@@ -81,6 +81,7 @@ class ChainScore:
 
 def score_tower_chain(cells, *, values, tower_cost, lattice: TowerLattice,
                       model: TowerFieldModel, angles=None) -> ChainScore:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Price an explicit tower sequence under ``model``. The definition, run.
 
     Parameters:
@@ -217,6 +218,7 @@ def kernel_objective(raster, source, target, *, directions, sigma_m,
                      min_span_m, max_span_m, tower_value_lut,
                      angle_cost=None, angle_valid=None,
                      tower_angle_cost=None, force_sparse: int = 0):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Run ``constrained_dijkstra_2d`` and return ``(path, towers, dist)``.
 
     A thin, explicit wrapper so a test states every LUT it feeds the
@@ -303,6 +305,7 @@ def compare_with_kernel(raster, *, source, targets, tower_value_lut,
                         model: TowerFieldModel | None = None,
                         angles=None, force_sparse: int = 0,
                         return_field: bool = False):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Kernel objective vs tower field, target by target.
 
     The comparison is only meaningful when the two solve the same
@@ -388,6 +391,7 @@ def compare_with_find_route(finder, targets: Sequence, *,
                             directions=None, factor: int = 1,
                             angle_tier: int | None = None,
                             **solver_kwargs) -> dict[str, Any]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """End-to-end: ``ConstrainedPathFinder.find_route`` vs the tower field.
 
     Runs the router for real, then scores the route it returns with

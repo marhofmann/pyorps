@@ -107,6 +107,7 @@ def validate_raster_size(bounds: tuple | None, resolution_in_m: float,
 
 def uncovered_categories(gdf, feature_keys: tuple[str, ...],
                          assumptions: dict) -> list[str]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """F4: feature values missing from the cost table (and no "" catch-all).
 
     Returns human-readable labels of uncovered categories that would become

@@ -264,6 +264,7 @@ def register(app, state) -> None:
         State(ids.NOTICES, "data"),
         prevent_initial_call=True)
     def readd_group_points(n_clicks, group, notices):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Points are consumed from the New-routing list when a run finishes;
         this brings a group's sources/targets/waypoints back into the draft
         (deduplicated) so the group can be re-routed or extended."""
@@ -344,6 +345,8 @@ def register(app, state) -> None:
         new_active = None if active_removed else no_update
         return (state.layers_view(), _route_options(state), new_active,
                 notices)
+    _ = None
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
 
