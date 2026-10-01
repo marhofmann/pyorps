@@ -145,6 +145,7 @@ jobs:
         with:
           sparse-checkout: |
             tests
+            profiles
           sparse-checkout-cone-mode: false
 
       - name: Set up Python ${{ matrix.python }}
@@ -264,6 +265,8 @@ jobs:
         run: |
           TMPDIR=$(mktemp -d)
           cp -r tests "$TMPDIR"/tests_run
+          cp -r profiles "$TMPDIR"/profiles   # tests read ../profiles
+          cp -r profiles "$TMPDIR"/tests_run/profiles   # and profiles/ relative to the working directory
           cd "$TMPDIR"/tests_run
           python -m pytest . --tb=short --import-mode=importlib --ignore=test_io/test_vector_loader.py
 
@@ -277,6 +280,8 @@ jobs:
           $tmp = Join-Path $env:TEMP "tests_run_ci"
           New-Item -ItemType Directory -Path $tmp -Force | Out-Null
           Copy-Item -Recurse -Force tests (Join-Path $tmp "tests_run")
+          Copy-Item -Recurse -Force profiles (Join-Path $tmp "profiles")   # tests read ../profiles
+          Copy-Item -Recurse -Force profiles (Join-Path $tmp "tests_run\profiles")   # and profiles/ relative to the working directory
           Set-Location (Join-Path $tmp "tests_run")
           python -m pytest . --tb=short --import-mode=importlib --ignore=test_io/test_vector_loader.py
 

@@ -587,6 +587,8 @@ _CUDA_INTERMEDIATE_SITES = {
 @pytest.mark.parametrize("relpath,expected",
                          sorted(_CUDA_INTERMEDIATE_SITES.items()))
 def test_cuda_kernels_still_walk_the_intermediate_lut(relpath, expected):
+    if not (PROJECT_ROOT / relpath).exists():
+        pytest.skip("source tree not available (installed-wheel test run)")
     source = (PROJECT_ROOT / relpath).read_text(encoding="utf-8")
     found = len(_INTERMEDIATE_LOOP.findall(source))
     assert found == expected, (
