@@ -237,7 +237,8 @@ jobs:
 
           # Install without [full] — networkit requires OpenMP which is
           # difficult to set up on macOS. Install graph extras individually.
-          python -m pip install "${WHEEL}[dev]" --force-reinstall
+          # rasterio 1.5 ships macOS wheels for macOS 15 only; the macos-14 runner would build it from source.
+          python -m pip install "${WHEEL}[dev]" "rasterio<1.5" --force-reinstall
           python -m pip install rustworkx python-igraph networkx || true
 
           python <<'EOF'

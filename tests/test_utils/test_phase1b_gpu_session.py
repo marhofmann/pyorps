@@ -537,6 +537,7 @@ class TestV4TruncationIsLoud:
             _assert_bit_exact(np.asarray(session.solve(0)), ref)
 
 
+@gpu_only
 class TestArenaOverflow:
     """Rasters whose single delta-bucket dwarfs one ring.
 

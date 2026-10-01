@@ -164,6 +164,9 @@ This command will install the core functionality of **PYORPS** along with its es
 - [Numba](https://github.com/numba/numba)
 - [Rasterio](https://github.com/rasterio/rasterio)
 
+> **macOS 14 or older with Python 3.12 or newer:** rasterio 1.5 ships macOS wheels for macOS 15 only, so pip would try to build it
+> from source (this needs GDAL). Install `pip install "rasterio<1.5"` first.
+
 #### Optional Dependencies
 
 **PYORPS** offers several optional dependencies that enhance its functionality. You can install these extras by specifying them in square brackets:
