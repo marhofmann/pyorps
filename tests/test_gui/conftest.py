@@ -8,17 +8,19 @@ just the logic — this is the layer that was missing in webviz v1.
 from __future__ import annotations
 
 import contextvars
+import importlib.util
 import json
 
 import pytest
 
-pytest.importorskip("dash")
-pytest.importorskip("dash_leaflet")
-pytest.importorskip("dash_ag_grid")
-pytest.importorskip("dash_bootstrap_components")
-pytest.importorskip("localtileserver")
-
-from dash._utils import AttributeDict
+_GUI_MODULES = ("dash", "dash_leaflet", "dash_ag_grid", "dash_bootstrap_components", "localtileserver")
+if any(importlib.util.find_spec(_m) is None for _m in _GUI_MODULES):
+    # The [gui] extra is not installed: skip this directory. pytest.importorskip at conftest level
+    # would abort the whole session (seen in the wheel tests with the [full] extra, which has no GUI).
+    collect_ignore_glob = ["*"]
+    AttributeDict = None
+else:
+    from dash._utils import AttributeDict
 
 from pyorps.raster.handler import create_test_tiff
 

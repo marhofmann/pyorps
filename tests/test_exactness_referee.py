@@ -28,7 +28,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from benchmarks.exactness_referee import (
+from exactness_referee import (
     EXACT,
     FIM_ENVELOPE,
     INVALID_PATH,

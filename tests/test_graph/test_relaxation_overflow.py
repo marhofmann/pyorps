@@ -25,9 +25,9 @@ from pyorps.utils._delta_stepping import (
 from pyorps.utils._dijkstra import dijkstra_2d_cython
 
 # The referee re-prices a path in float64 from the raster alone, independently
-# of the compiled kernels (benchmarks/exactness_referee.py, plan item 0.5); its
+# of the compiled kernels (tests/exactness_referee.py, plan item 0.5); its
 # own arithmetic is pinned by tests/test_exactness_referee.py.
-from benchmarks.exactness_referee import EdgeModel, reprice_path
+from exactness_referee import EdgeModel, reprice_path
 
 STEPS_8 = np.array([
     [0, 1], [0, -1], [1, 0], [-1, 0],
