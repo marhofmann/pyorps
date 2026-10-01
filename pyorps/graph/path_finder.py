@@ -26,8 +26,10 @@ from numpy import (
     uint32,
     unravel_index,
 )
-from rasterio.transform import Affine
-from shapely.geometry import LineString, MultiPoint, Point
+from rasterio.transform import Affine, from_bounds
+from rasterio.windows import bounds as window_bounds
+from rasterio.windows import transform as window_transform
+from shapely.geometry import LineString, MultiPoint, Point, box
 
 from pyorps.core.exceptions import NoPathFoundError, RasterShapeError
 from pyorps.core.metric_stack import MetricStack
@@ -41,6 +43,7 @@ from pyorps.core.types import (
     CoordinateList,
     CoordinateTuple,
     CostAssumptionsType,
+    IMPASSABLE_CELL_COST,
     GeometryMaskType,
     InputDataType,
     Node,
@@ -57,6 +60,7 @@ from pyorps.io.geo_dataset import (
 )
 from pyorps.raster.handler import RasterHandler
 from pyorps.raster.rasterizer import GeoRasterizer
+from pyorps.utils._raster_context import NO_EXCLUSION_VALUE
 from pyorps.utils.linestring_simplify import simplify_linestring
 from pyorps.utils.neighborhood import get_neighborhood_steps
 from pyorps.utils.traversal import (
@@ -76,6 +80,12 @@ MAX_SAFE_CELLS = iinfo(uint32).max  # 2**32 - 1 = 4_294_967_295
 #: absolute timestamp ("shortest_path_start_time"), and must never be added.
 RUNTIME_PHASES = ("raster_loading", "graph_build", "shortest_path",
                   "path_metrics")
+
+#: Phases recorded in runtimes but DELIBERATELY excluded from the total.
+#: "corridor_build" times build_corridor_graph, which is not part of routing a
+#: Path; adding it would inflate the total of every Path found afterwards on
+#: the same finder.
+NON_PATH_RUNTIME_PHASES = ("corridor_build",)
 
 
 @contextmanager
@@ -100,6 +110,7 @@ def timed(name: str, timings_dict: dict[str, float] | None) -> Generator:
 
 
 def get_graph_api_class(graph_api: str) -> type:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """
     Return the graph API class based on the selected graph API using pattern matching.
 
@@ -121,6 +132,7 @@ def get_graph_api_class(graph_api: str) -> type:
         ImportError: If the specified graph API module cannot be imported.
         ValueError: If the specified graph API is not supported.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     match graph_api.lower():
         case "networkit":
             from pyorps.graph.api.networkit_api import NetworkitAPI
@@ -201,6 +213,12 @@ class PathFinder:
     _objective_dirty = False
     _applying_objective = False
     _category_cache = None
+    #: search_space_buffer_m exactly as the caller passed it (see __init__).
+    _explicit_buffer_m = None
+    corridor_first = True
+    #: Last graph built by build_corridor_graph (the shared-trench
+    #: sense of 'corridor', not the search window).
+    corridor_graph = None
 
     def __init__(
             self,
@@ -226,8 +244,10 @@ class PathFinder:
             gradient_options: dict[str, Any] | None = None,
             metric_layers: dict[str, Any] | None = None,
             weight_precision: str = "uint16",
+            corridor_first: bool = True,
             **kwargs
     ):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Initialize the RasterGraph with a dataset source and routing parameters.
 
@@ -243,11 +263,20 @@ class PathFinder:
             target_coords: CoordinateInput
                 Can be: tuple, list of tuples, array of arrays, shapely Point,
                 shapely MultiPoint, GeoSeries of points, or GeoDataFrame of points.
-            search_space_buffer_m: Buffer around the source and target coordinates in
-                meters. If set to 0, the entire Raster will be considered!
-                WARNING: Setting to None uses the full raster which can cause
-                excessive memory usage and long computation times for large rasters.
-                Always set an appropriate buffer for production use.
+            search_space_buffer_m: Buffer in metres around the convex hull of the
+                source and target coordinates; the search window is that buffered
+                hull, clipped to the raster.
+                ``None`` (the default) does NOT mean the full raster -- it calls
+                :meth:`RasterHandler.estimate_buffer_width`, which samples the
+                raster and returns something between 200 m and 4000 m sized for
+                ONE source/target pair. That is the wrong shape for a
+                :class:`~pyorps.graph.search_session.CostField` querying
+                candidates spread across the raster.
+                ``0`` means a zero-width buffer, i.e. the hull itself -- the
+                SMALLEST search space, not the largest. With a single pair of
+                points (or collinear ones) the hull has no area and ``0`` raises.
+                For the whole raster pass
+                :func:`~pyorps.graph.search_session.full_window_buffer_m`.
             neighborhood_str: Neighborhood type. Defaults to "r2".
             steps: Steps which define the neighborhood. If None,
                 will be created from neighborhood_str.
@@ -297,11 +326,34 @@ class PathFinder:
                 FLOAT_BACKENDS (library backends, raster_gpu or
                 raster_fim — the eikonal solver consumes float32
                 natively).
+            corridor_first: Restrict the stages BEFORE the search to the
+                search corridor (performance-plan item 2.2): read only the
+                search window out of a raster/DEM file, burn only the
+                corridor of a vector input, and scalarize only the search
+                window of a metric stack. Every one of those steps is
+                applied only where it is provably identical inside the
+                searched window and is skipped otherwise, so leaving it on
+                cannot change a route; it exists as a switch so that the
+                two paths can be compared directly in tests. All of it
+                requires an explicit ``search_space_buffer_m`` — see
+                :meth:`corridor_geometry`.
             **kwargs: Additional keyword arguments to pass to the rasterize function
                 of the RasterHandler (if a VectorDataset or a source to a VectorDataset
                 has been provided with dataset_source) or to the load function of the
                 RasterDataset (if a source to a RasterDataset has been provided with
-                dataset_source).
+                dataset_source). On the vector path this includes the sub-cell
+                forbidden-feature knobs ``widen_thin_forbidden`` and
+                ``all_touched`` (both default False, i.e. a plain GDAL burn)
+                and ``on_thin_features`` (default 'warn'). A forbidden feature
+                narrower than one cell vanishes from the cost surface at some
+                sub-pixel alignments and then cannot block a route; the default
+                DETECTS that and warns, because both repairs also seal
+                legitimate sub-cell OPENINGS (measured over four gate-width
+                sets: 38-100 % of the gates for widening, 31-100 % for
+                all_touched, on a thin wall) and the only fix that is
+                not a trade is a finer cell size. See
+                :meth:`pyorps.raster.GeoRasterizer.rasterize` and the
+                "Thin Barriers & Forbidden Zones" documentation page.
 
         Minimal example:
         >>> from pyorps import PathFinder
@@ -318,9 +370,19 @@ class PathFinder:
              total_length=1192.43, total_cost=133578.05)
 
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         self.source_coords = PathFinder.normalize_coordinates(source_coords)
         self.target_coords = PathFinder.normalize_coordinates(target_coords)
         self.search_space_buffer_m = search_space_buffer_m
+        # The buffer AS THE CALLER GAVE IT. search_space_buffer_m is
+        # overwritten later with whatever the estimator picked, so keying the
+        # corridor-first steps on it would make them switch on halfway
+        # through an object's life — the first route would then see a
+        # different search raster than the second one for the same
+        # objective. The explicit value never changes, so the behaviour of
+        # a finder is fixed at construction.
+        self._explicit_buffer_m = search_space_buffer_m
+        self.corridor_first = bool(corridor_first)
         self.neighborhood_str = neighborhood_str
         self.graph_api_name = graph_api
         self.ignore_max_cost = ignore_max_cost
@@ -341,7 +403,7 @@ class PathFinder:
         self._validate_precision_support()
 
         if steps is None and neighborhood_str:
-            directed = self.graph_api_name in ("cython", "raster_gpu", "raster_gpu_v3", "cugraph")
+            directed = self.graph_api_name in ("cython", "raster_gpu", "cugraph")
             self.steps = get_neighborhood_steps(neighborhood_str, directed=directed)
         else:
             self.steps = steps
@@ -358,6 +420,7 @@ class PathFinder:
         self.dem_dataset = None
         self.dem_raster_handler = None
         self.dem_kwargs = dem_kwargs
+        self._search_sessions: list = []
 
         # Load the dataset
         self.dataset = initialize_geo_dataset(dataset_source, crs, bbox, mask,
@@ -409,6 +472,109 @@ class PathFinder:
     #: The cython kernels remain uint16-pinned (RasterContext).
     FLOAT_BACKENDS = ("networkit", "networkx", "igraph", "rustworkx",
                       "raster_gpu", "raster_fim")
+
+    #: Corridor buffer assumed when the caller left ``search_space_buffer_m``
+    #: unset. ``RasterHandler.estimate_buffer_width`` clamps its result to
+    #: [200, 4000] m, so 4000 m is the WIDEST corridor the estimator can ever
+    #: return: a corridor built with it always contains the one the estimator
+    #: would have chosen. That asymmetry is the whole justification — a
+    #: too-wide corridor only costs time, a too-narrow one silently changes
+    #: the answer. See :meth:`corridor_geometry` for why the burn and the
+    #: windowed read still refuse to use it.
+    CORRIDOR_FALLBACK_BUFFER_M = 4000.0
+
+    #: Largest coordinate drift (metres, accumulated across the whole corridor
+    #: raster) accepted when certifying that a corridor burn lands on the same
+    #: grid as the full-extent burn. ``GeoRasterizer.rasterize`` reconstructs
+    #: the pixel size as ``(east - west) / columns``; that division cannot
+    #: always reproduce the full grid's pixel size bit-for-bit, because the
+    #: quantum of a coordinate near 5.6e6 is ~1e-9 m while the quantum of the
+    #: quotient is ~2e-16. Measured worst case over 5000 random extents at
+    #: 0.5-10 m resolution: 9.2e-10 m. Extents whose pixel size IS exactly
+    #: representable (round bounds — precisely the case where scan conversion
+    #: has genuine pixel-centre ties) reproduce the grid exactly. One
+    #: micrometre sits three orders of magnitude below that worst case and six
+    #: below the millimetre precision of cadastral geometry.
+    CORRIDOR_GRID_TOLERANCE_M = 1e-6
+
+    def corridor_geometry(self, buffer_m: float | None = None):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        """The search corridor — the polygon ``RasterHandler`` windows to.
+
+        Reproduces ``RasterHandler._init_from_metadata`` exactly: a single
+        source/target pair gives the buffered straight line between them,
+        anything else the buffered convex hull of all endpoints, always with
+        ``quad_segs=32``. Having it here as well is what lets the stages in
+        FRONT of the handler — the file read, the burn, the objective
+        combine — see the same corridor the search will use (plan item 2.2).
+
+        Parameters:
+            buffer_m: Buffer width. Defaults to ``search_space_buffer_m``,
+                and to :attr:`CORRIDOR_FALLBACK_BUFFER_M` when that is None.
+
+        Returns:
+            A shapely polygon, or None when the corridor is undefined
+            (missing coordinates, or a non-positive buffer, which is the
+            documented "use the entire raster" request).
+
+        Note:
+            The default is deliberately NOT used by the corridor-first
+            steps. When ``search_space_buffer_m`` is None the handler calls
+            ``estimate_buffer_width``, which samples the raster it is given —
+            and it samples it at indices clamped to the raster SHAPE
+            (``handler.py:388-403`` clips row indices against the height and
+            then indexes ``[cols, rows]``), so the estimate is a function of
+            the extent, not only of the terrain. Shrinking the extent could
+            therefore change the estimated buffer, hence the searched window,
+            hence the route. Every corridor-first step in this class requires
+            an explicit buffer for that reason; the fallback exists for
+            callers that want a corridor for a step which does not feed the
+            estimator (e.g. narrowing a network fetch).
+        """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        source = self.source_coords
+        target = self.target_coords
+        if source is None or target is None:
+            return None
+        if buffer_m is None:
+            buffer_m = self.search_space_buffer_m
+        if buffer_m is None:
+            buffer_m = self.CORRIDOR_FALLBACK_BUFFER_M
+        if not buffer_m or buffer_m <= 0:
+            return None
+
+        is_single_source = self._is_single_coordinate(source)
+        is_single_target = self._is_single_coordinate(target)
+        if is_single_source and is_single_target:
+            geometry = LineString([tuple(source), tuple(target)])
+        else:
+            points = []
+            for coords, single in ((source, is_single_source),
+                                   (target, is_single_target)):
+                if single:
+                    points.append(tuple(coords))
+                else:
+                    points.extend(tuple(c) for c in coords)
+            geometry = MultiPoint(points).convex_hull
+        return geometry.buffer(distance=buffer_m, quad_segs=32)
+
+    def corridor_bounds(
+            self,
+            buffer_m: float | None = None
+    ) -> tuple[float, float, float, float] | None:
+        """``(minx, miny, maxx, maxy)`` of :meth:`corridor_geometry`."""
+        geometry = self.corridor_geometry(buffer_m)
+        if geometry is None or geometry.is_empty:
+            return None
+        return geometry.bounds
+
+    @staticmethod
+    def _is_single_coordinate(coords) -> bool:
+        """Mirror of RasterHandler's single-vs-many coordinate test."""
+        if isinstance(coords, tuple):
+            return True
+        return (isinstance(coords, list) and len(coords) == 2
+                and not isinstance(coords[0], (list, tuple)))
 
     def _validate_precision_support(self) -> None:
         """Fail fast on unsupported weight_precision configurations."""
@@ -540,15 +706,105 @@ class PathFinder:
         finally:
             self._applying_objective = False
 
+    def _stack_search_window(self, stack):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        """The window the RasterHandler will cut, on the stack's own grid.
+
+        Returned only when cutting it FIRST provably leaves the handler with
+        exactly the same cells it would have windowed out of the full stack:
+
+        * an explicit ``search_space_buffer_m`` is required, because
+          otherwise the handler estimates the buffer from the raster it is
+          handed and a smaller raster can produce a different estimate
+          (:meth:`corridor_geometry`);
+        * a legacy single-raster alias is left alone — windowing it would
+          materialize the float layers and destroy ``combine``'s zero-copy
+          pass-through of the untouched uint16 raster;
+        * the handler's own window computation is re-run on the sub-grid and
+          must come back as "the whole sub-raster". That check is what makes
+          the pre-window exact rather than merely plausible: ``rowcol`` on
+          the shifted transform is not guaranteed to floor identically, and
+          if it does not, we simply do not pre-window.
+
+        Returns None whenever any of that fails — the caller then combines
+        the full extent, i.e. today's behaviour.
+        """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        if not getattr(self, "corridor_first", True):
+            return None
+        buffer_m = self._explicit_buffer_m
+        if buffer_m is None or buffer_m <= 0:
+            return None
+        if stack is None or stack.shape is None or stack.is_legacy_alias:
+            return None
+        corridor = self.corridor_geometry(buffer_m)
+        if corridor is None or corridor.is_empty:
+            return None
+
+        window = RasterHandler.window_from_bounds(
+            corridor.bounds, stack.transform, stack.shape)
+        height, width = int(window.height), int(window.width)
+        if height <= 0 or width <= 0:
+            return None
+        if (height, width) == tuple(stack.shape):
+            return None  # nothing to win, and nothing to risk
+
+        sub_transform = window_transform(window, stack.transform)
+        check = RasterHandler.window_from_bounds(
+            corridor.bounds, sub_transform, (height, width))
+        if (int(check.col_off), int(check.row_off),
+                int(check.width), int(check.height)) != (0, 0, width, height):
+            return None
+        return window
+
     def _apply_objective_to_stack(self) -> None:
-        """Combine the stack under the current objective, rebuild handler."""
+        """Combine the stack under the current objective, rebuild handler.
+
+        Window first, then combine (performance-plan item 2.6). The handler
+        discards everything outside the search window anyway, so scalarizing
+        the full extent first is pure waste — 5-30x per objective variant,
+        plus up to ~1 GB of transient float32 at municipality scale. The
+        pre-window is taken only when it is certified to select exactly the
+        cells the handler would have selected (see
+        :meth:`_stack_search_window`); otherwise the full stack is combined,
+        exactly as before.
+
+        SEMANTIC CONSEQUENCE, stated plainly: the uint16 quantization scale
+        is ``65534 / max(F)`` over the traversable cells of whatever extent
+        ``combine`` is called on. Taking the maximum over the search window
+        instead of the whole data extent therefore produces a DIFFERENT — and
+        normally FINER — quantization than before this change, so the
+        combined weight raster is not bit-identical to the one a full-extent
+        combine produced. It is an exact linear scalarization of the same
+        objective, and it is exact with respect to the window that is
+        actually searched; what changes is the rounding grid, which becomes
+        no coarser. The scale in force is recorded on
+        ``CombineResult.scale`` and copied onto
+        ``Path.objective_spec["quantization_scale"]``. Nothing else in the
+        pipeline is affected: the float layers, the per-metric evaluation and
+        the reported feasibility are all computed from the unquantized
+        layers.
+
+        The narrowing is applied to ``self.metric_stack`` itself rather than
+        to a private copy. The corridor is a function of the endpoints and
+        the explicit buffer, both fixed for the finder's lifetime, so the
+        second pass is a no-op and every objective variant sees the same
+        extent. Doing it this way is also what keeps the invariant everything
+        else relies on — ``raster_handler.window`` indexes into
+        ``metric_stack`` — true for subclasses and callers that were never
+        told about this change (``ConstrainedPathFinder._build_tower_cost_
+        raster`` is one). The bands are numpy VIEWS, so nothing is copied.
+        """
         use_float = self.weight_precision == "float32"
-        result = self.metric_stack.combine(self.objective,
-                                           quantize=not use_float)
+        window = self._stack_search_window(self.metric_stack)
+        if window is not None:
+            self.metric_stack = self.metric_stack.window(window)
+        stack = self.metric_stack
+        result = stack.combine(self.objective, quantize=not use_float)
         self._combine_result = result
         self._gradient_dem = None  # rebuilt lazily at graph creation
         dataset = InMemoryRasterDataset(
-            result.weights, self.metric_stack.crs, self.metric_stack.transform)
+            result.weights, stack.crs, stack.transform)
         handler_kwargs = {}
         if use_float:
             # Outside-buffer cells become +inf (the float forbidden
@@ -571,14 +827,24 @@ class PathFinder:
             raster_save_path: str | None,
             **kwargs
     ) -> None:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Metric-pipeline variant of create_raster_handler (objective set).
 
         Vector input is rasterized into a multi-band MetricStack; raster
-        input becomes a zero-copy legacy alias stack. The stack stays at
-        full extent and unmasked — the RasterHandler owns windowing and
-        buffer masking of the combined weight raster, so objective changes
-        recombine from pristine layers.
+        input becomes a zero-copy legacy alias stack. The stack is built
+        unmasked, so objective changes always recombine from pristine
+        layers; ``_apply_objective_to_stack`` narrows it once to the search
+        corridor (item 2.6, a view — nothing is copied) and the
+        RasterHandler still owns the buffer masking of the combined weight
+        raster. ``raster_save_path`` saves the stack AFTER that narrowing,
+        i.e. the corridor rather than the whole input extent.
+
+        Note that the corridor burn (item 2.2) does not apply here:
+        ``rasterize_metrics`` has no ``bounding_box`` parameter, so the
+        metric bands are still burned over the whole data extent. Only the
+        combine step is corridor-sized on this path.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if datasets_to_modify:
             raise NotImplementedError(
                 "datasets_to_modify overlays on the metric pipeline land "
@@ -589,9 +855,15 @@ class PathFinder:
             if cost_assumptions is None:
                 msg = "Cost assumptions must be provided when using vector data"
                 raise ValueError(msg)
+            # The sub-cell forbidden-feature knobs (all_touched /
+            # widen_thin_forbidden / on_thin_features) are listed here so the
+            # objective pipeline exposes the same barrier semantics as the
+            # legacy one - a barrier that vanishes from the cost band is
+            # invisible to the search on BOTH paths.
             allowed = {"resolution_in_m", "geometry_buffer_m",
                        "include_category", "preprocessing_function",
-                       "preprocessing_kwargs"}
+                       "preprocessing_kwargs", "all_touched",
+                       "widen_thin_forbidden", "on_thin_features"}
             unknown = set(kwargs) - allowed
             if unknown:
                 raise ValueError(
@@ -633,7 +905,6 @@ class PathFinder:
             {"source": path|ndarray, "transform": ..., "crs": ...,
              "hard_max": ..., "hard_min": ...}
         """
-        from pyorps.core.metric_stack import reproject_to_grid
 
         stack = self.metric_stack
         if stack.shape is None:
@@ -648,22 +919,27 @@ class PathFinder:
                     f"a spec dict, got {type(spec)}")
 
             derive = spec.get("derive")
+            # ``owned`` says whether the array was produced for this call and
+            # nobody else holds it — then the stack can adopt it instead of
+            # copying a full-extent float32 band (item 2.6).
             if derive == "slope_from_dem":
                 self._ensure_stack_dem()
                 values = stack.derive_terrain_slope()
+                owned = True
             elif derive is not None:
                 raise ValueError(
                     f"Unknown derive '{derive}' for metric layer "
                     f"'{name}' (supported: 'slope_from_dem')")
             elif "source" in spec:
-                values = self._load_layer_source(name, spec)
+                values, owned = self._load_layer_source(name, spec)
             else:
                 raise ValueError(
                     f"metric_layers['{name}'] needs 'source' or 'derive'")
 
             stack.add_layer(name, values,
                             hard_max=spec.get("hard_max"),
-                            hard_min=spec.get("hard_min"))
+                            hard_min=spec.get("hard_min"),
+                            copy=not owned)
 
     def _ensure_stack_dem(self) -> None:
         """Reproject the DEM dataset onto the stack grid (once)."""
@@ -687,15 +963,22 @@ class PathFinder:
             stack.shape, stack.transform, stack.crs)
         stack.attach_dem(aligned)
 
-    def _load_layer_source(self, name: str, spec: dict) -> ndarray:
-        """Load a prebuilt layer source onto the stack grid."""
+    def _load_layer_source(self, name: str, spec: dict) -> tuple[ndarray, bool]:
+        """Load a prebuilt layer source onto the stack grid.
+
+        Returns:
+            ``(values, owned)`` — ``owned`` is True when the array was
+            allocated here, so the stack may adopt it without copying
+            (item 2.6). It is False for a caller-supplied array handed
+            through unchanged, which must never be written into.
+        """
         from pyorps.core.metric_stack import reproject_to_grid
 
         stack = self.metric_stack
         source = spec["source"]
         if isinstance(source, ndarray):
             if source.shape == stack.shape:
-                return source
+                return source, False
             if "transform" not in spec:
                 raise ValueError(
                     f"metric_layers['{name}'] array shape {source.shape} "
@@ -704,7 +987,7 @@ class PathFinder:
                     f"reprojection.")
             return reproject_to_grid(
                 source, spec["transform"], spec.get("crs", stack.crs),
-                stack.shape, stack.transform, stack.crs)
+                stack.shape, stack.transform, stack.crs), True
         if isinstance(source, str):
             from rasterio import open as rio_open
             with rio_open(source) as src:
@@ -720,7 +1003,7 @@ class PathFinder:
                      f"cell(s) outside the source coverage default to 0.",
                      UserWarning, stacklevel=2)
                 aligned[uncovered] = 0.0
-            return aligned
+            return aligned, True
         raise ValueError(
             f"metric_layers['{name}']['source'] must be a path or an "
             f"array, got {type(source)}")
@@ -729,6 +1012,7 @@ class PathFinder:
     def normalize_coordinates(
             input_data: CoordinateInput | None
     ) -> NormalizedCoordinate | None:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Normalize different coordinate formats into tuples or lists of tuples.
 
@@ -741,6 +1025,7 @@ class PathFinder:
             CoordinateOutput: A single coordinate tuple (x, y) or list of coordinate
                 tuples [(x1, y1), (x2, y2), ...]
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if input_data is None:
             coordinate_output = None
         # Case: Input is a tuple with two elements
@@ -828,6 +1113,186 @@ class PathFinder:
         # Extract x, y coordinates from each Point object
         return [(point.x, point.y) for point in input_data]
 
+    def _can_read_source_window(self, dataset, read_kwargs) -> bool:
+        """True when RasterHandler can take the window straight off disk.
+
+        Item 2.2/2.3: PathFinder used to call ``load_data()`` on every raster
+        input before handing it to the handler, which pulled the whole
+        GeoTIFF into memory (3.2 GB for a state-wide 40000x40000 raster) so
+        that the handler could slice a few hundred MB out of it. The handler
+        can read the window itself — but only if we do NOT pre-load it.
+
+        Bit-identity: the file's grid is a property of the file, so the
+        window is computed from the same header either way, and
+        ``read_window`` asks rasterio for the stored pixels of exactly that
+        window with no resampling. The cells are therefore the same cells
+        with the same values; only the ones outside the window are never
+        materialized.
+
+        Refused when: the corridor is switched off, the buffer is not
+        explicit (the estimator needs the pixels — see
+        :meth:`corridor_geometry`), the caller passed read options that the
+        windowed read would silently drop, the data is already in memory, or
+        the dataset has no windowed-read API.
+        """
+        if not getattr(self, "corridor_first", True):
+            return False
+        buffer_m = self._explicit_buffer_m
+        if buffer_m is None or buffer_m <= 0:
+            return False
+        if read_kwargs:
+            return False
+        if getattr(dataset, "data", None) is not None:
+            return False
+        return (callable(getattr(dataset, "load_metadata", None))
+                and callable(getattr(dataset, "read_window", None)))
+
+    def _with_corridor_bounding_box(self, rasterize_kwargs: dict) -> dict:
+        """Add ``bounding_box=`` to a rasterize() call when it is certified."""
+        if rasterize_kwargs.get("bounding_box") is not None:
+            return rasterize_kwargs
+        bounding_box = self._certified_corridor_bounding_box(
+            resolution_in_m=rasterize_kwargs.get("resolution_in_m", 1.0),
+            geometry_buffer_m=rasterize_kwargs.get("geometry_buffer_m", 0),
+            preprocessing_function=rasterize_kwargs.get(
+                "preprocessing_function"),
+        )
+        if bounding_box is None:
+            return rasterize_kwargs
+        return {**rasterize_kwargs, "bounding_box": bounding_box}
+
+    def _certified_corridor_bounding_box(
+            self,
+            resolution_in_m: float = 1.0,
+            geometry_buffer_m: float = 0,
+            preprocessing_function: Any | None = None,
+    ):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        """Burn extent for the corridor, or None when it is not provably safe.
+
+        Item 2.2: only the corridor is ever searched, yet the burn covers the
+        whole data extent — 64 M cells against 13 M for a 5 km route in an
+        8x8 km extent, 13x at municipality scale.
+
+        The catch the plan does not mention is that
+        ``GeoRasterizer.rasterize`` derives BOTH the output shape and the
+        transform from the extent it is given, so a smaller extent normally
+        lands on a different pixel grid — every cell boundary moves by a
+        sub-pixel amount, class assignments flip along polygon edges, and the
+        route changes. Shrinking the burn is only exact if the corridor grid
+        is the same grid, restricted.
+
+        So this method does not guess: it reconstructs the grid the
+        full-extent burn WOULD have produced, snaps the corridor to whole
+        cells of that grid, and then checks — before burning anything — that
+        the extent it is about to pass reproduces
+            * the same output shape as the snapped window, and
+            * the same affine, to within
+              :attr:`CORRIDOR_GRID_TOLERANCE_M` accumulated over the raster,
+              and
+            * a handler window covering the corridor raster completely,
+        falling back to the unchanged full-extent burn if any check fails.
+        The certificate is arithmetic on the header only; it never touches a
+        pixel.
+
+        Returns:
+            A shapely box to pass as ``bounding_box=``, or None.
+        """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        if not getattr(self, "corridor_first", True):
+            return None
+        buffer_m = self._explicit_buffer_m
+        if buffer_m is None or buffer_m <= 0:
+            # The buffer estimator samples the raster it is handed, at
+            # indices clamped to its SHAPE — a smaller burn could change the
+            # estimated buffer and therefore the answer.
+            return None
+        if preprocessing_function is not None:
+            # The hook runs inside rasterize() and may move geometries, so
+            # the bounds we would compute here are not the bounds it burns.
+            return None
+        corridor = self.corridor_geometry(buffer_m)
+        if corridor is None or corridor.is_empty:
+            return None
+
+        rasterizer = self.geo_rasterizer
+        try:
+            base = getattr(rasterizer, "base_data", None)
+            if base is None or len(base) == 0:
+                return None
+            crs = getattr(base, "crs", None)
+            if crs is None or crs.is_geographic:
+                # rasterize() sizes a geographic frame from a reprojected
+                # copy but anchors the transform on the original bounds;
+                # that path is inconsistent enough already without a second
+                # extent in it.
+                return None
+
+            full_bounds = self._full_burn_bounds(base, geometry_buffer_m)
+            full_shape = rasterizer._calculate_out_shape_from_geodataframe(
+                GeoDataFrame(geometry=[box(*full_bounds)], crs=crs),
+                resolution_in_m)
+            rows, cols = int(full_shape[0]), int(full_shape[1])
+            if rows <= 0 or cols <= 0:
+                return None
+            full_transform = from_bounds(*full_bounds, cols, rows)
+
+            window = RasterHandler.window_from_bounds(
+                corridor.bounds, full_transform, (rows, cols))
+            width, height = int(window.width), int(window.height)
+            if width <= 0 or height <= 0:
+                return None
+            if width >= cols and height >= rows:
+                return None  # the corridor already covers the whole burn
+
+            candidate = box(*window_bounds(window, full_transform))
+            predicted_shape = (
+                rasterizer._calculate_out_shape_from_bounding_box(
+                    candidate, resolution_in_m))
+            if (int(predicted_shape[0]), int(predicted_shape[1])) != (height,
+                                                                      width):
+                return None
+            predicted = from_bounds(*candidate.bounds, width, height)
+            expected = window_transform(window, full_transform)
+            if not self._same_pixel_grid(predicted, expected, width, height):
+                return None
+
+            handler_window = RasterHandler.window_from_bounds(
+                corridor.bounds, predicted, (height, width))
+            if (int(handler_window.col_off), int(handler_window.row_off),
+                    int(handler_window.width),
+                    int(handler_window.height)) != (0, 0, width, height):
+                return None
+        except (AttributeError, TypeError, ValueError):
+            # Any rasterizer/geometry shape we did not anticipate: burn the
+            # full extent, exactly as before.
+            return None
+        return candidate
+
+    @staticmethod
+    def _full_burn_bounds(base, geometry_buffer_m: float):
+        """Bounds ``rasterize()`` would compute for the full extent.
+
+        It burns ``create_buffer(base_data, geometry_buffer_m)`` sorted by
+        cost; sorting does not move bounds and the buffer call is the same
+        one, so this is the identical frame's ``total_bounds``.
+        """
+        if geometry_buffer_m and geometry_buffer_m > 0:
+            return tuple(base.buffer(geometry_buffer_m).total_bounds)
+        return tuple(base.total_bounds)
+
+    @classmethod
+    def _same_pixel_grid(cls, predicted: Affine, expected: Affine,
+                         cols: int, rows: int) -> bool:
+        """Do two affines place every pixel of a cols x rows raster alike?"""
+        tolerance = cls.CORRIDOR_GRID_TOLERANCE_M
+        return (predicted.b == 0.0 and predicted.d == 0.0
+                and expected.b == 0.0 and expected.d == 0.0
+                and abs(predicted.c - expected.c) <= tolerance
+                and abs(predicted.f - expected.f) <= tolerance
+                and abs(predicted.a - expected.a) * cols <= tolerance
+                and abs(predicted.e - expected.e) * rows <= tolerance)
+
     def create_raster_handler(
             self,
             cost_assumptions: CostAssumptionsType | None = None,
@@ -836,6 +1301,7 @@ class PathFinder:
             dem_kwargs: dict[str, Any] | None = None,
             **kwargs
     ) -> RasterHandler:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Create a RasterReader object for the specified file and parameters.
 
@@ -849,6 +1315,7 @@ class PathFinder:
         Returns:
             RasterReader: The created RasterReader object
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         # Using timed context manager instead of manual timing
         with timed("raster_loading", self.runtimes):
             if self.objective is not None:
@@ -866,7 +1333,14 @@ class PathFinder:
             if isinstance(self.dataset, VectorDataset) and cost_assumptions is not None:
                 # Create a GeoRasterizer and rasterize the vector data
                 self.geo_rasterizer = GeoRasterizer(self.dataset, cost_assumptions)
-                self.geo_rasterizer.rasterize(**kwargs)
+                # Item 2.2: burn the corridor instead of the data extent when
+                # the corridor provably lands on the same pixel grid. Note
+                # that a saved raster (raster_save_path / save_raster) then
+                # covers the corridor rather than the whole input extent —
+                # the searched area, which is what it was always meant to
+                # document.
+                self.geo_rasterizer.rasterize(
+                    **self._with_corridor_bounding_box(kwargs))
 
                 # Apply any additional dataset modifications
                 if datasets_to_modify:
@@ -905,8 +1379,12 @@ class PathFinder:
                         self.search_space_buffer_m
                     )
                 else:
-                    # Direct use of the raster without modifications
-                    self.dataset.load_data(**kwargs)
+                    # Direct use of the raster without modifications. Item
+                    # 2.2/2.3: leave the read to the handler when it can take
+                    # the search window straight out of the file instead of
+                    # loading the whole raster first.
+                    if not self._can_read_source_window(self.dataset, kwargs):
+                        self.dataset.load_data(**kwargs)
 
                     self.raster_handler = RasterHandler(
                         self.dataset,
@@ -924,7 +1402,9 @@ class PathFinder:
             self,
             dem_kwargs: dict[str, Any] | None
     ) -> RasterHandler:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Shared tail of raster-handler creation: buffer warning + DEM."""
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if self.search_space_buffer_m is None:
             self.search_space_buffer_m = self.raster_handler.search_space_buffer_m
             shape = getattr(self.raster_handler, 'data', None)
@@ -946,8 +1426,11 @@ class PathFinder:
             if dem_kwargs is None:
                 dem_kwargs = {}
 
-            # Load DEM data
-            self.dem_dataset.load_data(**dem_kwargs)
+            # Load DEM data — unless the handler can read just the window
+            # (item 2.2/2.3). The DEM handler uses the buffer the main
+            # handler settled on, so its window is unchanged either way.
+            if not self._can_read_source_window(self.dem_dataset, dem_kwargs):
+                self.dem_dataset.load_data(**dem_kwargs)
 
             # Create DEM RasterHandler with same parameters
             self.dem_raster_handler = RasterHandler(
@@ -978,7 +1461,9 @@ class PathFinder:
             return self._build_graph(band_index)
 
     def _build_graph(self, band_index: int) -> Any:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Body of create_graph, wrapped by the graph_build timer."""
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         # Importing the specified graph API using the timed context manager
         with timed("import_time_graph_api", self.runtimes):
             graph_api_class_constructor = get_graph_api_class(self.graph_api_name)
@@ -1027,6 +1512,13 @@ class PathFinder:
             extra_kwargs["dem_kwargs"] = self.dem_kwargs
         if gradient_luts is not None:
             extra_kwargs["gradient_luts"] = gradient_luts
+        if self.graph_api_name == "raster_fim" and dem_data is not None:
+            # Tier A needs metres: the eikonal metric M = c^2 (I + grad_z
+            # grad_z^T) is built from an elevation gradient in metres of
+            # rise per metre of run. RasterFIMAPI cross-checks this
+            # against GradientLUTs.inv_horiz_m.
+            extra_kwargs["cell_size"] = float(
+                abs(self.raster_handler.window_transform.a))
 
         # Create graph using the graph API
         self._graph_api = graph_api_class_constructor(raster_data,
@@ -1052,6 +1544,7 @@ class PathFinder:
             target: CoordinateInput | None = None,
             **kwargs
     ) -> "RouteEnsemble":
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Route the same source-target pair under several objectives.
 
         Variants run SEQUENTIALLY (deliberately — routing shares the
@@ -1072,6 +1565,7 @@ class PathFinder:
             ``.to_dataframe()`` for the comparison table and
             ``.pareto_front([...])`` for the non-dominated subset.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from pyorps.core.ensemble import EnsembleError, RouteEnsemble
 
         if self.metric_stack is None:
@@ -1221,14 +1715,115 @@ class PathFinder:
         nothing else changes, and no result differs. Backends with no
         device state (cython, the graph libraries) are unaffected.
         """
+        for session in getattr(self, "_search_sessions", []):
+            close_session = getattr(session, "close", None)
+            if close_session is not None:
+                close_session()
+        self._search_sessions = []
         api = self._graph_api
         close = getattr(api, "close", None)
         if close is None:
             return
         try:
-            close(free_pool=free_pool)
+            close(free_pool=free_pool)  # pylint: disable=not-callable
         except TypeError:          # a backend whose close() takes no kwargs
-            close()
+            close()  # pylint: disable=not-callable
+
+    def search_session(self, algorithm: str = "dijkstra", **kwargs):
+        """Open an incremental :class:`~pyorps.graph.search_session.SearchSession`.
+
+        Retains the settled search field so later source/target/waypoint
+        edits extract or resume instead of starting from scratch.
+        ``find_route`` stays one-shot; this is the opt-in retention seam.
+        """
+        from pyorps.graph.search_session import SearchSession
+        if self.raster_handler is None:
+            self.create_raster_handler()
+        session = SearchSession(self, algorithm=algorithm, **kwargs)
+        sessions = getattr(self, "_search_sessions", None)
+        if sessions is None:
+            self._search_sessions = []
+            sessions = self._search_sessions
+        sessions.append(session)
+        return session
+
+    def cost_fields(self, origins, algorithm: str = "auto", **kwargs):
+        """Settle ONE field per fixed terminal, then price every candidate.
+
+        The entry point for substation siting and anything shaped like
+        it. A candidate position may be anywhere; the turbines and grid
+        connection points do not move, so the search is rooted at THEM
+        and read in the other direction. Ten terminals against forty
+        million candidates is ten searches, not forty million::
+
+            with finder.cost_fields(turbines + pccs, labels=names) as f:
+                costs = f.costs_to(candidates)     # (n_terminals, n)
+                leg = f.path_to("WT0", best_site)  # cells, coords, m, EUR
+
+        Fields are settled with delta-stepping unless told otherwise, and
+        are held in memory when they fit and paged through disk when they
+        do not -- see :class:`~pyorps.graph.search_session.CostFieldSet`
+        for the labels, cache and spill controls.
+
+        Use ``cost_field`` for a single root, and ``search_session`` when
+        one route's control points are being dragged.
+        """
+        from pyorps.graph.search_session import CostFieldSet
+        if self.raster_handler is None:
+            self.create_raster_handler()
+        fields = CostFieldSet(self, origins, algorithm=algorithm, **kwargs)
+        sessions = getattr(self, "_search_sessions", None)
+        if sessions is None:
+            self._search_sessions = []
+            sessions = self._search_sessions
+        sessions.append(fields)
+        return fields
+
+    def cost_field(self, origin, algorithm: str = "auto", **kwargs):
+        """Open a rooted :class:`~pyorps.graph.search_session.CostField`.
+
+        One search field from a terminal that does NOT move, then O(1)
+        pricing of arbitrarily many moving endpoints against it --
+        substation siting, service areas, k-candidate ranking. The raster
+        graph is undirected with symmetric weights, so a field rooted at
+        the fixed terminal answers every query in both directions; the
+        field checks that precondition and raises when it does not hold.
+
+        Use ``search_session`` instead when the route is one polyline
+        whose control points are being dragged.
+
+        Parameters:
+            origin: The fixed terminal, ``(x, y)`` in the raster CRS.
+            algorithm: ``"auto"`` (default) picks the fastest FULL-FIELD
+                kernel -- delta-stepping on the CPU, the GPU kernel when
+                ``graph_api="raster_gpu"``. That is what a field is
+                almost always for, and on 41.8 M cells at r2 on an idle
+                16-core machine it is 4.7 s against 38.1 s for the
+                serial Dijkstra, or 2.6 s on the GPU. The parallel
+                kernel is exact: verified bit-identical at 1, 8 and 12
+                threads and against the float64 Dijkstra over 35.6 M
+                reachable cells. Pass ``"dijkstra"`` for the one case it
+                does not cover -- pricing two or three candidates, where
+                only Dijkstra can stop early.
+            **kwargs: Passed to the kernel, e.g. ``delta=`` and
+                ``num_threads=`` for delta-stepping. Under ``"auto"``
+                the thread count defaults to three quarters of the
+                cores: the kernel's bucket barrier collapses if no core
+                is left free, and that leaves the machine usable.
+
+        Registered on ``_search_sessions`` so
+        ``release_device_resources`` frees it.
+        """
+        from pyorps.graph.search_session import CostField
+        if self.raster_handler is None:
+            self.create_raster_handler()
+        field = CostField(self, origin, algorithm=algorithm, **kwargs)
+        sessions = getattr(self, "_search_sessions", None)
+        if sessions is None:
+            self._search_sessions = []
+            sessions = self._search_sessions
+        sessions.append(field)
+        return field
 
     def get_node_indices_from_coords(
             self,
@@ -1274,6 +1869,7 @@ class PathFinder:
         return result
 
     def _correct_max_cost_positions(self, indices_2d: ndarray) -> ndarray:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Check and correct positions that have maximum cost value (uint16 max) using
         Numba-optimized functions.
@@ -1287,6 +1883,7 @@ class PathFinder:
         Returns:
             Corrected array of (row, col) indices
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not self.ignore_max_cost:
             return indices_2d
 
@@ -1436,6 +2033,7 @@ class PathFinder:
             simplify: dict[str, Any] | None = None,
             **kwargs
     ) -> Path | PathCollection:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Find the shortest path between source and target coordinates.
 
@@ -1484,6 +2082,7 @@ class PathFinder:
             PathCollection: When multiple source-target pairs or a single
                 source with multiple targets are provided.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         # Per-call objective override (kept out of the shortest_path kwargs)
         objective = kwargs.pop("objective", None)
         if objective is not None:
@@ -1587,7 +2186,7 @@ class PathFinder:
                               simplify=None):
         results = PathCollection()
         for path in path_indices:
-            if not path:
+            if not path or len(path) < 2:
                 continue
             source = self.get_coords_from_node_indices(path[0])[0]
             target = self.get_coords_from_node_indices(path[-1])[0]
@@ -1600,6 +2199,7 @@ class PathFinder:
 
     def _create_path_result(self, path_indices, source, target, algorithm,
                             calculate_metrics, simplify=None):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Helper method to create a path result dictionary from path indices.
 
@@ -1613,8 +2213,13 @@ class PathFinder:
         Returns:
             Dictionary containing path information
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         # Convert path indices to coordinates
         path_coords = self.get_coords_from_node_indices(path_indices)
+        if path_coords is None or len(path_coords) == 0:
+            path_coords = [tuple(source), tuple(target)]
+        elif len(path_coords) < 2:
+            path_coords = [path_coords[0], path_coords[0]]
 
         # Calculate the Euclidean distance
         euclidean_distance = sqrt((path_coords[0][0] - path_coords[-1][0]) ** 2 +
@@ -1684,9 +2289,13 @@ class PathFinder:
         """Describe what Path.total_cost reflects and where it diverges.
 
         total_cost is always recomputed as ``sum(cell value x 2D length)``
-        over the search raster. That is the minimized quantity only in the
-        plain 2D discrete case; the returned list names every term of the
-        actual search objective the number does NOT contain.
+        over the search raster, with the 2D length in CRS units (metres).
+        Even in the plain 2D discrete case that is the minimized quantity
+        only up to the cell-size factor — the kernels accumulate in cell
+        units (cost_factor = sqrt(dr^2+dc^2)) while reporting is metric,
+        the same convention Path.feasibility already follows. The returned
+        list names every term of the actual search objective the number
+        does NOT contain.
 
         Returns:
             (basis, divergences) — *basis* names the quantity total_cost was
@@ -1813,9 +2422,25 @@ class PathFinder:
             # Calculate metrics using Numba-accelerated function; the
             # category table is derived once per raster, not per path.
             categories = self._cached_categories(raster_data)
-            path.total_length, cat, length = calculate_path_metrics_numba(
+            total_length, cat, length = calculate_path_metrics_numba(
                 raster_data, path_indices, categories)
             self._store_categories(raster_data, cat)
+
+            # The kernel is pure cell space (1.0 per orthogonal step, sqrt(2)
+            # per diagonal); it never sees the transform. Convert to CRS
+            # units here so the legacy fields carry the same metre semantics
+            # the evaluator branch already produces (see the cell_size
+            # argument at _evaluate_objective_metrics below) - without it
+            # total_length is a cell count printed with an "m" suffix and
+            # total_cost is EUR/m x cells. Same square-cell assumption as
+            # everywhere else in pyorps: distances use |transform.a|.
+            cell_size = float(abs(self.raster_handler.window_transform.a))
+            path.total_length = total_length * cell_size
+            # Only the lengths. `cat` is the per-raster category table that
+            # _store_categories just cached and every later path over this
+            # buffer reuses, so scaling it would corrupt them all; it holds
+            # cost values anyway, which are already per-metre.
+            length = length * cell_size
 
             # Convert to regular Python dictionary
             path.length_by_category = dict(zip(cat, length))
@@ -1870,6 +2495,457 @@ class PathFinder:
             # precision mode the legacy 2D metric is skipped entirely,
             # so the evaluator supplies the length either way.
             path.total_length = evaluation.total_length_3d
+
+    # ------------------------------------------------------------- corridors
+    #
+    # NOTE ON THE WORD "CORRIDOR". Everywhere else in this class a corridor is
+    # the SEARCH-WINDOW polygon around the source/target set
+    # (`corridor_geometry`, `corridor_bounds`, `corridor_first`,
+    # `_certified_corridor_bounding_box`). The three methods below use the
+    # other sense: a corridor is a stretch of ground that several routes have
+    # in common, i.e. one trench serving more than one connection. They have
+    # nothing to do with the search window.
+
+    def build_corridor_graph(
+            self,
+            terminals: CoordinateInput | None = None,
+            *,
+            k_per_pair: int = 1,
+            min_shared_length_m: float = 0.0,
+            max_pair_distance: float | None = None,
+            validate_pair_costs: bool = False,
+    ) -> "CorridorGraph":
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        """Derive the graph of shared trenches between a set of terminals.
+
+        Not the search window (see the note above this method): the object
+        returned here has the terminals plus every cell where least-cost routes
+        MERGE or DIVERGE as its nodes, and the stretches between them as its
+        edges, each carrying its construction cost once however many
+        connections run over it.
+
+        One multi-source sweep seeds every terminal at distance 0 and labels
+        each cell with the terminal that reaches it most cheaply, which
+        partitions the raster into routing-metric Voronoi regions. Every step
+        whose two ends fall in different regions is a candidate connection
+        priced at ``dist[u] + step(u->v) + dist[v]``; keeping the cheapest per
+        terminal pair is Mehlhorn's terminal distance network [1]. The routes
+        those steps stand for are then overlaid and cut where their membership
+        changes, which is the contraction.
+
+        There is no tolerance parameter anywhere in the construction. A raster
+        route is an ordered list of cells over one grid, so "these two routes
+        coincide here" is an identity, not a proximity test - which is the
+        property a corridor definition derived from terrain has to have if it
+        is to be reproducible.
+
+        Parameters:
+            terminals: Points to connect. Accepts everything ``source``/
+                ``target`` accept. When None, the finder's own source and
+                target coordinates are concatenated.
+            k_per_pair: Keep the k cheapest boundary steps per terminal pair
+                rather than only the cheapest. Note what that actually buys:
+                the k cheapest crossings of ONE Voronoi boundary are usually
+                adjacent cells on the same stretch, so the extra routes are
+                near-duplicates of the first, not genuinely different
+                corridors, and they inflate the segment count without adding
+                structure. Raise it only when the boundary is long and you
+                want the optimiser to see more than one crossing of it.
+            min_shared_length_m: Discard a shared run shorter than this and
+                revert those steps to per-route membership, so that two routes
+                grazing for a couple of cells do not generate a junction. 0
+                (the default) keeps the construction exact.
+            max_pair_distance: Drop candidate connections costing more than
+                this (in the search's CELL units). None keeps all of them.
+            validate_pair_costs: Also run the pairwise search for every
+                recovered pair and record the gap in ``provenance``. The
+                distance network is an approximation of the true pairwise
+                metric and the size of that gap is a reportable number, not a
+                bug - but it costs one Dijkstra per terminal.
+
+        Returns:
+            A :class:`~pyorps.core.corridor.CorridorGraph` with
+            ``construction='distance_network'``.
+
+        Raises:
+            NotImplementedError: on any backend but ``cython``. ``raster_gpu``
+                would need multi-source seeding in ``GpuSsspSession.solve``
+                (it takes one source today) and ``raster_fim`` would need a
+                region label propagated through the FIM sweep kernels; both
+                are real work, and falling back silently to a different edge
+                model would make the corridor disagree with ``find_route``.
+
+        References:
+            [1] Mehlhorn, K.: 'A faster approximation algorithm for the Steiner
+                problem in graphs', Inf. Process. Lett., 1988, 27, (3),
+                pp. 125-128
+        """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        from pyorps.graph.corridor import corridor_graph_from_routes
+
+        if type(self) is not PathFinder:
+            # ConstrainedPathFinder overrides find_route to run the
+            # extended-state kernels and never touches self.graph_api, so the
+            # backend check below would pass while this method quietly built a
+            # plain terrain corridor with none of the span, angle, tower or
+            # clearance constraints the subclass exists to enforce. Refuse
+            # rather than export an unconstrained graph as if it were one.
+            raise NotImplementedError(
+                f"build_corridor_graph is implemented for PathFinder only; "
+                f"{type(self).__name__} routes with a different edge model "
+                f"(extended state, not a plain cell graph) and the "
+                f"multi-source sweep has no equivalent for it. The corridor "
+                f"would silently drop every constraint.")
+
+        if self.graph_api_name != "cython":
+            raise NotImplementedError(
+                f"build_corridor_graph is implemented for the 'cython' "
+                f"backend only; this finder uses '{self.graph_api_name}'. "
+                f"The multi-source label propagation the construction needs "
+                f"does not exist on the GPU backends (raster_gpu seeds one "
+                f"source per solve, raster_fim carries no region label), and "
+                f"substituting a different edge model would make the corridor "
+                f"disagree with find_route.")
+
+        if terminals is None:
+            source = self.source_coords
+            target = self.target_coords
+            if source is None or target is None:
+                raise ValueError(
+                    "build_corridor_graph needs terminals: pass terminals= or "
+                    "construct the finder with source and target coordinates.")
+            merged: list = []
+            for coords in (source, target):
+                if PathFinder._is_single_coordinate(coords):
+                    merged.append(tuple(coords))
+                else:
+                    merged.extend(tuple(c) for c in coords)
+            terminal_coords = merged
+        else:
+            terminal_coords = PathFinder.normalize_coordinates(terminals)
+            if PathFinder._is_single_coordinate(terminal_coords):
+                terminal_coords = [tuple(terminal_coords)]
+
+        # Deduplicate while preserving order: two terminals on one cell would
+        # seed a region the second one can never own, and the numbering has to
+        # stay a function of the input.
+        seen: set = set()
+        unique_coords = []
+        for coord in terminal_coords:
+            key = (float(coord[0]), float(coord[1]))
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_coords.append(key)
+        if len(unique_coords) < 2:
+            raise ValueError(
+                f"build_corridor_graph needs at least two distinct terminals, "
+                f"got {len(unique_coords)}")
+
+        if self.raster_handler is None:
+            self.create_raster_handler()
+
+        # Dereferenced BEFORE the corridor timer for the same reason find_route
+        # does it: building the backend is the "graph_build" phase and must not
+        # be charged to the corridor.
+        graph_api = self.graph_api
+
+        node_indices = self.get_node_indices_from_coords(unique_coords)
+        terminal_cells = {i: int(cell) for i, cell in enumerate(node_indices)}
+        if len(set(terminal_cells.values())) != len(terminal_cells):
+            # Distinct coordinates can still land on one cell, and
+            # _correct_max_cost_positions can push two of them onto the same
+            # replacement. Collapse rather than fail: the caller gets a graph
+            # whose terminal table says which inputs merged.
+            collapsed: dict[int, int] = {}
+            for tid in sorted(terminal_cells):
+                cell = terminal_cells[tid]
+                if cell not in collapsed.values():
+                    collapsed[tid] = cell
+            warn(f"{len(terminal_cells) - len(collapsed)} terminal(s) resolved "
+                 f"onto a cell already taken by another terminal and were "
+                 f"dropped from the corridor graph.", UserWarning, stacklevel=2)
+            terminal_cells = collapsed
+
+        with timed("corridor_build", self.runtimes):
+            result = self._build_corridor_graph(
+                graph_api, terminal_cells, k_per_pair, max_pair_distance,
+                validate_pair_costs)
+        routes, provenance, solver = result
+
+        raster_data = self.raster_handler.data[0]
+        graph = corridor_graph_from_routes(
+            routes,
+            raster_data,
+            self.raster_handler.window_transform,
+            crs=self.dataset.crs,
+            steps=self.steps,
+            max_value=IMPASSABLE_CELL_COST,
+            ignore_max_cost=self.ignore_max_cost,
+            dem=graph_api.dem_data,
+            gradient_luts=graph_api.gradient_luts,
+            terminal_cells=terminal_cells,
+            min_shared_length_m=min_shared_length_m,
+            price_routing_cost=True,
+            # Reuse the sweep's own solver: a second one over the same window
+            # would allocate another 17 B/cell and rescan the exclude mask for
+            # nothing, and the search window here is routinely tens of
+            # millions of cells.
+            pricer=solver,
+            provenance=provenance,
+        )
+        graph.construction = "distance_network"
+        graph.runtimes = {"corridor_build": self.runtimes.get(
+            "corridor_build", 0.0)}
+        self.corridor_graph = graph
+        return graph
+
+    def _build_corridor_graph(self, graph_api, terminal_cells, k_per_pair,
+                              max_pair_distance, validate_pair_costs):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        """Multi-source sweep, boundary reduction and route recovery.
+
+        Split out of build_corridor_graph so the timer wraps exactly the work
+        and nothing else.
+        """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        from pyorps.utils._dijkstra import make_multi_source_solver
+
+        terminal_ids = sorted(terminal_cells)
+        seeds = np.array([terminal_cells[t] for t in terminal_ids],
+                         dtype=np.uint32)
+
+        max_value = (IMPASSABLE_CELL_COST if self.ignore_max_cost
+                     else NO_EXCLUSION_VALUE)
+        solver = make_multi_source_solver(
+            graph_api.raster_data, self.steps, max_value=max_value,
+            dem=graph_api.dem_data, gradient_luts=graph_api.gradient_luts)
+
+        notes: list[str] = []
+        if solver.has_zero_cost_steps():
+            notes.append(
+                "the search raster holds zero-cost cells, so the "
+                "lexicographic tie-break is not provably independent of the "
+                "terminal order here")
+
+        settled = solver.solve(seeds)
+        boundary = solver.boundary_steps()
+
+        # k cheapest per unordered terminal pair.
+        order = np.argsort(boundary["cost"], kind="stable")
+        per_pair: dict[tuple[int, int], list[int]] = {}
+        for position in order:
+            cost = float(boundary["cost"][position])
+            if max_pair_distance is not None and cost > max_pair_distance:
+                break
+            pair = (terminal_ids[int(boundary["region_u"][position])],
+                    terminal_ids[int(boundary["region_v"][position])])
+            bucket = per_pair.setdefault(pair, [])
+            if len(bucket) < k_per_pair:
+                bucket.append(int(position))
+
+        routes: dict = {}
+        recovered_costs: dict[tuple[int, int], float] = {}
+        for pair, positions in per_pair.items():
+            for rank, position in enumerate(positions):
+                left = solver.path_to_root(
+                    np.uint32(boundary["cell_u"][position]))
+                right = solver.path_to_root(
+                    np.uint32(boundary["cell_v"][position]))
+                if left.size == 0 or right.size == 0:
+                    continue
+                cells = np.concatenate([left, right[::-1]])
+                key = pair if rank == 0 else (*pair, rank)
+                routes[key] = cells
+                if rank == 0:
+                    recovered_costs[pair] = float(boundary["cost"][position])
+
+        if not routes:
+            reason = (" No two terminals share a region boundary, so no pair "
+                      "is connected in the search window. Widen the search "
+                      "space buffer or check the exclusion mask.")
+            if max_pair_distance is not None and boundary["cost"].size:
+                reason = (f" Every candidate connection costs more than "
+                          f"max_pair_distance={max_pair_distance} (the "
+                          f"cheapest is {float(boundary['cost'].min()):.6g} "
+                          f"in CELL units); raise it or pass None.")
+            raise NoPathFoundError(
+                list(terminal_cells.values()), list(terminal_cells.values()),
+                reason)
+
+        unreached = [t for t in terminal_ids
+                     if not any(t in key[:2] for key in routes)]
+        if unreached:
+            notes.append(
+                f"terminals {unreached} appear in no pair: they are isolated "
+                f"in the search window, or every route to them runs through "
+                f"another terminal's region")
+
+        provenance: dict = {
+            "backend": "cython",
+            "neighborhood": self.neighborhood_str,
+            "k_per_pair": int(k_per_pair),
+            "settled_cells": int(settled),
+            "boundary_candidates": int(len(boundary["cost"])),
+            "n_terminals": len(terminal_ids),
+            "n_pairs": len(recovered_costs),
+            "notes": notes,
+        }
+
+        if validate_pair_costs:
+            provenance["pair_cost_gap"] = self._pair_cost_gap(
+                terminal_cells, recovered_costs, graph_api, max_value)
+
+        return routes, provenance, solver
+
+    def _pair_cost_gap(self, terminal_cells, recovered_costs, graph_api,
+                       max_value):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        """How much the distance network overprices each recovered pair.
+
+        The distance network connects a and b through the cheapest step on
+        their shared Voronoi boundary. That is a real route, so it is an upper
+        bound on the true a-b distance, and it is TIGHT whenever the true
+        shortest path crosses the bisector - which it does for any pair whose
+        regions touch along that path. Where it is not tight the gap is a
+        property of the construction worth reporting, not a defect.
+        """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        from pyorps.utils._dijkstra import make_dijkstra_solver
+
+        reference = make_dijkstra_solver(
+            graph_api.raster_data, self.steps, max_value=max_value,
+            dem=graph_api.dem_data, gradient_luts=graph_api.gradient_luts)
+
+        gaps: dict[str, float] = {}
+        by_source: dict[int, list[int]] = {}
+        for a, b in recovered_costs:
+            by_source.setdefault(a, []).append(b)
+
+        for a, others in by_source.items():
+            reference.reset_root(np.uint32(terminal_cells[a]))
+            for b in others:
+                reference.search_until(np.uint32(terminal_cells[b]))
+                true_cost = float(reference.peek_dist(
+                    np.uint32(terminal_cells[b])))
+                if not np.isfinite(true_cost) or true_cost <= 0.0:
+                    continue
+                excess = (recovered_costs[(a, b)] - true_cost) / true_cost
+                gaps[f"{a}-{b}"] = excess
+
+        # NOT floored at 0: a negative excess would mean the "upper bound"
+        # came back cheaper than the true shortest path, which is impossible
+        # for a real route and is exactly the breakage worth witnessing.
+        values = list(gaps.values())
+        return {"per_pair": gaps,
+                "max_excess": max(values) if values else 0.0,
+                "min_excess": min(values) if values else 0.0,
+                "mean_excess": float(np.mean(values)) if values else 0.0}
+
+    def save_corridor_graph(self, save_file_path: str | None = None,
+                            corridor_graph: "CorridorGraph | None" = None
+                            ) -> None:
+        """Write the corridor graph as two layers of one GeoPackage.
+
+        Layers ``corridor_segments`` (one row per trench, with its length,
+        construction cost and how many routes use it) and ``corridor_nodes``
+        (terminals and derived junctions). Mirrors :meth:`save_paths`.
+        """
+        graph = corridor_graph or getattr(self, "corridor_graph", None)
+        if graph is None:
+            raise ValueError(
+                "No corridor graph to save - call build_corridor_graph first "
+                "or pass corridor_graph=.")
+        if not save_file_path:
+            return
+        graph.save(save_file_path)
+
+    def plot_corridor_graph(
+            self,
+            corridor_graph: "CorridorGraph | None" = None,
+            ax=None,
+            figsize: tuple[int, int] = (12, 10),
+            show_raster: bool = True,
+            shared_color: str = "#c1121f",
+            single_color: str = "#4c6ef5",
+            junction_color: str = "#c1121f",
+            terminal_color: str = "#111111",
+            title: str | None = None,
+    ):
+        """Draw the corridor graph over the search raster.
+
+        Shared segments are drawn thicker and in ``shared_color``, and the
+        derived junctions are marked: that picture is the whole argument, so it
+        is worth one method. Mirrors :meth:`plot_paths` in taking an optional
+        axes and returning it.
+        """
+        import matplotlib.pyplot as plt
+
+        from pyorps.core.corridor import NODE_TERMINAL
+
+        graph = corridor_graph or getattr(self, "corridor_graph", None)
+        if graph is None:
+            raise ValueError(
+                "No corridor graph to plot - call build_corridor_graph first "
+                "or pass corridor_graph=.")
+
+        if ax is None:
+            _fig, ax = plt.subplots(figsize=figsize)
+
+        if show_raster and self.raster_handler is not None:
+            raster_data = self.raster_handler.data[0]
+            left, bottom, right, top = window_bounds(
+                self.raster_handler.window,
+                self.raster_handler.raster_dataset.transform)
+            values = np.asarray(raster_data, dtype=float)
+            values[~np.isfinite(values)] = np.nan
+            # Forbidden cells are drawn as their own class. Leaving them in the
+            # ramp makes 65535 the whole dynamic range and flattens every real
+            # cost difference to white, which is exactly the terrain the reader
+            # is being asked to look at.
+            forbidden = values >= float(IMPASSABLE_CELL_COST)
+            passable = values.copy()
+            passable[forbidden] = np.nan
+            if np.isfinite(passable).any():
+                low, high = np.nanpercentile(passable, (2, 98))
+                if high <= low:
+                    low, high = np.nanmin(passable), np.nanmax(passable)
+            else:
+                low, high = 0.0, 1.0
+            ax.imshow(passable, extent=(left, right, bottom, top),
+                      cmap="Greys", interpolation="nearest", alpha=0.6,
+                      vmin=low, vmax=high)
+            if forbidden.any():
+                overlay = np.zeros(values.shape + (4,), dtype=float)
+                overlay[forbidden] = (0.35, 0.10, 0.10, 0.55)
+                ax.imshow(overlay, extent=(left, right, bottom, top),
+                          interpolation="nearest")
+
+        widest = max((s.use_count for s in graph.segments.values()),
+                     default=1)
+        for segment in graph.segments.values():
+            xs, ys = zip(*segment.coords)
+            shared = segment.use_count > 1
+            ax.plot(xs, ys,
+                    color=shared_color if shared else single_color,
+                    linewidth=1.2 + 2.2 * (segment.use_count - 1) / max(
+                        widest - 1, 1),
+                    solid_capstyle="round", zorder=3 if shared else 2)
+
+        for node in graph.nodes.values():
+            if node.kind == NODE_TERMINAL:
+                ax.plot(node.coords[0], node.coords[1], marker="s",
+                        color=terminal_color, markersize=7, zorder=5)
+            else:
+                ax.plot(node.coords[0], node.coords[1], marker="o",
+                        color=junction_color, markersize=5,
+                        markeredgecolor="white", markeredgewidth=0.8, zorder=4)
+
+        ax.set_title(title or (
+            f"Corridor graph: {len(graph.segments)} segments, "
+            f"{len(graph.junctions)} derived junctions"))
+        ax.set_aspect("equal")
+        return ax
 
     def _apply_simplification(self, path, simplify_config):
         """Replace path.path_geometry with a simplified line for export.

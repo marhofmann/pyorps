@@ -1,6 +1,12 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import numpy as np
+import pytest
+
+# Optional backend: the module-level import below would turn a
+# missing extra into a COLLECTION error that aborts the whole run.
+pytest.importorskip("igraph")
+
 
 from pyorps.graph.api.igraph_api import IGraphAPI
 

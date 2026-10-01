@@ -230,6 +230,91 @@ cdef class DeltaWorkspace:
         arr.fill(-1)
         return arr
 
+    def peek_dist(self, uint64_t idx):
+        """Distance label at ``idx`` without resetting the workspace."""
+        if self.dist_pred is None:
+            return float("inf")
+        cdef np.ndarray[uint64_t, ndim=1] arr = self.dist_pred
+        if idx >= <uint64_t>arr.shape[0]:
+            return float("inf")
+        return float(unpack_dist(arr[idx]))
+
+    def dist_array(self):
+        """All distance labels as float32; ``inf`` where never relaxed.
+
+        The packed layout keeps the float32 label in the high 32 bits, so
+        the unpack is a shift plus a reinterpret -- no per-cell call. The
+        unreached sentinel is ``INF_F32 == 1e38``, a large FINITE float,
+        so it is mapped to a real ``inf`` here rather than leaking as a
+        plausible cost.
+        """
+        if self.dist_pred is None:
+            return np.empty(0, dtype=np.float32)
+        packed = np.asarray(self.dist_pred)
+        out = (packed >> np.uint64(32)).astype(np.uint32).view(np.float32)
+        out = out.copy()
+        out[out >= np.float32(1e30)] = np.inf
+        return out
+
+    def pred_array(self):
+        """Predecessor per cell as uint32, ``0xFFFFFFFF`` where unreached.
+
+        The companion to :meth:`dist_array`. The packed layout keeps the
+        predecessor in the LOW 32 bits (the float32 label sits in the
+        high ones), so this is a mask rather than a per-cell call, and
+        together the two arrays are everything a settled field needs to
+        be stored and reopened without re-running the search.
+        """
+        if self.dist_pred is None:
+            return np.empty(0, dtype=np.uint32)
+        packed = np.asarray(self.dist_pred)
+        return (packed & np.uint64(0xFFFFFFFF)).astype(np.uint32)
+
+    def extract_path(self, uint64_t source_idx, uint64_t target_idx):
+        """Walk retained packed labels. Does not fill or re-solve."""
+        if self.dist_pred is None:
+            return np.empty(0, dtype=np.uint64)
+        if source_idx == target_idx:
+            return np.array([source_idx], dtype=np.uint64)
+        cdef np.ndarray[uint64_t, ndim=1] dist_pred_arr = self.dist_pred
+        cdef uint64_t* dist_pred_ptr = <uint64_t*>dist_pred_arr.data
+        cdef uint32_t pred_val = unpack_pred(dist_pred_ptr[target_idx])
+        if pred_val == 0xFFFFFFFF:
+            return np.empty(0, dtype=np.uint64)
+        cdef list path_vertices = []
+        cdef uint64_t current = target_idx
+        cdef uint64_t path_length = 0
+        cdef uint64_t max_len = self.total_cells + 1
+        while path_length < max_len:
+            path_vertices.append(current)
+            if current == source_idx:
+                break
+            pred_val = unpack_pred(dist_pred_ptr[current])
+            if pred_val == 0xFFFFFFFF:
+                return np.empty(0, dtype=np.uint64)
+            current = <uint64_t>pred_val
+            path_length += 1
+        else:
+            return np.empty(0, dtype=np.uint64)
+        path_vertices.reverse()
+        return np.array(path_vertices, dtype=np.uint64)
+
+    def release(self):
+        """Drop retained label arrays."""
+        self.dist_pred = None
+        self.last_bucket = None
+
+    def memory_bytes(self):
+        # long long, not int: at 240 M cells the workspace is 2.88 GB, which
+        # overflows a 32-bit signed accumulator and reports NEGATIVE bytes --
+        # exactly where a caller sizing a spill decision needs the truth.
+        cdef long long n = 0
+        if self.dist_pred is not None:
+            n = n + <long long>np.asarray(self.dist_pred).nbytes
+        if self.last_bucket is not None:
+            n = n + <long long>np.asarray(self.last_bucket).nbytes
+        return n
+
 
 cdef inline DeltaWorkspace bind_workspace(DeltaWorkspace workspace,
                                           np.ndarray raster_arr,

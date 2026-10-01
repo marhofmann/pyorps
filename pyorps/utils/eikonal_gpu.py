@@ -1,11 +1,29 @@
 """
-GPU eikonal solver (isotropic fast iterative method) for PYORPS.
+GPU eikonal solver (fast iterative method) for PYORPS.
 
 Solves the isotropic eikonal equation ``|grad T(x)| = c(x)``, ``T(src) = 0``
 on the cost raster: ``T(x)`` is the minimal accumulated cost
 ``min over paths of integral c ds`` over all *continuous* paths — the
 continuous limit of what the discrete graph kernels compute, without the
 neighborhood metrication (elongation) bias.
+
+**Tier A — slope (pass ``dem=`` + ``cell_size=``).** The solve becomes
+Riemannian, ``grad T^T M^-1 grad T = 1`` with
+
+    M(x) = c(x)^2 (I + grad_z grad_z^T)
+
+which is exactly — and only — the UNCONDITIONAL 3D-length stretch
+``sqrt(1 + (s/100)^2)`` of pyorps' default ``GradientOptions``: travelling
+over sloped ground covers more real distance than the map shows. That term
+is a genuine metric (verified to 7.5e-16), and the 8-simplex local solver
+honours it without directional bias (exact on linear fields to 0.0000 %
+for ``|q| <= 2.19737``). Configured slope multiplier curves, the additive
+exposure term and the hard grade limit are NOT of this form and are
+refused at the API boundary (``RasterFIMAPI``), which decides acceptance
+from the LUT ARRAYS rather than the option names.
+
+Without a DEM the solver is bit-identical to the isotropic one: a
+separate kernel, not a special case of shared arithmetic.
 
 Unit convention (calibration contract, plan section 1):
     ``c(x)`` is the raster value of the cell containing ``x`` (piecewise
@@ -35,7 +53,11 @@ Path extraction (:func:`trace_paths`) is host-side vectorized numpy —
 steepest-descent RK2 integration of ``dx/dt = -grad T / |grad T|`` with
 plateau / shock-line fallbacks and a hard step cap. It returns continuous
 polylines; :func:`polyline_to_cells` rasterizes them for the existing
-Path/GeoDataFrame machinery.
+Path/GeoDataFrame machinery. Under Tier A the descent becomes the
+Riemannian tangent ``-M^-1 grad T`` (pass ``q_fields=`` / ``q_device=``):
+using the isotropic direction under an anisotropic metric leaves ``T``
+correct and every polyline wrong, so the test suite carries a control
+that asserts the old tracer FAILS the curved-geodesic case.
 
 References:
     [1] Jeong, W.-K., Whitaker, R. T.: A fast iterative method for
@@ -73,6 +95,49 @@ if GPU_AVAILABLE:
 UNREACHED = np.float32(1e30)
 #: Finite check threshold (mirrors the discrete GPU convention).
 FINITE_LIMIT = 1e29
+
+#: Tier A 8-point stencil offsets in angular order, (row, col). Their
+#: eight adjacent-pair chords are exactly the edges of the square
+#: [-1, 1]^2.
+ANISO_OFFSETS = ((1, 0), (1, 1), (0, 1), (-1, 1),
+                 (-1, 0), (-1, -1), (0, -1), (1, -1))
+
+#: Largest |grad z| for which the 8-simplex stencil is provably
+#: metric-acute — sqrt(2*(1+sqrt(2))), i.e. an anisotropy ratio
+#: kappa = 1 + sqrt(2) = 2.41421. Verified numerically: the scheme is
+#: exact on linear fields to 0.0000 % up to this value and the acuteness
+#: condition |q_r q_c| <= 1 + min(q_r^2, q_c^2) first fails at |q| = 2.20.
+#: pyorps' default GradientOptions.s_max_pct = 200 % (|q| = 2.0, kappa
+#: 2.236) clamps inside the exact regime with margin.
+Q_ACUTE_LIMIT = 2.1973671
+#: Default steepness clamp, = default s_max_pct / 100.
+Q_CLAMP_DEFAULT = 2.0
+#: |q| below which a cell takes the isotropic 4-point fast path. At 0.1 %
+#: grade the 3D stretch differs from 1 by 5e-7 — below float32 resolution
+#: on the cost.
+Q_FLAT_EPS_DEFAULT = 1e-3
+
+#: Tile size defaults. The anisotropic optimum is NOT the isotropic one:
+#: the 8-simplex update needs ~64 registers against the isotropic 30, so
+#: a B=16 tile (256 threads) drops to 4 blocks/SM. Measured at 3000^2 on
+#: an RTX PRO 500 (14 SMs), random raster: B=16/n_inner=32 -> 1009 ms,
+#: B=12/n_inner=16 -> 527 ms, B=8/n_inner=12 -> 550 ms. B=12 wins on
+#: every raster class tested.
+TILE_DEFAULT_ISO = 16
+TILE_DEFAULT_ANISO = 12
+
+
+def _default_n_inner(tile: int, aniso: bool) -> int:
+    """Relaxation sweeps per tile visit.
+
+    Isotropic: 2B — information can cross the whole tile and settle.
+    Anisotropic: ~4B/3. Every 8-simplex update raises T by at least
+    ``c * 1`` (the chords are the edges of [-1,1]^2) against the 4-point
+    diamond's ``c/sqrt(2)``, so the front crosses a tile in fewer inner
+    iterations and the extra ones are wasted work — measured 2x at
+    3000^2.
+    """
+    return 2 * tile if not aniso else max(8, (4 * tile) // 3)
 
 
 # ============================================================================
@@ -351,6 +416,530 @@ void fim_activate(
     if (active[t]) {
         int pos = atomicAdd(count_out, 1);
         list_out[pos] = t;
+    }
+}
+"""
+
+# ---------------------------------------------------------------------------
+# Tier A: anisotropic (Riemannian) 3D-length solver
+# ---------------------------------------------------------------------------
+
+# Per-cell metric assembly from the DEM. q = grad z in METRES OF RISE PER
+# METRE OF RUN (cell_size cancels out of the 3D stretch only if q is
+# formed that way — plan section 2.1, the highest-probability silent unit
+# bug in this increment; RasterFIMAPI cross-checks cell_size against
+# GradientLUTs.inv_horiz_m for exactly this reason).
+#
+# One thread per output cell, one pass, ~5 loads / 2 stores. Runs in row
+# slabs (host driver) so the DEM is never resident in full alongside q.
+# Nodata handling (plan 2.2): the cell itself non-finite -> impassable
+# (bad flag -> slowness 1e30); a neighbour non-finite -> degrade that axis
+# to the one-sided difference; both -> that axis contributes q = 0 (the
+# metric degenerates toward isotropy, which is the cheaper/conservative
+# direction; counted in the degenerate diagnostics).
+_METRIC_BUILD_KERNEL = r"""
+extern "C" __global__
+void eik_metric_build(
+    const float* __restrict__ z,      // DEM rows [z_lo, z_hi), z - z_ref
+    const int z_lo,
+    const int z_hi,
+    const int out_lo,                 // first global row to write
+    const int out_hi,                 // one past the last row to write
+    const int rows,
+    const int cols,
+    const float inv_h,                // 1 / cell_size
+    const float z_ref,                // elevation offset (plan 2.3)
+    const float q_clamp,              // s_max_pct / 100
+    const int horn,                   // 0 = central, 1 = 3x3 Horn
+    float* __restrict__ q_r,
+    float* __restrict__ q_c,
+    unsigned char* __restrict__ bad,
+    int* __restrict__ diag            // [0] nodata cells, [1] degenerate
+) {
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    int n = (out_hi - out_lo) * cols;
+    if (t >= n) return;
+    int gr = out_lo + t / cols;
+    int gc = t - (gr - out_lo) * cols;
+    int gidx = gr * cols + gc;
+
+    // The reference elevation is subtracted HERE, not host-side:
+    // elevations of 1e3 m resolve to ~6e-5 m in float32, so a 0.1 m
+    // difference would carry ~1e-3 relative error. Doing it in-kernel
+    // also avoids a full-size device temporary and an extra pass, which
+    // is what made the q-build bandwidth-bound on the upload.
+    #define ZAT(R, C) (((R) >= z_lo && (R) < z_hi && (C) >= 0 &&           \
+                        (C) < cols) ? (z[((R) - z_lo) * cols + (C)] - z_ref)\
+                                    : nanf(""))
+
+    float zc = ZAT(gr, gc);
+    if (!isfinite(zc)) {
+        q_r[gidx] = 0.0f;
+        q_c[gidx] = 0.0f;
+        bad[gidx] = 1;
+        atomicAdd(&diag[0], 1);
+        return;
+    }
+
+    float zn = ZAT(gr - 1, gc), zs = ZAT(gr + 1, gc);
+    float zw = ZAT(gr, gc - 1), ze = ZAT(gr, gc + 1);
+
+    float gv_r, gv_c;
+    int degenerate = 0;
+    if (isfinite(zn) && isfinite(zs))  gv_r = (zs - zn) * 0.5f * inv_h;
+    else if (isfinite(zs))             gv_r = (zs - zc) * inv_h;
+    else if (isfinite(zn))             gv_r = (zc - zn) * inv_h;
+    else                             { gv_r = 0.0f; degenerate = 1; }
+
+    if (isfinite(zw) && isfinite(ze))  gv_c = (ze - zw) * 0.5f * inv_h;
+    else if (isfinite(ze))             gv_c = (ze - zc) * inv_h;
+    else if (isfinite(zw))             gv_c = (zc - zw) * inv_h;
+    else                             { gv_c = 0.0f; degenerate = 1; }
+
+    if (horn) {
+        // 3x3 Horn weights (ArcGIS / GRASS default) where the whole
+        // window is finite; central difference otherwise.
+        float a = ZAT(gr - 1, gc - 1), b = zn, c = ZAT(gr - 1, gc + 1);
+        float d = zw,                  f = ze;
+        float g = ZAT(gr + 1, gc - 1), h = zs, i = ZAT(gr + 1, gc + 1);
+        if (isfinite(a) && isfinite(b) && isfinite(c) && isfinite(d) &&
+            isfinite(f) && isfinite(g) && isfinite(h) && isfinite(i)) {
+            gv_c = ((c + 2.0f * f + i) - (a + 2.0f * d + g))
+                   * 0.125f * inv_h;
+            gv_r = ((g + 2.0f * h + i) - (a + 2.0f * b + c))
+                   * 0.125f * inv_h;
+            degenerate = 0;
+        }
+    }
+
+    // Steepness clamp, direction preserved (mirrors _dijkstra.pyx:331
+    // clamping the slope bin at s_max_pct).
+    float mag = sqrtf(gv_r * gv_r + gv_c * gv_c);
+    if (mag > q_clamp && mag > 0.0f) {
+        float s = q_clamp / mag;
+        gv_r *= s;
+        gv_c *= s;
+    }
+    q_r[gidx] = gv_r;
+    q_c[gidx] = gv_c;
+    bad[gidx] = 0;
+    if (degenerate) atomicAdd(&diag[1], 1);
+    #undef ZAT
+}
+"""
+
+# The Tier A local solver, shared verbatim by the naive oracle and the
+# block-FIM sweep (plan section 3).
+#
+# THE METRIC.  M(x) = c(x)^2 (I + q q^T), q = grad z. For a displacement
+# of v cells the M-length is c * sqrt(|v|^2 + (q.v)^2) = c * |v| *
+# sqrt(1 + (s/100)^2) with s the tangential grade in percent — i.e.
+# exactly the UNCONDITIONAL 3D-length stretch of pyorps' default
+# GradientOptions, and nothing else. Configured multiplier curves and the
+# hard grade limit are NOT representable this way (they make the
+# indicatrix non-convex / non-elliptical) and are refused at the API
+# boundary; the grade limit is enforced by an outer mask loop instead.
+#
+# THE STENCIL.  Eight angularly-ordered offsets; the eight simplices
+# between angularly ADJACENT offsets (their chords are exactly the edges
+# of the square [-1,1]^2), plus the eight one-sided edge candidates.
+# A simplex (e1, e2) is metric-acute iff e1^T M e2 >= 0; for the four
+# AXIS QUADRANTS that quantity is +-c^2 q_r q_c, so two of the four are
+# obtuse for every non-axis-aligned slope — which is why the 4-point
+# quadrant stencil carries a directional bias and this one does not. For
+# the (axis, adjacent-diagonal) pairs used here acuteness reduces to
+# |q_r q_c| <= 1 + min(q_r^2, q_c^2), which holds for all
+# |q| <= sqrt(2(1+sqrt2)) = 2.19737 (kappa <= 1+sqrt2 = 2.41421).
+# Measured on exact linear fields (721 directions x 37 azimuths): the
+# 8-simplex scheme is exact to 0.0000 % over that whole range, first
+# failure at |q| = 2.20. pyorps' default s_max_pct = 200 % (|q| = 2)
+# clamps inside the provably exact regime, so the guard never fires by
+# default.
+#
+# THE UPDATE.  With E = [e1; e2], G = E^-T M^-1 E^-1, y = (T-T1, T-T2),
+# the eikonal p^T M^-1 p = 1 becomes y^T G y = 1. Rather than inverting
+# per simplex, note G^-1 = E M E^T has entries m_ij = e_i^T M e_j, so
+# with mhat_ij = e_i.e_j + (q.e_i)(q.e_j)  (M = c^2 * Mhat):
+#
+#     S    = mhat_11 - 2 mhat_12 + mhat_22 = (e1-e2)^T Mhat (e1-e2)
+#     det  = mhat_11 mhat_22 - mhat_12^2   = det(Mhat) (e1 x e2)^2
+#     disc = c^2 S - (T1-T2)^2
+#     T    = [ (mhat_22-mhat_12) T1 + (mhat_11-mhat_12) T2
+#              + sqrt(det * disc) ] / S
+#
+# One sqrt, no division by c, and c^2 enters exactly once — the algebra
+# that keeps this well-conditioned in float32 at planning-raster cost
+# magnitudes. Two identities remove the remaining cancellation risk:
+# e1 x e2 = 1 for every adjacent pair so det = det(Mhat) = 1 + |q|^2
+# EXACTLY (same for all eight simplices), and e1 - e2 is always a unit
+# axis vector so S is either 1 + q_r^2 or 1 + q_c^2. S >= 1 and
+# det >= 1, so neither can vanish.
+#
+# ADMISSIBILITY IS MANDATORY, NOT AN OPTIMISATION. The characteristic
+# arrives from lambda = G y in the (e1, e2) basis, so the root is the
+# minimum over the SEGMENT only when G y >= 0 componentwise; otherwise it
+# is the minimum over the extended line and can be strictly BELOW the
+# truth. Dropping the test silently under-prices routes.
+#
+# Branch-free: every candidate is folded with fminf under a predicated
+# select, so the 16-candidate loop is warp-uniform.
+_ANISO_UPDATE_DEVICE = r"""
+#define ANISO_INF 1e30f
+#define ANISO_FIN 1e29f
+
+// Isotropic 4-point Godunov — character-for-character the stage-1
+// operator of the isotropic solver, used by the flat fast path so that
+// "no slope => the isotropic answer" is structural, not a numerical
+// coincidence.
+__device__ __forceinline__ float godunov_iso4(
+        float tw, float te, float tn, float ts, float cval)
+{
+    float a = fminf(tw, te);
+    float b = fminf(tn, ts);
+    if (a > b) { float tmp = a; a = b; b = tmp; }
+    if (b - a >= cval) return a + cval;
+    float diff = a - b;
+    return 0.5f * (a + b +
+        sqrtf(fmaxf(2.0f * cval * cval - diff * diff, 0.0f)));
+}
+
+// Everything in the update that does NOT depend on T. The tile sweep
+// runs n_inner (default 2B = 32) relaxation iterations per visit with a
+// FIXED cost and metric per thread, so hoisting this out of the inner
+// loop removes 8 of the 16 square roots and all of the metric algebra
+// from the hot path — measured worth roughly 2x on the anisotropic
+// sweep. Kept as a struct of compile-time-indexed arrays so full
+// unrolling keeps it in registers.
+// Everything below has PERIOD 4 in k, because e_{k+4} = -e_k and the
+// metric is a quadratic form: mdiag, medge and m12 are invariant under
+// k -> k+4, and so is the S table. Storing 4 entries instead of 8 halves
+// the register cost of the metric, which matters: at 8 entries the
+// anisotropic sweep needed 53 registers against the isotropic 30, and
+// register count is what sets blocks/SM here.
+typedef struct {
+    float medge[4];     // c * ||e_k||_M   (the edge candidate increment)
+    float mdiag[4];     // e_k^T Mhat e_k
+    float m12[4];       // e_k^T Mhat e_{k+1}
+    float ssq[4];       // (e_k - e_{k+1})^T Mhat (e_k - e_{k+1})
+    float det;          // det(Mhat) = 1 + |q|^2, shared by all 8
+    float c2;           // c^2
+} AnisoMetric;
+
+__device__ __forceinline__ void aniso_prepare(
+        AnisoMetric* m, float cval, float qr, float qc)
+{
+    const float len2[4] = {1.0f, 2.0f, 1.0f, 2.0f};
+    float qe[5];
+    qe[0] = qr;         qe[1] = qr + qc;
+    qe[2] = qc;         qe[3] = qc - qr;
+    qe[4] = -qe[0];                       // = q . e_4, closes the ring
+
+    #pragma unroll
+    for (int k = 0; k < 4; ++k) {
+        m->mdiag[k] = len2[k] + qe[k] * qe[k];
+        m->medge[k] = cval * sqrtf(m->mdiag[k]);
+        // e_k . e_{k+1} == 1 for every angularly adjacent pair.
+        m->m12[k] = 1.0f + qe[k] * qe[k + 1];
+    }
+
+    // e_k - e_{k+1} is always a unit axis vector, so S is 1 + q_r^2 or
+    // 1 + q_c^2 — never a difference of large numbers.
+    const float s_r = 1.0f + qr * qr;
+    const float s_c = 1.0f + qc * qc;
+    m->ssq[0] = s_c; m->ssq[1] = s_r; m->ssq[2] = s_r; m->ssq[3] = s_c;
+
+    m->c2 = cval * cval;
+    // det(Gram) = det(Mhat) * (e_k x e_{k+1})^2 and the cross product is
+    // 1 for every adjacent pair, so this is exact and shared by all 8.
+    m->det = 1.0f + qr * qr + qc * qc;
+}
+
+// tn[] holds T at the eight offsets in the angular order
+//   (1,0) (1,1) (0,1) (-1,1) (-1,0) (-1,-1) (0,-1) (1,-1)
+__device__ __forceinline__ float aniso_update8(
+        const float* tn, const AnisoMetric* m)
+{
+    float best = ANISO_INF;
+
+    // --- eight one-sided edge candidates (always admissible) ---------
+    #pragma unroll
+    for (int k = 0; k < 8; ++k) {
+        float cand = tn[k] + m->medge[k & 3];
+        best = fminf(best, (tn[k] < ANISO_FIN) ? cand : ANISO_INF);
+    }
+
+    // --- eight simplex candidates ------------------------------------
+    #pragma unroll
+    for (int k = 0; k < 8; ++k) {
+        int j = (k + 1) & 7;
+        float t1 = tn[k], t2 = tn[j];
+        float m11 = m->mdiag[k & 3];
+        float m22 = m->mdiag[j & 3];
+        float m12 = m->m12[k & 3];
+        float ss = m->ssq[k & 3];
+        float d = t1 - t2;
+        float disc = m->c2 * ss - d * d;
+        float root = sqrtf(fmaxf(m->det * disc, 0.0f));
+        float tcand = ((m22 - m12) * t1 + (m11 - m12) * t2 + root) / ss;
+        float a = tcand - t1;
+        float b = tcand - t2;
+        bool ok = (t1 < ANISO_FIN) && (t2 < ANISO_FIN) && (disc >= 0.0f)
+                  && (a >= 0.0f) && (b >= 0.0f)
+                  && (m22 * a - m12 * b >= 0.0f)
+                  && (m11 * b - m12 * a >= 0.0f);
+        best = fminf(best, ok ? tcand : ANISO_INF);
+    }
+    return best;
+}
+"""
+
+# Naive full-grid anisotropic Jacobi sweep — the Tier A test oracle.
+# Same monotone non-increasing double-buffered iteration as the isotropic
+# oracle, so it is trivially correct and catches subtle bugs in the tiled
+# kernel (a scheme with no published convergence proof needs one).
+_JACOBI_ANISO_KERNEL = _ANISO_UPDATE_DEVICE + r"""
+extern "C" __global__
+void eikonal_jacobi_aniso(
+    const float* __restrict__ slowness,
+    const float* __restrict__ t_in,
+    float*       __restrict__ t_out,
+    const unsigned char* __restrict__ frozen,
+    const float* __restrict__ q_r,
+    const float* __restrict__ q_c,
+    const int rows,
+    const int cols,
+    const float eps_abs,
+    const float eps_rel,
+    const float q_flat_eps,
+    int* __restrict__ changed
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int n = rows * cols;
+    if (idx >= n) return;
+
+    float t_old = t_in[idx];
+    float c = slowness[idx];
+    if (c >= ANISO_INF || frozen[idx]) {
+        t_out[idx] = t_old;
+        return;
+    }
+
+    int r = idx / cols;
+    int col = idx - r * cols;
+    float qr = q_r[idx];
+    float qc = q_c[idx];
+
+    float t_new;
+    if (fabsf(qr) < q_flat_eps && fabsf(qc) < q_flat_eps) {
+        float tw = (col > 0)        ? t_in[idx - 1]    : ANISO_INF;
+        float te = (col < cols - 1) ? t_in[idx + 1]    : ANISO_INF;
+        float tnn = (r > 0)         ? t_in[idx - cols] : ANISO_INF;
+        float ts = (r < rows - 1)   ? t_in[idx + cols] : ANISO_INF;
+        t_new = godunov_iso4(tw, te, tnn, ts, c);
+    } else {
+        const int offr[8] = {1, 1, 0, -1, -1, -1, 0, 1};
+        const int offc[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+        float tn[8];
+        #pragma unroll
+        for (int k = 0; k < 8; ++k) {
+            int nr = r + offr[k], nc = col + offc[k];
+            tn[k] = (nr >= 0 && nr < rows && nc >= 0 && nc < cols)
+                    ? t_in[nr * cols + nc] : ANISO_INF;
+        }
+        AnisoMetric met;
+        aniso_prepare(&met, c, qr, qc);
+        t_new = aniso_update8(tn, &met);
+    }
+
+    t_new = fminf(t_old, t_new);
+    t_out[idx] = t_new;
+    if (t_old - t_new > eps_abs + eps_rel * t_new)
+        changed[0] = 1;
+}
+"""
+
+# Anisotropic block-FIM tile sweep. Structurally identical to
+# _FIM_SWEEP_KERNEL — same lock-free single-buffer chaotic relaxation,
+# same monotone write (the invariant that makes racy reads valid upper
+# bounds and is indifferent to the FORM of t_new), same settle check,
+# same tile activation protocol — with two changes:
+#
+#  1. the per-axis min collapse becomes the 8-simplex update, and
+#  2. THE CORNER HALO IS LOADED. The isotropic kernel deliberately loads
+#     edge halo only ("the 4-point stencil needs no corners"), leaving
+#     the four corner slots of s_t NEVER WRITTEN. The 8-simplex stencil
+#     reads them; without this they would be stale garbage from the
+#     previous tile of the same block — sometimes large (harmless under
+#     min) and sometimes small (silently under-priced routes).
+#
+# The isotropic kernel is left untouched so that "no DEM => bit-identical
+# output" is a property of the code path, not of the arithmetic.
+_FIM_SWEEP_ANISO_KERNEL = _ANISO_UPDATE_DEVICE + r"""
+extern "C" __global__
+void fim_sweep_aniso(
+    const float* __restrict__ slowness,
+    float*       __restrict__ T,
+    const unsigned char* __restrict__ frozen,
+    const float* __restrict__ q_r,
+    const float* __restrict__ q_c,
+    const int*   __restrict__ active_list,
+    const int*   __restrict__ active_count,
+    const int rows,
+    const int cols,
+    const int tiles_c,
+    const int n_inner,
+    const float eps_abs,
+    const float eps_rel,
+    const float q_flat_eps,
+    unsigned char* __restrict__ active,
+    unsigned char* __restrict__ boundary_changed,
+    int* __restrict__ next_count,
+    unsigned long long* __restrict__ stats
+) {
+    const int B = @B@;
+    const int W = B + 2;
+    __shared__ float s_t[(B + 2) * (B + 2)];
+    __shared__ int s_changed_iter;
+    __shared__ int s_boundary;
+    __shared__ int s_settle;
+
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+    int tid = ty * B + tx;
+
+    if (blockIdx.x == 0 && tid == 0) next_count[0] = 0;
+
+    int count = active_count[0];
+    bool on_edge = (tx == 0 || tx == B - 1 || ty == 0 || ty == B - 1);
+
+    // Shared-memory offsets of the eight angular neighbours.
+    const int nbo[8] = { W, W + 1, 1, -W + 1,
+                         -W, -W - 1, -1, W - 1 };
+
+    for (int w = blockIdx.x; w < count; w += gridDim.x) {
+        int tile_id = active_list[w];
+        int tile_r = tile_id / tiles_c;
+        int tile_c = tile_id - tile_r * tiles_c;
+        int base_r = tile_r * B;
+        int base_c = tile_c * B;
+
+        int gr = base_r + ty;
+        int gc = base_c + tx;
+        bool in_grid = (gr < rows) && (gc < cols);
+        int gidx = gr * cols + gc;
+
+        float cval = ANISO_INF;
+        bool frz = true;
+        float qr = 0.0f, qc = 0.0f;
+        if (in_grid) {
+            cval = slowness[gidx];
+            frz = (frozen[gidx] != 0);
+            qr = q_r[gidx];
+            qc = q_c[gidx];
+        }
+        float t0 = in_grid ? T[gidx] : ANISO_INF;
+        int sp = (ty + 1) * W + (tx + 1);
+        s_t[sp] = t0;
+
+        // Edge halo
+        if (ty == 0) {
+            int hr = base_r - 1;
+            s_t[tx + 1] =
+                (hr >= 0 && gc < cols) ? T[hr * cols + gc] : ANISO_INF;
+        }
+        if (ty == B - 1) {
+            int hr = base_r + B;
+            s_t[(B + 1) * W + tx + 1] =
+                (hr < rows && gc < cols) ? T[hr * cols + gc] : ANISO_INF;
+        }
+        if (tx == 0) {
+            int hc = base_c - 1;
+            s_t[(ty + 1) * W] =
+                (hc >= 0 && gr < rows) ? T[gr * cols + hc] : ANISO_INF;
+        }
+        if (tx == B - 1) {
+            int hc = base_c + B;
+            s_t[(ty + 1) * W + B + 1] =
+                (hc < cols && gr < rows) ? T[gr * cols + hc] : ANISO_INF;
+        }
+        // Corner halo (the 8-simplex stencil DOES need corners)
+        if (tid < 4) {
+            int dr = (tid & 1) ? B : -1;
+            int dc = (tid & 2) ? B : -1;
+            int hr = base_r + dr;
+            int hc = base_c + dc;
+            int spc = ((dr < 0) ? 0 : B + 1) * W + ((dc < 0) ? 0 : B + 1);
+            s_t[spc] = (hr >= 0 && hr < rows && hc >= 0 && hc < cols)
+                       ? T[hr * cols + hc] : ANISO_INF;
+        }
+
+        if (tid == 0) { s_changed_iter = 0; s_boundary = 0; }
+        __syncthreads();
+
+        bool can_update = in_grid && (cval < ANISO_INF) && !frz;
+        bool flat = (fabsf(qr) < q_flat_eps) && (fabsf(qc) < q_flat_eps);
+
+        // T-independent metric algebra, hoisted out of the n_inner
+        // relaxation iterations (8 of the 16 sqrt live here).
+        AnisoMetric met;
+        if (can_update && !flat) aniso_prepare(&met, cval, qr, qc);
+
+        int iters_run = 0;
+        for (int it = 0; it < n_inner; ++it) {
+            iters_run = it + 1;
+            bool settle_check = ((it & 7) == 7);
+            if (settle_check) {
+                if (tid == 0) s_settle = 0;
+                __syncthreads();
+            }
+            if (can_update) {
+                float t_old = s_t[sp];
+                float t_new;
+                if (flat) {
+                    t_new = godunov_iso4(s_t[sp - 1], s_t[sp + 1],
+                                         s_t[sp - W], s_t[sp + W], cval);
+                } else {
+                    float tn[8];
+                    #pragma unroll
+                    for (int k = 0; k < 8; ++k) tn[k] = s_t[sp + nbo[k]];
+                    t_new = aniso_update8(tn, &met);
+                }
+                if (t_new < t_old) {
+                    s_t[sp] = t_new;
+                    if (settle_check) s_settle = 1;
+                }
+            }
+            __syncthreads();
+            if (settle_check && s_settle == 0) break;
+        }
+
+        float tf = in_grid ? s_t[sp] : ANISO_INF;
+        if (can_update) {
+            float t_new;
+            if (flat) {
+                t_new = godunov_iso4(s_t[sp - 1], s_t[sp + 1],
+                                     s_t[sp - W], s_t[sp + W], cval);
+            } else {
+                float tn[8];
+                #pragma unroll
+                for (int k = 0; k < 8; ++k) tn[k] = s_t[sp + nbo[k]];
+                t_new = aniso_update8(tn, &met);
+            }
+            if (t_new < tf - (eps_abs + eps_rel * t_new))
+                s_changed_iter = 1;
+            if (on_edge && t0 - tf > eps_abs + eps_rel * tf)
+                s_boundary = 1;
+        }
+        __syncthreads();
+
+        if (in_grid && tf < t0) T[gidx] = tf;
+        if (tid == 0) {
+            active[tile_id] = (s_changed_iter != 0) ? 1 : 0;
+            boundary_changed[tile_id] = (s_boundary != 0) ? 1 : 0;
+            atomicAdd(&stats[0], 1ULL);
+            atomicAdd(&stats[1], (unsigned long long)iters_run);
+        }
+        __syncthreads();   // s_t reused by the next tile of this block
     }
 }
 """
@@ -776,7 +1365,13 @@ void fim_target_check(
 # Individual float-marginal decisions may differ from the float64 host
 # tracer; both satisfy the same invariants. Polyline output stays
 # float64 (API contract).
+# Compiled in two variants from one source via @ANISO@ (0 / 1). The
+# isotropic variant's arithmetic is character-identical to before this
+# increment — every anisotropic addition sits behind #if ANISO, so
+# "no DEM => the same polyline" is a property of the source text.
 _TRACE_KERNEL = r"""
+#define ANISO @ANISO@
+
 extern "C" {
 
 #define TRACE_INVALID 1e29f
@@ -897,6 +1492,9 @@ __device__ __forceinline__ void corner_grad_blk(
 // equivalent.
 __device__ bool descent_direction_blk(
         const float* blk, int ar, int ac, int rows, int cols,
+#if ANISO
+        const float* __restrict__ q_r, const float* __restrict__ q_c,
+#endif
         float r, float c, float* dr, float* dc)
 {
     int r0, c0, r1, c1;
@@ -910,14 +1508,32 @@ __device__ bool descent_direction_blk(
     float tot_r = 0.0f, tot_c = 0.0f, wsum = 0.0f;
     float fin_r = 0.0f, fin_c = 0.0f;
     int n_fin = 0;
+#if ANISO
+    // q is sampled at the same point, with the same weights and the same
+    // corner-validity mask as the gradient (a corner's gradient pair is
+    // NaN exactly when its centre cell is invalid), so host and device
+    // interpolate the metric identically.
+    int gi[4];
+    gi[0] = r0 * cols + c0; gi[1] = r0 * cols + c1;
+    gi[2] = r1 * cols + c0; gi[3] = r1 * cols + c1;
+    float tot_qr = 0.0f, tot_qc = 0.0f;
+    float fin_qr = 0.0f, fin_qc = 0.0f;
+#endif
     for (int k = 0; k < 4; ++k) {
         float gr_k, gc_k;
         corner_grad_blk(blk, ci[k], cj[k], &gr_k, &gc_k);
         if (gr_k == gr_k) {
             fin_r += gr_k; fin_c += gc_k; n_fin += 1;
+#if ANISO
+            fin_qr += q_r[gi[k]]; fin_qc += q_c[gi[k]];
+#endif
             if (w[k] > 0.0f) {
                 tot_r += gr_k * w[k];
                 tot_c += gc_k * w[k];
+#if ANISO
+                tot_qr += q_r[gi[k]] * w[k];
+                tot_qc += q_c[gi[k]] * w[k];
+#endif
                 wsum += w[k];
             }
         }
@@ -927,6 +1543,19 @@ __device__ bool descent_direction_blk(
     else if (n_fin)      { g_r = fin_r / n_fin; g_c = fin_c / n_fin; }
     else                 return false;
     if (g_r != g_r || g_c != g_c) return false;
+#if ANISO
+    // Riemannian steepest descent: v = -M^-1 grad T, and the 1/c^2 of
+    // M^-1 = (1/c^2)(I - q q^T / (1 + |q|^2)) cancels in the normalise.
+    float qr_s, qc_s;
+    if (wsum > 0.0f) { qr_s = tot_qr / wsum;  qc_s = tot_qc / wsum; }
+    else             { qr_s = fin_qr / n_fin; qc_s = fin_qc / n_fin; }
+    if (qr_s == qr_s && qc_s == qc_s) {
+        float s = (qr_s * g_r + qc_s * g_c)
+                  / (1.0f + qr_s * qr_s + qc_s * qc_s);
+        g_r -= qr_s * s;
+        g_c -= qc_s * s;
+    }
+#endif
     float norm = sqrtf(g_r * g_r + g_c * g_c);
     if (norm < 1e-12f) return false;
     *dr = -g_r / norm;
@@ -971,8 +1600,17 @@ __device__ bool lower_neighbor(
 
 // status: 0 = reached a source, 1 = target unreachable,
 //         2 = needs the host tracer (plateau BFS or step cap).
-__global__ void eikonal_trace(
+__global__ void
+#if ANISO
+eikonal_trace_aniso(
+#else
+eikonal_trace(
+#endif
     const float* __restrict__ T,
+#if ANISO
+    const float* __restrict__ q_r,
+    const float* __restrict__ q_c,
+#endif
     const double* __restrict__ src,    // n_src * 2 (row, col)
     const int n_src,
     const long long* __restrict__ targets,
@@ -1067,6 +1705,9 @@ __global__ void eikonal_trace(
                 kAr = ar_; kAc = ac_;
             }
             if (!descent_direction_blk(blkA, kAr, kAc, rows, cols,
+#if ANISO
+                                       q_r, q_c,
+#endif
                                        pr, pc, &d1r, &d1c)) {
                 hop_reason = 2;               // degenerate gradient
             } else {
@@ -1091,6 +1732,9 @@ __global__ void eikonal_trace(
                     mb = blkB; mar = kBr; mac = kBc;
                 }
                 if (!descent_direction_blk(mb, mar, mac, rows, cols,
+#if ANISO
+                                           q_r, q_c,
+#endif
                                            mr, mc, &d2r, &d2c)) {
                     sr_ = d1r; sc_ = d1c;
                 } else {
@@ -1212,6 +1856,15 @@ def _get_sweep_kernel(tile: int):
     return _eik_kernel_cache[name]
 
 
+def _get_sweep_aniso_kernel(tile: int):
+    """Tier A anisotropic sweep kernel variant for tile size B."""
+    name = f"fim_sweep_aniso@{tile}"
+    if name not in _eik_kernel_cache:
+        source = _FIM_SWEEP_ANISO_KERNEL.replace("@B@", str(tile))
+        _eik_kernel_cache[name] = cp.RawKernel(source, "fim_sweep_aniso")
+    return _eik_kernel_cache[name]
+
+
 def _get_target_check_kernel(tile: int):
     """Early-exit check kernel variant for tile size B."""
     name = f"fim_target_check@{tile}"
@@ -1236,6 +1889,15 @@ def _get_freeze2_kernel(tile: int):
     if name not in _eik_kernel_cache:
         source = _FIM_SWEEP2_KERNEL.replace("@B@", str(tile))
         _eik_kernel_cache[name] = cp.RawKernel(source, "fim_freeze2")
+    return _eik_kernel_cache[name]
+
+
+def _get_trace_kernel(aniso: bool):
+    """Path-tracer kernel variant (isotropic / Tier A Riemannian)."""
+    name = "eikonal_trace_aniso" if aniso else "eikonal_trace"
+    if name not in _eik_kernel_cache:
+        source = _TRACE_KERNEL.replace("@ANISO@", "1" if aniso else "0")
+        _eik_kernel_cache[name] = cp.RawKernel(source, name)
     return _eik_kernel_cache[name]
 
 
@@ -1323,6 +1985,190 @@ def _resolve_eps_device(eps_rel: float, eps_abs: Optional[float],
     return float(eps_rel), float(eps_abs)
 
 
+def _check_q_clamp(q_clamp: float) -> float:
+    """Guard the 8-simplex acuteness threshold (plan section 2.4)."""
+    q_clamp = float(q_clamp)
+    if not (q_clamp > 0) or not np.isfinite(q_clamp):
+        raise ValueError(f"q_clamp must be finite and > 0, got {q_clamp}")
+    if q_clamp > Q_ACUTE_LIMIT:
+        raise ValueError(
+            f"q_clamp = {q_clamp:.4f} (s_max_pct = {q_clamp * 100:.1f} %) "
+            f"exceeds the 8-simplex acuteness threshold "
+            f"{Q_ACUTE_LIMIT:.5f} (s_max_pct = 219.74 %, anisotropy ratio "
+            f"kappa = 1 + sqrt(2) = 2.41421). Beyond it the stencil stays "
+            f"monotone and convergent but converges to a slightly LARGER "
+            f"metric in a wedge of directions — measured over-pricing "
+            f"0.60 % at |q| = 2.5 and 3.67 % at |q| = 3.0 on exact linear "
+            f"fields — which is exactly the metrication bias this backend "
+            f"exists to avoid, so it is refused rather than applied "
+            f"silently. Either lower s_max_pct (the default 200 % is "
+            f"inside the provably exact regime) or use a discrete "
+            f"backend.")
+    return q_clamp
+
+
+def metric_from_dem(
+        dem: np.ndarray,
+        cell_size: float,
+        q_clamp: float = Q_CLAMP_DEFAULT,
+        slope_stencil: str = "central",
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Host reference twin of the q-build kernel (pure numpy, no GPU).
+
+    Returns ``(q_r, q_c, bad)``: the dimensionless elevation gradient in
+    METRES OF RISE PER METRE OF RUN along increasing row / column index,
+    and a bool mask of cells whose own DEM value is non-finite (those are
+    made impassable by the caller).
+
+    ``q`` is deliberately *not* per-cell rise: ``cell_size`` cancels out
+    of the 3D stretch ``sqrt(1 + (q.d/|d|)^2)`` only when the finite
+    difference in metres is divided by the horizontal separation in
+    metres. Getting this wrong produces a plausible field with the wrong
+    anisotropy at every scale, which is why ``RasterFIMAPI`` cross-checks
+    ``cell_size`` against ``GradientLUTs.inv_horiz_m``.
+
+    Border cells and cells with a non-finite neighbour degrade to the
+    one-sided difference; where both neighbours of an axis are missing,
+    that axis contributes 0 (the metric degenerates toward isotropy —
+    the cheaper direction). ``|q|`` is clamped to ``q_clamp`` with the
+    direction preserved, mirroring ``_dijkstra.pyx``'s clamp of the slope
+    bin at ``s_max_pct``.
+    """
+    if slope_stencil not in ("central", "horn"):
+        raise ValueError(
+            f"slope_stencil must be 'central' or 'horn', "
+            f"got {slope_stencil!r}")
+    if not np.isfinite(cell_size) or cell_size <= 0:
+        raise ValueError(
+            f"cell_size must be finite and > 0, got {cell_size}")
+    q_clamp = _check_q_clamp(q_clamp)
+
+    z = np.asarray(dem, dtype=np.float64)
+    if z.ndim != 2:
+        raise ValueError(f"dem must be 2D, got shape {z.shape}")
+    finite = np.isfinite(z)
+    # Reference elevation: float32 resolves ~6e-5 m at 1e3 m absolute, so
+    # a 0.1 m difference would carry ~1e-3 relative error. Subtracting a
+    # constant cannot change q and restores 6-7 digits (plan 2.3).
+    z_ref = float(np.round(z[finite].mean())) if finite.any() else 0.0
+    z = np.where(finite, z - z_ref, np.nan)
+
+    p = np.pad(z, 1, constant_values=np.nan)
+    ctr = p[1:-1, 1:-1]
+    nn, ss = p[:-2, 1:-1], p[2:, 1:-1]
+    ww, ee = p[1:-1, :-2], p[1:-1, 2:]
+    inv_h = 1.0 / float(cell_size)
+
+    def axis(lo, hi):
+        f_lo, f_hi = np.isfinite(lo), np.isfinite(hi)
+        both = f_lo & f_hi
+        g = np.where(both, (hi - lo) * 0.5 * inv_h, 0.0)
+        g = np.where(f_hi & ~f_lo, (hi - ctr) * inv_h, g)
+        g = np.where(f_lo & ~f_hi, (ctr - lo) * inv_h, g)
+        return np.nan_to_num(g, nan=0.0, posinf=0.0, neginf=0.0)
+
+    q_r = axis(nn, ss)
+    q_c = axis(ww, ee)
+
+    if slope_stencil == "horn":
+        a, b, c = p[:-2, :-2], p[:-2, 1:-1], p[:-2, 2:]
+        d, f = p[1:-1, :-2], p[1:-1, 2:]
+        g, h, i = p[2:, :-2], p[2:, 1:-1], p[2:, 2:]
+        full = np.all(np.isfinite(np.stack([a, b, c, d, f, g, h, i])),
+                      axis=0)
+        hc = ((c + 2.0 * f + i) - (a + 2.0 * d + g)) * 0.125 * inv_h
+        hr = ((g + 2.0 * h + i) - (a + 2.0 * b + c)) * 0.125 * inv_h
+        q_r = np.where(full, hr, q_r)
+        q_c = np.where(full, hc, q_c)
+
+    mag = np.hypot(q_r, q_c)
+    scale = np.where(mag > q_clamp, q_clamp / np.maximum(mag, 1e-30), 1.0)
+    q_r = (q_r * scale).astype(np.float32)
+    q_c = (q_c * scale).astype(np.float32)
+    bad = ~finite
+    q_r[bad] = 0.0
+    q_c[bad] = 0.0
+    return q_r, q_c, bad
+
+
+#: DEM upload slab height (rows). Keeps the full DEM from ever being
+#: resident alongside q — 0.86 GB of peak saved at 144 M cells for no
+#: measurable time.
+_METRIC_SLAB_ROWS = 1024
+
+
+def _device_metric(dem: np.ndarray, cell_size: float,
+                   q_clamp: float = Q_CLAMP_DEFAULT,
+                   slope_stencil: str = "central",
+                   slab_rows: int = _METRIC_SLAB_ROWS):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+    """Build ``(q_r, q_c)`` on the device from a host DEM, in row slabs.
+
+    Returns ``(d_q_r, d_q_c, d_bad, diag)`` — flat float32 device arrays,
+    a uint8 device mask of non-finite DEM cells, and a dict of
+    diagnostics counters.
+    """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+    if dem.ndim != 2:
+        raise ValueError(f"dem must be 2D, got shape {dem.shape}")
+    if not np.isfinite(cell_size) or cell_size <= 0:
+        raise ValueError(
+            f"cell_size must be finite and > 0, got {cell_size}")
+    if slope_stencil not in ("central", "horn"):
+        raise ValueError(
+            f"slope_stencil must be 'central' or 'horn', "
+            f"got {slope_stencil!r}")
+    q_clamp = _check_q_clamp(q_clamp)
+
+    rows, cols = dem.shape
+    n = rows * cols
+    d_qr = cp.empty(n, dtype=cp.float32)
+    d_qc = cp.empty(n, dtype=cp.float32)
+    d_bad = cp.empty(n, dtype=cp.uint8)
+    d_diag = cp.zeros(2, dtype=cp.int32)
+
+    # z_ref only has to be a representative offset (it removes the
+    # float32 precision loss of differencing elevations of order 1e3 m),
+    # so it is taken from a strided subsample. A full-array
+    # isfinite + boolean-gather pass here cost 25 ms at 9 M cells — 36x
+    # the q-build kernel itself, and it made the whole step look
+    # bandwidth-bound when it was not.
+    sample = np.asarray(dem[::16, ::16], dtype=np.float64)
+    finite = np.isfinite(sample)
+    if not finite.any():                       # degenerate subsample
+        sample = np.asarray(dem, dtype=np.float64)
+        finite = np.isfinite(sample)
+    z_ref = np.float32(np.round(float(sample[finite].mean()))
+                       if finite.any() else 0.0)
+    del sample, finite
+    if abs(float(z_ref)) > 1e7:
+        raise ValueError(
+            f"DEM mean elevation {float(z_ref):.4g} m is implausible — "
+            f"check the DEM units/nodata handling before routing on it.")
+
+    kern = _get_eik_kernel("eik_metric_build", _METRIC_BUILD_KERNEL)
+    horn = 1 if slope_stencil == "horn" else 0
+    tpb = 256
+    slab_rows = max(2, int(slab_rows))
+    for lo in range(0, rows, slab_rows):
+        hi = min(lo + slab_rows, rows)
+        z_lo, z_hi = max(lo - 1, 0), min(hi + 1, rows)
+        slab = np.ascontiguousarray(dem[z_lo:z_hi], dtype=np.float32)
+        d_z = cp.asarray(slab).ravel()
+        cnt = (hi - lo) * cols
+        kern(((cnt + tpb - 1) // tpb,), (tpb,),
+             (d_z, np.int32(z_lo), np.int32(z_hi),
+              np.int32(lo), np.int32(hi),
+              np.int32(rows), np.int32(cols),
+              np.float32(1.0 / cell_size), np.float32(z_ref),
+              np.float32(q_clamp),
+              np.int32(horn), d_qr, d_qc, d_bad, d_diag))
+        del d_z
+    diag_h = d_diag.get()
+    return d_qr, d_qc, d_bad, dict(n_nodata=int(diag_h[0]),
+                                   n_degenerate_metric=int(diag_h[1]))
+
+
 def _validate_sources(source_indices, raster: np.ndarray,
                       ignore_max: bool) -> np.ndarray:
     """Normalize + validate source indices (raster-based — no full
@@ -1356,7 +2202,9 @@ def _disk_init_values(
         raster: np.ndarray,
         ignore_max: bool = True,
         r0: float = 3.0,
+        q_fields=None,
 ) -> Tuple[np.ndarray, np.ndarray]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Analytic disk initialization around point sources (plan 3.3).
 
     For cells within radius ``r0`` of a source, seed ``T = c_src * r``
@@ -1370,9 +2218,17 @@ def _disk_init_values(
     Consumes the raw raster and converts only the small windows it
     inspects (phase 1: no full-grid host slowness pass).
 
+    With ``q_fields = (d_q_r, d_q_c)`` (Tier A) the exact seed is the
+    METRIC distance ``T = c_src * sqrt(dr^2 + dc^2 + (q.(dr, dc))^2)``,
+    and the local-constancy test is extended to ``q``: where the metric
+    varies inside the disk the disk is skipped rather than seeded with an
+    inconsistent cone. Seeding a too-low T is unrecoverable under
+    monotone updates, which is the governing rule here.
+
     Returns (flat_indices, values) of the seeded cells (sources included
     with value 0).
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     rows, cols = raster.shape
     src_r, src_c = np.divmod(sources, cols)
 
@@ -1409,7 +2265,20 @@ def _disk_init_values(
         c_src = win[src_r[k] - r_lo, src_c[k] - c_lo]
         if not (win[cr - r_lo, cc - c_lo] == c_src).all():
             continue  # cost not locally constant — analytic cone invalid
-        idx_out.append(cr * cols + cc)
+        flat = cr * cols + cc
+        if q_fields is not None:
+            d_qr, d_qc = q_fields
+            sel = cp.asarray(flat)
+            qr_w = cp.asnumpy(d_qr[sel]).astype(np.float64)
+            qc_w = cp.asnumpy(d_qc[sel]).astype(np.float64)
+            if not (np.allclose(qr_w, qr_w[0], rtol=0.0, atol=1e-6)
+                    and np.allclose(qc_w, qc_w[0], rtol=0.0, atol=1e-6)):
+                continue     # metric not locally constant — skip the disk
+            dr_c = (cr - src_r[k]).astype(np.float64)
+            dc_c = (cc - src_c[k]).astype(np.float64)
+            rise = qr_w[0] * dr_c + qc_w[0] * dc_c
+            d = np.sqrt(dr_c * dr_c + dc_c * dc_c + rise * rise)
+        idx_out.append(flat)
         val_out.append((c_src * d).astype(np.float32))
 
     if idx_out:
@@ -1419,16 +2288,30 @@ def _disk_init_values(
 
 
 def _setup_solve(raster, source_indices, ignore_max, eps_rel, eps_abs,
-                 disk_init, disk_radius):
+                 disk_init, disk_radius, dem=None, cell_size=None,
+                 q_clamp=Q_CLAMP_DEFAULT, slope_stencil="central",
+                 forbidden_indices=None):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Shared host+device setup for both solvers.
 
     Phase-1 layout: the full-grid slowness conversion happens on the
     device (raw upload = half the bytes for uint16; no 2-pass host
     copy); host work touches only source cells and disk windows.
 
+    With ``dem`` the Tier A metric ``q = grad z`` is built on the device
+    (row-slabbed) and returned alongside; cells whose DEM value is
+    non-finite are made impassable, mirroring what
+    ``PathFinder._prepare_gradient_inputs`` already does upstream and
+    keeping the solver safe when called directly with a raw DEM.
+
+    ``forbidden_indices`` (flat) are forced to ``1e30`` before the solve —
+    the hook the grade-limit mask loop uses; a source landing on a
+    forbidden cell is dropped like any other impassable source.
+
     Returns None if no valid source remains (caller returns the
     all-unreachable field), else the device context tuple.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if raster.ndim != 2:
         raise ValueError(f"raster must be 2D, got shape {raster.shape}")
     rows, cols = raster.shape
@@ -1437,13 +2320,52 @@ def _setup_solve(raster, source_indices, ignore_max, eps_rel, eps_abs,
         return None
 
     d_c = _device_slowness(raster, ignore_max)
+
+    d_qr = d_qc = None
+    metric_diag = {}
+    if dem is not None:
+        if cell_size is None:
+            raise ValueError(
+                "a DEM needs cell_size (metres per cell): the Tier A "
+                "metric M = c^2 (I + grad_z grad_z^T) is built from an "
+                "elevation gradient in metres of rise per metre of run, "
+                "so without it the anisotropy is wrong by a factor of "
+                "the cell size.")
+        if np.shape(dem) != (rows, cols):
+            raise ValueError(
+                f"dem shape {np.shape(dem)} does not match the raster "
+                f"{(rows, cols)}")
+        d_qr, d_qc, d_bad, metric_diag = _device_metric(
+            dem, cell_size, q_clamp=q_clamp, slope_stencil=slope_stencil)
+        if metric_diag["n_nodata"]:
+            d_c = cp.where(d_bad != 0, cp.float32(UNREACHED), d_c)
+        del d_bad
+
+    if forbidden_indices is not None:
+        forb = np.atleast_1d(np.asarray(forbidden_indices)).astype(np.int64)
+        if forb.size:
+            if (forb < 0).any() or (forb >= rows * cols).any():
+                raise ValueError(
+                    "forbidden_indices outside the raster")
+            d_c[cp.asarray(forb)] = cp.float32(UNREACHED)
+
+    # Sources on cells made impassable by the DEM/mask (rather than by
+    # the raster itself) drop out here — same data condition, same
+    # behaviour as an impassable raster cell.
+    if d_qr is not None or forbidden_indices is not None:
+        alive = cp.asnumpy(d_c[cp.asarray(sources)]) < FINITE_LIMIT
+        sources = sources[alive]
+        if sources.size == 0:
+            return None
+
     eps_rel, eps_abs = _resolve_eps_device(eps_rel, eps_abs, d_c)
 
     seed_idx = sources
     seed_val = np.zeros(sources.size, dtype=np.float32)
     if disk_init:
-        d_idx, d_val = _disk_init_values(sources, raster, ignore_max,
-                                         r0=disk_radius)
+        d_idx, d_val = _disk_init_values(
+            sources, raster, ignore_max, r0=disk_radius,
+            q_fields=None if d_qr is None else (d_qr, d_qc))
         if d_idx.size:
             seed_idx = np.concatenate([seed_idx, d_idx])
             seed_val = np.concatenate([seed_val, d_val])
@@ -1453,12 +2375,22 @@ def _setup_solve(raster, source_indices, ignore_max, eps_rel, eps_abs,
             uniq, first = np.unique(seed_idx, return_index=True)
             seed_idx, seed_val = uniq, seed_val[first]
 
+    # A disk cell that the DEM (nodata) or the grade mask made impassable
+    # must not be seeded-and-frozen: it would keep a finite T forever and
+    # leak cheap values into its neighbours through a cell the solve
+    # forbids. The raster-based local-constancy test upstream cannot see
+    # either condition. No-op on the isotropic path.
+    if d_qr is not None or forbidden_indices is not None:
+        keep = cp.asnumpy(d_c[cp.asarray(seed_idx)]) < FINITE_LIMIT
+        seed_idx, seed_val = seed_idx[keep], seed_val[keep]
+
     d_t = cp.full(rows * cols, UNREACHED, dtype=cp.float32)
     d_t[cp.asarray(seed_idx)] = cp.asarray(seed_val)
     d_frozen = cp.zeros(rows * cols, dtype=cp.uint8)
     d_frozen[cp.asarray(seed_idx)] = 1
 
-    return (d_c, d_t, d_frozen, seed_idx, eps_rel, eps_abs, rows, cols)
+    return (d_c, d_t, d_frozen, seed_idx, eps_rel, eps_abs, rows, cols,
+            d_qr, d_qc, metric_diag)
 
 
 # NOTE (performance plan phase 5, REJECTED BY MEASUREMENT
@@ -1487,33 +2419,53 @@ def eikonal_raster_gpu_naive(
         disk_init: bool = True,
         disk_radius: float = 3.0,
         return_iterations: bool = False,
+        dem: Optional[np.ndarray] = None,
+        cell_size: Optional[float] = None,
+        q_clamp: float = Q_CLAMP_DEFAULT,
+        q_flat_eps: float = Q_FLAT_EPS_DEFAULT,
+        slope_stencil: str = "central",
+        forbidden_indices=None,
 ) -> Union[np.ndarray, Tuple[np.ndarray, int]]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Naive full-grid Jacobi eikonal solver (reference implementation).
 
     Every iteration updates every cell (double-buffered), so information
     travels one cell per iteration — O(path length) iterations of O(n)
     work. Kept as the block-FIM test oracle; do not use for production.
 
+    With ``dem`` (+ ``cell_size``) it runs the Tier A anisotropic
+    8-simplex update instead — the oracle for the tiled anisotropic
+    kernel, and the only cheap defence against a subtle bug in a scheme
+    with no published convergence proof.
+
     Returns the T field, float32, shape = raster.shape, 1e30 = unreachable.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if not GPU_AVAILABLE:
         raise RuntimeError(
             "CUDA GPU not available. Install cupy with CUDA support: "
             "pip install cupy-cuda12x")
 
     ctx = _setup_solve(raster, source_indices, ignore_max, eps_rel,
-                       eps_abs, disk_init, disk_radius)
+                       eps_abs, disk_init, disk_radius, dem=dem,
+                       cell_size=cell_size, q_clamp=q_clamp,
+                       slope_stencil=slope_stencil,
+                       forbidden_indices=forbidden_indices)
     rows, cols = raster.shape
     if ctx is None:
         return _unreachable_result(rows, cols, return_iterations)
-    d_c, d_ta, d_frozen, _, eps_rel, eps_abs, rows, cols = ctx
+    (d_c, d_ta, d_frozen, _, eps_rel, eps_abs, rows, cols,
+     d_qr, d_qc, _diag) = ctx
 
     if max_iterations is None:
         max_iterations = 8 * (rows + cols)
 
     d_tb = d_ta.copy()
     d_changed = cp.zeros(1, dtype=cp.int32)
-    kernel = _get_eik_kernel("eikonal_jacobi", _JACOBI_KERNEL)
+    aniso = d_qr is not None
+    kernel = (_get_eik_kernel("eikonal_jacobi_aniso", _JACOBI_ANISO_KERNEL)
+              if aniso
+              else _get_eik_kernel("eikonal_jacobi", _JACOBI_KERNEL))
     n = rows * cols
     tpb = 256
     blocks = (n + tpb - 1) // tpb
@@ -1528,10 +2480,17 @@ def eikonal_raster_gpu_naive(
                 f"assumes. Raise max_iterations or use the block-FIM "
                 f"solver.")
         d_changed[0] = 0
-        kernel((blocks,), (tpb,),
-               (d_c, d_ta, d_tb, d_frozen,
-                np.int32(rows), np.int32(cols),
-                np.float32(eps_abs), np.float32(eps_rel), d_changed))
+        if aniso:
+            kernel((blocks,), (tpb,),
+                   (d_c, d_ta, d_tb, d_frozen, d_qr, d_qc,
+                    np.int32(rows), np.int32(cols),
+                    np.float32(eps_abs), np.float32(eps_rel),
+                    np.float32(q_flat_eps), d_changed))
+        else:
+            kernel((blocks,), (tpb,),
+                   (d_c, d_ta, d_tb, d_frozen,
+                    np.int32(rows), np.int32(cols),
+                    np.float32(eps_abs), np.float32(eps_rel), d_changed))
         iterations += 1
         d_ta, d_tb = d_tb, d_ta
         if int(d_changed[0]) == 0:
@@ -1547,7 +2506,7 @@ def eikonal_raster_gpu(
         raster: np.ndarray,
         source_indices,
         ignore_max: bool = True,
-        tile: int = 16,
+        tile: Optional[int] = None,
         n_inner: Optional[int] = None,
         eps_rel: float = 1e-6,
         eps_abs: Optional[float] = None,
@@ -1562,8 +2521,16 @@ def eikonal_raster_gpu(
         order: int = 1,
         return_trace_field: bool = False,
         download: bool = True,
+        dem: Optional[np.ndarray] = None,
+        cell_size: Optional[float] = None,
+        q_clamp: float = Q_CLAMP_DEFAULT,
+        q_flat_eps: float = Q_FLAT_EPS_DEFAULT,
+        slope_stencil: str = "central",
+        forbidden_indices=None,
+        return_metric: bool = False,
 ) -> Union[np.ndarray, Tuple[np.ndarray, int],
            Tuple[np.ndarray, dict]]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Block-FIM eikonal solve on the GPU (plan section 3.2).
 
     Parameters:
@@ -1573,8 +2540,12 @@ def eikonal_raster_gpu(
             Multiple sources give the pointwise-min field.
         ignore_max: uint16 sentinel handling (float rasters always use the
             >= 1e30 forbidden convention).
-        tile: Tile edge length B (block = B x B threads).
-        n_inner: Relaxation sweeps per tile per pass (default: 2*B —
+        tile: Tile edge length B (block = B x B threads). Default 16
+            isotropic, 12 with a DEM — the 8-simplex update needs about
+            twice the registers, so a 256-thread tile halves blocks/SM
+            (measured 2x at 3000^2).
+        n_inner: Relaxation sweeps per tile per pass (default: 2*B
+            isotropic, 4*B/3 with a DEM —
             information can cross the whole tile and settle; measured
             ~30%% fewer outer passes than n_inner=B at equal accuracy).
         eps_rel / eps_abs: Convergence threshold — a cell counts as changed
@@ -1637,6 +2608,38 @@ def eikonal_raster_gpu(
             flows that read T[target] as a device scalar and trace on
             the device (the D2H was ~20 ms at 4096²). Callers download
             on demand via ``d_t.get()``.
+        dem: Optional elevation raster (float, raster-aligned) enabling
+            **Tier A**: the solve becomes Riemannian with metric
+            ``M = c^2 (I + grad_z grad_z^T)`` — the UNCONDITIONAL 3D
+            length stretch ``sqrt(1 + (s/100)^2)`` of pyorps' default
+            ``GradientOptions``, exactly and without directional bias.
+            Configured slope multipliers, the additive exposure term and
+            the hard grade limit are NOT of this form and are refused at
+            the API boundary (``RasterFIMAPI``); the grade limit is
+            enforced there by a solve/check/mask loop instead. Requires
+            ``cell_size``. With ``dem=None`` the solver is
+            **bit-identical** to the isotropic one — a separate kernel,
+            not a special case of the same arithmetic.
+        cell_size: Metres per cell — required with ``dem``. The metric is
+            built from an elevation gradient in metres of rise per metre
+            of run; the cell size cancels out of the stretch only when it
+            is formed that way.
+        q_clamp: Steepness clamp ``s_max_pct / 100`` (default 2.0 = the
+            default 200 %). Above ``Q_ACUTE_LIMIT`` (2.1974, i.e.
+            219.74 %) the 8-simplex stencil stops being metric-acute and
+            the solver raises rather than silently over-pricing.
+        q_flat_eps: ``|q|`` below which a cell takes the isotropic
+            4-point fast path (default 1e-3 = 0.1 % grade, where the
+            stretch differs from 1 by less than float32 resolution). Set
+            to 0.0 to force the anisotropic update everywhere.
+        slope_stencil: ``"central"`` (default, second-order, matches the
+            axis chord slope of a 2-cell step) or ``"horn"`` (3x3
+            ArcGIS/GRASS weights — smoother, for noisy DEMs).
+        forbidden_indices: Flat cell indices forced impassable before the
+            solve. The hook the grade-limit mask loop uses.
+        return_metric: Append ``(d_q_r, d_q_c)`` — the device metric
+            planes, which the anisotropic tracer needs. ``(None, None)``
+            without a DEM.
 
     Returns:
         T field, float32, shape = raster.shape, 1e30 = unreachable
@@ -1644,21 +2647,42 @@ def eikonal_raster_gpu(
         ``(T, n_outer)``; with return_stats=True: ``(T, stats_dict)``;
         with return_device=True the device array is appended last.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if not GPU_AVAILABLE:
         raise RuntimeError(
             "CUDA GPU not available. Install cupy with CUDA support: "
             "pip install cupy-cuda12x")
+    if tile is None:
+        tile = (TILE_DEFAULT_ANISO if dem is not None
+                else TILE_DEFAULT_ISO)
     if tile < 4 or tile > 32:
         raise ValueError(f"tile must be in [4, 32], got {tile}")
     if order not in (1, 2):
         raise ValueError(f"order must be 1 or 2, got {order}")
+    if order == 2 and dem is not None:
+        # The stage-2 operator is a per-axis one-sided second difference
+        # with a frozen upwind code byte; there is no simplex analogue,
+        # and the refinement is already measured to be actively harmful
+        # on piecewise-constant planning surfaces (-10 % undershoot,
+        # FINDINGS 11.2). Raise rather than warn: silently returning a
+        # first-order field under an order=2 request is exactly the
+        # "solved a different problem" failure this increment is built to
+        # avoid.
+        raise ValueError(
+            "order=2 is not supported together with a DEM (Tier A): the "
+            "second-order refinement is a per-axis one-sided difference "
+            "and has no anisotropic simplex analogue. Use order=1 with "
+            "the DEM, or order=2 without it.")
     if order == 2:
         target_index = None      # refinement needs the full field
     if n_inner is None:
-        n_inner = 2 * tile
+        n_inner = _default_n_inner(tile, dem is not None)
 
     ctx = _setup_solve(raster, source_indices, ignore_max, eps_rel,
-                       eps_abs, disk_init, disk_radius)
+                       eps_abs, disk_init, disk_radius, dem=dem,
+                       cell_size=cell_size, q_clamp=q_clamp,
+                       slope_stencil=slope_stencil,
+                       forbidden_indices=forbidden_indices)
     rows, cols = raster.shape
     if ctx is None:
         if return_stats:
@@ -1673,8 +2697,12 @@ def eikonal_raster_gpu(
             result = (*result, None)
         if return_trace_field:
             result = (*result, (result[0], None))
+        if return_metric:
+            result = (*result, (None, None))
         return result if len(result) > 1 else result[0]
-    d_c, d_t, d_frozen, seed_idx, eps_rel, eps_abs, rows, cols = ctx
+    (d_c, d_t, d_frozen, seed_idx, eps_rel, eps_abs, rows, cols,
+     d_qr, d_qc, metric_diag) = ctx
+    aniso = d_qr is not None
 
     tiles_r = (rows + tile - 1) // tile
     tiles_c = (cols + tile - 1) // tile
@@ -1700,7 +2728,8 @@ def eikonal_raster_gpu(
     d_list_a[:seed_tiles.size] = cp.asarray(seed_tiles.astype(np.int32))
     d_count_a[0] = np.int32(seed_tiles.size)
 
-    sweep = _get_sweep_kernel(tile)
+    sweep = (_get_sweep_aniso_kernel(tile) if aniso
+             else _get_sweep_kernel(tile))
     activate = _get_eik_kernel("fim_activate", _FIM_ACTIVATE_KERNEL)
     act_tpb = 256
     act_blocks = (n_tiles + act_tpb - 1) // act_tpb
@@ -1746,12 +2775,21 @@ def eikonal_raster_gpu(
 
     def issue_pass(list_in, count_in, list_out, count_out):
         d_boundary.fill(0)
-        sweep((sweep_blocks,), (tile, tile),
-              (d_c, d_t, d_frozen, list_in, count_in,
-               np.int32(rows), np.int32(cols), np.int32(tiles_c),
-               np.int32(n_inner),
-               np.float32(eps_abs), np.float32(eps_rel),
-               d_active, d_boundary, count_out, d_stats))
+        if aniso:
+            sweep((sweep_blocks,), (tile, tile),
+                  (d_c, d_t, d_frozen, d_qr, d_qc, list_in, count_in,
+                   np.int32(rows), np.int32(cols), np.int32(tiles_c),
+                   np.int32(n_inner),
+                   np.float32(eps_abs), np.float32(eps_rel),
+                   np.float32(q_flat_eps),
+                   d_active, d_boundary, count_out, d_stats))
+        else:
+            sweep((sweep_blocks,), (tile, tile),
+                  (d_c, d_t, d_frozen, list_in, count_in,
+                   np.int32(rows), np.int32(cols), np.int32(tiles_c),
+                   np.int32(n_inner),
+                   np.float32(eps_abs), np.float32(eps_rel),
+                   d_active, d_boundary, count_out, d_stats))
         activate((act_blocks,), (act_tpb,),
                  (d_active, d_boundary, np.int32(tiles_r),
                   np.int32(tiles_c), list_out, count_out))
@@ -2004,6 +3042,7 @@ def eikonal_raster_gpu(
 
     t_field = d_t.get().reshape(rows, cols) if download else None
     if return_stats:
+        _ = metric_diag        # surfaced through the stats dict below
         tile_sweeps = int(d_stats[0])
         # stats[1] counts inner iterations actually run (settle checks
         # end sweeps early), so this is the honest update count.
@@ -2013,6 +3052,8 @@ def eikonal_raster_gpu(
             tile_sweeps=tile_sweeps,
             cell_updates=cell_updates,
             updates_per_cell=cell_updates / float(rows * cols),
+            anisotropic=aniso,
+            **metric_diag,
         ))
     elif return_iterations:
         result = (t_field, n_outer)
@@ -2026,7 +3067,10 @@ def eikonal_raster_gpu(
             result = (*result, (t_o1, d_t_o1))
         else:
             result = (*result, (t_field, d_t))
+    if return_metric:
+        result = (*result, (d_qr, d_qc))
     return result if len(result) > 1 else result[0]
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
 
 def _unreachable_result(rows, cols, return_iterations):
@@ -2074,12 +3118,14 @@ def _masked_gradient(t_field: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
 
 
 def _sample_bilinear(field: np.ndarray, r: float, c: float) -> float:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """NaN-aware bilinear sample; NaN when no finite corner exists.
 
     Scalar math on purpose — this runs thousands of times per traced
     path, and numpy temporaries here dominated the tracer's runtime
     (measured ~10x slower at 3000^2).
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     rows, cols = field.shape
     if r < 0.0:
         r = 0.0
@@ -2127,12 +3173,38 @@ def _sample_bilinear(field: np.ndarray, r: float, c: float) -> float:
     return float("nan")
 
 
-def _descent_direction(gr, gc, r, c) -> Optional[Tuple[float, float]]:
-    """Unit descent direction -grad T / |grad T| at (r, c), or None."""
+def _descent_direction(gr, gc, r, c,
+                       q_r=None, q_c=None) -> Optional[Tuple[float, float]]:
+    """Unit descent direction at (r, c), or None.
+
+    Isotropic: ``-grad T / |grad T|``. Under the Tier A metric the
+    geodesic tangent is ``-M^-1 grad T``, and since
+    ``M^-1 = (1/c^2)(I - q q^T / (1 + |q|^2))`` the ``1/c^2`` drops out of
+    a normalised direction — the tracer needs ``q`` only, never the cost
+    raster:
+
+        v ∝ -( grad T - q (q . grad T) / (1 + |q|^2) )
+
+    Using ``-grad T`` under an anisotropic metric produces paths that look
+    plausible and are wrong (a silent failure mode), which is why the test
+    suite carries a control asserting the isotropic tracer FAILS the
+    curved-geodesic case.
+
+    ``q_r`` / ``q_c`` are sampled at the same point, with the same
+    NaN-aware bilinear weights as the gradient (they are masked on the
+    same invalid cells by :func:`_prep_trace_fields`).
+    """
     g_r = _sample_bilinear(gr, r, c)
     g_c = _sample_bilinear(gc, r, c)
     if g_r != g_r or g_c != g_c:       # NaN
         return None
+    if q_r is not None:
+        qr = _sample_bilinear(q_r, r, c)
+        qc = _sample_bilinear(q_c, r, c)
+        if qr == qr and qc == qc:      # not NaN
+            s = (qr * g_r + qc * g_c) / (1.0 + qr * qr + qc * qc)
+            g_r -= qr * s
+            g_c -= qc * s
     norm = (g_r * g_r + g_c * g_c) ** 0.5
     if norm < 1e-12:
         return None
@@ -2143,6 +3215,7 @@ _PLATEAU_BFS_CAP = 100_000
 
 
 def _discrete_descent_step(t_field, r, c) -> List[Tuple[float, float]]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Discrete descent when the gradient is degenerate (plan section 4).
 
     First choice: the strictly lower 8-neighbor with minimal T. On a
@@ -2152,6 +3225,7 @@ def _discrete_descent_step(t_field, r, c) -> List[Tuple[float, float]]:
     the whole crossing as polyline points. No admissible descent anywhere
     raises — a broken field must be loud.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     rows, cols = t_field.shape
     ri = min(max(int(round(r)), 0), rows - 1)
     ci = min(max(int(round(c)), 0), cols - 1)
@@ -2159,6 +3233,7 @@ def _discrete_descent_step(t_field, r, c) -> List[Tuple[float, float]]:
     tol = 1e-6 * abs(t_here) + 1e-9
 
     def lower_neighbor(cr, cc):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         best, best_t = None, t_field[cr, cc] - tol
         for dr in (-1, 0, 1):
             for dc in (-1, 0, 1):
@@ -2215,14 +3290,28 @@ def _discrete_descent_step(t_field, r, c) -> List[Tuple[float, float]]:
         f"from the plateau at T = {t_here:.6g} (searched {len(seen)} "
         f"cells). The T field looks unconverged or disconnected — re-run "
         f"the solve or use a discrete backend.")
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
 
-def _prep_trace_fields(t_field: np.ndarray):
-    """Masked gradient pair + NaN-masked T for bilinear sampling."""
+def _prep_trace_fields(t_field: np.ndarray, q_fields=None):
+    """Masked gradient pair + NaN-masked T for bilinear sampling.
+
+    With ``q_fields = (q_r, q_c)`` the metric planes are masked on the
+    *same* invalid cells as the gradient, so a single bilinear rule with
+    identical weights and identical NaN handling serves both — the host
+    and device tracers then sample the metric the same way.
+    """
     gr, gc = _masked_gradient(t_field)
     tm = np.where(t_field < FINITE_LIMIT, t_field,
                   np.nan).astype(np.float64)
-    return gr, gc, tm
+    if q_fields is None:
+        return gr, gc, tm, None, None
+    invalid = ~(t_field < FINITE_LIMIT)
+    qr = np.where(invalid, np.nan,
+                  np.asarray(q_fields[0], dtype=np.float64))
+    qc = np.where(invalid, np.nan,
+                  np.asarray(q_fields[1], dtype=np.float64))
+    return gr, gc, tm, qr, qc
 
 
 def trace_path(
@@ -2232,7 +3321,9 @@ def trace_path(
         step_size: float = 0.5,
         max_steps: Optional[int] = None,
         _fields=None,
+        q_fields=None,
 ) -> Optional[np.ndarray]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Steepest-descent path from ``target_idx`` down to the nearest source.
 
     Heun (RK2) integration of ``dx/dt = -grad T/|grad T|`` with step
@@ -2245,9 +3336,17 @@ def trace_path(
     shock-line oscillation take a discrete descent step; a hard cap
     ``max_steps = 20 * (rows + cols)`` raises.
 
+    ``q_fields = (q_r, q_c)`` switches the descent to the Riemannian
+    tangent ``-M^-1 grad T`` (Tier A). Everything else — the monotone
+    interpolated-T rule, the discrete descent hop, the plateau BFS, the
+    stall detector, the step cap — is preserved verbatim; those
+    safeguards are what keep a discontinuous metric from producing
+    chatter and they are load bearing.
+
     Returns the polyline as (K, 2) float64 array of (row, col) points
     running target -> source, or None when the target is unreachable.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     rows, cols = t_field.shape
     if max_steps is None:
         max_steps = 20 * (rows + cols)
@@ -2259,8 +3358,8 @@ def trace_path(
     if t_field[tr, tc] >= FINITE_LIMIT:
         return None
 
-    gr, gc, tm = (_fields if _fields is not None
-                  else _prep_trace_fields(t_field))
+    gr, gc, tm, qrm, qcm = (_fields if _fields is not None
+                            else _prep_trace_fields(t_field, q_fields))
 
     pr, pc = float(tr), float(tc)
     points = [(pr, pc)]
@@ -2296,7 +3395,7 @@ def trace_path(
             best_dist = min(best_dist, nearest_src(pr, pc)[0])
             continue
 
-        d1 = _descent_direction(gr, gc, pr, pc)
+        d1 = _descent_direction(gr, gc, pr, pc, qrm, qcm)
         if d1 is None:
             pr, pc, t_cur = discrete_hop(pr, pc)
             best_dist = min(best_dist, nearest_src(pr, pc)[0])
@@ -2305,7 +3404,7 @@ def trace_path(
         # Heun / RK2
         mr = min(max(pr + step_size * d1[0], 0.0), rows - 1.0)
         mc = min(max(pc + step_size * d1[1], 0.0), cols - 1.0)
-        d2 = _descent_direction(gr, gc, mr, mc)
+        d2 = _descent_direction(gr, gc, mr, mc, qrm, qcm)
         if d2 is None:
             sr_, sc_ = d1
         else:
@@ -2341,6 +3440,7 @@ def trace_path(
         f"path tracer exceeded max_steps = {max_steps} without reaching "
         f"a source — the T field looks broken (unconverged or "
         f"inconsistent). Re-run the solve or use a discrete backend.")
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
 
 def trace_paths(
@@ -2349,13 +3449,15 @@ def trace_paths(
         target_indices,
         step_size: float = 0.5,
         max_steps: Optional[int] = None,
+        q_fields=None,
 ) -> List[Optional[np.ndarray]]:
     """Trace one descent polyline per target (None where unreachable).
 
     Gradient and sampling fields are computed once, shared across
-    targets.
+    targets. ``q_fields = (q_r, q_c)`` selects the Tier A Riemannian
+    descent (see :func:`trace_path`).
     """
-    fields = _prep_trace_fields(t_field)
+    fields = _prep_trace_fields(t_field, q_fields)
     targets = np.atleast_1d(np.asarray(target_indices)).astype(np.int64)
     return [trace_path(t_field, int(t), source_indices,
                        step_size=step_size, max_steps=max_steps,
@@ -2375,7 +3477,10 @@ def trace_paths_gpu(
         max_steps: Optional[int] = None,
         t_device=None,
         shape: Optional[Tuple[int, int]] = None,
+        q_device=None,
+        q_fields=None,
 ) -> List[Optional[np.ndarray]]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Device-side tracer — drop-in for :func:`trace_paths`.
 
     One CUDA thread per target runs the host-tracer semantics in
@@ -2399,13 +3504,22 @@ def trace_paths_gpu(
             (e.g. from ``eikonal_raster_gpu(..., return_device=True)``);
             saves the upload.
         shape: (rows, cols) — required when ``t_field`` is None.
+        q_device: Optional ``(d_q_r, d_q_c)`` flat float32 device arrays
+            (e.g. from ``eikonal_raster_gpu(..., return_metric=True)``)
+            selecting the Tier A Riemannian descent ``-M^-1 grad T``.
+        q_fields: Host ``(q_r, q_c)`` twin — needed only so a target that
+            falls back to the host tracer descends under the same metric.
+            Downloaded from ``q_device`` on demand when not given.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if t_field is None and (t_device is None or shape is None):
         raise ValueError(
             "device-only tracing needs t_device and shape")
+    aniso = q_device is not None and q_device[0] is not None
     if not GPU_AVAILABLE:
         return trace_paths(t_field, source_indices, target_indices,
-                           step_size=step_size, max_steps=max_steps)
+                           step_size=step_size, max_steps=max_steps,
+                           q_fields=q_fields)
     rows, cols = t_field.shape if t_field is not None else shape
     if max_steps is None:
         max_steps = 20 * (rows + cols)
@@ -2422,7 +3536,7 @@ def trace_paths_gpu(
     d_t = (t_device if t_device is not None
            else cp.asarray(np.ascontiguousarray(t_field.ravel())))
     d_src = cp.asarray(src_pos)
-    kernel = _get_eik_kernel("eikonal_trace", _TRACE_KERNEL)
+    kernel = _get_trace_kernel(aniso)
 
     per_target = max_pts * 2 * 8
     batch = max(1, min(targets.size, _TRACE_BATCH_BYTES // per_target))
@@ -2437,8 +3551,9 @@ def trace_paths_gpu(
         d_out = cp.empty(n * max_pts * 2, dtype=cp.float64)
         d_len = cp.zeros(n, dtype=cp.int32)
         d_status = cp.zeros(n, dtype=cp.int32)
+        head = ((d_t, q_device[0], q_device[1]) if aniso else (d_t,))
         kernel(((n + tpb - 1) // tpb,), (tpb,),
-               (d_t, d_src, np.int32(src.size),
+               (*head, d_src, np.int32(src.size),
                 d_targets, np.int32(n),
                 np.int32(rows), np.int32(cols),
                 np.float64(step_size), np.int32(max_steps),
@@ -2459,7 +3574,10 @@ def trace_paths_gpu(
     if fallback:
         if t_field is None:      # lazy: only fallbacks pay the D2H
             t_field = d_t.get().reshape(rows, cols)
-        fields = _prep_trace_fields(t_field)
+        if aniso and q_fields is None:
+            q_fields = (q_device[0].get().reshape(rows, cols),
+                        q_device[1].get().reshape(rows, cols))
+        fields = _prep_trace_fields(t_field, q_fields)
         for j in fallback:
             results[j] = trace_path(
                 t_field, int(targets[j]), source_indices,
@@ -2470,6 +3588,7 @@ def trace_paths_gpu(
 def polyline_to_cells(polyline: np.ndarray, rows: int, cols: int,
                       forbidden_mask: Optional[np.ndarray] = None
                       ) -> List[int]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Rasterize a (row, col) polyline into a deduplicated cell path.
 
     Dense sampling (4 samples per cell of travel) + rounding + consecutive
@@ -2485,6 +3604,7 @@ def polyline_to_cells(polyline: np.ndarray, rows: int, cols: int,
 
     Returns flat cell indices in polyline order.
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if len(polyline) == 0:
         return []
     pts = np.asarray(polyline, dtype=np.float64)

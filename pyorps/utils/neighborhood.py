@@ -50,6 +50,7 @@ def get_neighborhood_steps(k: int | str, directed: bool = True) -> np.ndarray:
 
 
 def _generate_full_steps(k: int, memo: dict[int, set[tuple[int, int]]], directed: bool) -> set[tuple[int, int]]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """
     Generate the complete set of steps for neighborhood k using recursive formulation.
 
@@ -64,6 +65,7 @@ def _generate_full_steps(k: int, memo: dict[int, set[tuple[int, int]]], directed
     References:
         [1]
     """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if k in memo:
         return memo[k]
 

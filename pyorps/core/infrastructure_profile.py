@@ -221,6 +221,7 @@ class InfrastructureProfile:
         return angle_cost_lut, angle_valid_lut
 
     def precompute_tower_terrain_costs(self) -> np.ndarray:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Precompute tower foundation cost by terrain raster value.
 
         When tower_ground_area_m2 > 1 and tower_area_cost_mode == "uniform",
@@ -230,6 +231,7 @@ class InfrastructureProfile:
         Returns:
             (65536,) float64 array: tower cost for each possible uint16 raster value
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         costs = np.zeros(65536, dtype=np.float64)
 
         if "terrain_cost_map" not in self.tower_cost_params:

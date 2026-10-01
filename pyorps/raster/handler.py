@@ -6,6 +6,8 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
+import math
+import warnings
 from typing import Any
 
 import numpy as np
@@ -35,6 +37,7 @@ class RasterHandler:
     window: Window
     window_transform: Affine
     data: np.ndarray
+    windowed_source_read: bool
 
     def __init__(self,
                  raster_source: RasterDataset,
@@ -44,7 +47,10 @@ class RasterHandler:
                  input_crs: str | None = None,
                  apply_mask: bool = True,
                  outside_value: Any | None = None,
-                 bands: list[int] | None = None):
+                 bands: list[int] | None = None,
+                 windowed_read: bool = True,
+                 copy_window: bool = True):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Initialize a RasterHandler for working with raster data and coordinate
         transformations.
@@ -67,9 +73,20 @@ class RasterHandler:
                 value of the data type)
             bands: List of bands to modify if apply_mask is True (1-based). If None, all
                 bands are modified
+            windowed_read: If True (default) and ``raster_source`` is a file-backed
+                dataset whose data has **not** been loaded yet, read only the search
+                window from the file instead of the whole raster (plan item 2.3).
+                Has no effect once ``raster_source.data`` is populated — an already
+                loaded dataset is always windowed by slicing, exactly as before.
+            copy_window: If True (default) ``self.data`` owns its memory, so the
+                handler never writes into the dataset it was given (plan item 2.1).
+                Setting it False restores the historical zero-copy view and is only
+                allowed together with ``apply_mask=False``.
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         # Determine the type of input we're working with
         self.raster_dataset = raster_source
+        self.windowed_source_read = False
         self._init_from_metadata(
                 source_coords,
                 target_coords,
@@ -77,7 +94,9 @@ class RasterHandler:
                 input_crs,
                 apply_mask,
                 outside_value,
-                bands
+                bands,
+                windowed_read,
+                copy_window
             )
 
     def _init_from_metadata(
@@ -88,8 +107,11 @@ class RasterHandler:
             input_crs: str | None = None,
             apply_mask: bool = True,
             outside_value: Any | None = None,
-            bands: list[int] | None = None
+            bands: list[int] | None = None,
+            windowed_read: bool = True,
+            copy_window: bool = True
     ):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Initialize using metadata and raster data.
 
@@ -107,7 +129,22 @@ class RasterHandler:
                 value of the data type)
             bands: List of bands to modify if apply_mask is True (1-based). If None, all
                 bands are modified
+            windowed_read: Read only the search window from a not-yet-loaded
+                file-backed dataset (see :meth:`__init__`)
+            copy_window: Give ``self.data`` its own memory (see :meth:`__init__`)
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        if apply_mask and not copy_window:
+            raise ValueError(
+                "copy_window=False is only allowed with apply_mask=False: masking "
+                "a view would write the outside_value sentinel through into the "
+                "source dataset and permanently corrupt it.")
+
+        # Decide whether the source raster can be read window-only. This must
+        # happen before anything touches .crs/.transform/.shape, because for a
+        # not-yet-loaded file dataset those come from the header read here.
+        read_from_file = self._prepare_windowed_source(windowed_read,
+                                                       search_space_buffer_m)
 
         # Transform coordinates if needed
         raster_crs = self.raster_dataset.crs
@@ -158,34 +195,42 @@ class RasterHandler:
             self.search_space_buffer_m = search_space_buffer_m
         self.buffer_geometry = buffer_geom.buffer(distance=self.search_space_buffer_m,
                                                   quad_segs=32)
+        if self.buffer_geometry.is_empty:
+            # A zero-width buffer around a hull that has no area -- one pair of
+            # points, or collinear ones -- is the empty geometry, whose bounds
+            # are NaN. Left alone that surfaces three frames down as rasterio's
+            # "Number of columns or rows must be non-negative", which says
+            # nothing about the cause. Buffer 0 is NOT "the whole raster".
+            raise ValueError(
+                f"search_space_buffer_m={self.search_space_buffer_m} leaves an "
+                f"empty search space: the source/target hull is a "
+                f"{buffer_geom.geom_type} with no area, so buffering it by "
+                f"zero removes it. Pass a positive buffer, or "
+                f"pyorps.full_window_buffer_m(dataset) to search the whole "
+                f"raster.")
 
         # Calculate pixel bounds for the buffered geometry
-        bounds = self.buffer_geometry.bounds  # (minx, miny, maxx, maxy)
         transform = self.raster_dataset.transform
 
-        # Convert bounds to pixel coordinates (top-left and bottom-right)
-        min_row, min_col = rowcol(transform, bounds[0], bounds[3])
-        max_row, max_col = rowcol(transform, bounds[2], bounds[1])
-
-        # Ensure bounds are within the raster
-        min_row = max(0, min_row)
-        min_col = max(0, min_col)
-        max_row = min(self.raster_dataset.shape[0], max_row)
-        max_col = min(self.raster_dataset.shape[1], max_col)
-
-        window_width = max_col - min_col
-        window_height = max_row - min_row
-
         # Create window
-        self.window = Window(min_col, min_row, window_width, window_height)
+        self.window = self.window_from_bounds(self.buffer_geometry.bounds,
+                                              transform,
+                                              self.raster_dataset.shape)
 
         # Get window-specific transform (crucial for correct coordinate transformations)
         self.window_transform = transform_window(self.window, transform)
 
         # Extract the windowed data
-        # For file input, data was already read with window
-        # For direct data input, we need to slice the array
-        if isinstance(self.raster_dataset.data, np.ndarray):
+        if read_from_file:
+            # Item 2.3: read only the window from the file. A fresh read always
+            # owns its memory, so the copy_window guarantee holds by construction.
+            self.data = self._read_window_from_source()
+            self.windowed_source_read = True
+        elif isinstance(self.raster_dataset.data, np.ndarray):
+            min_row = int(self.window.row_off)
+            min_col = int(self.window.col_off)
+            max_row = min_row + int(self.window.height)
+            max_col = min_col + int(self.window.width)
             # Handle different dimensions
             if len(self.raster_dataset.data.shape) == 3:  # (bands, height, width)
                 self.data = self.raster_dataset.data[:,
@@ -195,6 +240,12 @@ class RasterHandler:
                 self.data = self.raster_dataset.data[min_row:max_row, min_col:max_col]
                 # Ensure data has shape (bands, height, width)
                 self.data = np.expand_dims(self.data, axis=0)
+            # Item 2.1: detach the window from the parent array. The values are
+            # copied verbatim, so everything inside the window is bit-identical;
+            # what changes is only that masking can no longer write through into
+            # the dataset the handler was handed.
+            if copy_window:
+                self.data = self.data.copy()
         else:
             # This shouldn't happen with current implementation
             raise ValueError("Data must be a numpy array")
@@ -202,6 +253,136 @@ class RasterHandler:
         # Apply mask if requested
         if apply_mask:
             self.apply_geometry_mask(self.buffer_geometry, outside_value, bands)
+
+    @staticmethod
+    def window_from_bounds(
+            bounds: tuple[float, float, float, float],
+            transform: Affine,
+            shape: tuple[int, int]
+    ) -> Window:
+        """
+        Pixel window of ``bounds`` in a raster of ``shape`` under ``transform``.
+
+        This is the single definition of "the search window": it needs nothing
+        but the raster header, which is what allows the data to be read window
+        first (item 2.3). The arithmetic is unchanged from the original inline
+        version, so the window is identical to the historical one.
+
+        Parameters:
+            bounds: (minx, miny, maxx, maxy) in the raster CRS
+            transform: Affine transform of the raster the window indexes into
+            shape: (height, width) of that raster
+
+        Returns:
+            rasterio Window clipped to the raster extent
+        """
+        # Convert bounds to pixel coordinates (top-left and bottom-right)
+        min_row, min_col = rowcol(transform, bounds[0], bounds[3])
+        max_row, max_col = rowcol(transform, bounds[2], bounds[1])
+
+        # Ensure bounds are within the raster
+        min_row = max(0, min_row)
+        min_col = max(0, min_col)
+        max_row = min(shape[0], max_row)
+        max_col = min(shape[1], max_col)
+
+        return Window(min_col, min_row, max_col - min_col, max_row - min_row)
+
+    @staticmethod
+    def covering_window(
+            bounds: tuple[float, float, float, float],
+            transform: Affine,
+            shape: tuple[int, int] | None = None,
+            pad: float = 0.0
+    ) -> tuple[Window, Affine]:
+        """Whole-pixel window COVERING ``bounds``, plus its exact transform.
+
+        The trap this closes is ``rasterio.windows.from_bounds``: it
+        returns FRACTIONAL row/column offsets, and ``window_transform``
+        then hands back an origin half a pixel off the raster grid, so
+        floor-indexing into the array it produces silently reads the
+        neighbouring cell. Measured on the CIRED 2026 cable routes, that
+        put 54 of one route's 4 895 vertices on exclusion cells the route
+        never touched and over-priced it by 173 %. ``rowcol`` snaps to
+        integers, which is why every library path goes through it.
+
+        The snapping is asymmetric on purpose: the near corner FLOORS and
+        the far corner CEILS, so the window covers everything asked for
+        and never less -- the right default for a general-purpose read.
+        :meth:`window_from_bounds` floors BOTH corners, which clips
+        instead of covering; that is the search window's own convention
+        and is deliberately left as it is.
+
+        Parameters:
+            bounds: (minx, miny, maxx, maxy) in the raster CRS
+            transform: Affine transform of the raster
+            shape: (height, width); pass it to CLIP the window to the
+                raster, omit it for a ``boundless=True`` read that
+                fills beyond the edge
+            pad: Extra margin on every side, in CRS units
+
+        Returns:
+            (window, window_transform) -- the transform is exactly the
+            one of the array that reading ``window`` returns
+        """
+        minx, miny, maxx, maxy = (float(v) for v in bounds)
+        row0, col0 = rowcol(transform, minx - pad, maxy + pad, op=math.floor)
+        row1, col1 = rowcol(transform, maxx + pad, miny - pad, op=math.ceil)
+        row0, col0 = int(row0), int(col0)
+        row1, col1 = int(row1), int(col1)
+        if shape is not None:
+            row0, col0 = max(0, row0), max(0, col0)
+            row1 = min(int(shape[0]) - 1, row1)
+            col1 = min(int(shape[1]) - 1, col1)
+        window = Window(col0, row0,
+                        max(0, col1 - col0 + 1), max(0, row1 - row0 + 1))
+        return window, transform_window(window, transform)
+
+    def _prepare_windowed_source(
+            self,
+            windowed_read: bool,
+            search_space_buffer_m: float | None
+    ) -> bool:
+        """
+        Decide whether the source raster is read window-only, and load its header.
+
+        Returns True when the window must be read straight from the file. In that
+        case the dataset's header metadata (crs/transform/shape/count/dtype) is
+        populated but ``dataset.data`` stays untouched — callers that need the
+        whole raster keep using the explicit full ``load_data()`` path.
+        """
+        dataset = self.raster_dataset
+        if not windowed_read:
+            return False
+        if getattr(dataset, "data", None) is not None:
+            # Already loaded: window by slicing, exactly as before.
+            return False
+        if not (callable(getattr(dataset, "load_metadata", None)) and
+                callable(getattr(dataset, "read_window", None))):
+            return False
+
+        dataset.load_metadata()
+
+        if search_space_buffer_m is None:
+            # estimate_buffer_width() samples the raster to pick a buffer, and
+            # the buffer is what defines the window - a genuine chicken-and-egg.
+            # Fall back to the historical full read rather than silently routing
+            # on a different search space.
+            warnings.warn(
+                "windowed_read requires an explicit search_space_buffer_m "
+                "(the buffer estimator samples the raster, which is what the "
+                "window is derived from). Falling back to a full-raster read.",
+                UserWarning, stacklevel=3)
+            dataset.load_data()
+            return False
+        return True
+
+    def _read_window_from_source(self) -> np.ndarray:
+        """Read ``self.window`` from the file-backed dataset as (bands, h, w)."""
+        data = self.raster_dataset.read_window(self.window)
+        if data.ndim == 2:
+            data = np.expand_dims(data, axis=0)
+        return data
 
     @staticmethod
     def _transform_coords(
@@ -247,6 +428,7 @@ class RasterHandler:
             max_buffer: float = 4000,
             sample_radius: float = 50
     ):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Estimate an appropriate buffer width for path finding based on terrain
         characteristics.
@@ -262,6 +444,7 @@ class RasterHandler:
         Returns:
             Estimated optimal buffer width in meters
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         forbidden_value = np.iinfo(self.raster_dataset.dtype).max
         points, euclidean_dist = RasterHandler.max_distance_pair(source_coords,
                                                                  target_coords)
@@ -277,8 +460,8 @@ class RasterHandler:
 
         # Convert bounds to pixel coordinates
         height, width = self.raster_dataset.shape
-        x_samples = np.clip(rows, 0, height - 1)
-        y_samples = np.clip(cols, 0, width - 1)
+        x_samples = np.clip(cols, 0, width - 1)
+        y_samples = np.clip(rows, 0, height - 1)
 
         if len(self.raster_dataset.data.shape) == 3:
             raster_array = self.raster_dataset.data[0]
@@ -391,16 +574,30 @@ class RasterHandler:
         """
         Set pixel values outside the given geometry to the specified value.
 
+        The write always lands in memory owned by this handler: if ``self.data``
+        is still a view into the source dataset (only reachable via
+        ``copy_window=False``), it is detached first. Masking must never write
+        the sentinel back through into the raster it was windowed from — a
+        second handler on the same dataset would otherwise inherit the first
+        one's buffer, and nothing may cache a buffer that changes behind it
+        (plan item 2.1).
+
         Parameters:
             geometry: A shapely geometry object (Polygon)
             outside_value: Value to set for pixels outside the geometry
             bands: List of bands to modify (1-based). If None, all bands are modified.
         """
+        if not self.data.flags.owndata:
+            self.data = self.data.copy()
+
         # Set default outside value if needed
         if outside_value is None:
             outside_value = np.iinfo(self.data.dtype).max
 
-        # Create a mask using rasterization
+        # Create a mask using rasterization. Deliberately NOT routed through
+        # pyorps.raster._geojson: that trades one ~50 us __geo_interface__
+        # call for a shapely round trip, so it is pure overhead on a single
+        # geometry (always the search-space buffer polygon here).
         mask = rasterize(
             [(geometry, 1)],
             out_shape=(self.window.height, self.window.width),

@@ -369,10 +369,20 @@ def untracked_prefix(ref, tracked):
             if any(rel.startswith(as_dir) for rel in tracked):
                 continue
         if ref.speculative and depth == len(parts):
-            if not any((PROJECT_ROOT / c).is_file() for c in candidates):
+            if not any(_is_file_exact_case(c) for c in candidates):
                 return None
         return prefix, candidates
     return None
+
+
+def _is_file_exact_case(rel):
+    """True if ``rel`` is a file whose name matches on disk letter for letter.
+
+    On Windows and macOS ``Path.is_file()`` ignores case, so ``import Design``
+    (a class) would match ``design.py`` and be reported as an untracked module.
+    """
+    path = PROJECT_ROOT / rel
+    return path.is_file() and path.name in {p.name for p in path.parent.iterdir()}
 
 
 def tracked_python_sources(tracked, roots=None):

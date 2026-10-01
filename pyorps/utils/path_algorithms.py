@@ -1,4 +1,6 @@
 """Backward-compatibility shim — imports from new OO modules."""
+# ruff: noqa: F401
+# pylint: disable=unused-import
 from pyorps.utils._dijkstra import (
     dijkstra_2d_cython,
     dijkstra_single_source_multiple_targets,

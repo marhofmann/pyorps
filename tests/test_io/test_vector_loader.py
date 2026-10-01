@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock
 import tempfile
 import geopandas as gpd
 import numpy as np
+import pytest
 from shapely.geometry import Point, Polygon, box
 import requests
 
@@ -23,6 +24,26 @@ from pyorps.io.vector_loader import (
 from pyorps.core.exceptions import (
     WFSError, WFSConnectionError, WFSResponseParsingError, WFSLayerNotFoundError
 )
+@pytest.fixture(autouse=True)
+def _clear_capabilities_cache():
+    """Drop the GetCapabilities LRU between tests.
+
+    ``_fetch_capabilities_xml`` is ``@functools.lru_cache``d per URL, and the
+    fixture URLs here repeat across tests. Without this, a test that patches
+    ``requests.get`` to raise (or to return malformed XML) never reaches its
+    mock — it is served a tree another test cached — so error-path tests pass
+    alone and fail in a run. Only TestCapabilitiesCaching used to clear it,
+    which is why the pollution was invisible from inside that class.
+    """
+    _fetch_capabilities_xml.cache_clear()
+    yield
+    _fetch_capabilities_xml.cache_clear()
+
+
+#: load_from_wfs forwards this to the loaders when the caller passes no crs.
+#: Pinned here so the signature change that added it is visible in one place.
+DEFAULT_SRS = "EPSG:25832"
+
 
 
 class TestVectorLoaderHelpers(unittest.TestCase):
@@ -313,10 +334,12 @@ class TestWFSFunctions(GeoTestCase):
 
         # Check that correct functions were called
         mock_resolve.assert_called_once_with("https://example.com/wfs", "layer1")
-        mock_direct.assert_called_once_with("https://example.com/wfs", "layer1", None, None)
+        mock_direct.assert_called_once_with("https://example.com/wfs", "layer1",
+                                            None, None, srs=DEFAULT_SRS)
         mock_extent.assert_called_once_with("https://example.com/wfs", "layer1")
         mock_parallel.assert_called_once_with("https://example.com/wfs", "layer1",
-                                              (0, 0, 10, 10), None, 4, None)
+                                              (0, 0, 10, 10), None, 4, None,
+                                              srs=DEFAULT_SRS)
 
         # Check result
         self.assert_gdf_equal(result, parallel_gdf)
@@ -353,7 +376,8 @@ class TestWFSFunctions(GeoTestCase):
         np.testing.assert_array_almost_equal(args[0], test_gdf.total_bounds)
 
         mock_parallel.assert_called_once_with("https://example.com/wfs", "layer1",
-                                              (-1, -1, 1, 1), None, 4, None)
+                                              (-1, -1, 1, 1), None, 4, None,
+                                              srs=DEFAULT_SRS)
 
         # Check result
         self.assert_gdf_equal(result, parallel_gdf)
@@ -399,7 +423,8 @@ class TestWFSFunctions(GeoTestCase):
 
         # Check that parallel loading was called with the mask
         mock_parallel.assert_called_once_with("https://example.com/wfs", "layer1",
-                                              (0, 0, 10, 10), None, 4, mask)
+                                              (0, 0, 10, 10), None, 4, mask,
+                                              srs=DEFAULT_SRS)
 
         # Check result
         self.assert_gdf_equal(result, parallel_gdf)
@@ -1093,7 +1118,9 @@ class TestWFSFunctions(GeoTestCase):
         # Create a patch for _fetch_wfs_data to return test data
         with patch('pyorps.io.vector_loader._fetch_wfs_data') as mock_fetch:
             # Return different data for different chunks
-            def side_effect(url, layer, bbox, filter_params=None):
+            # *args absorbs the srs argument _fetch_wfs_data gained; this
+            # stub only cares about the bbox it is handed.
+            def side_effect(url, layer, bbox, filter_params=None, *args, **kwargs):
                 # Create different points based on the bbox
                 minx, miny, maxx, maxy = bbox
                 center_x, center_y = (minx + maxx) / 2, (miny + maxy) / 2
@@ -1201,6 +1228,14 @@ class TestWFSCRSParameter(unittest.TestCase):
         self.assertEqual(kwargs.get('srs'), 'EPSG:4326')
 
 
+#: MAX_CHUNK_DEPTH is 8 in production, which makes the subdivision forest
+#: 4*sum(4**d, d=0..8) = 349 524 chunks. The guard being tested behaves
+#: identically at a smaller depth, so these tests patch it down: depth 8
+#: took ~34 s for the error path and minutes for the success path, which
+#: built a GeoDataFrame per chunk.
+_TEST_MAX_DEPTH = 3
+
+
 class TestChunkSubdivisionDepthLimit(unittest.TestCase):
     """P3.1: Verify that chunk subdivision has a depth limit and minimum area
     guard to prevent infinite recursion when a WFS server always returns
@@ -1224,6 +1259,7 @@ class TestChunkSubdivisionDepthLimit(unittest.TestCase):
         self.assertGreater(MIN_CHUNK_AREA, 0)
         self.assertEqual(MIN_CHUNK_AREA, 1e-6)
 
+    @patch('pyorps.io.vector_loader.MAX_CHUNK_DEPTH', _TEST_MAX_DEPTH)
     @patch('pyorps.io.vector_loader._fetch_wfs_data')
     def test_subdivision_stops_at_max_depth(self, mock_fetch):
         """When a mock WFS always returns exactly 1000 features, the
@@ -1265,7 +1301,10 @@ class TestChunkSubdivisionDepthLimit(unittest.TestCase):
         # for depth=8 is 4^9 = 262144. With the limit, it should be
         # significantly less. The exact count depends on dedup logic but
         # must be bounded.
-        max_possible_chunks = sum(4 ** d for d in range(MAX_CHUNK_DEPTH + 1))
+        # _load_data_in_parallel seeds a 2x2 grid, so the subdivision is a
+        # FOREST of 4 trees, not one -- hence the leading factor.
+        max_possible_chunks = 4 * sum(4 ** d
+                                      for d in range(_TEST_MAX_DEPTH + 1))
         self.assertLessEqual(call_count, max_possible_chunks)
 
     @patch('pyorps.io.vector_loader._fetch_wfs_data')
@@ -1303,8 +1342,14 @@ class TestChunkSubdivisionDepthLimit(unittest.TestCase):
 
         # With a tiny bbox, subdivision should stop early -- well before
         # the theoretical max for depth 8
-        self.assertLess(call_count, 100)
+        # Same forest factor as the depth tests: the 2x2 seed grid means
+        # four independent subdivision trees, so a per-tree budget of ~100
+        # is 400 overall. The point of the assertion is that AREA stopped
+        # the subdivision far short of the depth-8 bound (349 524), not
+        # the exact count.
+        self.assertLess(call_count, 4 * 100)
 
+    @patch('pyorps.io.vector_loader.MAX_CHUNK_DEPTH', _TEST_MAX_DEPTH)
     @patch('pyorps.io.vector_loader._fetch_wfs_data')
     def test_error_subdivision_stops_at_max_depth(self, mock_fetch):
         """When WFS requests keep failing, the error-path subdivision also
@@ -1329,7 +1374,10 @@ class TestChunkSubdivisionDepthLimit(unittest.TestCase):
         self.assertIsNone(result)
 
         # Verify the loop terminates and doesn't make excessive calls
-        max_possible_chunks = sum(4 ** d for d in range(MAX_CHUNK_DEPTH + 1))
+        # _load_data_in_parallel seeds a 2x2 grid, so the subdivision is a
+        # FOREST of 4 trees, not one -- hence the leading factor.
+        max_possible_chunks = 4 * sum(4 ** d
+                                      for d in range(_TEST_MAX_DEPTH + 1))
         self.assertLessEqual(call_count, max_possible_chunks)
 
     @patch('pyorps.io.vector_loader._fetch_wfs_data')

@@ -132,6 +132,25 @@ class TestResolutionRescue(unittest.TestCase):
         self.assertIn("corridor_b", used)
         self.assertNotIn("corridor_a", used)
 
+    def test_float_mode_on_fim(self):
+        """The eikonal backend consumes the float32 surface natively.
+
+        Outside-buffer/forbidden cells arrive as +inf and map onto the
+        solver's non-finite forbidden convention; the barrier is never
+        traversed and the truly cheaper corridor wins.
+        """
+        pytest.importorskip("cupy")
+        f_fim = make_finder("float32", graph_api="raster_fim")
+        path = f_fim.find_route()
+        used = route_landuse(f_fim, path)
+        self.assertIn("corridor_b", used)
+        self.assertNotIn("corridor_a", used)
+        self.assertNotIn("barrier", used)
+        # the authoritative continuous metric was recorded
+        api = f_fim.graph_api
+        self.assertEqual(len(api.last_field_costs), 1)
+        self.assertTrue(np.isfinite(api.last_field_costs[0]))
+
 
 class TestFloatGradient(unittest.TestCase):
     def test_float_plus_gradient_contour(self):

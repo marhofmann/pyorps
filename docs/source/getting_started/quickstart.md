@@ -1,3 +1,12 @@
+---
+title: "Quick Start"
+summary: "Route between two points on a cost raster in a few lines."
+status: stable
+since: "0.2.1"
+available_in: pypi
+module: "pyorps.graph.path_finder"
+api: []
+---
 # 🚀 Quick Start
 
 This tutorial walks through a complete routing example in six steps, from importing PYORPS to exporting the result as a GeoJSON file.
@@ -6,6 +15,7 @@ This tutorial walks through a complete routing example in six steps, from import
 This guide assumes you have PYORPS installed and its Cython extensions compiled. See {doc}`installation` if you have not set up the package yet.
 :::
 
+(quickstart-the-minimal-example)=
 ## The Minimal Example
 
 ### Step 1: Import PathFinder
@@ -92,6 +102,7 @@ Save the route to a GeoJSON file for use in GIS software (QGIS, ArcGIS, etc.):
 path_finder.save_paths("route.geojson")
 ```
 
+(quickstart-complete-script)=
 ## Complete Script
 
 Here is the full example as a single script:
@@ -122,6 +133,7 @@ path_finder.plot_paths()
 path_finder.save_paths("route.geojson")
 ```
 
+(quickstart-about-coordinate-reference-systems)=
 ## About Coordinate Reference Systems
 
 :::{important}
@@ -139,6 +151,7 @@ with rasterio.open("path/to/sample_raster.tiff") as src:
 Make sure your source and target coordinates fall within the raster's bounds.
 :::
 
+(quickstart-about-cost-values)=
 ## About Cost Values
 
 Each cell in the cost raster represents the cost of traversing that location. PYORPS uses `uint16` values internally:
@@ -149,11 +162,12 @@ Each cell in the cost raster represents the cost of traversing that location. PY
 
 The optimal route minimizes the cumulative cost from source to target.
 
+(quickstart-next-steps)=
 ## Next Steps
 
 Now that you have found your first route, explore the full capabilities of PYORPS:
 
-- {doc}`../core_features/data_input` -- Load rasters, vector data, WFS services, or in-memory arrays
-- {doc}`../core_features/cost_assumptions` -- Customize land-use cost mappings and assumptions
-- {doc}`../core_features/neighborhoods` -- Control path smoothness with different neighborhood sizes (r1, r2, r3, ...)
-- {doc}`../core_features/path_finding` -- Multi-source, multi-target, and pairwise routing modes
+- {doc}`../api/geo_dataset` -- Load rasters, vector data, WFS services, or in-memory arrays
+- {doc}`../api/cost_assumptions` -- Customize land-use cost mappings and assumptions
+- {doc}`../concepts/neighborhoods` -- Control path smoothness with different neighborhood sizes (r1, r2, r3, ...)
+- {doc}`../api/path_finder` -- Multi-source, multi-target, and pairwise routing modes

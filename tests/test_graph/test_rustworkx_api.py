@@ -1,6 +1,12 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import numpy as np
+import pytest
+
+# Optional backend: the module-level import below would turn a
+# missing extra into a COLLECTION error that aborts the whole run.
+pytest.importorskip("rustworkx")
+
 
 from pyorps.core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
 from pyorps.graph.api.rustworkx_api import RustworkxAPI
