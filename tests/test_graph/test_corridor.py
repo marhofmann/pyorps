@@ -40,7 +40,7 @@ track is cheap enough that routes genuinely converge on it (asserted), the
 barrier genuinely blocks (asserted by a positive control), and
 ``ignore_max_cost`` is pinned explicitly everywhere.
 
-Exactness is judged by ``benchmarks.exactness_referee.reprice_path``, a second
+Exactness is judged by ``exactness_referee.reprice_path``, a second
 implementation of the edge model that never imports the compiled kernels --
 not by ``path_cost_uint32``, which sums raw cell values and would report
 phantom differences for genuinely tied optima.
@@ -49,7 +49,7 @@ import numpy as np
 import pytest
 from affine import Affine
 
-from benchmarks.exactness_referee import EdgeModel, reprice_path
+from exactness_referee import EdgeModel, reprice_path
 from pyorps.core.corridor import NODE_TERMINAL
 from pyorps.graph.corridor import (
     cell_sharing_profile,
