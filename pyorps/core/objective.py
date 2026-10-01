@@ -57,7 +57,7 @@ def _mult_exponential(s_pct: np.ndarray, params: dict) -> np.ndarray:
     return np.minimum(np.exp(ratio * ratio * scale), _LEGACY_PENALTY_CAP)
 
 
-def _mult_power(s_pct: np.ndarray, params: dict) -> np.ndarray:
+def _mult_power(s_pct: np.ndarray, params: dict) -> np.ndarray:  # pylint: disable=unused-argument
     ratio = s_pct / 100.0
     normalized = np.abs(np.arctan(ratio)) / (np.pi / 2.0)
     exp_adjust = 1.0 + 4.0 * normalized
@@ -102,11 +102,11 @@ MULTIPLIER_MODELS: dict[str, Callable[[np.ndarray, dict], np.ndarray]] = {
 # Additive response shapes  g(s)  (weighted by objective["gradient"])
 # ---------------------------------------------------------------------------
 
-def _add_linear(s_pct: np.ndarray, params: dict) -> np.ndarray:
+def _add_linear(s_pct: np.ndarray, params: dict) -> np.ndarray:  # pylint: disable=unused-argument
     return s_pct.copy()
 
 
-def _add_quadratic(s_pct: np.ndarray, params: dict) -> np.ndarray:
+def _add_quadratic(s_pct: np.ndarray, params: dict) -> np.ndarray:  # pylint: disable=unused-argument
     return s_pct * s_pct
 
 
@@ -215,7 +215,7 @@ class GradientOptions:
 
     @classmethod
     def from_dict(cls, config: dict) -> "GradientOptions":
-        known = {f for f in cls.__dataclass_fields__}
+        known = set(cls.__dataclass_fields__)  # pylint: disable=no-member
         filtered = {k: v for k, v in config.items() if k in known}
         for key in ("additive", "multiplier"):
             value = filtered.get(key)

@@ -638,7 +638,7 @@ class GeoRasterizer:
 
         if preprocessing_function is not None:
             if preprocessing_kwargs is None:
-                preprocessing_kwargs = dict()
+                preprocessing_kwargs = {}
             preprocessing_function(self.base_dataset.data, **preprocessing_kwargs)
 
         # Add cost field
@@ -1343,7 +1343,7 @@ class GeoRasterizer:
 
         # Apply buffer if needed
         gdf = self.create_buffer(gdf, geometry_buffer_m)
-        if isinstance(cost_assumptions, float) or isinstance(cost_assumptions, int):
+        if isinstance(cost_assumptions, (float, int)):
             self._modify_raster_from_dataset_simple_cost_assumptions(gdf,
                                                                      cost_assumptions,
                                                                      ignore_value,
@@ -1352,7 +1352,7 @@ class GeoRasterizer:
                                                                      forbidden_zone,
                                                                      forbidden_value)
         else:
-            if isinstance(cost_assumptions, str) or isinstance(cost_assumptions, dict):
+            if isinstance(cost_assumptions, (str, dict)):
                 ca = CostAssumptions(source=cost_assumptions)
             else:
                 ca = cost_assumptions

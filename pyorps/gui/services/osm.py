@@ -190,7 +190,7 @@ def _way_geometry(element: dict):
     if closed and is_area:
         try:
             return Polygon(coords)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught  # network/parse failure is reported
             return LineString(coords)
     return LineString(coords)
 
@@ -206,7 +206,7 @@ def _relation_geometry(element: dict):
             if len(coords) >= 4:
                 try:
                     outers.append(Polygon(coords))
-                except Exception:  # nosec B110
+                except Exception:  # nosec B110  # pylint: disable=broad-exception-caught  # best-effort cleanup
                     pass
     if not outers:
         return None

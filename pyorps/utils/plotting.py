@@ -8,7 +8,7 @@ Reference:
 """
 from typing import Any
 
-import matplotlib.colors as colors
+from matplotlib import colors
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import gridspec
@@ -561,5 +561,3 @@ class PathPlotter:
                 title="Legend",  # Add title to the legend
                 frameon=True  # Show a frame around the legend
             )
-
-

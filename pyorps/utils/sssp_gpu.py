@@ -29,8 +29,9 @@ References:
 
 from __future__ import annotations
 
-import numpy as np
 from typing import Optional, Tuple, Union
+
+import numpy as np
 
 from pyorps.utils.traversal_gpu import (
     GPU_AVAILABLE, prepare_step_lookup_tables
@@ -1542,7 +1543,7 @@ def _get_sssp_kernel(name, source, cooperative=False, variant="u16"):
             kwargs["options"] = (
                 "--std=c++17", "-Xptxas", "-dlcm=cg",
             )
-        _sssp_kernel_cache[key] = cp.RawKernel(source, name, **kwargs)
+        _sssp_kernel_cache[key] = cp.RawKernel(source, name, **kwargs)  # pylint: disable=E0606
     return _sssp_kernel_cache[key]
 
 
@@ -1629,7 +1630,7 @@ def _check_v4_available():
     Caches the result so the compilation check only happens once.
     Returns True if cooperative groups are supported and the kernel compiles.
     """
-    global _v4_available
+    global _v4_available  # pylint: disable=global-statement  # module-level availability cache
     if _v4_available is not None:
         return _v4_available
     try:
@@ -1643,7 +1644,7 @@ def _check_v4_available():
         # Accessing .kernel triggers compilation without launching.
         _ = kernel.kernel
         _v4_available = True
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught  # optional GPU backend probe
         _v4_available = False
     return _v4_available
 
@@ -1657,7 +1658,7 @@ def _check_v5_available():
     Caches the result so the compilation check only happens once.
     Returns True if cooperative groups are supported and the kernel compiles.
     """
-    global _v5_available
+    global _v5_available  # pylint: disable=global-statement  # module-level availability cache
     if _v5_available is not None:
         return _v5_available
     try:
@@ -1669,7 +1670,7 @@ def _check_v5_available():
         )
         _ = kernel.kernel
         _v5_available = True
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught  # optional GPU backend probe
         _v5_available = False
     return _v5_available
 
@@ -2195,10 +2196,10 @@ def _ensure_cuda_path():
 
     # Reset CuPy's cached CUDA path so it picks up our CUDA_PATH
     import cupy._environment as _env
-    _env._cuda_path = ''
+    _env._cuda_path = ''  # pylint: disable=protected-access  # numba-cuda toolchain workaround
 
     # Directly set the cudadevrt path in the compiler cache
-    _compiler._cudadevrt = devrt_path
+    _compiler._cudadevrt = devrt_path  # pylint: disable=protected-access  # numba-cuda toolchain workaround
 
 
 def _alloc_v4_buffers(n_pixels, n_steps, source_idx):
@@ -2754,7 +2755,7 @@ class GpuSsspSession:
             self._pred_source = source_idx
             if full_repair:
                 self._run_full_repair(source_idx)
-        self._full_field = (n_targets == 0)
+        self._full_field = n_targets == 0
         cp.cuda.Stream.null.synchronize()
         if not download:
             return None
@@ -2860,7 +2861,7 @@ class GpuSsspSession:
             (blocks,), (tpb,),
             self._walk_args(source_idx, d_targets, n_targets, 0,
                             d_lengths, null, null, null))
-        lengths = d_lengths.get()
+        lengths = d_lengths.get()  # pylint: disable=no-member  # cupy array, false positive
 
         ok = lengths > 0
         offsets = np.full(n_targets, -1, dtype=np.int32)
@@ -2892,13 +2893,13 @@ class GpuSsspSession:
                 (blocks,), (tpb,),
                 self._walk_args(source_idx, d_targets, n_targets, 0,
                                 d_lengths2, d_offsets, d_limits, d_chains))
-            lengths2 = d_lengths2.get()
+            lengths2 = d_lengths2.get()  # pylint: disable=no-member  # cupy array, false positive
             if not np.array_equal(lengths2, lengths):
                 raise RuntimeError(
                     "on-device pred walk was not reproducible between the "
                     "counting and writing passes; the predecessor field "
                     "changed underneath it")
-            chains = d_chains.get()
+            chains = d_chains.get()  # pylint: disable=no-member  # cupy array, false positive
             for t in range(n_targets):
                 if not ok[t]:
                     continue

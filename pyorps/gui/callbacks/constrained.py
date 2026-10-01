@@ -177,7 +177,7 @@ def register(app, state) -> None:
                 neighborhood=neighborhood or "r2",
                 search_buffer_m=(float(search_buffer)
                                  if search_buffer else None))
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught  # estimate is optional
             est = None
         if est is not None and routing.needs_confirmation(est):
             notices.append(Notice(

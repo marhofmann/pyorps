@@ -70,10 +70,10 @@ def _fast_wgs84_geojson(wgs: gpd.GeoDataFrame) -> dict:
     # one C-speed parse of ALL geometries beats 20k tiny loads
     joined = "[" + ",".join((g if g is not None else "null")
                             for g in geom_strs) + "]"
-    geom_dicts = orjson.loads(joined)
+    geom_dicts = orjson.loads(joined)  # pylint: disable=no-member  # orjson is a C extension
     records = wgs.drop(columns=[geom_col]).to_dict("records")
-    option = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS
-    safe = orjson.loads(orjson.dumps(records, default=str, option=option))
+    option = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS  # pylint: disable=no-member
+    safe = orjson.loads(orjson.dumps(records, default=str, option=option))  # pylint: disable=no-member
     features = [
         {"id": str(i), "type": "Feature", "properties": props,
          "geometry": geom}

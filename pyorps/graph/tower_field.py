@@ -628,7 +628,7 @@ class TowerFieldModel:
     max_sweeps: int = 4096
 
     def __post_init__(self):
-        if not (0.0 <= self.min_span_m <= self.max_span_m):
+        if not 0.0 <= self.min_span_m <= self.max_span_m:
             raise ValueError(
                 f"need 0 <= min_span_m <= max_span_m, got "
                 f"{self.min_span_m} and {self.max_span_m}")
@@ -680,15 +680,15 @@ class TowerFieldModel:
             raise ValueError(
                 f"profile {profile.name!r} has no span constraints, so it "
                 f"describes no tower chain to build a field over")
-        kw: dict[str, Any] = dict(
-            min_span_m=float(profile.min_span_m),
-            max_span_m=float(profile.max_span_m),
-            max_span_inclusive=False,
-            last_span_min_m=0.0,
-            terminal_tower_cost=0.0,
-            charge_terminal_towers=False,
-            span_integral="pyorps",
-        )
+        kw: dict[str, Any] = {
+            "min_span_m": float(profile.min_span_m),
+            "max_span_m": float(profile.max_span_m),
+            "max_span_inclusive": False,
+            "last_span_min_m": 0.0,
+            "terminal_tower_cost": 0.0,
+            "charge_terminal_towers": False,
+            "span_integral": "pyorps",
+        }
         kw.update(overrides)
         return cls(**kw)
 
@@ -700,10 +700,10 @@ class TowerFieldModel:
         towers at ``terminal_tower_cost`` each (280 kEUR in the shipped
         110 kV profile), and treats both ends as line ends.
         """
-        kw: dict[str, Any] = dict(
-            terminal_tower_cost=float(profile.terminal_tower_cost),
-            charge_terminal_towers=True,
-        )
+        kw: dict[str, Any] = {
+            "terminal_tower_cost": float(profile.terminal_tower_cost),
+            "charge_terminal_towers": True,
+        }
         kw.update(overrides)
         return cls.matching_kernel(profile, **kw)
 
@@ -956,7 +956,7 @@ class TowerField:
             else:
                 span, direction = 0.0, None
             out.append(self._tower(r, c, span, direction,
-                                   i == 0 or i == len(cells) - 1))
+                                   i in (0, len(cells) - 1)))
         return out
 
     def _tower(self, r, c, span, direction, terminal) -> Tower:
@@ -1989,11 +1989,12 @@ def tower_field_bounds(raster, *, profile, cell_size_m=None,
         ``lower > upper`` or is reachable only in the upper bound.
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    common = dict(cell_size_m=cell_size_m, cell_size_x_m=cell_size_x_m,
-                  cell_size_y_m=cell_size_y_m, profile=profile,
-                  source_cell=source_cell, source_xy=source_xy,
-                  factor=factor, directions=directions, transform=transform,
-                  crs=crs, record_pred=record_pred)
+    common = {"cell_size_m": cell_size_m, "cell_size_x_m": cell_size_x_m,
+              "cell_size_y_m": cell_size_y_m, "profile": profile,
+              "source_cell": source_cell, "source_xy": source_xy,
+              "factor": factor, "directions": directions,
+              "transform": transform, "crs": crs,
+              "record_pred": record_pred}
     lower = tower_field_from_raster(
         raster,
         model=TowerFieldModel.matching_kernel(
@@ -2005,8 +2006,8 @@ def tower_field_bounds(raster, *, profile, cell_size_m=None,
             profile, angle_tier=2, forbidden_mode="exact",
             clearance_charge="both_ends"),
         pooling="max", dem=dem, obstacle=obstacle, **common, **kwargs)
-    lower._meta["bound"] = "lower (lattice-restricted)"
-    upper._meta["bound"] = "upper (feasible)"
+    lower._meta["bound"] = "lower (lattice-restricted)"  # pylint: disable=protected-access
+    upper._meta["bound"] = "upper (feasible)"  # pylint: disable=protected-access  # same-module sibling object
     if check:
         check_bounds(lower, upper)
     return lower, upper
@@ -2079,7 +2080,7 @@ def assert_matched_tier1(tier1: TowerField, tier2: TowerField) -> None:
     d2 = {tuple(int(x) for x in d) for d in np.asarray(l2.directions)}
     if not d2 <= d1:
         bad.append(f"tier 1 lacks directions {sorted(d2 - d1)}")
-    if not (l1.pooling == l2.pooling or l1.pooling == "min"):
+    if l1.pooling not in (l2.pooling, "min"):
         bad.append(f"pooling {l1.pooling!r} vs {l2.pooling!r}")
     if tier1.meta.get("values_sha256") != tier2.meta.get("values_sha256"):
         bad.append("terrain values differ")

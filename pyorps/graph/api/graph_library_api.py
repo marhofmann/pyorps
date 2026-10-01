@@ -213,7 +213,7 @@ class GraphLibraryAPI(GraphAPI):
         self.graph = self.create_graph(from_nodes, to_nodes, cost, **kwargs)
         self.graph_creation_time = time() - before_graph_creation
 
-    def _construct_edges_gpu(self, dem_kwargs):
+    def _construct_edges_gpu(self, dem_kwargs):  # pylint: disable=unused-argument  # kept for the call signature
         """
         Attempt GPU edge construction, returning None tuple on failure.
 
@@ -228,7 +228,7 @@ class GraphLibraryAPI(GraphAPI):
             or (None, None, None) if GPU edge construction is unavailable.
         """
         try:
-            import pyorps.utils.traversal_gpu as traversal_gpu
+            from pyorps.utils import traversal_gpu
         except ImportError:
             warn("GPU edge construction unavailable "
                  "(pyorps.utils.traversal_gpu could not be imported). "
@@ -250,7 +250,7 @@ class GraphLibraryAPI(GraphAPI):
                  "Falling back to CPU.")
             return None, None, None
 
-        from_nodes, to_nodes, cost = construct_edges_gpu(
+        from_nodes, to_nodes, cost = construct_edges_gpu(  # pylint: disable=not-callable  # None-checked getattr above
             self.raster_data,
             self.steps,
             ignore_max=self.ignore_max,

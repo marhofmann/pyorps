@@ -45,7 +45,7 @@ def propose_features(gdf, max_features_per_column: int = 100):
     try:
         main, side = detect_feature_columns(
             gdf, max_features_per_column=max_features_per_column)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught  # heuristic detection is optional
         main, side = (candidates[0] if candidates else None), []
     proposed: tuple[str, ...] = ()
     if main:

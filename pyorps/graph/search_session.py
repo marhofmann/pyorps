@@ -424,7 +424,7 @@ def _crs_string(crs) -> str | None:
     try:
         from rasterio.crs import CRS
         return CRS.from_user_input(crs).to_string()
-    except Exception:                               # noqa: BLE001
+    except Exception:                               # noqa: BLE001  # pylint: disable=broad-exception-caught
         return str(crs)
 
 
@@ -447,7 +447,8 @@ def _code_section(kind: str, code: dict | None) -> dict:
     out: dict[str, Any] = {"kernel": name, "kernel_sha256": None}
     if name is not None:
         try:
-            path = getattr(importlib.import_module(name), "__file__", None)  # nosemgrep - name comes from the fixed _KERNEL_MODULES table
+            # nosemgrep - name comes from the fixed _KERNEL_MODULES table
+            path = getattr(importlib.import_module(name), "__file__", None)
         except ImportError:
             path = None
         if path and os.path.exists(path):
@@ -661,7 +662,7 @@ def fields_fit_in_memory(n_fields: int, cells: int, *,
     try:
         import psutil
         available = int(psutil.virtual_memory().available)
-    except Exception:                       # noqa: BLE001 - no psutil, no guess
+    except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught  # no psutil, no guess
         return False
     return want <= available * float(headroom)
 
@@ -712,7 +713,7 @@ def _clone_finder(finder: PathFinder, points: Sequence[Coordinate]) -> PathFinde
         transform = finder.raster_handler.window_transform
         crs = dataset.crs
 
-    buffer_m = finder._explicit_buffer_m
+    buffer_m = finder._explicit_buffer_m  # pylint: disable=protected-access  # same-package collaborator
     if buffer_m is None:
         buffer_m = finder.search_space_buffer_m
     return PathFinder(
@@ -804,7 +805,7 @@ def _reversible(finder: PathFinder) -> tuple[bool, str]:
         # the discrete Dijkstra/delta kernels, so it does not apply here.
         return False, ("the step set is not closed under negation -- build "
                        "the neighborhood with directed=True")
-    api = finder._graph_api          # never build one just to ask
+    api = finder._graph_api          # never build one just to ask  # pylint: disable=protected-access
     if api is not None:
         if not getattr(api, "symmetric_edge_weights", True):
             return False, (f"{type(api).__name__} declares asymmetric edge "
@@ -1075,7 +1076,7 @@ class _GpuTree:
         self._expansions = 1
 
     def is_settled(self, idx: int) -> bool:
-        dist = float(self._session._d_dist[int(idx)].get())
+        dist = float(self._session._d_dist[int(idx)].get())  # pylint: disable=protected-access
         return _delta_settled(dist, float("inf")) and dist < 1e29
 
     def extract_or_resume(self, idx: int) -> np.ndarray:
@@ -1099,7 +1100,7 @@ class _GpuTree:
         out = np.full(arr.size, math.inf, dtype=np.float64)
         ok = (arr >= 0) & (arr < self._session.n_pixels)
         if ok.any():
-            got = self._session._d_dist[
+            got = self._session._d_dist[  # pylint: disable=protected-access  # same-package collaborator
                 cp.asarray(np.ascontiguousarray(arr[ok]))].get()
             got = got.astype(np.float64)
             got[got >= 1e29] = math.inf
@@ -1116,7 +1117,7 @@ class _GpuTree:
     def field(self, dtype=np.float64) -> np.ndarray:
         # .get() already returns a fresh host array, so asking for its own
         # float32 dtype costs no second copy and masking it is safe.
-        out = self._session._d_dist.get().astype(dtype, copy=False)
+        out = self._session._d_dist.get().astype(dtype, copy=False)  # pylint: disable=protected-access,no-member
         out[out >= 1e29] = math.inf
         return out
 
@@ -1156,11 +1157,11 @@ class _FimTree:
         self._expansions = 1
 
     def is_settled(self, idx: int) -> bool:
-        return self._api._field_cost(self._field, int(idx)) < _FINITE_DIST
+        return self._api._field_cost(self._field, int(idx)) < _FINITE_DIST  # pylint: disable=protected-access
 
     def extract_or_resume(self, idx: int) -> np.ndarray:
         self._expansions = 0
-        paths = self._api._paths_from_field(
+        paths = self._api._paths_from_field(  # pylint: disable=protected-access  # same-package collaborator
             self._field, np.array([self.root_idx]),
             np.array([int(idx)], dtype=np.int64), reverse=True,
             trace=self._trace)
@@ -1170,7 +1171,7 @@ class _FimTree:
         return np.asarray(path, dtype=np.uint32)
 
     def peek_dist(self, idx: int) -> float:
-        return float(self._api._field_cost(self._field, int(idx)))
+        return float(self._api._field_cost(self._field, int(idx)))  # pylint: disable=protected-access
 
     def peek_dists(self, idxs) -> np.ndarray:
         arr = np.asarray(idxs, dtype=np.int64).ravel()
@@ -1496,7 +1497,7 @@ class SearchSession:
             raise NoPathFoundError(
                 _index(self._finder, points[0]),
                 _index(self._finder, points[-1]))
-        return self._finder._create_path_result(
+        return self._finder._create_path_result(  # pylint: disable=protected-access  # same-package collaborator
             np.asarray(indices, dtype=np.uint32),
             points[0], points[-1], self._algorithm, False)
 
@@ -1771,7 +1772,7 @@ class CostField:
             source, target = pt, self._origin
         else:
             source, target = self._origin, pt
-        return self._finder._create_path_result(
+        return self._finder._create_path_result(  # pylint: disable=protected-access  # same-package collaborator
             np.ascontiguousarray(cells, dtype=np.uint32),
             source, target, self._algorithm, calculate_metrics)
 
@@ -2204,7 +2205,7 @@ class SavedCostField:
             else:
                 self._decoded = decode_field(
                     {k: np.asarray(data[k]) for k in data.files
-                     if k != "meta" and k != "pred_step"}, meta)
+                     if k not in ("meta", "pred_step")}, meta)
                 self._dist = self._decoded.lower.ravel()
             self._pred_step = (np.asarray(data["pred_step"])
                                if "pred_step" in data.files else None)
@@ -2427,7 +2428,7 @@ class SavedCostField:
         cur = idx
         limit = self._rows * self._cols + 1
         while len(walk) < limit:
-            step = int(self._pred_step[cur])
+            step = int(self._pred_step[cur])  # pylint: disable=unsubscriptable-object  # attribute is an array when set
             if step == _NO_STEP:
                 return np.empty(0, dtype=np.int64)
             dr, dc = self._steps[step]
@@ -2645,16 +2646,16 @@ class CostFieldSet:
 
     def _settle_all_fields(self) -> None:
         for i, origin in enumerate(self._origins):
-            field = self._finder.cost_field(
+            cfield = self._finder.cost_field(
                 origin, algorithm=self._algorithm, **self._algo_kwargs)
             if self._spilled:
                 # Settle, write, release: only one field is resident while
                 # the set is being built, whatever its size.
-                self._paths[i] = field.save(
+                self._paths[i] = cfield.save(
                     self._cache / f"field_{self._labels[i]}.npz")
-                field.close()
+                cfield.close()
             else:
-                self._live[i] = field
+                self._live[i] = cfield
 
     def _open(self, i: int):
         """The field for terminal ``i``, live or reopened from disk."""
@@ -2688,15 +2689,15 @@ class CostFieldSet:
                 else list(range(len(self._labels))))
         out = np.empty((len(idxs), arr.shape[0]), dtype=np.float64)
         for row, i in enumerate(idxs):
-            field, temporary = self._open(i)
+            cfield, temporary = self._open(i)
             try:
                 # The stored label, not a bound: resident and spilled
                 # fields then report the same number to float32 precision.
-                out[row] = (field.costs_to(arr, bound="label") if temporary
-                            else field.costs_to(arr))
+                out[row] = (cfield.costs_to(arr, bound="label") if temporary
+                            else cfield.costs_to(arr))
             finally:
                 if temporary:
-                    field.close()
+                    cfield.close()
         return out
 
     def cost_to(self, label, point) -> float:
@@ -2725,16 +2726,16 @@ class CostFieldSet:
         """
         self._check_open()
         i = self._resolve(label)
-        field, temporary = self._open(i)
+        cfield, temporary = self._open(i)
         try:
-            if isinstance(field, SavedCostField):
-                cells = field.path_cells(point)
+            if isinstance(cfield, SavedCostField):
+                cells = cfield.path_cells(point)
                 if cells.size == 0:
                     raise NoPathFoundError(i, -1)
-                return Leg(cells, field.path_coords(point),
-                           float(field.path_length_m(point)),
-                           float(field.costs_to([point], bound="label")[0]))
-            path = field.path_to(point, calculate_metrics=True)
+                return Leg(cells, cfield.path_coords(point),
+                           float(cfield.path_length_m(point)),
+                           float(cfield.costs_to([point], bound="label")[0]))
+            path = cfield.path_to(point, calculate_metrics=True)
             coords = np.asarray([[float(x), float(y)]
                                  for x, y in path.path_coords])
             cells = np.asarray(getattr(path, "path_indices", []),
@@ -2743,7 +2744,7 @@ class CostFieldSet:
                        float(path.total_cost))
         finally:
             if temporary:
-                field.close()
+                cfield.close()
 
     # ------------------------------------------------------------ lifetime
 

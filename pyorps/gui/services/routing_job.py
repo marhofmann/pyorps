@@ -67,7 +67,7 @@ def start_routing_job(state, params: dict[str, Any]) -> RoutingJob:
                 params["raster_path"], cancel=job.cancel,
                 progress=_progress, **params["kwargs"])
             job.status = "cancelled" if job.cancel.is_set() else "done"
-        except Exception as exc:  # noqa: BLE001 - reported via notices later
+        except Exception as exc:  # noqa: BLE001 - reported via notices later  # pylint: disable=broad-exception-caught
             job.error = exc
             job.status = "failed"
         finally:

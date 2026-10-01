@@ -47,7 +47,7 @@ def _make_handler(mode: str, kind: str, defaultextension: str):
     return handler
 
 
-def register(app, state) -> None:
+def register(app, state) -> None:  # pylint: disable=unused-argument
     for target, mode, kind, defaultextension in BROWSE_TARGETS:
         app.callback(
             Output(target, "value", allow_duplicate=True),

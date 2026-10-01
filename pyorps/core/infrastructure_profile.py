@@ -138,7 +138,7 @@ class InfrastructureProfile:
     @classmethod
     def from_dict(cls, config: dict) -> "InfrastructureProfile":
         """Create profile from dictionary."""
-        known_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        known_fields = {f.name for f in cls.__dataclass_fields__.values()}  # pylint: disable=no-member
         filtered = {k: v for k, v in config.items() if k in known_fields}
         return cls(**filtered)
 
@@ -179,14 +179,13 @@ class InfrastructureProfile:
 
         if self.angle_cost_function == "linear":
             return params.get("scale", 1.0) * angle_deg
-        elif self.angle_cost_function == "quadratic":
+        if self.angle_cost_function == "quadratic":
             return params.get("scale", 1.0) * angle_deg ** 2
-        elif self.angle_cost_function == "piecewise":
+        if self.angle_cost_function == "piecewise":
             breakpoints = params["breakpoints"]
             costs = params["costs"]
             return float(np.interp(angle_deg, breakpoints, costs))
-        else:
-            raise ValueError(f"Unknown angle cost function: {self.angle_cost_function}")
+        raise ValueError(f"Unknown angle cost function: {self.angle_cost_function}")
 
     def precompute_angle_lut(
         self, steps: np.ndarray

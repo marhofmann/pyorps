@@ -82,8 +82,8 @@ References:
 
 from __future__ import annotations
 
-import numpy as np
 from typing import List, Optional, Tuple, Union
+import numpy as np
 
 from pyorps.utils.traversal_gpu import GPU_AVAILABLE
 
@@ -1843,7 +1843,7 @@ _eik_kernel_cache = {}
 def _get_eik_kernel(name: str, source: str):
     """Get a compiled CuPy RawKernel, compiling lazily on first use."""
     if name not in _eik_kernel_cache:
-        _eik_kernel_cache[name] = cp.RawKernel(source, name)
+        _eik_kernel_cache[name] = cp.RawKernel(source, name)  # pylint: disable=possibly-used-before-assignment  # only reached with CuPy
     return _eik_kernel_cache[name]
 
 
@@ -1988,7 +1988,7 @@ def _resolve_eps_device(eps_rel: float, eps_abs: Optional[float],
 def _check_q_clamp(q_clamp: float) -> float:
     """Guard the 8-simplex acuteness threshold (plan section 2.4)."""
     q_clamp = float(q_clamp)
-    if not (q_clamp > 0) or not np.isfinite(q_clamp):
+    if q_clamp <= 0 or not np.isfinite(q_clamp):
         raise ValueError(f"q_clamp must be finite and > 0, got {q_clamp}")
     if q_clamp > Q_ACUTE_LIMIT:
         raise ValueError(
@@ -2164,9 +2164,9 @@ def _device_metric(dem: np.ndarray, cell_size: float,
               np.float32(q_clamp),
               np.int32(horn), d_qr, d_qc, d_bad, d_diag))
         del d_z
-    diag_h = d_diag.get()
-    return d_qr, d_qc, d_bad, dict(n_nodata=int(diag_h[0]),
-                                   n_degenerate_metric=int(diag_h[1]))
+    diag_h = d_diag.get()  # pylint: disable=no-member  # cupy array, not ndarray
+    return d_qr, d_qc, d_bad, {"n_nodata": int(diag_h[0]),
+                                   "n_degenerate_metric": int(diag_h[1])}
 
 
 def _validate_sources(source_indices, raster: np.ndarray,
@@ -2687,8 +2687,8 @@ def eikonal_raster_gpu(
     if ctx is None:
         if return_stats:
             t_field = _unreachable_result(rows, cols, False)
-            result = (t_field, dict(outer_passes=0, tile_sweeps=0,
-                                    cell_updates=0, updates_per_cell=0.0))
+            result = (t_field, {"outer_passes": 0, "tile_sweeps": 0,
+                                    "cell_updates": 0, "updates_per_cell": 0.0})
         else:
             result = _unreachable_result(rows, cols, return_iterations)
             if not isinstance(result, tuple):
@@ -2742,7 +2742,7 @@ def eikonal_raster_gpu(
     check_target = None
     if target_index is not None:
         target_index = int(target_index)
-        if not (0 <= target_index < rows * cols):
+        if not 0 <= target_index < rows * cols:
             raise ValueError(
                 f"target_index {target_index} outside the raster "
                 f"({rows}x{cols})")
@@ -2752,7 +2752,7 @@ def eikonal_raster_gpu(
         d_check = cp.zeros(2, dtype=cp.int32)
         _int_inf = int(np.array(3.0e38, np.float32).view(np.int32))
 
-        def check_target():
+        def check_target():  # pylint: disable=function-redefined  # None placeholder when no target
             """True when no future pass can improve T[target]."""
             t_tgt = float(d_t[target_index])
             if t_tgt >= FINITE_LIMIT:
@@ -2767,7 +2767,7 @@ def eikonal_raster_gpu(
                           np.int32(rows), np.int32(cols),
                           np.int32(tiles_c), np.int32(target_tile),
                           d_check))
-            res = d_check.get()
+            res = d_check.get()  # pylint: disable=no-member  # cupy array, not ndarray
             if res[1]:
                 return False              # target tile still active
             min_active = float(res[:1].view(np.float32)[0])
@@ -2826,7 +2826,7 @@ def eikonal_raster_gpu(
                     la, lb = lb, la
                     ca, cb = cb, ca
                 graph = capture_stream.end_capture()
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught  # CUDA graph capture is optional
             graph = None   # fall back to the plain loop
 
     n_outer = 0
@@ -3002,7 +3002,7 @@ def eikonal_raster_gpu(
                         la, lb = lb, la
                         ca, cb = cb, ca
                     graph2 = capture_stream.end_capture()
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught  # CUDA graph capture is optional
                 graph2 = None
 
         n_outer2 = 0
@@ -3047,14 +3047,14 @@ def eikonal_raster_gpu(
         # stats[1] counts inner iterations actually run (settle checks
         # end sweeps early), so this is the honest update count.
         cell_updates = int(d_stats[1]) * tile * tile
-        result = (t_field, dict(
-            outer_passes=n_outer,
-            tile_sweeps=tile_sweeps,
-            cell_updates=cell_updates,
-            updates_per_cell=cell_updates / float(rows * cols),
-            anisotropic=aniso,
+        result = (t_field, {
+            "outer_passes": n_outer,
+            "tile_sweeps": tile_sweeps,
+            "cell_updates": cell_updates,
+            "updates_per_cell": cell_updates / float(rows * cols),
+            "anisotropic": aniso,
             **metric_diag,
-        ))
+        })
     elif return_iterations:
         result = (t_field, n_outer)
     else:
@@ -3558,8 +3558,8 @@ def trace_paths_gpu(
                 np.int32(rows), np.int32(cols),
                 np.float64(step_size), np.int32(max_steps),
                 np.int32(max_pts), d_out, d_len, d_status))
-        lens = d_len.get()
-        stats = d_status.get()
+        lens = d_len.get()  # pylint: disable=no-member  # cupy array, not ndarray
+        stats = d_status.get()  # pylint: disable=no-member  # cupy array, not ndarray
         for i in range(n):
             if stats[i] == 0:
                 k = int(lens[i])

@@ -215,8 +215,8 @@ def site_field(price_cents: np.ndarray, forbidden: np.ndarray, *,
         fshape = _fft_shape(shape, (ksz, ksz))
 
         def window(a, fill):
-            w = np.full(shape, fill, dtype=np.float64)
-            w[ir0 - wr0:ir1 - wr0, ic0 - wc0:ic1 - wc0] = a[ir0:ir1, ic0:ic1]
+            w = np.full(shape, fill, dtype=np.float64)  # pylint: disable=cell-var-from-loop
+            w[ir0 - wr0:ir1 - wr0, ic0 - wc0:ic1 - wc0] = a[ir0:ir1, ic0:ic1]  # pylint: disable=cell-var-from-loop
             return w
 
         # outside the grid counts as forbidden, so a pad that leaves the
@@ -237,7 +237,7 @@ def site_field(price_cents: np.ndarray, forbidden: np.ndarray, *,
             vals = []
             for li, sp in enumerate(spectra):
                 conv = sfft.irfft2(sp * kf, s=fshape, workers=workers)
-                vals.append(_rounded(conv[orow, ocol],
+                vals.append(_rounded(conv[orow, ocol],  # pylint: disable=invalid-sequence-index
                                      "forbidden count" if li == 0
                                      else f"layer {li}"))
             ok = vals[0] == 0

@@ -14,7 +14,7 @@ from dash import Input, Output, State
 from .. import ids
 
 
-def register(app, state) -> None:
+def register(app, state) -> None:  # pylint: disable=unused-argument  # uniform register(app, state) signature
     # ------------------------------------------------- light / dark toggle
     app.clientside_callback(
         """

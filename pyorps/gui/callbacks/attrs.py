@@ -70,7 +70,7 @@ def register(app, state) -> None:
         Input({"type": ids.TYPE_LAYER_GEOJSON, "id": ALL}, "clickData"),
         State(ids.LAYERS_GRID, "selectedRows"),
         prevent_initial_call=True)
-    def inspect_feature(click_datas, layer_selection):
+    def inspect_feature(click_datas, layer_selection):  # pylint: disable=unused-argument  # Dash callback input
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         trigger = ctx.triggered_id
         if not trigger:

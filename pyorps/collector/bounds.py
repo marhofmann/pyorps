@@ -100,8 +100,8 @@ def _partitions(items):
     first, rest = items[0], items[1:]
     for p in _partitions(rest):
         yield [[first]] + p
-        for i in range(len(p)):
-            yield p[:i] + [[first] + p[i]] + p[i + 1:]
+        for i, part in enumerate(p):
+            yield p[:i] + [[first] + part] + p[i + 1:]
 
 
 def _p_choices(k: int, p_max: int, m_cap: int):

@@ -8,7 +8,7 @@ Reference:
 """
 
 # Third party
-import igraph as ig
+import igraph as ig  # pylint: disable=import-error  # optional backend
 from numpy import float64, ndarray
 from numpy import max as np_max
 

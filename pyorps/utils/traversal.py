@@ -40,7 +40,7 @@ exclude mask is all-ones and every cell, 65535 included, is traversable.
 """
 
 try:
-    from pyorps.utils._traversal import (  # noqa: F401
+    from pyorps.utils._traversal import (  # noqa: F401  # pylint: disable=unused-import  # re-exported API
         # Gradient
         calculate_gradient_penalty,
         # Core path functions
@@ -65,7 +65,7 @@ try:
         # Node validation
         is_valid_node,
     )
-    from pyorps.utils._traversal import (  # noqa: F401
+    from pyorps.utils._traversal import (  # noqa: F401  # pylint: disable=unused-import  # re-exported API
         # Index manipulation
         py_ravel_index as ravel_index,
     )
@@ -76,7 +76,7 @@ except ImportError:
     # Fallback: use the Numba implementations
     _CYTHON_TRAVERSAL = False
 
-    from pyorps.utils._traversal_numba import (  # noqa: F401
+    from pyorps.utils._traversal_numba import (  # noqa: F401  # pylint: disable=unused-import  # re-exported API
         calculate_path_metrics_numba,
         intermediate_steps_numba,
         construct_edges,

@@ -291,7 +291,7 @@ def _register_builder(app: Dash, viewer, latlng_to_crs) -> None:
                 raster_path, sources=s_crs, targets=t_crs, waypoints=w_crs,
                 algorithm=algorithm, hardware=hardware, pairwise=bool(pairwise),
                 search_buffer_m=DEFAULT_BUILD_BUFFER_M)
-        except Exception as exc:  # surface backend/GPU/availability errors
+        except Exception as exc:  # surface backend/GPU/availability errors  # pylint: disable=broad-exception-caught
             return no_update, no_update, no_update, f"⚠ Routing failed: {exc}"
         if not built:
             return (no_update, no_update, no_update,
@@ -409,6 +409,6 @@ def _register_editor(app: Dash, viewer, target_crs, crs_to_latlng,
             if target_crs and str(target_crs) != WGS84:
                 gdf = gdf.to_crs(target_crs)
             gdf.to_file(path)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # user-facing error message
             return f"⚠ Save failed: {exc}"
         return f"Saved edited route to {path}"

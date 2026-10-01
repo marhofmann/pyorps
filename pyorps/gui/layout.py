@@ -1477,7 +1477,7 @@ def _log_offcanvas() -> dbc.Offcanvas:
         style={"width": "560px"})
 
 
-def build_layout(state) -> dbc.Container:
+def build_layout(state) -> dbc.Container:  # pylint: disable=unused-argument
     """Assemble the full app layout (blank map — R1)."""
     # width= (not md=) so the columns NEVER stack: with a 100vh map, a
     # stacked sidebar would sit invisibly below the fold on narrow windows.

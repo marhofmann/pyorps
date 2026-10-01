@@ -48,14 +48,17 @@ Algorithm:
 
 from __future__ import annotations
 
+import re
 import warnings
-import numpy as np
+from pathlib import Path
 from typing import Optional, Tuple
+
+import numpy as np
 
 try:
     import cupy as cp
     GPU_AVAILABLE = True
-except (ImportError, Exception):
+except (ImportError, Exception):  # pylint: disable=broad-exception-caught  # optional backend probe
     GPU_AVAILABLE = False
 
 
@@ -118,7 +121,7 @@ def compute_memory_budget_gb(rows, cols, n_dirs, n_span_bins, n_heights,
                 max_hash = max(int(vram_free * 0.6), 256 * 1024**2)
                 max_ent = max_hash // 16
                 estimated_active = min(estimated_active, max_ent // 2)
-            except Exception:  # nosec B110
+            except Exception:  # nosec B110  # pylint: disable=broad-exception-caught  # best-effort estimate
                 pass
         hash_capacity = 1
         while hash_capacity < estimated_active * 2:
@@ -183,9 +186,6 @@ _CTL_SIZE = 16
 # ============================================================================
 # CUDA kernel source loading from kernels/ directory
 # ============================================================================
-
-from pathlib import Path
-import re
 
 _KERNEL_DIR = Path(__file__).parent / "kernels"
 
@@ -278,8 +278,8 @@ def _ensure_cuda_path():
             if os.path.isfile(devrt):
                 os.environ.setdefault("CUDA_PATH", cuda_rt_dir)
                 import cupy._environment as _env
-                _env._cuda_path = ''
-                _compiler._cudadevrt = devrt
+                _env._cuda_path = ''  # pylint: disable=protected-access  # cupy CUDA path workaround
+                _compiler._cudadevrt = devrt  # pylint: disable=protected-access  # cupy CUDA path workaround
                 return
     except ImportError:
         pass
@@ -290,8 +290,8 @@ def _ensure_cuda_path():
         if os.path.isfile(devrt):
             os.environ.setdefault("CUDA_PATH", cuda_rt_dir)
             import cupy._environment as _env
-            _env._cuda_path = ''
-            _compiler._cudadevrt = devrt
+            _env._cuda_path = ''  # pylint: disable=protected-access  # cupy CUDA path workaround
+            _compiler._cudadevrt = devrt  # pylint: disable=protected-access  # cupy CUDA path workaround
             return
 
 
@@ -396,7 +396,7 @@ class _BlockDistProxy:
         rem2 = rem % self._sh
         span_bin = rem2 // self._n_heights
         hc = rem2 % self._n_heights
-        local_key = (direction * self._sh + span_bin * self._n_heights + hc)
+        local_key = direction * self._sh + span_bin * self._n_heights + hc
         base = cell * self._BLOCK_SIZE
         # Multiplicative hash matching CUDA local_hash
         h = (local_key * 2654435761) & self._BLOCK_MASK
@@ -658,7 +658,7 @@ def _reconstruct_from_tower_records(
 
 
 def _direction_walk_backward(target_cell, target_dir, source_cell,
-                              cols, steps_np, n_dirs, max_steps=10000):
+                              cols, steps_np, n_dirs, max_steps=10000):  # pylint: disable=unused-argument  # signature kept for callers
     """Walk backward from target_cell using inverse of target_dir to reach source_cell.
 
     This traces the path cell-by-cell: starting from target_cell, step backward
@@ -699,7 +699,7 @@ _v2_available = None
 
 def _check_v2_available():
     """Check if v2 persistent kernel compiles on this GPU."""
-    global _v2_available
+    global _v2_available  # pylint: disable=global-statement  # cached availability flag
     if _v2_available is not None:
         return _v2_available
     if not GPU_AVAILABLE:
@@ -712,7 +712,7 @@ def _check_v2_available():
             cooperative=True)
         _ = kernel.kernel  # force compilation
         _v2_available = True
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught  # kernel compile probe
         _v2_available = False
     return _v2_available
 
@@ -1214,18 +1214,17 @@ def _find_v2_best_target(use_block, use_sparse, d_block_entries, d_dist,
         if result is None:
             return None
         return result[0], result[1], None
-    elif use_sparse:
+    if use_sparse:
         return _find_best_target_sparse(d_state_table, target_cell, spc)
-    else:
-        result = _find_best_target_dense(d_dist, target_cell, spc)
-        if result is None:
-            return None
-        return result[0], result[1], None
+    result = _find_best_target_dense(d_dist, target_cell, spc)
+    if result is None:
+        return None
+    return result[0], result[1], None
 
 
 def _download_v2_for_reconstruction(use_block, use_sparse, d_block_entries,
-                                      d_dist, d_state_table, spc,
-                                      n_span_bins, n_heights, gpu_block_size,
+                                      d_dist, d_state_table, spc,  # pylint: disable=unused-argument  # signature kept for callers
+                                      n_span_bins, n_heights, gpu_block_size,  # pylint: disable=unused-argument  # signature kept for callers
                                       dist_cpu_dict):
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Download distance data in the right format for reconstruction.
@@ -1242,12 +1241,11 @@ def _download_v2_for_reconstruction(use_block, use_sparse, d_block_entries,
         blocks_np = np.frombuffer(blocks_cpu.tobytes(),
                                   dtype=block_entries_host_dtype)
         return _BlockDistProxy(blocks_np, spc, n_span_bins, n_heights)
-    elif use_sparse:
+    if use_sparse:
         # Transfer dist for reconstruction using dict-backed array proxy
         return _SparseDistProxy(dist_cpu_dict)
-    else:
-        # Transfer dist for reconstruction (helps pick best record)
-        return d_dist.get()
+    # Transfer dist for reconstruction (helps pick best record)
+    return d_dist.get()
 
 
 def _prepare_v2_kernel_ptrs(gpu_data, dem, obstacle_heights, area_offsets,
@@ -1342,7 +1340,7 @@ def constrained_sssp_raster_gpu_v2(
     n_span_bins: int,
     span_bin_size: float,
     min_span: float,
-    max_span: float,
+    max_span: float,  # pylint: disable=unused-argument  # signature kept for callers
     height_premiums: Optional[np.ndarray] = None,
     n_heights: int = 1,
     exclude_mask: Optional[np.ndarray] = None,
@@ -1578,7 +1576,7 @@ def constrained_sssp_raster_gpu_v2(
     cp.cuda.Stream.null.synchronize()
 
     # Check for overflow
-    control_cpu = d_control.get()
+    control_cpu = d_control.get()  # pylint: disable=no-member  # cupy array, not ndarray
     overflow_count = int(control_cpu[_CTL_QUEUE_OVERFLOW])
     if overflow_count > 0:
         warnings.warn(
@@ -1633,7 +1631,7 @@ def constrained_sssp_raster_gpu_v2(
         try:
             cp.cuda.runtime.free(dist_ptr)
             cp.cuda.runtime.free(span_ptr)
-        except Exception:  # nosec B110
+        except Exception:  # nosec B110  # pylint: disable=broad-exception-caught  # best-effort cleanup
             pass
 
     return result

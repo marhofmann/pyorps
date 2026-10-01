@@ -24,6 +24,6 @@ _warnings.warn(
     DeprecationWarning, stacklevel=2)
 del _warnings
 
-from .viewer import RouteViewer
+from .viewer import RouteViewer  # pylint: disable=wrong-import-position  # deprecation warning must precede import
 
 __all__ = ["RouteViewer"]

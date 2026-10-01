@@ -16,9 +16,10 @@ Usage:
 """
 
 import json
-import numpy as np
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
 
 
 def save_gpu_raster(
@@ -71,7 +72,7 @@ def save_gpu_raster(
 
     # Write JSON sidecar
     sidecar_path = Path(str(output_path) + ".json")
-    with open(sidecar_path, "w") as f:
+    with open(sidecar_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
 
     metadata["file_size_bytes"] = output_path.stat().st_size
@@ -108,7 +109,7 @@ def load_gpu_raster(
             f"Use save_gpu_raster() to create .gpur files with metadata."
         )
 
-    with open(sidecar_path, "r") as f:
+    with open(sidecar_path, "r", encoding="utf-8") as f:
         metadata = json.load(f)
 
     shape = tuple(metadata["shape"])

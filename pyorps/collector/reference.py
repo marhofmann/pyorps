@@ -161,8 +161,7 @@ class _Algebra:
                 continue
             c = (p * typ.cost_eur_per_m
                  + model.loss_coef * (typ.r_ohm_per_m / p) * w)
-            if c < best:
-                best = c
+            best = min(best, c)
         self._cost_cache[ck] = best
         return best
 
@@ -213,7 +212,7 @@ class _Algebra:
         return (self.current(out_key) <= self.m.switchgear_a * (1 + _REL)
                 and conductors <= self.m.ring_panels)
 
-    def merge_pairs(self, L1s, L2s, S1, S2):
+    def merge_pairs(self, L1s, L2s, S1, S2):  # pylint: disable=unused-argument  # interface shared with the set algebra
         """Every pair of labels :meth:`merge` could accept (count form:
         all of them)."""
         return itertools.product(L1s, L2s)
@@ -240,7 +239,7 @@ class _SetAlgebra(_Algebra):
             if t[0] & acc:
                 return False
             acc |= t[0]
-            if not node and not (t[0] & S):
+            if not node and not t[0] & S:
                 return False
         accd = 0
         for t in D:
@@ -496,7 +495,7 @@ class _CountAlgebra(_Algebra):
                 res.append(tuple(sorted(toks)))
         return res
 
-    def key_of_turbine(self, i):
+    def key_of_turbine(self, i):  # pylint: disable=unused-argument  # interface shared with the set algebra
         return 1
 
     def child_key_union(self, keys):
@@ -873,6 +872,7 @@ class _Solver:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """MV(g) = cheapest partition of A into feeders arriving at g."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        # pylint: disable=attribute-defined-outside-init  # result state set by the solve
         model, alg = self.model, self.alg
         N = self.N
         best = {}

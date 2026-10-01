@@ -94,7 +94,7 @@ class RouteViewer:
         return layer
 
     def add_paths(self, paths: Any, *, crs: Any = None,
-                  name: str = "Routes") -> "RouteViewer":
+                  name: str = "Routes") -> "RouteViewer":  # pylint: disable=unused-argument
         """Add result routes (PathCollection, Path, list of Path, or GeoDataFrame)."""
         gdf, endpoints = self._paths_to_gdf(paths, crs)
         if gdf.crs is None:
@@ -277,7 +277,7 @@ class RouteViewer:
         for layer in self.raster_layers:
             try:
                 layer.tile_client.shutdown()
-            except Exception:  # nosec B110
+            except Exception:  # nosec B110  # pylint: disable=broad-exception-caught
                 pass
 
 

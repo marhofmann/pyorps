@@ -264,7 +264,7 @@ def load_project(state, path: str | Path) -> dict:
                 from .graduated import apply_to_layer
                 try:
                     apply_to_layer(layer, layer.meta["graduated"])
-                except Exception:   # classification is cosmetic — never  # nosec B110
+                except Exception:   # classification is cosmetic — never  # nosec B110  # pylint: disable=broad-exception-caught
                     pass            # block a project load on it
         elif entry.get("file"):
             gdf = gpd.read_file(root / entry["file"])

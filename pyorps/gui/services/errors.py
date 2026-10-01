@@ -409,7 +409,7 @@ def guard(fn: Callable[..., Any], *args: Any,
         warnings.simplefilter("always")
         try:
             result = fn(*args, **kwargs)
-        except Exception as exc:  # noqa: BLE001 - translate everything (C15)
+        except Exception as exc:  # noqa: BLE001 - translate everything (C15)  # pylint: disable=broad-exception-caught
             _append_warnings(caught, notices)
             notices.append(translate_exception(exc).to_dict())
             return None, notices

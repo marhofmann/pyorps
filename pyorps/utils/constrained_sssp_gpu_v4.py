@@ -31,7 +31,7 @@ import numpy as np
 try:
     import cupy as cp
     GPU_AVAILABLE = True
-except (ImportError, Exception):
+except (ImportError, Exception):  # pylint: disable=broad-exception-caught  # optional GPU backend probe
     GPU_AVAILABLE = False
 
 
@@ -298,7 +298,7 @@ class _DynamicBlockDistProxy:
 # ============================================================================
 
 def _direction_walk_backward(target_cell, target_dir, source_cell,
-                              cols, steps_np, n_dirs, max_steps=10000):
+                              cols, steps_np, n_dirs, max_steps=10000):  # pylint: disable=unused-argument
     """Walk backward from target_cell using inverse of target_dir to reach
     source_cell.
 
@@ -601,8 +601,8 @@ def _ensure_cuda_path():
             if os.path.isfile(devrt):
                 os.environ.setdefault("CUDA_PATH", cuda_rt_dir)
                 import cupy._environment as _env
-                _env._cuda_path = ''
-                _compiler._cudadevrt = devrt
+                _env._cuda_path = ''  # pylint: disable=protected-access  # numba-cuda toolchain workaround
+                _compiler._cudadevrt = devrt  # pylint: disable=protected-access  # numba-cuda toolchain workaround
                 return
     except ImportError:
         pass
@@ -613,8 +613,8 @@ def _ensure_cuda_path():
         if os.path.isfile(devrt):
             os.environ.setdefault("CUDA_PATH", cuda_rt_dir)
             import cupy._environment as _env
-            _env._cuda_path = ''
-            _compiler._cudadevrt = devrt
+            _env._cuda_path = ''  # pylint: disable=protected-access  # numba-cuda toolchain workaround
+            _compiler._cudadevrt = devrt  # pylint: disable=protected-access  # numba-cuda toolchain workaround
             return
 
 
@@ -650,7 +650,7 @@ _v4_available = None
 
 def _check_v4_available():
     """Check if V4 kernels compile on this GPU."""
-    global _v4_available
+    global _v4_available  # pylint: disable=global-statement  # module-level availability cache
     if _v4_available is not None:
         return _v4_available
     if not GPU_AVAILABLE:
@@ -673,7 +673,7 @@ def _check_v4_available():
             options=("--std=c++17",))
         _ = kernel.kernel  # force compilation
         _v4_available = True
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught  # optional GPU backend probe
         _v4_available = False
     return _v4_available
 
@@ -940,18 +940,18 @@ def constrained_sssp_raster_gpu_v4(
     height_premiums: Optional[np.ndarray] = None,
     n_heights: int = 1,
     exclude_mask: Optional[np.ndarray] = None,
-    dem: Optional[np.ndarray] = None,
-    obstacle_heights: Optional[np.ndarray] = None,
-    cell_size: float = 1.0,
-    conductor_weight_per_m: float = 0.0,
-    conductor_tension: float = 1.0,
-    min_clearance: float = 0.0,
-    max_gradient_pct: float = 100.0,
-    gradient_scale: float = 2.0,
+    dem: Optional[np.ndarray] = None,  # pylint: disable=unused-argument  # kept for API/signature compatibility
+    obstacle_heights: Optional[np.ndarray] = None,  # pylint: disable=unused-argument
+    cell_size: float = 1.0,  # pylint: disable=unused-argument  # kept for API/signature compatibility
+    conductor_weight_per_m: float = 0.0,  # pylint: disable=unused-argument  # kept for API/signature compatibility
+    conductor_tension: float = 1.0,  # pylint: disable=unused-argument  # kept for API/signature compatibility
+    min_clearance: float = 0.0,  # pylint: disable=unused-argument  # kept for API/signature compatibility
+    max_gradient_pct: float = 100.0,  # pylint: disable=unused-argument  # kept for API/signature compatibility
+    gradient_scale: float = 2.0,  # pylint: disable=unused-argument  # kept for API/signature compatibility
     tower_heights: Optional[np.ndarray] = None,
     area_offsets: Optional[np.ndarray] = None,
-    area_offset_starts: Optional[np.ndarray] = None,
-    area_offset_counts: Optional[np.ndarray] = None,
+    area_offset_starts: Optional[np.ndarray] = None,  # pylint: disable=unused-argument
+    area_offset_counts: Optional[np.ndarray] = None,  # pylint: disable=unused-argument
     threads_per_block: int = 256,
     margin: float = 1.00001,
     max_tower_records: int = _MAX_TOWER_RECORDS,
@@ -1170,7 +1170,7 @@ def constrained_sssp_raster_gpu_v4(
     cp.cuda.Device().synchronize()
 
     # ---- Check kernel termination and overflow ----
-    control_cpu = bufs['control'].get()
+    control_cpu = bufs['control'].get()  # pylint: disable=no-member  # cupy array, false positive
 
     done_flag = int(control_cpu[_CTL_V4_DONE])
     if done_flag != 1:
@@ -1230,7 +1230,7 @@ def constrained_sssp_raster_gpu_v4(
     download_size = n_alloc_final * gpu_block_size
     pool_raw = bufs['pool'][:download_size * 2].get()
     pool_np = np.frombuffer(pool_raw.tobytes(), dtype=block_entry_host_dtype)
-    c2b_cpu = bufs['cell_to_block'].get()
+    c2b_cpu = bufs['cell_to_block'].get()  # pylint: disable=no-member  # cupy array, false positive
 
     dist_cpu = _DynamicBlockDistProxy(
         pool_np, c2b_cpu, gpu_block_size, spc, n_span_bins, n_heights)

@@ -284,7 +284,7 @@ class RasterFIMAPI(GraphAPI):
     """
 
     def __init__(
-            self,
+            self,  # pylint: disable=unused-argument  # (**kwargs)
             raster_data: ndarray,
             steps: ndarray,
             ignore_max: bool = True,
@@ -427,23 +427,24 @@ class RasterFIMAPI(GraphAPI):
             self._dem_checksum = self._dem_checksum_of(
                 self._dem, self._strict_dem_check)
             self._cell_size = cell_size
-            aniso_kwargs = dict(
-                dem=self._dem, cell_size=cell_size, q_clamp=q_clamp,
-                q_flat_eps=float(q_flat_eps),
-                slope_stencil=slope_stencil,
-            )
+            aniso_kwargs = {
+                "dem": self._dem, "cell_size": cell_size, "q_clamp": q_clamp,
+                "q_flat_eps": float(q_flat_eps),
+                "slope_stencil": slope_stencil,
+            }
             logger.debug(
                 "raster_fim Tier A: anisotropic 3D-length metric active "
                 "(cell_size=%.4g m, s_max=%.1f %%, grade limit=%s)",
                 cell_size, s_max_pct, self._grade_limit)
 
-        self._solver_kwargs = dict(
-            tile=tile, n_inner=n_inner, eps_rel=eps_rel, eps_abs=eps_abs,
-            disk_init=disk_init,
-            max_outer_iterations=max_outer_iterations,
-            order=order,
+        self._solver_kwargs = {
+            "tile": tile, "n_inner": n_inner, "eps_rel": eps_rel,
+            "eps_abs": eps_abs,
+            "disk_init": disk_init,
+            "max_outer_iterations": max_outer_iterations,
+            "order": order,
             **aniso_kwargs,
-        )
+        }
 
         # Raster-direct: no graph construction
         self.edge_construction_time = 0.0
@@ -898,7 +899,7 @@ class RasterFIMAPI(GraphAPI):
         self._label_cache = self._components(None)
         return self._label_cache
 
-    def _steep_cells(self, limit_pct: Optional[float] = None) -> np.ndarray:
+    def _steep_cells(self, limit_pct: Optional[float] = None) -> np.ndarray:  # pylint: disable=unused-argument
         """Flat indices of cells with at least one forbidden chord.
 
         ``limit_pct`` is accepted for call-site readability and ignored:
@@ -1131,7 +1132,7 @@ class RasterFIMAPI(GraphAPI):
             **self._solver_kwargs)
         self._remember_metric(q_dev)
         cost = float(d_t[target])
-        if not cost < FINITE_LIMIT:
+        if not cost < FINITE_LIMIT:  # pylint: disable=unnecessary-negation  # NaN must also be rejected
             return None, None, float("inf")
         poly = trace_paths_gpu(
             None, src_arr, [target], t_device=d_trace, q_device=q_dev,
@@ -1409,7 +1410,7 @@ class RasterFIMAPI(GraphAPI):
                     f"caller routes with, not a failure of the mask loop, "
                     f"and it cost no solve. " + _MASK_CAVEAT))
 
-    def _certificate_note(self, source: int, target: int) -> str:
+    def _certificate_note(self, source: int, target: int) -> str:  # pylint: disable=unused-argument
         """What the exact certificate says, for a failure message.
 
         A failure of the masked relaxation and a genuinely infeasible
@@ -1498,7 +1499,7 @@ class RasterFIMAPI(GraphAPI):
             out.extend(picked)
         if iteration >= self._mask_escalate_after:
             out.extend(int(c) for c in arr[is_steep[arr]])
-        out = [c for c in out if c != source and c != target]
+        out = [c for c in out if c not in (source, target)]
         self._mask_block = "terminals" if not out else ""
         if not out:
             return np.empty(0, dtype=np.int64)
