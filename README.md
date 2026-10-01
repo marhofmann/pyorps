@@ -64,7 +64,8 @@ fixed terminal (grid connection points and turbines) and then prices each candid
       <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/source/_static/images/substation_siting_method.gif" alt="Animation: ten cost fields are settled on a cost raster and candidate substation sites are priced by lookup" width="100%"/><br>
       <sub>
         <b>Figure 2:</b> Method illustration on public geodata: ten cost fields rooted at the fixed terminals
-        (<b>+</b> turbines, <b>&#9632;</b> grid connection points), then the candidate sites (<b>&#9675;</b>) are read off the fields.<br>
+        (<b>+</b> turbines, <b>&#9632;</b> grid connection points), then four illustrative candidate sites (<b>&#9675;</b>),
+        one west, north, east and south of the wind farm, are read off the fields.<br>
         The siting packages (<code>pyorps.siting</code>, <code>pyorps.collector</code>, <code>pyorps.costmodel</code>,
         <code>pyorps.certify</code>) are research code: shipped, but not part of the stable API.
       </sub>
@@ -72,6 +73,13 @@ fixed terminal (grid connection points and turbines) and then prices each candid
   </tr>
 </table>
 
+How the workflow in Figure 2 runs:
+
+- Start from a cost raster in which every cell has a price per metre of trench and forbidden cells are black.
+- Solve one cost field per fixed terminal (seven turbines and three grid connection points). Each field is kept in memory, and the raster is not searched again.
+- Read a route out of a field by following the predecessor chain from a candidate site back to its root. No new search runs.
+- Move the candidate site and read all ten routes again (seven medium-voltage feeders and three high-voltage connections). The cheapest of each kind is the one that counts.
+- Ten searches therefore answer any number of candidate sites, because the search is rooted at what is fixed and what moves is looked up.
 
 ## Features
 
@@ -238,7 +246,7 @@ This dramatically reduces memory and computation time, especially for high-resol
     <td align="center" width="100%">
       <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/source/_static/images/buffer_600.png" alt="search spaces" 
 width="100%"/><br>
-      <sub><b>Figure 2:</b> Various optimal paths for different search spaces on rasterised geodata with 1 m² resolution</sub>
+      <sub><b>Figure 3:</b> Various optimal paths for different search spaces on rasterised geodata with 1 m² resolution</sub>
     </td>
   </tr>
 </table>
@@ -262,12 +270,12 @@ This allows you to balance accuracy (following real-world paths) and performance
     <td align="center" width="50%">
       <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/source/_static/images/R3-complete.PNG" 
 alt="R3 complete" width="79%"/><br>
-      <sub><b>Figure 3a:</b> Steps for neighbourhoods R0 (blue), R1 (green), R2 (yellow), and R3 (red)</sub>
+      <sub><b>Figure 4a:</b> Steps for neighbourhoods R0 (blue), R1 (green), R2 (yellow), and R3 (red)</sub>
     </td>
     <td align="center" width="50%">
       <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/source/_static/images/intermediate_steps.PNG" 
 alt="intermediates" width="90%"/><br>
-      <sub><b>Figure 3b:</b> Intermediate elements Ik for selected edges of vertex v<sub>5,5</sub>.</sub>
+      <sub><b>Figure 4b:</b> Intermediate elements Ik for selected edges of vertex v<sub>5,5</sub>.</sub>
     </td>
   </tr>
 </table>
