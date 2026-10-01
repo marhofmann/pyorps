@@ -70,9 +70,7 @@ class ColumnAnalysisError(FeatureColumnError):
     """
 
 
-"""
-Exceptions for vector_loader
-"""
+# Exceptions for vector_loader
 
 
 class WFSError(PyorpsError):
@@ -99,9 +97,7 @@ class WFSLayerNotFoundError(WFSError):
     """
 
 
-"""
-Exceptions for graph library API
-"""
+# Exceptions for graph library API
 
 
 class RasterShapeError(PyorpsError):

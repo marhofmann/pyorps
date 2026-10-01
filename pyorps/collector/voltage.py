@@ -160,7 +160,7 @@ class Corner:
     def __post_init__(self):
         if len(self.p_mw) != len(self.q_mvar):
             raise ValueError(f"corner {self.name}: p and q lengths differ")
-        if not self.bus_pu > 0:
+        if not self.bus_pu > 0:  # pylint: disable=unnecessary-negation  # must also reject NaN
             raise ValueError(f"corner {self.name}: bus_pu must be > 0")
 
 
@@ -683,7 +683,7 @@ def check_tree(tree: ElectricalTree, vmodel: VoltageModel, *,
     corners: dict[str, CornerResult] = {}
     for ci, (c, lf) in enumerate(zip(vmodel.corners, runs)):
         mags = [abs(v) for v in lf.v_pu]
-        kmax = max(range(tree.n_nodes), key=lambda k: mags[k])
+        kmax = max(range(tree.n_nodes), key=lambda k: mags[k])  # pylint: disable=cell-var-from-loop
         if vmodel.u_m_kv - mags[kmax] * vmodel.u_kv < 0:
             violations.append(
                 f"corner {c.name}: {tree.labels[kmax]} at "

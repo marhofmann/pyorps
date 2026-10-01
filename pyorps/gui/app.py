@@ -77,7 +77,7 @@ def build_app(state: ProjectState | None = None, *,
     register_all(app, state)
     _register_geojson_route(app, state)
     # test/debug access to the server-side state
-    app._pyorps_state = state
+    app._pyorps_state = state  # pylint: disable=protected-access  # test/debug hook
     return app
 
 
@@ -93,7 +93,7 @@ def _json_bytes(payload: Any) -> bytes:
     """orjson when available (~5-10x stdlib for multi-MB GeoJSON)."""
     try:
         import orjson
-        return orjson.dumps(payload)
+        return orjson.dumps(payload)  # pylint: disable=no-member  # optional dependency
     except ImportError:
         import json
         return json.dumps(payload).encode("utf-8")
@@ -153,9 +153,9 @@ def _register_geojson_route(app: Dash, state: ProjectState) -> None:
             return cached
         # encode once per geojson revision (encoding is the expensive part)
         if getattr(layer, "_geobuf_rev", None) != layer.geojson_rev:
-            layer._geobuf_bytes = geobuf.encode(layer.geojson)
-            layer._geobuf_rev = layer.geojson_rev
-        response = Response(layer._geobuf_bytes,
+            layer._geobuf_bytes = geobuf.encode(layer.geojson)  # pylint: disable=protected-access  # per-layer cache
+            layer._geobuf_rev = layer.geojson_rev  # pylint: disable=protected-access  # per-layer cache
+        response = Response(layer._geobuf_bytes,  # pylint: disable=protected-access  # per-layer cache
                             mimetype="application/octet-stream")
         return _finish(response, layer)
 
@@ -238,11 +238,11 @@ def launch(state: ProjectState | None = None, *, host: str = "127.0.0.1",
                 "Close anyway and lose them?\n\n"
                 "(Cancel to go back and use Data tab → Project → "
                 "Save project.)"))
-        except Exception:      # dialog unavailable — never trap the user
+        except Exception:      # dialog unavailable — never trap the user  # pylint: disable=broad-exception-caught
             return True
 
     try:
         window.events.closing += _confirm_close
-    except Exception:          # older pywebview without the closing event  # nosec B110
+    except Exception:          # older pywebview without the closing event  # nosec B110  # pylint: disable=broad-exception-caught
         pass
     webview.start()

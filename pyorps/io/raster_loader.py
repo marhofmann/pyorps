@@ -8,14 +8,14 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-import numpy as np
-import rasterio
-from rasterio.crs import CRS
-from rasterio.io import MemoryFile
-from rasterio.merge import merge
-from rasterio.warp import Resampling, calculate_default_transform, reproject
+import numpy as np  # pylint: disable=wrong-import-position
+import rasterio  # pylint: disable=wrong-import-position
+from rasterio.crs import CRS  # pylint: disable=wrong-import-position
+from rasterio.io import MemoryFile  # pylint: disable=wrong-import-position
+from rasterio.merge import merge  # pylint: disable=wrong-import-position
+from rasterio.warp import Resampling, calculate_default_transform, reproject  # pylint: disable=wrong-import-position
 
-from pyorps.io.geo_dataset import InMemoryRasterDataset
+from pyorps.io.geo_dataset import InMemoryRasterDataset  # pylint: disable=wrong-import-position
 
 
 def _parse_crs(crs_input):
@@ -371,7 +371,7 @@ def _collect_raster_metadata(raster_files):
                     'bounds': src.bounds,
                     'nodata': src.nodata
                 })
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught  # unreadable file is an issue
             issues.append(f"Could not read {Path(file_path).name}: {str(e)}")
     return metadata, issues
 
@@ -504,19 +504,19 @@ if __name__ == '__main__':
     logger.info("Example 1: Finding and combining DEMs")
     logger.info("-" * 40)
 
-    directory = r"<local-path>"
+    search_dir = r"<local-path>"
 
     dem_files = find_raster_files(
-        directory, pattern="dgm1_*.tif", recursive=True
+        search_dir, pattern="dgm1_*.tif", recursive=True
     )
     logger.info("Found %d DEM files", len(dem_files))
 
     validation = validate_raster_compatibility(dem_files)
 
     if validation['compatible']:
-        datasets, memory_files = read_raster_files(dem_files, default_crs="EPSG:25832")
-        merged_data, profile = combine_rasters(
-            (datasets, memory_files),
+        src_datasets, src_memory_files = read_raster_files(dem_files, default_crs="EPSG:25832")
+        merged_data, merged_profile = combine_rasters(
+            (src_datasets, src_memory_files),
             save_path=r"<local-path>",
             method='first'
         )

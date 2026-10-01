@@ -115,7 +115,7 @@ class CableType:
     def __post_init__(self):
         # Negative prices or resistances break both the engines' bound
         # (A <= B) and Dijkstra's non-negative weights (review 2026-09-24).
-        if not self.ampacity_a > 0:
+        if not self.ampacity_a > 0:  # pylint: disable=unnecessary-negation  # NaN must fail the check
             raise ValueError(f"{self.name}: ampacity_a must be > 0")
         if not (self.cost_eur_per_m >= 0 and self.r_ohm_per_m >= 0):
             raise ValueError(f"{self.name}: cost and resistance must be >= 0")
@@ -162,7 +162,7 @@ class CollectorModel:
             raise ValueError("current_a must be >= 0 (and not NaN)")
         if any(not w >= 0 for w in self.loss_weight):
             raise ValueError("loss_weight must be >= 0 (and not NaN)")
-        if any(not f > 0 for f in self.derating):
+        if any(not f > 0 for f in self.derating):  # pylint: disable=unnecessary-negation  # NaN must fail the check
             raise ValueError("derating factors must be > 0")
         if self.p_max < 1:
             raise ValueError("p_max must be >= 1")
@@ -387,6 +387,5 @@ def set_partitions(items):
     first, rest = items[0], items[1:]
     for p in set_partitions(rest):
         yield [[first]] + p
-        for i in range(len(p)):
-            yield p[:i] + [[first] + p[i]] + p[i + 1:]
-
+        for i, part in enumerate(p):
+            yield p[:i] + [[first] + part] + p[i + 1:]

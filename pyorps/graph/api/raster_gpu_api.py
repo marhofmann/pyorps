@@ -157,7 +157,7 @@ class RasterGPUAPI(GraphAPI):
     symmetric_edge_weights: bool = True
 
     def __init__(
-            self,
+            self,  # pylint: disable=unused-argument  # kwargs accepted for API compatibility
             raster_data: ndarray,
             steps: ndarray,
             ignore_max: bool = True,
@@ -299,7 +299,7 @@ class RasterGPUAPI(GraphAPI):
         # rebuild, so refcounting is the primary release path.
         try:
             self.close()
-        except Exception:  # pragma: no cover - interpreter teardown  # nosec B110
+        except Exception:  # pragma: no cover - interpreter teardown  # nosec B110  # pylint: disable=broad-exception-caught
             pass
 
     # ------------------------------------------------------------------

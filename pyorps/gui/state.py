@@ -112,7 +112,7 @@ class TileManager:
             if callable(shutdown):
                 try:
                     shutdown()
-                except Exception:  # pragma: no cover - best-effort cleanup  # nosec B110
+                except Exception:  # pragma: no cover - best-effort cleanup  # nosec B110  # pylint: disable=broad-exception-caught
                     pass
 
     def shutdown_all(self) -> None:

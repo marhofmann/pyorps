@@ -213,8 +213,8 @@ def screen_footprints(cost, blocked, *, footprint: Footprint,
         c = irfft2(fc * fk, s=shape, workers=workers)
         b = irfft2(fb * fk, s=shape, workers=workers)
         off_r, off_c = kr // 2, kc // 2
-        c_valid = c[off_r:off_r + rows, off_c:off_c + cols]
-        b_valid = b[off_r:off_r + rows, off_c:off_c + cols]
+        c_valid = c[off_r:off_r + rows, off_c:off_c + cols]  # pylint: disable=invalid-sequence-index  # false positive, ints
+        b_valid = b[off_r:off_r + rows, off_c:off_c + cols]  # pylint: disable=invalid-sequence-index  # false positive, ints
         improves = (b_valid < 0.5) & (c_valid < best)
         best = np.where(improves, c_valid, best)
         best_theta = np.where(improves, np.float32(theta), best_theta)

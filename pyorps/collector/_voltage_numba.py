@@ -138,7 +138,7 @@ def solve_batch(ptr, eu, ev, zser, ysh, S, n, s_slot, v0, tol, max_iter,
                     d = abs(Vn[w] - V[w])
                     if not np.isfinite(d):
                         finite = False
-                    if d > delta:
+                    if d > delta:  # pylint: disable=consider-using-max-builtin  # numba kernel, left untouched
                         delta = d
                 for j in range(1, used):
                     w = order[j]
@@ -155,7 +155,7 @@ def solve_batch(ptr, eu, ev, zser, ysh, S, n, s_slot, v0, tol, max_iter,
                 out_v[c, b, k] = V[k]
             for j in range(used):
                 a = abs(V[order[j]])
-                if a > vmax:
+                if a > vmax:  # pylint: disable=consider-using-max-builtin  # numba kernel, left untouched
                     vmax = a
             out_vmax[c, b] = vmax
             # ---- turbine LV voltage at every tap (evaluate_limits)

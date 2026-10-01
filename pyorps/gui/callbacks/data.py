@@ -190,7 +190,7 @@ def register(app, state) -> None:
             from shapely.geometry import shape as _shape
             state.study_area_geoms.add(
                 _shape(feature.get("geometry", feature)).wkt)
-        except Exception:  # pragma: no cover - defensive  # nosec B110
+        except Exception:  # pragma: no cover - defensive  # nosec B110  # pylint: disable=broad-exception-caught
             pass
         state.remove_layer(_STUDY_AREA_LAYER_ID)
         state.add_layer(

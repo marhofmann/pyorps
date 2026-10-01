@@ -53,7 +53,7 @@ def register(app, state) -> None:
         Input(ids.COST_FEATURE_KEYS, "value"),
         Input(ids.ROUTE_RASTER, "value"))
     def sync_workflow_and_gating(_view, grid_state, cost_dataset,
-                                 feature_keys, route_raster):
+                                 feature_keys, route_raster):  # pylint: disable=unused-argument  # Dash passes every Input
         vectors = state.layers_of_kind("vector")
         rasters = state.layers_of_kind("raster")
         routes = state.layers_of_kind("route")

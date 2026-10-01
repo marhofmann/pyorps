@@ -1,5 +1,5 @@
 """DEPRECATED shim: re-exports :mod:`pyorps.gui.services.geo` (Section 15)."""
-from pyorps.gui.services.geo import *  # noqa: F401,F403
+from pyorps.gui.services.geo import *  # noqa: F401,F403  # pylint: disable=wildcard-import,unused-wildcard-import
 from pyorps.gui.services.geo import (  # noqa: F401  # pylint: disable=unused-import
     WGS84,
     _make_json_safe,

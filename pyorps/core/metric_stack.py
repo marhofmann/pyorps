@@ -385,7 +385,7 @@ class MetricStack:
         cols = slice(int(cols.start), int(cols.stop))
 
         sub = MetricStack(window_transform(window, self.transform), self.crs)
-        sub._layers = {name: arr[rows, cols]
+        sub._layers = {name: arr[rows, cols]  # pylint: disable=protected-access  # same-class view construction
                        for name, arr in self._layers.items()}
         if self.forbidden_mask is not None:
             sub.forbidden_mask = self.forbidden_mask[rows, cols]

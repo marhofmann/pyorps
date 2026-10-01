@@ -198,7 +198,7 @@ def layout(design: Design, graph, turbines, model: CollectorModel, *,
         if s.source is None or s.sink is None:
             raise DesignError(f"system {sid} lacks an end")
         ti, p = s.option
-        if not (0 <= ti < len(model.types)) or not (1 <= p <= model.p_max):
+        if not 0 <= ti < len(model.types) or not 1 <= p <= model.p_max:
             raise DesignError(f"system {sid} has option {s.option}, not in "
                               f"the catalogue ({len(model.types)} types, "
                               f"p <= {model.p_max})")
@@ -249,12 +249,20 @@ def layout(design: Design, graph, turbines, model: CollectorModel, *,
         up, dn = [], []
         na, nb = [a], [b]
         while depth[x] > depth[y]:
-            up.append(pedge[x]); x = parent[x]; na.append(x)
+            up.append(pedge[x])
+            x = parent[x]
+            na.append(x)
         while depth[y] > depth[x]:
-            dn.append(pedge[y]); y = parent[y]; nb.append(y)
+            dn.append(pedge[y])
+            y = parent[y]
+            nb.append(y)
         while x != y:
-            up.append(pedge[x]); x = parent[x]; na.append(x)
-            dn.append(pedge[y]); y = parent[y]; nb.append(y)
+            up.append(pedge[x])
+            x = parent[x]
+            na.append(x)
+            dn.append(pedge[y])
+            y = parent[y]
+            nb.append(y)
         for z in (na + nb[-2::-1])[1:-1]:
             if z in special:
                 raise DesignError(f"system {sid} passes a turbine or the root")

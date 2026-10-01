@@ -20,8 +20,9 @@ Algorithm:
 from __future__ import annotations
 
 import warnings
-import numpy as np
 from typing import Tuple
+
+import numpy as np
 
 from pyorps.utils.traversal_gpu import (
     GPU_AVAILABLE, prepare_step_lookup_tables
@@ -253,7 +254,7 @@ _constrained_kernel_cache = {}
 def _get_constrained_kernel(name, source):
     """Get a compiled CuPy RawKernel, compiling on first use."""
     if name not in _constrained_kernel_cache:
-        _constrained_kernel_cache[name] = cp.RawKernel(source, name)
+        _constrained_kernel_cache[name] = cp.RawKernel(source, name)  # pylint: disable=possibly-used-before-assignment
     return _constrained_kernel_cache[name]
 
 
@@ -279,7 +280,7 @@ def _compute_constrained_smem(n_steps, max_inter_cols):
 # VRAM check
 # ============================================================================
 
-def _check_vram(total_states, n_steps, buf_size):
+def _check_vram(total_states, n_steps, buf_size):  # pylint: disable=unused-argument
     """Check if GPU has enough VRAM for the constrained SSSP arrays."""
     dist_bytes = total_states * 4           # float32
     pred_bytes = total_states * 8           # int64
@@ -318,7 +319,7 @@ def _compute_constrained_delta(raster, cost_factors):
 # ============================================================================
 
 def _reconstruct_path(pred_cpu, best_state, n_dirs, n_span_bins,
-                      cols, min_span_bin):
+                      cols, min_span_bin):  # pylint: disable=unused-argument  # kept for API/signature compatibility
     """Walk predecessor chain and detect tower placements."""
     # Collect state chain in reverse
     state_chain = []
@@ -359,7 +360,7 @@ def _reconstruct_path(pred_cpu, best_state, n_dirs, n_span_bins,
 def _refill_from_pending_v1(d_dist, d_pending, d_pending_count,
                             d_queue_a, d_near_count, d_settled,
                             d_far_count, current_bucket, delta,
-                            tpb, classify_kernel, buf_size):
+                            tpb, classify_kernel, buf_size):  # pylint: disable=unused-argument
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Try to find next bucket from pending states.
 
@@ -387,12 +388,10 @@ def _refill_from_pending_v1(d_dist, d_pending, d_pending_count,
         d_pending_count[0] = far_count
         if frontier_size > 0:
             return (frontier_size, current_bucket, False, False)
-        elif far_count > 0:
+        if far_count > 0:
             return (0, current_bucket, False, True)
-        else:
-            return (0, current_bucket, True, False)
-    else:
-        return (0, current_bucket, False, False)
+        return (0, current_bucket, True, False)
+    return (0, current_bucket, False, False)
 
 
 def _refill_full_scan_v1(d_dist, current_bucket, delta, buf_size, d_queue_a):
@@ -482,9 +481,8 @@ def _advance_bucket_v1(d_dist, d_pending, d_pending_count,
                 d_settled[:min(far_count, buf_size)]
         d_pending_count[0] = min(far_count, buf_size)
         return (frontier_size, current_bucket, min(far_count, buf_size))
-    else:
-        d_pending_count[0] = 0
-        return (0, current_bucket, 0)
+    d_pending_count[0] = 0
+    return (0, current_bucket, 0)
 
 
 def _run_light_phase_v1(d_raster, rows, cols, max_cost, d_steps,
@@ -595,7 +593,7 @@ def constrained_sssp_raster_gpu(
     n_span_bins: int,
     span_bin_size: float,
     min_span: float,
-    max_span: float,
+    max_span: float,  # pylint: disable=unused-argument  # kept for API/signature compatibility
     exclude_mask: np.ndarray = None,
     threads_per_block: int = 256,
     max_iterations: int = 10000,

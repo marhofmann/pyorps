@@ -250,6 +250,7 @@ class RasterCollector:
     stats: dict = field(default_factory=dict)
 
     def run(self) -> np.ndarray:
+        # pylint: disable=attribute-defined-outside-init  # per-run solver state
         if self.keep_trace and self.engine != "B":
             raise ValueError("traceback needs engine B (set tokens)")
         v = np.asarray(self.values)

@@ -388,7 +388,7 @@ def register(app, state) -> None:
         signature = host_signature(state)
         if signature == getattr(state, "_host_sig", None):
             raise PreventUpdate
-        state._host_sig = signature
+        state._host_sig = signature  # pylint: disable=protected-access  # per-state view cache owned by this module
         return render_layer_host(state)
 
     # ------------------------------------------------ layers tab grid mirror
@@ -528,7 +528,7 @@ def register(app, state) -> None:
                       or event.get("column", {}).get("colId"))
             if row is None or column not in (COST_COLUMN, "name"):
                 continue
-            if not (0 <= int(row) < len(layer.gdf)):
+            if not 0 <= int(row) < len(layer.gdf):
                 continue
             value = data.get(column)
             if column == COST_COLUMN:

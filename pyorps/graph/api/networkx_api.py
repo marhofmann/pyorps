@@ -25,7 +25,7 @@ class NetworkxAPI(GraphLibraryAPI):
             from_nodes: NodeList,
             to_nodes: NodeList,
             cost: ndarray[int] | None = None,
-            dem_data: ndarray | None = None,
+            dem_data: ndarray | None = None,  # pylint: disable=unused-argument  # interface parameter
             **kwargs
     ) -> nx.Graph:
         """

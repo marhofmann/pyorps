@@ -113,7 +113,7 @@ class UWTransformer:
     def __post_init__(self):
         if not (self.s_r_mva > 0 and self.u_hv_kv > 0 and self.u_mv_kv > 0):
             raise ValueError("ratings must be > 0")
-        if not (0 < self.uk < 1 and 0 <= self.vkr < self.uk):
+        if not 0 <= self.vkr < self.uk < 1:
             raise ValueError("need 0 <= vkr < uk < 1")
         if self.tap_min > 0 or self.tap_max < 0:
             raise ValueError("the tap range must contain the middle tap 0")
@@ -283,7 +283,7 @@ class _TapRun:
     error: str = ""
 
 
-def _solve_tap(ptree, plant, vmodel, corner, tap, kappa0=None) -> _TapRun:
+def _solve_tap(ptree, plant, vmodel, corner, tap, kappa0=None) -> _TapRun:  # pylint: disable=unused-argument
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """The controller's reactive share at one tap (false position)."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

@@ -13,13 +13,13 @@ _warnings.filterwarnings(
 del _warnings
 
 # Import key components for easy access
-from .core.cost_assumptions import (
+from .core.cost_assumptions import (  # pylint: disable=wrong-import-position
     CostAssumptions,
     detect_feature_columns,
     get_zero_cost_assumptions,
     save_empty_cost_assumptions,
 )
-from .core.exceptions import (
+from .core.exceptions import (  # pylint: disable=wrong-import-position
     AlgorithmNotImplementedError,
     CostAssumptionsError,
     NoPathFoundError,
@@ -28,18 +28,18 @@ from .core.exceptions import (
     RasterShapeError,
     WFSError,
 )
-from .core.ensemble import RouteEnsemble
-from .core.metric_stack import MetricStack
-from .core.objective import (
+from .core.ensemble import RouteEnsemble  # pylint: disable=wrong-import-position
+from .core.metric_stack import MetricStack  # pylint: disable=wrong-import-position
+from .core.objective import (  # pylint: disable=wrong-import-position
     GradientOptions,
     Objective,
 )
-from .core.path import (  # Fixed: import from core.path instead of graph
+from .core.path import (  # Fixed: import from core.path instead of graph  # pylint: disable=wrong-import-position
     Path,
     PathCollection,
 )
-from .graph.path_finder import PathFinder
-from .graph.search_session import (
+from .graph.path_finder import PathFinder  # pylint: disable=wrong-import-position
+from .graph.search_session import (  # pylint: disable=wrong-import-position
     CostField,
     CostFieldSet,
     Leg,
@@ -48,7 +48,7 @@ from .graph.search_session import (
     fields_fit_in_memory,
     full_window_buffer_m,
 )
-from .graph.tower_field import (
+from .graph.tower_field import (  # pylint: disable=wrong-import-position
     AngleTables,
     ClearanceModel,
     TowerField,
@@ -62,13 +62,13 @@ from .graph.tower_field import (
     tower_field_bounds,
     tower_field_from_raster,
 )
-from .graph.corridor import (
+from .graph.corridor import (  # pylint: disable=wrong-import-position
     cell_sharing_profile,
     corridor_graph_from_routes,
     route_metrics,
     supercover_cells,
 )
-from .io.geo_dataset import (
+from .io.geo_dataset import (  # pylint: disable=wrong-import-position
     GeoDataset,
     InMemoryRasterDataset,
     InMemoryVectorDataset,
@@ -79,8 +79,8 @@ from .io.geo_dataset import (
     WFSVectorDataset,
     initialize_geo_dataset,
 )
-from .raster.rasterizer import GeoRasterizer
-from .raster.thinness import (
+from .raster.rasterizer import GeoRasterizer  # pylint: disable=wrong-import-position
+from .raster.thinness import (  # pylint: disable=wrong-import-position
     MIN_FORBIDDEN_WIDTH_CELLS,
     ForbiddenBurnAssessment,
     ForbiddenBurnReport,

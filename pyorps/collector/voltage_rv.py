@@ -114,7 +114,7 @@ class _Checker:
             raise ValueError("give both plant and rules, or neither")
         self.graph, self.turbines, self.model = graph, turbines, model
         self.vmodel, self.plant, self.rules = vmodel, plant, rules
-        self.kw = dict(root_transit=root_transit)
+        self.kw = {"root_transit": root_transit}
         self.tap_policy = tap_policy
 
     def check(self, design):
@@ -161,7 +161,7 @@ class _Checker:
                 for v in c.v_by_tap.values():
                     mags = [abs(x) for x in v[MV_BUS:]]
                     k = max(range(len(mags)), key=mags.__getitem__)
-                    if best is None or mags[k] > best[0]:
+                    if best is None or mags[k] > best[0]:  # pylint: disable=unsubscriptable-object  # false positive
                         best = (mags[k], mags, k)
             return tree, best[1], best[2]
         t = chk.worst_turbine
@@ -327,7 +327,7 @@ def certify_voltage(field_, pricer, turbines, model: CollectorModel,
         rec["repair_steps"] = [[s, list(a), list(b)] for s, a, b in rep.steps]
         if rep.passed:
             designs[g] = rep.design
-            rec["after_repair"] = rep.check.as_record()
+            rec["after_repair"] = rep.check.as_record()  # pylint: disable=no-member  # false positive
             rec["repaired_cost"] = rep.cost
             checks[g] = rec
             return f_rel, rep.cost + float(rc[g])

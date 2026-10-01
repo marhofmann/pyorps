@@ -493,7 +493,7 @@ class ResolutionAdvice:
             f"the narrowest forbidden feature is {self.narrowest_width_m:.3g} m " +
             f"wide (index {self.narrowest_index}), but a feature must be at " +
             f"least {safe_forbidden_width_m(self.resolution_in_m):.3g} m " +
-            f"(sqrt(2) cells) wide to survive a " +
+            "(sqrt(2) cells) wide to survive a " +
             f"{self.resolution_in_m:.3g} m burn at every alignment"
         ]
         if self.safe_resolution_in_m is not None:
@@ -1406,7 +1406,7 @@ def detect_repair_seals(
         out_shape: tuple[int, int],
         transform: Affine,
         *,
-        all_touched: bool = False,
+        all_touched: bool = False,  # pylint: disable=unused-argument
         impassable=None,
         plain_passable: np.ndarray | None = None,
         other_geometries=None,

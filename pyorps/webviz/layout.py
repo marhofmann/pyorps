@@ -70,9 +70,9 @@ def _shape_overlays(viewer) -> list:
         dl.Overlay(
             dl.GeoJSON(
                 data=shape.geojson, id={"type": "shape-layer", "index": i},
-                options=dict(style=dict(color=shape.color, weight=1,
-                                        fillOpacity=0.25)),
-                hoverStyle=dict(weight=3, color="#ffff00")),
+                options={"style": {"color": shape.color, "weight": 1,
+                                   "fillOpacity": 0.25}},
+                hoverStyle={"weight": 3, "color": "#ffff00"}),
             name=f"\U0001F4D0 {shape.name}", checked=True)
         for i, shape in enumerate(viewer.shape_layers)
     ]
@@ -86,7 +86,7 @@ def _route_layers(viewer) -> list:
     empty = {"type": "FeatureCollection", "features": []}
     return [
         dl.GeoJSON(data=viewer.route_geojson or empty, id="route-layer",
-                   options=dict(style=ROUTE_STYLE), hoverStyle=ROUTE_HOVER,
+                   options={"style": ROUTE_STYLE}, hoverStyle=ROUTE_HOVER,
                    zoomToBounds=viewer.route_geojson is not None),
         dl.GeoJSON(data=viewer.endpoints_geojson or empty, id="endpoints-layer"),
     ]

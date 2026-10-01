@@ -551,7 +551,7 @@ class CostAssumptions:
                 if df.empty:
                     msg = (f"Failed to read Excel file {filepath}. File contains no "
                            f"data or is not in the correct format!")
-                    raise FileLoadError(msg)
+                    raise FileLoadError(msg) from first_error
                 df = self._convert_numeric_columns(df)
                 self.cost_assumptions = self.convert_df_to_cost_dict(df)
                 return self.cost_assumptions
@@ -1370,7 +1370,7 @@ def get_zero_cost_assumptions(
         def is_nan_key(key):
             return not isinstance(key, str) and np.isnan(key)
 
-        keys = [tuple(['' if is_nan_key(key) else key for key in row]) for row in keys]
+        keys = [tuple('' if is_nan_key(key) else key for key in row) for row in keys]
         cost_dict = {tuple(columns): dict(zip(keys, len(keys) * [0]))}
     return CostAssumptions(cost_dict)
 

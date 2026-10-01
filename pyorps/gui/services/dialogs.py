@@ -46,7 +46,7 @@ def _run(fn: Callable) -> tuple[str | None, str | None]:
                 result["path"] = fn(filedialog, root) or None
             finally:
                 root.destroy()
-        except Exception as exc:  # pragma: no cover - headless machines
+        except Exception as exc:  # pragma: no cover - headless machines  # pylint: disable=broad-exception-caught
             result["error"] = str(exc)
 
     with _dialog_lock:

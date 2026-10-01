@@ -293,7 +293,6 @@ def register(app, state) -> None:
     def new_route(n_clicks):
         if not n_clicks:
             raise PreventUpdate
-        return None
 
     # ---------------------------------------- click-to-place edits (8.4)
     @app.callback(
@@ -479,7 +478,7 @@ def register(app, state) -> None:
                 "Points applied to the new-route draft",
                 meaning=f"{len(rows or [])} point(s) — press 'Run routing' "
                         "to compute."))
-            return ((no_update,) * 8 + (new_draft, notices))
+            return (no_update,) * 8 + (new_draft, notices)
 
         try:
             new_points = points_from_rows(rows)

@@ -39,7 +39,7 @@ def add_raster_layer(state, source, notices: list, *, name: str | None = None,
         try:
             with rasterio.open(tile_layer.source_path) as src:
                 raster_crs = src.crs
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught  # CRS probe is best-effort
             raster_crs = None
     layer = state.add_layer(
         display, "raster", tile=tile_layer, crs=raster_crs,
@@ -66,7 +66,7 @@ def _size_bounds(state):
 
     stack = np.array([ly.gdf.total_bounds for ly in vectors
                       if ly.gdf is not None])
-    if not len(stack):
+    if not stack.size:
         return None
     return (stack[:, 0].min(), stack[:, 1].min(),
             stack[:, 2].max(), stack[:, 3].max())
@@ -211,7 +211,7 @@ def register(app, state) -> None:
         Input(ids.COST_GRID_STATE, "data"),
         Input(ids.RASTERIZE_DATASET, "value"))
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    def sync_rasterize_options(_view, grid_state, dataset_sel):
+    def sync_rasterize_options(_view, grid_state, dataset_sel):  # pylint: disable=unused-argument
         dataset_options = [{"label": "— from Cost tab (default)",
                             "value": ""}]
         dataset_options += [{"label": ly.name, "value": ly.id}

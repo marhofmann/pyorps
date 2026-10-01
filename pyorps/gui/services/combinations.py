@@ -88,7 +88,7 @@ def ensure_combination_gdf(layer):
             modifiers=inputs.get("modifiers"),
             base_crs=inputs.get("base_crs"),
             bounding_polygon=inputs.get("bounding_polygon"))
-    except Exception:      # degrade to "no table" — never crash a viewer
+    except Exception:      # degrade to "no table" — never crash a viewer  # pylint: disable=broad-exception-caught
         meta.pop("combination_inputs", None)
         return None
     meta.pop("combination_inputs", None)

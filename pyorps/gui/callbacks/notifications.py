@@ -59,7 +59,7 @@ def notice_toast(notice: dict) -> dbc.Toast:
         id={"type": ids.TYPE_NOTICE, "index": notice.get("id", "")})
 
 
-def register(app, state) -> None:
+def register(app, state) -> None:  # pylint: disable=unused-argument  # uniform register(app, state) signature
     #: ids of notices already written to the log (one write per notice)
     logged_ids: set[str] = set()
 
@@ -74,7 +74,7 @@ def register(app, state) -> None:
                 logged_ids.add(nid)
                 try:
                     logbook.log_notice(notice)
-                except Exception:  # pragma: no cover - logging must never break UI  # nosec B110
+                except Exception:  # pragma: no cover  # nosec B110  # pylint: disable=broad-exception-caught
                     pass
         return [notice_toast(n) for n in (notices or [])]
 
@@ -87,7 +87,7 @@ def register(app, state) -> None:
         Input(ids.LOG_REFRESH_BTN, "n_clicks"),
         State(ids.LOG_OFFCANVAS, "is_open"),
         prevent_initial_call=True)
-    def show_log(view_clicks, refresh_clicks, is_open):
+    def show_log(view_clicks, refresh_clicks, is_open):  # pylint: disable=unused-argument  # Dash callback input
         trigger = ctx.triggered_id
         if trigger == ids.LOG_VIEW_BTN and not view_clicks:
             raise PreventUpdate

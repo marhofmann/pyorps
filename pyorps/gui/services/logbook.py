@@ -41,7 +41,7 @@ def log_file_path() -> Path:
 
 def get_logger() -> logging.Logger:
     """The shared, file-backed logger (created once per process)."""
-    global _logger, _log_dir
+    global _logger, _log_dir  # pylint: disable=global-statement  # module-level cached logger
     if _logger is not None:
         return _logger
     _log_dir = _resolve_dir()
@@ -94,7 +94,7 @@ def read_log(max_lines: int = 800) -> str:
 
 def reset() -> None:
     """Drop the cached logger + handlers (tests, to redirect the log dir)."""
-    global _logger, _log_dir
+    global _logger, _log_dir  # pylint: disable=global-statement  # module-level cached logger
     if _logger is not None:
         for handler in list(_logger.handlers):
             handler.close()

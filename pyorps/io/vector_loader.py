@@ -997,6 +997,7 @@ def _parse_geojson_response(response: requests.Response) -> gpd.GeoDataFrame | N
             return gpd.GeoDataFrame.from_features(geojson_data['features'])
     except ValueError:
         return None
+    return None
 
 
 def _parse_xml_response(response: requests.Response) -> gpd.GeoDataFrame | None:

@@ -156,11 +156,10 @@ def find_adjacent_directions(phi: float, directions: list[float]) -> tuple[float
         return directions[idx - 1], directions[(idx + 1) % len(directions)]
 
     # Find the adjacent directions
-    for i in range(len(directions)):
+    for i, curr_dir in enumerate(directions):
         # Handle the wrap-around case
         next_i = (i + 1) % len(directions)
 
-        curr_dir = directions[i]
         next_dir = directions[next_i]
 
         # Handle the wrap-around for angles
@@ -281,8 +280,7 @@ def find_max_errors(directions: list[float]) -> dict[str, float]:
     max_d_theta_j_plus_1 = 0
 
     # Check at the midpoint between each adjacent pair of directions
-    for i in range(len(directions)):
-        theta_j = directions[i]
+    for i, theta_j in enumerate(directions):
         theta_j_plus_1 = directions[(i + 1) % len(directions)]
 
         # Ensure theta_j < theta_j_plus_1

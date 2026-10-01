@@ -485,24 +485,24 @@ class ConstrainedPathFinder(PathFinder):
             Dict of keyword arguments for GPU constrained SSSP functions.
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-        return dict(
-            raster=raster,
-            source_row=source_row, source_col=source_col,
-            target_row=target_row, target_col=target_col,
-            steps=self.steps,
-            angle_cost_lut=self._angle_cost_lut.astype(np.float32),
-            angle_valid_lut=self._angle_valid_lut.astype(np.uint8),
-            step_distances=self._step_distances.astype(np.float32),
-            tower_terrain_costs=self._tower_terrain_costs.astype(
+        return {
+            "raster": raster,
+            "source_row": source_row, "source_col": source_col,
+            "target_row": target_row, "target_col": target_col,
+            "steps": self.steps,
+            "angle_cost_lut": self._angle_cost_lut.astype(np.float32),
+            "angle_valid_lut": self._angle_valid_lut.astype(np.uint8),
+            "step_distances": self._step_distances.astype(np.float32),
+            "tower_terrain_costs": self._tower_terrain_costs.astype(
                 np.float32),
-            tower_angle_costs=self._tower_angle_costs.astype(
+            "tower_angle_costs": self._tower_angle_costs.astype(
                 np.float32),
-            n_span_bins=n_span_bins, span_bin_size=span_bin_size,
-            min_span=min_span, max_span=max_span,
-            tower_heights=heights,
-            height_premiums=premiums,
-            n_heights=len(heights),
-        )
+            "n_span_bins": n_span_bins, "span_bin_size": span_bin_size,
+            "min_span": min_span, "max_span": max_span,
+            "tower_heights": heights,
+            "height_premiums": premiums,
+            "n_heights": len(heights),
+        }
 
     def _add_dem_to_kwargs(self, gpu_kwargs, dem_data, dem_kwargs):
         """Add DEM/clearance/gradient/obstacle params to gpu_kwargs.
@@ -592,37 +592,37 @@ class ConstrainedPathFinder(PathFinder):
         # Area cost offset arrays (None when not using "exact" mode)
         area_kwargs = {}
         if self._area_offsets is not None:
-            area_kwargs = dict(
-                area_offsets=self._area_offsets,
-                area_offset_starts=self._area_offset_starts,
-                area_offset_counts=self._area_offset_counts,
-            )
+            area_kwargs = {
+                "area_offsets": self._area_offsets,
+                "area_offset_starts": self._area_offset_starts,
+                "area_offset_counts": self._area_offset_counts,
+            }
 
         def _run_clearance(height_arr, premium_arr, obs_data):
-            kwargs = dict(
-                raster=raster,
-                source_row=source_row, source_col=source_col,
-                target_row=target_row, target_col=target_col,
-                steps=self.steps,
-                angle_cost_lut=self._angle_cost_lut.astype(np.float32),
-                angle_valid_lut=self._angle_valid_lut.astype(np.uint8),
-                step_distances=self._step_distances.astype(np.float32),
-                tower_terrain_costs=self._tower_terrain_costs.astype(
+            kwargs = {
+                "raster": raster,
+                "source_row": source_row, "source_col": source_col,
+                "target_row": target_row, "target_col": target_col,
+                "steps": self.steps,
+                "angle_cost_lut": self._angle_cost_lut.astype(np.float32),
+                "angle_valid_lut": self._angle_valid_lut.astype(np.uint8),
+                "step_distances": self._step_distances.astype(np.float32),
+                "tower_terrain_costs": self._tower_terrain_costs.astype(
                     np.float32),
-                tower_angle_costs=self._tower_angle_costs.astype(np.float32),
-                n_span_bins=n_span_bins, span_bin_size=span_bin_size,
-                min_span=min_span, max_span=max_span,
-                dem_data=dem_data,
-                cell_size=self._cell_size,
-                tower_heights=height_arr,
-                height_premiums=premium_arr,
-                conductor_weight_per_m=self._profile.conductor_weight_per_m,
-                conductor_tension=self._profile.conductor_tension_n,
-                min_clearance_val=self._profile.min_clearance_m,
-                max_gradient_pct=dem_kwargs['max_gradient_pct'],
-                gradient_scale=dem_kwargs['gradient_scale'],
+                "tower_angle_costs": self._tower_angle_costs.astype(np.float32),
+                "n_span_bins": n_span_bins, "span_bin_size": span_bin_size,
+                "min_span": min_span, "max_span": max_span,
+                "dem_data": dem_data,
+                "cell_size": self._cell_size,
+                "tower_heights": height_arr,
+                "height_premiums": premium_arr,
+                "conductor_weight_per_m": self._profile.conductor_weight_per_m,
+                "conductor_tension": self._profile.conductor_tension_n,
+                "min_clearance_val": self._profile.min_clearance_m,
+                "max_gradient_pct": dem_kwargs['max_gradient_pct'],
+                "gradient_scale": dem_kwargs['gradient_scale'],
                 **area_kwargs,
-            )
+            }
             if obs_data is not None:
                 kwargs['obstacle_heights'] = obs_data
 
@@ -880,7 +880,7 @@ class ConstrainedPathFinder(PathFinder):
         return tower_h
 
     def _build_tower_object(self, pos, path_indices, tower_positions,
-                            tower_set, tower_height_map, terminal_cells,
+                            tower_set, tower_height_map, terminal_cells,  # pylint: disable=unused-argument
                             ncols, raster, idx_to_coord, tid):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Build a single Tower from position data.

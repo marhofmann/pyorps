@@ -128,8 +128,7 @@ def _walk_path(seg_dr, seg_dc, seg_ptr, values, dem_cells, use_dem,
         length_2d += seg_2d_m
         length_3d += seg_3d_m
         grad_exposure += slope_pct * seg_3d_m
-        if slope_pct > grad_max:
-            grad_max = slope_pct
+        grad_max = max(grad_max, slope_pct)
 
         # Per-layer means over {source, intermediates, target}
         for k in range(n_layers):

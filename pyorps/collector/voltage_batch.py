@@ -442,7 +442,7 @@ def _numba_solve(batch: DesignBatch, vmodel: VoltageModel, *,
     margin = np.empty((B, n, len(taps)), dtype=np.float64)
     err = np.empty(B, dtype=np.int64)
     prev = nb.get_num_threads()
-    nb.set_num_threads(max(1, min(int(threads), nb.config.NUMBA_NUM_THREADS)))
+    nb.set_num_threads(max(1, min(int(threads), nb.config.NUMBA_NUM_THREADS)))  # pylint: disable=no-member  # numba config attribute
     try:
         solve_batch(ptr, eu, ev, zser, ysh, S, n, s_slot, v0, float(tol),
                     int(its), zt, ratio, float(lo), float(hi), out_v, conv,

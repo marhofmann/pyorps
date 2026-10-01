@@ -370,7 +370,7 @@ def register(app, state) -> None:
                       or event.get("column", {}).get("colId"))
             if row is None or column not in ("name", manual_cost.COST_COLUMN):
                 continue
-            if not (0 <= int(row) < len(layer.gdf)):
+            if not 0 <= int(row) < len(layer.gdf):
                 continue
             value = data.get(column)
             if column == manual_cost.COST_COLUMN:

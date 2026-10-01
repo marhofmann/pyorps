@@ -29,7 +29,10 @@ CoordinateTuple: TypeAlias = tuple[float, float] | list[float]
 # List of pairs of float coordinates
 CoordinateList: TypeAlias = list[CoordinateTuple]
 
-CoordinateInput: TypeAlias = CoordinateTuple | CoordinateList | list[Point] | list[MultiPoint] | ndarray | Point | MultiPoint | GeoSeries | GeoDataFrame
+CoordinateInput: TypeAlias = (
+    CoordinateTuple | CoordinateList | list[Point] | list[MultiPoint] | ndarray
+    | Point | MultiPoint | GeoSeries | GeoDataFrame
+)
 
 NormalizedCoordinate: TypeAlias = CoordinateTuple | CoordinateList
 
@@ -48,4 +51,3 @@ NodePathList: TypeAlias = list[NodeList]
 
 # Maximum cost value for uint16 rasters — cells with this value are impassable
 IMPASSABLE_CELL_COST: int = 65535
-

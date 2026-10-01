@@ -1112,7 +1112,7 @@ def find_valid_nodes_3d(dr: int8_type, dc: int8_type,
             final_cost = edge_cost * gradient_penalty
 
             # Check for overflow and cap at maximum uint16 value
-            if final_cost > max_uint16:
+            if final_cost > max_uint16:  # pylint: disable=consider-using-min-builtin  # numba kernel
                 final_cost = max_uint16
 
             # Store the edge if we haven't exceeded capacity
@@ -1333,7 +1333,7 @@ def calculate_linestring_metrics_numba(raster, coords_rc):
                 t_next = t_max_c
                 advance_r = False
 
-            if t_next > 1.0:
+            if t_next > 1.0:  # pylint: disable=consider-using-min-builtin  # numba kernel
                 t_next = 1.0
 
             dt = t_next - t_prev
@@ -1359,4 +1359,3 @@ def calculate_linestring_metrics_numba(raster, coords_rc):
             t_prev = t_next
 
     return total_length, categories_array, lengths_array
-

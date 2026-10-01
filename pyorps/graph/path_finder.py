@@ -172,7 +172,7 @@ def get_graph_api_class(graph_api: str) -> type:
             raise ValueError(f"Unsupported graph API: {graph_api}")
 
 
-class PathFinder:
+class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
     """
     A class that encapsulates RasterReader and graph-based routing capabilities.
 
@@ -1229,7 +1229,7 @@ class PathFinder:
                 return None
 
             full_bounds = self._full_burn_bounds(base, geometry_buffer_m)
-            full_shape = rasterizer._calculate_out_shape_from_geodataframe(
+            full_shape = rasterizer._calculate_out_shape_from_geodataframe(  # pylint: disable=protected-access  # rasterizer helper
                 GeoDataFrame(geometry=[box(*full_bounds)], crs=crs),
                 resolution_in_m)
             rows, cols = int(full_shape[0]), int(full_shape[1])
@@ -1247,7 +1247,7 @@ class PathFinder:
 
             candidate = box(*window_bounds(window, full_transform))
             predicted_shape = (
-                rasterizer._calculate_out_shape_from_bounding_box(
+                rasterizer._calculate_out_shape_from_bounding_box(  # pylint: disable=protected-access  # rasterizer helper
                     candidate, resolution_in_m))
             if (int(predicted_shape[0]), int(predicted_shape[1])) != (height,
                                                                       width):
@@ -1897,10 +1897,10 @@ class PathFinder:
         # Get raster data (handle different shapes)
         if len(self.raster_handler.data.shape) == 3:
             raster_data = self.raster_handler.data[0]  # Use first band
-            _, rows, cols = self.raster_handler.data.shape
+            _, _rows, _cols = self.raster_handler.data.shape
         elif len(self.raster_handler.data.shape) == 2:
             raster_data = self.raster_handler.data
-            rows, cols = self.raster_handler.data.shape
+            _rows, _cols = self.raster_handler.data.shape
         else:
             raise RasterShapeError(self.raster_handler.data.shape)
 
@@ -1926,9 +1926,8 @@ class PathFinder:
         # Collect corrections and emit a single summary warning
         corrections = []
         invalid_idx = 0
-        for i in range(len(indices_2d)):
+        for i, (original_row, original_col) in enumerate(indices_2d):
             if invalid_mask[i]:
-                original_row, original_col = indices_2d[i]
                 new_row, new_col = corrected_positions[invalid_idx]
 
                 if new_row != original_row or new_col != original_col:
@@ -2113,9 +2112,8 @@ class PathFinder:
                     "simplify config must contain key 'tolerance'"
                 )
             # Probe dispatcher to catch unknown methods upfront.
-            from shapely.geometry import LineString as _LS
             simplify_linestring(
-                _LS([(0.0, 0.0), (1.0, 1.0)]),
+                LineString([(0.0, 0.0), (1.0, 1.0)]),
                 method=simplify["method"],
                 tolerance=float(simplify["tolerance"]),
             )
@@ -2583,7 +2581,7 @@ class PathFinder:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from pyorps.graph.corridor import corridor_graph_from_routes
 
-        if type(self) is not PathFinder:
+        if type(self) is not PathFinder:  # pylint: disable=unidiomatic-typecheck  # exact type, subclasses override
             # ConstrainedPathFinder overrides find_route to run the
             # extended-state kernels and never touches self.graph_api, so the
             # backend check below would pass while this method quietly built a

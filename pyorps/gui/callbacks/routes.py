@@ -49,7 +49,7 @@ def _estimate_body(est: dict) -> list:
     facts = html.Ul([
         html.Li([html.B("Prognosed runtime: "), f"{runtime} ",
                  html.Small(f"({est['algorithm']} on {est['graph_api']}, " +
-                            f"rough estimate)", className="text-muted")]),
+                            "rough estimate)", className="text-muted")]),
         html.Li([html.B("Prognosed memory: "),
                  f"~{est['est_memory_mb']:,.0f} MB peak (graph + search " +
                  "arrays)"]),
@@ -311,17 +311,17 @@ def register(app, state) -> None:
             return (no_update, "points outside raster", no_update,
                     no_update, notices, False, no_update, no_update)
 
-        run_kwargs = dict(
-            sources=sources, targets=targets, waypoints=waypoints,
-            algorithm=algorithm or "delta-stepping",
-            hardware=hardware or "cpu",
-            neighborhood=neighborhood or "r2",
-            pairwise=bool(pairwise),
-            search_buffer_m=(float(search_buffer)
-                             if search_buffer else None),
-            ignore_max_cost=bool(ignore_max_cost),
-            delta=float(delta or 100), num_threads=int(num_threads or 0),
-            use_astar=bool(use_astar))
+        run_kwargs = {
+            "sources": sources, "targets": targets, "waypoints": waypoints,
+            "algorithm": algorithm or "delta-stepping",
+            "hardware": hardware or "cpu",
+            "neighborhood": neighborhood or "r2",
+            "pairwise": bool(pairwise),
+            "search_buffer_m": (float(search_buffer)
+                                if search_buffer else None),
+            "ignore_max_cost": bool(ignore_max_cost),
+            "delta": float(delta or 100), "num_threads": int(num_threads or 0),
+            "use_astar": bool(use_astar)}
         meta = {
             "raster_layer_id": raster_layer_id,
             "algorithm": run_kwargs["algorithm"],
@@ -342,7 +342,7 @@ def register(app, state) -> None:
                 neighborhood=run_kwargs["neighborhood"],
                 pairwise=run_kwargs["pairwise"],
                 search_buffer_m=run_kwargs["search_buffer_m"])
-        except Exception:                       # estimate is best-effort
+        except Exception:                       # estimate is best-effort  # pylint: disable=broad-exception-caught
             est = None
         if est is not None and routing.needs_confirmation(est):
             state.pending_routing = {"raster_path": raster_path,
@@ -440,7 +440,7 @@ def register(app, state) -> None:
         finder, built, failed = job.result
         view, status, options, newest, notices, draft = finalize_routing(
             state, finder, built, failed, meta=job.params["meta"],
-            notices=notices, cancelled=(job.status == "cancelled"))
+            notices=notices, cancelled=job.status == "cancelled")
         return view, status, options, newest, notices, True, hide, draft
 
     # ------------------------------------------------- load existing routes

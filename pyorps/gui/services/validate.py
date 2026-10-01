@@ -27,7 +27,7 @@ def validate_project_crs(crs: Any) -> Notice | None:
     try:
         from pyproj import CRS
         parsed = CRS.from_user_input(crs)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught  # reported as a notice
         return Notice(
             severity="error", title="Unknown CRS",
             meaning=f"'{crs}' couldn't be parsed as a coordinate system.",
@@ -45,8 +45,8 @@ def validate_project_crs(crs: Any) -> Notice | None:
 
 
 def validate_search_buffer(buffer_m: float | None,
-                           sources: list | None = None,
-                           targets: list | None = None) -> Notice | None:
+                           sources: list | None = None,  # pylint: disable=unused-argument
+                           targets: list | None = None) -> Notice | None:  # pylint: disable=unused-argument
     """F1: an unset/zero buffer means the ENTIRE raster is routed."""
     if buffer_m and buffer_m > 0:
         return None

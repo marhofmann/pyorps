@@ -16,7 +16,7 @@ slope/least-cost routing.
 from __future__ import annotations
 
 import uuid
-import xml.etree.ElementTree as ET  # nosec B405  # nosemgrep - OGC service replies, entity expansion is limited by expat
+import xml.etree.ElementTree as ET  # nosec B405  # nosemgrep - OGC replies; expat limits entity expansion
 from pathlib import Path
 from urllib.parse import urlencode, urlparse, urlunparse
 from urllib.request import urlopen
@@ -45,7 +45,7 @@ def _fetch(url: str, timeout: float) -> bytes:
 
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urlopen(request, timeout=timeout) as response:  # noqa: S310  # nosec B310  # nosemgrep - http(s) URLs of configured services
+        with urlopen(request, timeout=timeout) as response:  # noqa: S310  # nosec B310  # nosemgrep - configured URLs
             return response.read()
     except urllib.error.URLError as exc:
         # several German gov servers present a self-signed cert in the chain;
@@ -173,7 +173,7 @@ def load_dem_raster(url: str, coverage_id: str, bounds, *,
             "and check the DEM service is reachable.") from exc
     if raw[:2] not in (b"II", b"MM"):        # not a GeoTIFF (probably XML error)
         try:
-            msg = _service_exception(ET.fromstring(raw)) or "unknown error"  # nosec B314  # nosemgrep - OGC service reply
+            msg = _service_exception(ET.fromstring(raw)) or "unknown error"  # nosec B314  # nosemgrep - OGC reply
         except ET.ParseError:
             msg = "the response was not a GeoTIFF"
         raise ValueError(f"DEM service did not return a raster: {msg}")
