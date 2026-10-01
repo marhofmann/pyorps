@@ -208,6 +208,10 @@ ignore-paths = ["pyorps/gui/assets", "pyorps/utils/kernels"]
 # Compiled Cython and numba modules: pylint cannot introspect them.
 extension-pkg-allow-list = ["pyorps.utils._dijkstra", "pyorps.utils._traversal", "numba", "numpy", "cupy"]
 
+[tool.pylint.typecheck]
+ignored-modules = ["rustworkx"]  # optional backend; installed version lacks static members
+ignored-classes = ["finfo"]      # numpy.finfo attributes are set dynamically
+
 [tool.pylint.format]
 max-line-length = 120
 
@@ -221,6 +225,7 @@ disable = [
     "not-an-iterable",            # E1133: numba prange
     "comparison-with-itself",     # R0124: x != x is the NaN test inside numba/CUDA kernels
     "c-extension-no-member",      # I1101
+    "import-error",               # E0401: optional extras (dash, cupy, webview) are not installed in CI
     "duplicate-code",             # R0801: parallel backend implementations are intentionally alike
     "too-many-lines",             # C0302: large cohesive numerical modules are excluded from Lizard for the same reason
     "cyclic-import",              # R0401: type-only and lazy imports between sibling modules
