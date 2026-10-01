@@ -41,7 +41,7 @@ def study_area_bounds(study_area_geojson: dict | None,
 def _use_arrow() -> bool:
     """pyogrio's Arrow fast path (documented 2-4x) needs pyarrow installed."""
     try:
-        import pyarrow  # noqa: F401
+        import pyarrow  # noqa: F401  # pylint: disable=unused-import
         return True
     except ImportError:
         return False

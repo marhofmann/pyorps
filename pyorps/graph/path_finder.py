@@ -1714,9 +1714,9 @@ class PathFinder:
         if close is None:
             return
         try:
-            close(free_pool=free_pool)
+            close(free_pool=free_pool)  # pylint: disable=not-callable
         except TypeError:          # a backend whose close() takes no kwargs
-            close()
+            close()  # pylint: disable=not-callable
 
     def search_session(self, algorithm: str = "dijkstra", **kwargs):
         """Open an incremental :class:`~pyorps.graph.search_session.SearchSession`.

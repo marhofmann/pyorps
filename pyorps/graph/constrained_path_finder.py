@@ -321,7 +321,7 @@ class ConstrainedPathFinder(PathFinder):
         """The infrastructure profile used for constrained routing."""
         return self._profile
 
-    def find_route(self, source=None, target=None, **kwargs):
+    def find_route(self, source=None, target=None, **kwargs):  # pylint: disable=arguments-differ
         """Find constrained optimal route with tower placement.
 
         Parameters:

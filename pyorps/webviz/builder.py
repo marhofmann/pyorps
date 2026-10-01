@@ -7,7 +7,7 @@ failed pairs; use it directly for error reporting.
 """
 from __future__ import annotations
 
-from pyorps.gui.services.routing import (  # noqa: F401
+from pyorps.gui.services.routing import (  # noqa: F401  # pylint: disable=unused-import
     BuiltRoute,
     make_pairs,
     resolve_backend,

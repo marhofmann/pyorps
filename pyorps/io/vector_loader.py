@@ -1007,7 +1007,7 @@ def _parse_xml_response(response: requests.Response) -> gpd.GeoDataFrame | None:
             temp_file.write_bytes(response.content)
             try:
                 # pyogrio Arrow fast path (2-4x documented) when available
-                import pyarrow  # noqa: F401
+                import pyarrow  # noqa: F401  # pylint: disable=unused-import
                 use_arrow = True
             except ImportError:
                 use_arrow = False

@@ -100,7 +100,7 @@ MAX_TABLE_ROWS = 5000
 def _geobuf_available() -> bool:
     """True when the geobuf encoder is importable (perf plan 1.3)."""
     try:
-        import geobuf  # noqa: F401
+        import geobuf  # noqa: F401  # pylint: disable=unused-import
         return True
     except ImportError:
         return False

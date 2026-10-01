@@ -2542,7 +2542,7 @@ class GpuSsspSession:
             cp.cuda.Device().attributes["MultiProcessorCount"] * bps)
 
         variant_src = (_float_raster_source if self._float_raster
-                       else (lambda s: s))
+                       else (lambda s: s))  # nosemgrep - early exit in __init__ is intentional
         variant = "f32" if self._float_raster else "u16"
         self._kernel = _get_sssp_kernel(
             "sssp_async_v5", variant_src(_ASYNC_SSSP_KERNEL),

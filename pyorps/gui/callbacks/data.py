@@ -691,7 +691,7 @@ def register(app, state) -> None:
         gdf = result.to_crs(state.project_crs)
         source = {"kind": "osm", "filters": filters, "bbox": list(bounds),
                   "clip": False}
-        layer, refreshed = _add_vector_layer(state, gdf, f"OSM: {label}",
+        layer, refreshed = _add_vector_layer(state, gdf, f"OSM: {label}",  # pylint: disable=unused-variable
                                              source=source)
         notices.append(success(
             f"Loaded {len(gdf)} OSM feature(s) — {label}",

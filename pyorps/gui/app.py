@@ -83,7 +83,7 @@ def build_app(state: ProjectState | None = None, *,
 
 def _has_flask_compress() -> bool:
     try:
-        import flask_compress  # noqa: F401
+        import flask_compress  # noqa: F401  # pylint: disable=unused-import
         return True
     except ImportError:
         return False

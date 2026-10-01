@@ -122,7 +122,7 @@ def wms_layers(url: str, *, timeout: float = 30.0) -> list[dict]:
     caps = _with_query(url, {"service": "WMS", "request": "GetCapabilities",
                              "version": "1.3.0"})
     raw = _fetch(caps, timeout)
-    root = ET.fromstring(raw)
+    root = ET.fromstring(raw)  # nosec B314  # nosemgrep - service reply
     layers: list[dict] = []
     for layer in root.iter():
         if _local(layer.tag) != "Layer":

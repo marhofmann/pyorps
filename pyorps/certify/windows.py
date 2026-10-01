@@ -249,7 +249,7 @@ def certify_path_field(values: np.ndarray, steps, inside: np.ndarray, seeds,
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     vals = np.asarray(values)
     inside = np.asarray(inside, dtype=bool)
-    rows, cols = inside.shape
+    rows, cols = inside.shape  # pylint: disable=unused-variable
     exc = np.zeros_like(inside) if excluded is None else \
         np.asarray(excluded, dtype=bool)
     exc = exc | (vals == EXCLUDED)

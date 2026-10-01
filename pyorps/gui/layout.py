@@ -183,7 +183,7 @@ def _card(title: str, children: list, *, intro: str | None = None,
 
 
 def _collapsible_card(title: str, children: list, *,
-                      intro: str | None = None, open: bool = False,
+                      intro: str | None = None, open: bool = False,  # pylint: disable=redefined-builtin
                       className: str = "") -> html.Details:
     """A `_card` whose body (intro + controls) hides behind a native
     <details>/<summary> toggle. Closed by default: only the title row with a
