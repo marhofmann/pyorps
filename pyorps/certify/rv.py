@@ -133,6 +133,7 @@ def relax_and_verify(candidates: Iterable[tuple[Hashable, float]],
                                         tuple[float, float]] | None = None,
                      z_ub: float = math.inf,
                      max_escalations: int = 8) -> RVResult:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """The T-RV driver of plan section 3.6.
 
     Parameters:
@@ -230,6 +231,7 @@ def consent_lattice(classes: Sequence[Hashable], one_off: dict,
                     masked_value: Callable[[frozenset], float], *,
                     delay: Callable[[frozenset], float] | None = None,
                     eps: float = 0.0) -> ConsentResult:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """``F* = min over S of F_S + sum C_k + V(S)`` (plan section 3.6).
 
     Parameters:

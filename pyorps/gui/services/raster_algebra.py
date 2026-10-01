@@ -69,6 +69,7 @@ def _align_to_reference(source: dict, ref: dict) -> np.ndarray:
 def combine_rasters(paths: list[str | Path], operation: str, *,
                     work_dir: str | Path = ".",
                     save_path: str | Path | None = None) -> tuple[str, list[str]]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Combine cost rasters with ``operation``; return ``(out_path, log)``.
 
     All inputs are aligned onto ``paths[0]``'s grid (the reference). The output

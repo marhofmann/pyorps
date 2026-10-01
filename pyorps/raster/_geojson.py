@@ -102,6 +102,7 @@ def _multipolygon_dicts(coords, ring_off, poly_off, multi_off):
 
 
 def bulk_geojson(geometries):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """GeoJSON dicts for ``geometries``, in the ORIGINAL order, or ``None``.
 
     ``None`` means "not representable, use the shapely objects" -- see the

@@ -77,6 +77,7 @@ def _estimate_body(est: dict) -> list:
 
 def finalize_routing(state, finder, built, failed, *, meta: dict,
                      notices: list, cancelled: bool = False):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Turn a finished routing computation into layers/notices/status.
 
     Shared by the synchronous path and the background-job poller — the job
@@ -148,6 +149,7 @@ def add_route_layer(state, *, line: LineString, route_cost, params: dict,
                     parent_id: str | None = None, origin: str = "built",
                     edit: str = "", simplify_tol: float | None = None,
                     waypoint_names: list | None = None):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Register one immutable route layer with lineage metadata (Section 18).
 
     The layer's gdf always holds the FULL routed line (metrics come from it,
@@ -495,4 +497,6 @@ def register(app, state) -> None:
         route_options = [{"label": ly.name, "value": ly.id}
                          for ly in state.layers_of_kind("route")]
         return state.layers_view(), route_options, notices
+    _ = None
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

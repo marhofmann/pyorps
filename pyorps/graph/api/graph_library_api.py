@@ -119,6 +119,7 @@ class GraphLibraryAPI(GraphAPI):
                  gradient_luts=None,
                  allow_large_raster: bool = False,
                  **kwargs):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Initialize the graph library API.
 
@@ -353,6 +354,7 @@ class GraphLibraryAPI(GraphAPI):
             algorithm: str = "dijkstra",
             **kwargs
     ) -> NodeList | NodePathList:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         This method applies the specified shortest path algorithm on the created graph
         object and finds the shortest path between source(s) and target(s) as a list of

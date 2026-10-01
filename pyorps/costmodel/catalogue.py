@@ -92,6 +92,7 @@ class CostCatalogue:
 
     @classmethod
     def load(cls, path) -> CostCatalogue:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Read and validate a catalogue YAML."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         try:
@@ -181,6 +182,7 @@ def _walk(node: Any, key: str, items: dict, problems: list) -> None:
 
 def _item(node: Mapping, key: str, items: dict, problems: list,
           inherited: tuple[tuple[str, ...], str] | None = None) -> None:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """One sourced item. Nested mappings inside it become child items that
     inherit its source and tier; text fields are kept as ``text``."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

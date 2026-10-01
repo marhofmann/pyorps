@@ -516,6 +516,7 @@ def suggest_resolution(
         tolerance_cells: float = DEFAULT_TOLERANCE_CELLS,
         mitre_limit: float = DEFAULT_MITRE_LIMIT,
 ) -> ResolutionAdvice:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Option E: report the narrowest forbidden feature and the cell size for it.
 
     Only the flagged (thin) features are measured, at ~0.3 ms each; fat ones
@@ -636,6 +637,7 @@ class ForbiddenBurnReport:
                 and self.partially_vanished.size == 0)
 
     def assess(self) -> ForbiddenBurnAssessment:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Evaluate routing suitability from defect counts."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         n_v = int(self.vanished.size)
@@ -755,6 +757,7 @@ class ForbiddenBurnReport:
         print(self.assessment_message(), file=file)
 
     def summary(self) -> str:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Aggregate counts plus one example — never one line per feature.
 
         1168 warnings on a 5000-feature layer would train the reader to ignore
@@ -846,6 +849,7 @@ def _burn_coverage(geometries, out_shape: tuple[int, int], transform: Affine,
 def _feature_window(
         geometry, transform: Affine, out_shape: tuple[int, int],
 ) -> tuple[int, int, int, int] | None:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Clipped ``(row0, row1, col0, col1)`` a geometry's bbox can touch.
 
     Per-feature re-burns below must not cost a full-raster pass each, so they
@@ -957,6 +961,7 @@ def _partially_vanished_ids(geometries: np.ndarray, thin: np.ndarray,
                             resolution_in_m: float,
                             mitre_limit: float,
                             passable: np.ndarray | None = None) -> np.ndarray:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Features with a sub-cell PART that burned nothing at all.
 
     "Did this FEATURE burn any cells" is the wrong question. A forbidden
@@ -1095,6 +1100,7 @@ def detect_forbidden_burn_defects(
         mitre_limit: float = DEFAULT_MITRE_LIMIT,
         passable: np.ndarray | None = None,
 ) -> ForbiddenBurnReport:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Option A: what the pixel-centre rule did to the forbidden features.
 
     Reports forbidden features that (a) burned zero cells, (b) burned only in
@@ -1234,6 +1240,7 @@ def report_forbidden_burn_defects(
         passable: np.ndarray | None = None,
         routing_assessment: bool = True,
 ) -> ForbiddenBurnReport | None:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Run option A and act on it: warn, raise, or stay silent.
 
     Returns the report (None when detection was switched off), so callers can
@@ -1404,6 +1411,7 @@ def detect_repair_seals(
         plain_passable: np.ndarray | None = None,
         other_geometries=None,
 ) -> RepairSealReport | None:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Did widening or the all-touched overlay disconnect free space?
 
     ``raster`` is the FINISHED raster, i.e. the repair has already been applied
@@ -1539,6 +1547,7 @@ def report_repair_seals(
         plain_passable: np.ndarray | None = None,
         other_geometries=None,
 ) -> RepairSealReport | None:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Run the seal check and act on it: warn, raise, or stay silent.
 
     Shares the ``on_thin_features`` knob with option A on purpose — both

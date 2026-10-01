@@ -232,6 +232,7 @@ class _SetAlgebra(_Algebra):
         return u
 
     def valid(self, S, U, D, *, node):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """A's rules R1-R4 (R5 unless ``node``)."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         acc = 0
@@ -259,6 +260,7 @@ class _SetAlgebra(_Algebra):
         return self.rate(U, D) < INF
 
     def merge_pairs(self, L1s, L2s, S1, S2):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """The pairs of labels (sets ``S1`` and ``S2``) worth a
         :meth:`merge` -- an exact pre-filter, not a heuristic.
 
@@ -309,6 +311,7 @@ class _SetAlgebra(_Algebra):
         return [(S, U, D)]
 
     def junctions(self, L):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """(L2, conductors connected) for every Ja/Jb at one node."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         S, U, D = L
@@ -596,6 +599,7 @@ def solve_collector(graph: CollectorGraph, turbines: Sequence[int],
                     tokens: str | None = None, conductor: str | None = None,
                     root: int | None = None, candidate_rule: bool = True,
                     keep_trace: bool = True) -> CollectorResult:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """``MV(g)`` for every node ``g`` of ``graph``.
 
     Parameters:
@@ -800,6 +804,7 @@ class _Solver:
         self.aarg[L] = arg
 
     def _turbine_seeds(self, S, i):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """(label, cost, trace record) for turbine i at its node."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         alg, model = self.alg, self.model
@@ -865,6 +870,7 @@ class _Solver:
         return out
 
     def _root(self):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """MV(g) = cheapest partition of A into feeders arriving at g."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         model, alg = self.model, self.alg

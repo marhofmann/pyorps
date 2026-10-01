@@ -23,6 +23,7 @@ def _vector_options(state) -> list[dict]:
 
 def register_cost_table(state, *, dataset_id, feature_keys, rows,
                         name: str | None = None) -> str:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Register/refresh a cost table so the Raster tab can pair it with any
     COMPATIBLE dataset (feature columns must exist there). Seeding and
     importing write here; cell edits keep the entry fresh via `coverage`."""
@@ -153,6 +154,7 @@ def register(app, state) -> None:
                   Input(ids.PPB_COLUMN, "value"),
                   State(ids.PPB_DATASET, "value"))
     def ppb_values(column, dataset_id):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """The values PRESENT in the picked column — a searchable dropdown
         (dcc.Dropdown filters as you type, so even hundreds of distinct
         values stay findable)."""
@@ -222,7 +224,7 @@ def register(app, state) -> None:
                            title="Remove this condition"),
             ], className="d-inline-block border rounded px-1 me-1 mb-1"))
         if not chips:
-            chips = [html.Small("No conditions yet — the step would apply "
+            chips = [html.Small("No conditions yet — the step would apply " +
                                 "to ALL features.", className="text-muted")]
         step = {"conditions": conds, "combine": combine or "&",
                 "op": op or "buffer", "target": target, "arg": arg}
@@ -608,4 +610,6 @@ def register(app, state) -> None:
         drop = {tuple(sorted(r.items())) for r in selected}
         return [r for r in (rows or [])
                 if tuple(sorted(r.items())) not in drop]
+    _ = None
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

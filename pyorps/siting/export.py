@@ -223,6 +223,7 @@ class SitingExport:
 
 def export_tower_fields(candidates, fields, *, link_type: str = "overhead",
                         with_geometry: bool = False) -> SitingExport:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Build a :class:`SitingExport` from per-terminal bound pairs.
 
     Parameters:

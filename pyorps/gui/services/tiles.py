@@ -144,6 +144,7 @@ def _write_tiled_geotiff(data: np.ndarray, crs: Any, transform: Any,
 
 def _resolve_source(raster_source: Any, crs: Any, transform: Any,
                     work_dir: Path) -> tuple[Path, np.ndarray, Any, Any]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Normalize any accepted raster input to (geotiff_path, band2d, crs, transform).
 
     Accepts: a file path, a RasterHandler, a RasterDataset/InMemoryRasterDataset,

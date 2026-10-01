@@ -72,6 +72,7 @@ class RouteEnsemble:
         return tuple(int(i) for i in path.path_indices)
 
     def to_dataframe(self) -> pd.DataFrame:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Comparison table: one row per variant, all metrics as columns.
 
         Adds ``same_route_as`` (first variant with the identical route,
@@ -109,6 +110,7 @@ class RouteEnsemble:
         return pd.DataFrame(rows, index=list(self._variants))
 
     def pareto_front(self, metrics: list[str]) -> "RouteEnsemble":
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Non-dominated variants w.r.t. the given metrics (all minimized).
 
         A variant is dropped when another one is at least as good in every

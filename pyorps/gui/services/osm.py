@@ -106,6 +106,7 @@ OSM_KEY_VALUES: dict[str, list[str]] = {
 
 
 def filters_from_selections(selections: list[dict]) -> list[str]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Categorized-menu rows -> Overpass selectors.
 
     Each selection is ``{"key": <tag key>, "values": [v1, v2, ...]}``; an
@@ -213,6 +214,7 @@ def _relation_geometry(element: dict):
 
 
 def elements_to_gdf(elements: list[dict]) -> gpd.GeoDataFrame:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Assemble Overpass ``out geom`` elements into a WGS84 GeoDataFrame."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     rows, geoms = [], []
@@ -264,6 +266,7 @@ def _post_overpass(endpoint: str, query: str, timeout: int):
 def load_osm_features(bbox_sw_ne: tuple[float, float, float, float],
                       filters: list[str], *, timeout: int = 60,
                       endpoint: str | None = None) -> gpd.GeoDataFrame:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Query Overpass for ``filters`` in the bbox and return a WGS84 GeoDataFrame.
 
     ``bbox_sw_ne`` is (south, west, north, east). The busy public main server

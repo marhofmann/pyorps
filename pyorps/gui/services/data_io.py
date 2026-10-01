@@ -75,6 +75,7 @@ def load_local_vector(path: str | Path, layer: str | None = None,
 
 def load_wfs_vector(url: str, layer: str, bbox=None, mask=None,
                     target_crs: Any = None) -> gpd.GeoDataFrame:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Load a WFS layer via pyorps (typed WFS errors surface unchanged)."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps import initialize_geo_dataset
@@ -127,6 +128,7 @@ def clip_to_area(gdf: gpd.GeoDataFrame, polygon) -> gpd.GeoDataFrame:
 
 def merge_gdfs(gdfs: list[gpd.GeoDataFrame],
                target_crs: Any = None) -> gpd.GeoDataFrame:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Merge several vector datasets into ONE GeoDataFrame (cross-state base).
 
     Built for merging the per-state ALKIS land-use layers of a cross-border

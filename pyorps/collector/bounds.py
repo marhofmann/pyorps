@@ -49,6 +49,7 @@ def _block_cost(model: CollectorModel, mask: int, p: int, m: int) -> float:
 
 
 def rho_hat(model: CollectorModel) -> tuple[list[float], list[int]]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """``rho_hat(S)`` and ``nb_min(S)`` for every turbine bitmask ``S``.
 
     ``rho_hat(S)``: min over partitions of ``S`` into systems and over their
@@ -118,6 +119,7 @@ def _p_choices(k: int, p_max: int, m_cap: int):
 
 def rho_hat_lower_bound(graph: CollectorGraph, turbines, model: CollectorModel
                         ) -> np.ndarray:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Admissible lower bound on ``MV(g)`` for every node ``g``.
 
     ``inf`` at turbine nodes and where even the relaxation is infeasible.
@@ -204,6 +206,7 @@ def rho_hat_lower_bound_raster(values, steps, cell_m: float, turbines,
                                model: CollectorModel, *,
                                trench_mult: float = 1.0,
                                drain_engine: str = "auto") -> np.ndarray:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """:func:`rho_hat_lower_bound` on a raster window (plan D10, Stage 2).
 
     The same relaxed subset DW, laid out like

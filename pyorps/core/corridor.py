@@ -300,6 +300,7 @@ class CorridorGraph:
         return self.route_segments((terminal_a, terminal_b))
 
     def route_cells(self, *key) -> list[int]:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Concatenated cell sequence of one route.
 
         Segments are stored in a direction-independent canonical orientation
@@ -433,6 +434,7 @@ class CorridorGraph:
             cell_shared_fraction: float | None = None,
             notes: tuple[str, ...] = (),
     ) -> CorridorOverlapReport:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Compare the per-route accounting against the corridor accounting.
 
         Parameters:

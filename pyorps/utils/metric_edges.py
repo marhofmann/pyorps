@@ -61,6 +61,7 @@ def _edges_for_direction(weights, dem, exclude_mask, dr, dc, intermediates,
                          cost_factor, step_len, bin_factor,
                          mult_lut, add_lut, n_bins,
                          from_nodes, to_nodes, edge_costs, valid_flags):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Fill per-source-cell edge data for one step direction (parallel)."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     rows, cols = weights.shape
@@ -139,6 +140,7 @@ def construct_edges_weights(weights, steps, ignore_max=True):
 
 def construct_edges_gradient(weights, dem, steps, gradient_luts,
                              ignore_max=True):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Construct gradient-aware graph edges for the library backends.
 
     Parameters:

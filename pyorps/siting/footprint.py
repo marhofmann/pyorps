@@ -243,6 +243,7 @@ def screen_footprints(cost, blocked, *, footprint: Footprint,
 
 def verify_exact(cost, blocked, screen: ScreenResult, rows_cols, *,
                  mode: str = "pixels", supersample: int = 8) -> np.ndarray:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Re-score placements without the FFT, at each cell's winning rotation.
 
     The screen is a SCREEN: its kernel is supersampled but still

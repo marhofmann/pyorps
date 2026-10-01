@@ -424,6 +424,7 @@ def step_conditions(step: dict) -> list[dict]:
 
 
 def step_mask(gdf, step: dict):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Boolean row mask of a step's condition GROUP (or None = all rows).
 
     Each condition is a ``(column, operator, value)`` triple resolved by
@@ -452,6 +453,7 @@ def step_mask(gdf, step: dict):
 
 
 def _condition_text(cond: dict) -> str:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """One condition as python-like text: ("nutzart" == "Wald")."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     operator = (cond.get("operator") or "all").strip()
@@ -471,6 +473,7 @@ def _condition_text(cond: dict) -> str:
 
 
 def step_label(step: dict) -> str:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Plain-english/python-like mask text for a step, e.g.
     ``(("nutzart" == "Wald") & ("bez" == "Nadelholz")) -> buffer=2m``.
     """

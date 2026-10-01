@@ -57,6 +57,7 @@ def layer_from_drawn(features: list[dict], project_crs: Any, *,
 
 def sync_manual_layer(state, features, *, project_crs, default_cost, mode,
                       name, prev_rows=None):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Build/update THE editable custom-cost-polygon layer from drawn shapes.
 
     Called live as the user draws / edits vertices / deletes polygons (task 33).

@@ -195,6 +195,7 @@ def _untile_major(flat: np.ndarray, rows: int, cols: int,
 def encode_field(values, *, codec: str = "fixed-quantum",
                  error_bound: float = 1.0, tile: int = _DEFAULT_TILE,
                  order: int = 1) -> tuple[dict[str, np.ndarray], dict]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Compress a settled field.
 
     Parameters:

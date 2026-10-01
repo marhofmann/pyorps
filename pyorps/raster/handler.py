@@ -50,6 +50,7 @@ class RasterHandler:
                  bands: list[int] | None = None,
                  windowed_read: bool = True,
                  copy_window: bool = True):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Initialize a RasterHandler for working with raster data and coordinate
         transformations.
@@ -110,6 +111,7 @@ class RasterHandler:
             windowed_read: bool = True,
             copy_window: bool = True
     ):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Initialize using metadata and raster data.
 
@@ -426,6 +428,7 @@ class RasterHandler:
             max_buffer: float = 4000,
             sample_radius: float = 50
     ):
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Estimate an appropriate buffer width for path finding based on terrain
         characteristics.

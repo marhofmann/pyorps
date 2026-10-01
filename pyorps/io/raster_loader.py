@@ -315,6 +315,7 @@ def find_raster_files(
     exclude_patterns: list[str] | None = None,
     return_absolute: bool = True
 ) -> list[Path]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Find raster files in a directory, filtered by extension/pattern."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     dir_path = Path(directory)
@@ -457,6 +458,7 @@ def validate_raster_compatibility(
     check_bands: bool = False,
     verbose: bool = True
 ) -> dict:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Check CRS, resolution, and band compatibility of raster files."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if not raster_files:

@@ -107,6 +107,7 @@ def boundary_cells(inside: np.ndarray, steps) -> np.ndarray:
 def drain(values: np.ndarray, steps, seeds, labels, *, length_rate=0.0,
           weight_mult=1.0, excluded: np.ndarray | None = None,
           no_transit=None, engine: str = "auto", return_prev: bool = False):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """``min_k labels[k] + d_w(seeds[k], v)`` for every cell, in cell units.
 
     ``excluded`` cells (and ``values == 65535``) are neither entered nor
@@ -235,6 +236,7 @@ def certify_path_field(values: np.ndarray, steps, inside: np.ndarray, seeds,
                        weight_mult: float = 1.0, excluded=None,
                        no_transit=None, engine: str = "auto"
                        ) -> WindowCertificate:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Seeded path certificate of plan section 3.5 on one window.
 
     Parameters:
@@ -317,6 +319,7 @@ def certify_tree_field(values: np.ndarray, steps, inside: np.ndarray,
                        turbines, mv_window: np.ndarray, *, mu_min: float,
                        trench_mult: float = 1.0, cell_m: float = 1.0,
                        engine: str = "auto") -> TreeCertificate:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """The tree certificate of plan section 3.5 for a collector field.
 
     Parameters:

@@ -23,11 +23,11 @@ BASEMAPS = [
      "url": "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
      "attribution": "&copy; OpenStreetMap contributors", "default": True},
     {"name": "Esri World Imagery",
-     "url": "https://server.arcgisonline.com/ArcGIS/rest/services/"
+     "url": "https://server.arcgisonline.com/ArcGIS/rest/services/" +
             "World_Imagery/MapServer/tile/{z}/{y}/{x}",
      "attribution": "Tiles &copy; Esri", "default": False},
     {"name": "Esri World Topo",
-     "url": "https://server.arcgisonline.com/ArcGIS/rest/services/"
+     "url": "https://server.arcgisonline.com/ArcGIS/rest/services/" +
             "World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
      "attribution": "Tiles &copy; Esri", "default": False},
     {"name": "Carto Light",
@@ -229,7 +229,7 @@ def _sidebar(viewer):
     raster_card = dbc.Card(dbc.CardBody([
         html.H6("Cost raster", className="card-title"),
         html.Div(
-            [html.Small(f"range {viewer.raster_layers[0].vmin:g} – "
+            [html.Small(f"range {viewer.raster_layers[0].vmin:g} – " +
                         f"{viewer.raster_layers[0].vmax:g}")]
             if has_raster else [html.Small("no raster loaded")],
             className="text-muted"),

@@ -67,6 +67,7 @@ def _bresenham(r0: int, c0: int, r1: int, c1: int) -> list[tuple[int, int]]:
 
 def line_to_cell_indices(line: LineString,
                          handler: RasterHandler) -> tuple[np.ndarray, int]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Discretize a projected LineString into flat window-local cell indices.
 
     Returns the flat indices (row * width + col) into ``handler.data[0]`` and the

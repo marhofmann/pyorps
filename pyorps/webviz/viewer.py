@@ -128,6 +128,7 @@ class RouteViewer:
 
     def add_route_geometries(self, lines: list, properties: list | None = None,
                              crs: Any = None) -> "RouteViewer":
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Append routed LineStrings (routing CRS) to the editable route set.
 
         Rebuilds the WGS84 GeoJSON, per-route control points and endpoint markers

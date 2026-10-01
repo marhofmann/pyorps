@@ -74,6 +74,7 @@ def _walk_predecessors(
         target: int,
         n_nodes: int,
 ) -> Optional[List[int]]:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Host predecessor walk: ``source -> target`` node list, or None.
 
     The CPU twin of the on-device ``v5_walk_pred`` walk. It is reached

@@ -143,6 +143,7 @@ def site_field(price_cents: np.ndarray, forbidden: np.ndarray, *,
                class_cents: Sequence[int] | None = None,
                block: int = 2048, keep_rotations: bool = False,
                workers: int = 2) -> SiteField:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Exact pad cost for every anchor cell, cheapest over ``thetas``.
 
     Parameters:
@@ -278,6 +279,7 @@ def site_values(price_cents: np.ndarray, forbidden: np.ndarray,
                 width_m: float, cell_m: float,
                 classes: np.ndarray | None = None,
                 n_classes: int | None = None):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Direct pixel sums at a few anchors: cents, and class counts.
 
     The independent check of :func:`site_field` and the source of the

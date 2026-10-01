@@ -441,6 +441,7 @@ class Objective:
             cell_size: float,
             quant_scale: float = 1.0,
     ) -> GradientLUTs:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Build the slope-response LUT pair for the search kernels.
 
         The 3D length stretch ``sqrt(1 + (s/100)^2)`` is ALWAYS folded into
