@@ -16,6 +16,8 @@ from shapely.geometry import LineString, Point
 # Load the example script as a module from its file path (examples/ is not a
 # package, so a normal import is not available).
 _SCRIPT = Path(__file__).resolve().parents[2] / "examples" / "preprocess_mv_connections.py"
+if not _SCRIPT.exists():
+    pytest.skip("examples/ is not copied into the installed-wheel test run", allow_module_level=True)
 _spec = importlib.util.spec_from_file_location("preprocess_mv_connections", _SCRIPT)
 pmc = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(pmc)
