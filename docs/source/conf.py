@@ -22,8 +22,8 @@ try:
     version = __version__
 except ImportError:
     print("Warning: Could not import pyorps.__version__, using fallback")
-    release = '0.3.2'
-    version = '0.3.2'
+    release = '0.4.0'
+    version = '0.4.0'
 
 # -- General configuration ---------------------------------------------------
 
@@ -221,7 +221,7 @@ texinfo_documents = [
 # -- Options for todo extension ----------------------------------------------
 
 # Latest version on PyPI, shown in the availability banners and llms.txt
-pyorps_pypi_version = '0.3.2'
+pyorps_pypi_version = '0.4.0'
 
 todo_include_todos = True
 

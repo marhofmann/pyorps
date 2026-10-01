@@ -1,9 +1,9 @@
 ---
 title: "Eikonal FIM Backend"
 summary: "GPU eikonal solver raster_fim and the raw .gpur raster format."
-status: unreleased
-since: "unreleased"
-available_in: source
+status: experimental
+since: "0.4.0"
+available_in: pypi
 module: "pyorps.graph.api.raster_fim_api"
 api:
   - pyorps.graph.api.raster_fim_api.RasterFIMAPI

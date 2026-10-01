@@ -1,9 +1,9 @@
 ---
 title: "Cost Semantics and the Feasibility Objective"
 summary: "How cost, metrics and weights decide where a route goes and what is reported."
-status: unreleased
-since: "unreleased"
-available_in: source
+status: stable
+since: "0.4.0"
+available_in: pypi
 module: "pyorps.core.objective"
 api: []
 ---

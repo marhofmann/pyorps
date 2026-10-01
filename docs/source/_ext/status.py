@@ -175,7 +175,7 @@ def on_env_updated(app, env):
 
 
 def setup(app):
-    app.add_config_value("pyorps_pypi_version", "0.3.2", "env")
+    app.add_config_value("pyorps_pypi_version", "0.4.0", "env")
     app.add_directive("pyorps-status", StatusDirective)
     app.connect("source-read", on_source_read)
     app.connect("env-purge-doc", on_purge)

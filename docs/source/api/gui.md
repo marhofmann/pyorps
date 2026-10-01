@@ -1,9 +1,9 @@
 ---
 title: "Interactive GUI"
 summary: "Browser or desktop workbench: draw an area, load data, edit costs, rasterise and route."
-status: unreleased
-since: "unreleased"
-available_in: source
+status: experimental
+since: "0.4.0"
+available_in: pypi
 module: "pyorps.gui"
 api:
   - pyorps.gui.launch

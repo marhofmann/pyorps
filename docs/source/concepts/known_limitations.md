@@ -1,9 +1,9 @@
 ---
 title: "Known Limitations"
 summary: "Behaviour that surprises users: barriers, units, thin features, FIM costs, certificates, backend choice."
-status: unreleased
-since: "unreleased"
-available_in: source
+status: stable
+since: "0.4.0"
+available_in: pypi
 module: "pyorps"
 api: []
 ---

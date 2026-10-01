@@ -64,14 +64,14 @@ Full class and function documentation.
 (index-status)=
 ## What is available where
 
-Each page states its status. `stable` pages describe what `pip install pyorps` (0.3.2) gives you; `unreleased` pages describe features that need a source checkout. See {doc}`getting_started/release_status`.
+Each page states its status. `stable` pages describe the API that is kept; `experimental` pages describe features in the same release (`pip install pyorps`, 0.4.0) that may still change. See {doc}`getting_started/release_status`.
 
 | Area | Status | Page |
 |---|---|---|
 | Routing, data input, rasterization, cost assumptions, backends | stable | {doc}`api/path_finder`, {doc}`api/geo_dataset`, {doc}`api/geo_rasterizer`, {doc}`api/cost_assumptions`, {doc}`api/graph_backends` |
-| Route simplification | on `main`, not released | {doc}`api/path_finder` |
-| Multi-metric objectives, cost fields, corridor graphs, tower fields | unreleased | {doc}`api/metric_stack_objective`, {doc}`api/cost_fields`, {doc}`api/corridor_graphs`, {doc}`api/tower_fields` |
-| Thin forbidden features, eikonal FIM, constrained routing, GUI | unreleased | {doc}`api/thin_forbidden_features`, {doc}`api/eikonal_fim`, {doc}`api/constrained_path_finder`, {doc}`api/gui` |
+| Route simplification | stable | {doc}`api/path_finder` |
+| Multi-metric objectives, cost fields, corridor graphs, tower fields | experimental | {doc}`api/metric_stack_objective`, {doc}`api/cost_fields`, {doc}`api/corridor_graphs`, {doc}`api/tower_fields` |
+| Thin forbidden features, eikonal FIM, constrained routing, GUI | experimental | {doc}`api/thin_forbidden_features`, {doc}`api/eikonal_fim`, {doc}`api/constrained_path_finder`, {doc}`api/gui` |
 
 Machine-readable versions of these docs: `llms.txt`, `llms-full.txt` and `api-index.json` at the root of the built site.
 
