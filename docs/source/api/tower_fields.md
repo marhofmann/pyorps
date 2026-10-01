@@ -1,9 +1,9 @@
 ---
 title: "Tower Fields"
 summary: "Overhead-line siting with one scalar field per tower position."
-status: unreleased
-since: "unreleased"
-available_in: source
+status: experimental
+since: "0.4.0"
+available_in: pypi
 module: "pyorps.graph.tower_field"
 api:
   - pyorps.TowerField

@@ -1,9 +1,9 @@
 ---
 title: "Thin Barriers and Forbidden Zones"
 summary: "Detect, widen and repair forbidden features that are thinner than a cell."
-status: unreleased
-since: "unreleased"
-available_in: source
+status: experimental
+since: "0.4.0"
+available_in: pypi
 module: "pyorps.raster.thinness"
 api:
   - pyorps.MIN_FORBIDDEN_WIDTH_CELLS

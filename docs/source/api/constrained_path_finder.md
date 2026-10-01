@@ -1,9 +1,9 @@
 ---
 title: "Constrained Path Finder"
 summary: "Coupled route and tower search for overhead lines with turn-angle and span limits."
-status: unreleased
-since: "unreleased"
-available_in: source
+status: experimental
+since: "0.4.0"
+available_in: pypi
 module: "pyorps.graph.constrained_path_finder"
 api:
   - pyorps.graph.constrained_path_finder.ConstrainedPathFinder

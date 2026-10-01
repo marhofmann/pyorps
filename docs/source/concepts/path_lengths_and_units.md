@@ -1,9 +1,9 @@
 ---
 title: "Path Lengths and Units"
 summary: "Route lengths are reported in CRS units; cost versus length and cell shape."
-status: unreleased
-since: "unreleased"
-available_in: source
+status: stable
+since: "0.4.0"
+available_in: pypi
 module: "pyorps.core.path"
 api: []
 ---

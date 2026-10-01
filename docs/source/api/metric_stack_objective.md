@@ -1,9 +1,9 @@
 ---
 title: "Metric Stack and Objective"
 summary: "Keep several metrics apart, weight them, compare route variants and route over a DEM."
-status: unreleased
-since: "unreleased"
-available_in: source
+status: experimental
+since: "0.4.0"
+available_in: pypi
 module: "pyorps.core.metric_stack"
 api:
   - pyorps.Objective

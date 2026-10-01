@@ -9,10 +9,10 @@ api: []
 ---
 # 📝 Changelog
 
-(changelog-unreleased)=
-## Unreleased
+(changelog-0-4-0)=
+## 0.4.0 (2026-10-01)
 
-Available from a source checkout only; see {doc}`../getting_started/release_status`.
+First release since 0.3.2. Everything below is in `pip install pyorps` 0.4.0; see {doc}`../getting_started/release_status` for what is stable and what is experimental.
 
 Changed:
 
@@ -29,14 +29,12 @@ Added:
 - Thin forbidden feature tools: detection, widening, repair-seal checks and resolution advice ({doc}`../api/thin_forbidden_features`).
 - Windowed raster reads in `RasterHandler` and `LocalRasterDataset` ({doc}`../api/raster_handler`).
 - Interactive GUI, `pyorps.gui` ({doc}`../api/gui`).
-
-(changelog-on-github-main-not-in-a-release)=
-## On GitHub `main`, not in a release
-
 - `simplify` option of `PathFinder.find_route` for simplified route geometry ({doc}`../api/path_finder`).
+- Research packages `pyorps.siting`, `pyorps.collector`, `pyorps.costmodel` and `pyorps.certify` (free siting of a collector substation with trench sharing and a proven-optimality certificate). They are shipped in the wheel but are not exported from `pyorps`, not documented and carry no stability promise.
+
 
 (changelog-0-3-x)=
-## 0.3.0 to 0.3.2 (latest release on PyPI: 0.3.2)
+## 0.3.0 to 0.3.2
 
 Released 2026-03-22 and 2026-03-23.
 
