@@ -376,7 +376,7 @@ def _find_prev_tower_v4(current_cell, current_dir, current_dist,
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     walk_cell = current_cell
     walk_dist = 0.0  # accumulated physical distance from current_cell
-    for step in range(1000):
+    for step in range(1000):  # pylint: disable=unused-variable
         dr = int(steps_np[current_dir, 0])
         dc = int(steps_np[current_dir, 1])
         r = walk_cell // cols

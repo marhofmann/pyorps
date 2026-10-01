@@ -1,5 +1,5 @@
 """DEPRECATED shim: re-exports :mod:`pyorps.gui.services.tiles` (Section 15)."""
-from pyorps.gui.services.tiles import (  # noqa: F401
+from pyorps.gui.services.tiles import (  # noqa: F401  # pylint: disable=unused-import
     RasterTileLayer,
     _band_hw,
     _resolve_source,

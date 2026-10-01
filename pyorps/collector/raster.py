@@ -309,7 +309,7 @@ class RasterCollector:
             self.stats["cells_pruned"] += n_cut
 
     def _potential(self, L):
-        S, U, D = L
+        S, U, D = L  # pylint: disable=unused-variable
         if self.alg.mode == "set":
             u = 0
             for t in D:

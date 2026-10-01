@@ -1,5 +1,5 @@
 """DEPRECATED shim: re-exports :mod:`pyorps.gui.services.cost` (Section 15)."""
-from pyorps.gui.services.cost import (  # noqa: F401
+from pyorps.gui.services.cost import (  # noqa: F401  # pylint: disable=unused-import
     RouteCost,
     _bresenham,
     evaluate_route_cost,

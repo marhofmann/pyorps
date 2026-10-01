@@ -177,6 +177,43 @@ class Path:
                     f"({100.0 * (1 - vafter / vbefore):.1f}% removed)"
                 )
 
+        if self.feasibility is not None:
+            lines.append("")
+            lines.append("  Feasibility (minimized objective):")
+            weights = ((self.objective_spec or {}).get("weights")
+                       if self.objective_spec else None)
+            if weights:
+                lines.append(f"    Weights:          {weights}")
+            lines.append(f"    Achieved value:   {self.feasibility:,.1f}")
+
+        if self.metrics:
+            lines.append("")
+            lines.append("  Metrics (physical totals, response-free):")
+            for name, value in self.metrics.items():
+                unit = {"length": "m", "gradient": "%*m"}.get(name, "")
+                lines.append(f"    {name:<16} {value:>14,.1f} {unit}")
+            if self.total_length_3d is not None and self.total_length_2d:
+                lines.append(
+                    f"    {'length (2D/3D)':<16} "
+                    f"{self.total_length_2d:>7,.1f} / "
+                    f"{self.total_length_3d:,.1f} m")
+            if self.max_gradient_pct is not None and self.max_gradient_pct > 0:
+                lines.append(
+                    f"    {'gradient':<16} mean "
+                    f"{self.mean_gradient_pct:.1f}% | max "
+                    f"{self.max_gradient_pct:.1f}%")
+
+        if self.length_by_class:
+            lines.append("")
+            lines.append("  Feature-class breakdown:")
+            total = sum(self.length_by_class.values())
+            for label, meters in sorted(self.length_by_class.items(),
+                                        key=lambda kv: -kv[1]):
+                pct = meters / total * 100 if total > 0 else 0
+                shown = label if len(label) <= 35 else label[:32] + "..."
+                lines.append(
+                    f"    {shown:<35} {meters:>10,.1f} m  {pct:>5.1f}%")
+
         if self.length_by_category:
             lines.append("")
             lines.append("  Terrain breakdown:")

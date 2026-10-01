@@ -477,7 +477,7 @@ def _walk_backward_tower_chain(tower_records_cpu, cell_dir_to_records,
         # that is a proper ancestor (lower distance).
         walk_cell = current_cell
         found_tower = False
-        for step in range(1000):
+        for step in range(1000):  # pylint: disable=unused-variable
             # Step backward
             dr = int(steps_np[current_dir, 0])
             dc = int(steps_np[current_dir, 1])
@@ -732,7 +732,7 @@ def _validate_v2_inputs(raster, source_row, source_col, target_row, target_col,
         raise RuntimeError(
             "CUDA GPU not available. Install cupy: pip install cupy-cuda12x")
 
-    rows, cols = raster.shape
+    rows, cols = raster.shape  # pylint: disable=unused-variable
     max_cost = int(np.iinfo(np.uint16).max)
 
     # Validate source and target
@@ -986,10 +986,10 @@ def _init_v2_managed_storage(total_states, source_states):
 
     # Initialize dist to 1e30 and span to 0
     # Can't use memset for float values, so wrap and fill
-    d_dist = cp.ndarray(total_states, dtype=cp.float32,
+    d_dist = cp.ndarray(total_states, dtype=cp.float32,  # pylint: disable=unexpected-keyword-arg
                         memptr=cp.cuda.MemoryPointer(
                             cp.cuda.UnownedMemory(dist_ptr, dist_bytes, None), 0))
-    d_span_dist = cp.ndarray(total_states, dtype=cp.float16,
+    d_span_dist = cp.ndarray(total_states, dtype=cp.float16,  # pylint: disable=unexpected-keyword-arg
                               memptr=cp.cuda.MemoryPointer(
                                   cp.cuda.UnownedMemory(span_ptr, span_bytes, None), 0))
     d_dist[:] = np.float32(1e30)
@@ -1586,7 +1586,7 @@ def constrained_sssp_raster_gpu_v2(
                 np.empty(0, dtype=np.uint32),
                 np.empty(0, dtype=np.float32))
 
-    best_dist, best_state, dist_cpu_dict = target_result
+    best_dist, best_state, dist_cpu_dict = target_result  # pylint: disable=unused-variable
 
     # Transfer only the used tower records to CPU (not the full buffer)
     tower_record_dtype = np.dtype([
@@ -1620,7 +1620,7 @@ def constrained_sssp_raster_gpu_v2(
         try:
             cp.cuda.runtime.free(dist_ptr)
             cp.cuda.runtime.free(span_ptr)
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     return result

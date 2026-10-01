@@ -313,9 +313,9 @@ def reprice(design: Design, graph, turbines, model: CollectorModel, *,
             raise DesignError(f"turbine {i} exceeds switchgear or panels")
         panels += model.turbine_panel_eur * cond
     stations = 0.0
-    for tnode in {j.tnode for j in design.junctions}:
+    for tnode in {j.tnode for j in design.junctions}:  # pylint: disable=unused-variable
         stations += model.station_building_eur
-    for j, jn in enumerate(design.junctions):
+    for j, jn in enumerate(design.junctions):  # pylint: disable=unused-variable
         cond = sum(design.systems[s].option[1] for s in ins[("junction", j)])
         cond += design.systems[outs[("junction", j)][0]].option[1]
         stations += model.station_panel_eur * cond

@@ -157,7 +157,7 @@ def _resolve_algorithm(finder: PathFinder, algorithm: str) -> str:
         # delta-stepping kernel would silently price flat terrain.
         return "dijkstra"
     try:
-        import pyorps.utils._delta_stepping  # noqa: F401
+        import pyorps.utils._delta_stepping  # noqa: F401  # pylint: disable=unused-import
     except ImportError:
         return "dijkstra"
     return "delta-stepping"

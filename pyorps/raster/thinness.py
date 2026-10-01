@@ -1487,7 +1487,7 @@ def detect_repair_seals(
             "raster, because the fill value and a forbidden burn are the same "
             "number there.")
     try:
-        import scipy.ndimage  # noqa: F401  (checked before paying for a burn)
+        import scipy.ndimage  # noqa: F401  (checked before paying for a burn)  # pylint: disable=unused-import
     except ImportError:
         return None
 

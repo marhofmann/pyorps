@@ -578,7 +578,7 @@ def evaluate_limits(v_turb, s_turb_mva, vmax_pu, vmodel: VoltageModel, *,
     if tap_policy not in ("per_turbine", "common"):
         raise ValueError("tap_policy must be 'per_turbine' or 'common'")
     v = np.asarray(v_turb, dtype=np.complex128)
-    C, B, n = v.shape
+    C, B, n = v.shape  # pylint: disable=unused-variable
     s = np.asarray(s_turb_mva, dtype=np.complex128) / vmodel.s_base_mva
     if s.ndim == 2:
         s = s[:, None, :]

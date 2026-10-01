@@ -812,7 +812,7 @@ class RasterFIMAPI(GraphAPI):
         if rows * cols > self._MAX_CERTIFY_CELLS:
             return None
         try:
-            import scipy.sparse                       # noqa: F401
+            import scipy.sparse                       # noqa: F401  # pylint: disable=unused-import
         except ImportError:              # pragma: no cover - scipy is a dep
             return None
 
