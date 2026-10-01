@@ -292,7 +292,9 @@ class TestPathPlotter(unittest.TestCase):
         # Test with default title (using path info)
         self.path1.total_length = 15.0
         title = self.plotter._get_plot_title(None, 0, self.path1)
-        self.assertEqual(title, "Path 1 (length: 15.00 units)")
+        # "m", not "units": total_length is a CRS-unit length like every
+        # other consumer reports (core/path.py, webviz/app.py).
+        self.assertEqual(title, "Path 1 (length: 15.00 m)")
 
         # Test with default title (no path length)
         self.path1.total_length = None

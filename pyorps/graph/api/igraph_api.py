@@ -172,6 +172,7 @@ class IGraphAPI(GraphLibraryAPI):
             algorithm: str,
             **kwargs
     ) -> NodePathList:
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """
         Computes shortest paths from a single source to multiple targets.
 
@@ -184,6 +185,7 @@ class IGraphAPI(GraphLibraryAPI):
         Returns:
             List of paths from the source to each target
         """
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if 'weight' in self.graph.es.attributes():
             weights = self.graph.es.get_attribute_values('weight')
         else:

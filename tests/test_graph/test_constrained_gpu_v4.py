@@ -41,7 +41,8 @@ _KERNEL_DIR = Path(__file__).resolve().parent.parent.parent / "pyorps" / "utils"
 def _resolve_includes(source: str, block_size: int = 64) -> str:
     """Resolve local #include "..." directives for CuPy compilation.
 
-    Mirrors the logic in constrained_sssp_gpu_v3._load_v3_kernel_source.
+    Was mirrored from the constrained GPU v3 loader, which was removed on
+    2026-08-11; this is now the only copy.
     """
     source = f"#define BLOCK_SIZE {block_size}\n" + source
     included: set[str] = set()

@@ -1,0 +1,50 @@
+nutzart;bez;cost
+Wald;Nadelholz;405
+Wald;Laub- und Nadelholz;425
+Wald;Laubholz;475
+Wald;;405
+Straﬂenverkehr;;350
+Weg;Fuﬂweg;300
+Weg;Rad- und Fuﬂweg;300
+Weg;;300
+Landwirtschaft;Ackerland;437
+Landwirtschaft;Gr¸nland;437
+Landwirtschaft;Gartenbauland;581
+Landwirtschaft;Streuobstwiese;581
+Landwirtschaft;Obst- und Nussplantage;581
+Landwirtschaft;Streuobstacker;468
+Landwirtschaft;Baumschule;581
+Landwirtschaft;Brachland;380
+Landwirtschaft;;437
+Flieﬂgew‰sser;Graben;332
+Flieﬂgew‰sser;Bach;346
+Flieﬂgew‰sser;Kanal;358
+Flieﬂgew‰sser;Fluss;586
+Flieﬂgew‰sser;;332
+Stehendes Gew‰sser;Teich;350
+Stehendes Gew‰sser;Speicherbecken;590
+Stehendes Gew‰sser;Stausee;590
+Stehendes Gew‰sser;Baggersee;590
+Stehendes Gew‰sser;;400
+Sport-, Freizeit- und Erholungsfl‰che;Gr¸nanlage;320
+Sport-, Freizeit- und Erholungsfl‰che;;65535
+Gehˆlz;;380
+Platz;Parkplatz;310
+Platz;Rastplatz;320
+Platz;;310
+Flugverkehr;Segelfluggel‰nde;200
+Flugverkehr;Sonderlandeplatz;300
+Flugverkehr;;65535
+Bahnverkehr;;800
+Heide;;125
+Unland/Vegetationslose Fl‰che;;125
+Fl‰che gemischter Nutzung;;65535
+Fl‰che besonderer funktionaler Pr‰gung;;65535
+Wohnbaufl‰che;;65535
+Sumpf;;65535
+Industrie- und Gewerbefl‰che;;65535
+Tagebau, Grube, Steinbruch;;65535
+Friedhof;;65535
+Moor;;65535
+Halde;;65535
+Schiffsverkehr;;65535

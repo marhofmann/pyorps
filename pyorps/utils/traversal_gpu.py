@@ -4,6 +4,8 @@ Computes intermediate cells and cost factors for all step directions,
 formatted for GPU kernel consumption. Pure Python/NumPy (no Numba/Cython).
 """
 
+# ruff: noqa: F401
+# pylint: disable=unused-import
 import math
 import numpy as np
 
@@ -18,7 +20,12 @@ def _intermediate_steps_cpu(dr: int, dc: int) -> np.ndarray:
     """Bresenham-like intermediate cells for a (dr, dc) step.
 
     Returns (N, 2) int8 array of (row_offset, col_offset) pairs.
-    Matches ``_traversal_numba.intermediate_steps_numba``.
+    Crosses the same CELLS as ``_traversal_numba.intermediate_steps_numba``.
+    NOTE: for collinear reducible steps -- (0,2), (2,2), (3,3) -- this lists
+    each crossed cell TWICE where the numba version lists it once. Harmless
+    for passability (same cell set) and unreachable in practice, since no
+    neighbourhood r0-r3 contains a reducible step. It would matter if one
+    ever did, because n_inter also scales cost_factor.
     """
     abs_dr = abs(dr)
     abs_dc = abs(dc)

@@ -195,7 +195,7 @@ def constrained_delta_stepping_2d(
     for dd in range(n_dirs):
         if directions[dd].cost_factor < min_cf:
             min_cf = directions[dd].cost_factor
-    cdef double delta = max(1.0, 2.0 * min_raster_val_d * min_cf * (1.0 - 1e-9))
+    cdef double delta = max(1.0, 2.0 * min_raster_val_d * min_cf * <double>cell_size * (1.0 - 1e-9))
 
     # Bucket queue
     cdef size_t n_phys_buckets = 65536
@@ -441,7 +441,7 @@ def constrained_delta_stepping_2d(
 
                                     p_terrain_cost = (<double>p_cur_raster_val +
                                                      <double>p_icost +
-                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
+                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor * <double>cell_size
                                     if grad_penalty_ptr != NULL:
                                         p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
                                     p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
@@ -692,7 +692,7 @@ def constrained_delta_stepping_clearance_2d(
     for dd in range(n_dirs):
         if directions[dd].cost_factor < min_cf:
             min_cf = directions[dd].cost_factor
-    cdef double delta_val = max(1.0, 2.0 * min_raster_val_d * min_cf * (1.0 - 1e-9))
+    cdef double delta_val = max(1.0, 2.0 * min_raster_val_d * min_cf * <double>cell_size * (1.0 - 1e-9))
 
     cdef size_t n_phys_buckets = 65536
     cdef size_t bucket_mask = n_phys_buckets - 1
@@ -885,7 +885,7 @@ def constrained_delta_stepping_clearance_2d(
                                         continue
                                     p_icost = icache_cost[p_cidx]
                                     p_terrain_cost = (<double>p_cur_raster_val + <double>p_icost +
-                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
+                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor * <double>cell_size
                                     p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
                                     p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
                                     p_new_span_m = p_cur_span_m + <double>p_nb.step_distance
@@ -1159,7 +1159,7 @@ def constrained_delta_stepping_height_2d(
     for dd in range(n_dirs):
         if directions[dd].cost_factor < min_cf:
             min_cf = directions[dd].cost_factor
-    cdef double delta_val = max(1.0, 2.0 * min_raster_val_d * min_cf * (1.0 - 1e-9))
+    cdef double delta_val = max(1.0, 2.0 * min_raster_val_d * min_cf * <double>cell_size * (1.0 - 1e-9))
 
     # Circular bucket queue
     cdef size_t n_phys_buckets = 65536
@@ -1382,7 +1382,7 @@ def constrained_delta_stepping_height_2d(
                                     p_icost = icache_cost[p_cidx]
 
                                     p_terrain_cost = (<double>p_cur_raster_val + <double>p_icost +
-                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
+                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor * <double>cell_size
                                     p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
                                     p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
                                     p_new_span_m = p_cur_span_m + <double>p_nb.step_distance
@@ -1725,7 +1725,7 @@ cdef _height_sparse(
     for dd in range(n_dirs):
         if directions[dd].cost_factor < min_cf:
             min_cf = directions[dd].cost_factor
-    cdef double delta_val = max(1.0, 2.0 * min_raster_val_d * min_cf * (1.0 - 1e-9))
+    cdef double delta_val = max(1.0, 2.0 * min_raster_val_d * min_cf * <double>cell_size * (1.0 - 1e-9))
 
     # Circular bucket queue
     cdef size_t n_phys_buckets = 65536
@@ -1929,7 +1929,7 @@ cdef _height_sparse(
 
                                     p_terrain_cost = (<double>p_cur_raster_val +
                                                      <double>p_icost +
-                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
+                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor * <double>cell_size
                                     p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
                                     p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
                                     p_new_span_m = p_cur_span_m + <double>p_nb.step_distance
@@ -2276,7 +2276,7 @@ def constrained_delta_stepping_lazy(
     for dd in range(n_dirs):
         if directions[dd].cost_factor < min_cf:
             min_cf = directions[dd].cost_factor
-    cdef double delta_val = max(1.0, 2.0 * min_raster_val_d * min_cf * (1.0 - 1e-9))
+    cdef double delta_val = max(1.0, 2.0 * min_raster_val_d * min_cf * <double>cell_size * (1.0 - 1e-9))
 
     # Circular bucket queue
     cdef size_t n_phys_buckets = 65536
@@ -2486,7 +2486,7 @@ def constrained_delta_stepping_lazy(
                                     p_icost = icache_cost[p_cidx]
 
                                     p_terrain_cost = (<double>p_cur_raster_val + <double>p_icost +
-                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor
+                                                     <double>raster_ptr[p_nb_cell]) * <double>p_nb.cost_factor * <double>cell_size
                                     p_terrain_cost = p_terrain_cost * <double>grad_penalty_ptr[p_cidx]
                                     p_edge_cost = p_terrain_cost + <double>p_nb.angle_cost
                                     p_new_span_m = p_cur_span_m + <double>p_nb.step_distance

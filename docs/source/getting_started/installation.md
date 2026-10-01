@@ -1,5 +1,15 @@
+---
+title: "Installation"
+summary: "How to install PYORPS from PyPI or from source, and which optional extras exist."
+status: stable
+since: "0.2.1"
+available_in: pypi
+module: "pyorps"
+api: []
+---
 # 💽 Installation
 
+(installation-quick-install-recommended)=
 ## Quick Install (recommended)
 
 Pre-built binary wheels are available on PyPI for **Windows**, **Linux**, and **macOS** with **Python 3.11, 3.12, and 3.13**. No C++ compiler required:
@@ -14,6 +24,7 @@ This installs the core package with all required dependencies and pre-compiled C
 A C++ compiler is **only** required if you install from source (e.g., `pip install -e .` for development) or if no pre-built wheel is available for your platform. See [Building from Source](#building-from-source) below.
 :::
 
+(installation-pre-built-wheel-availability)=
 ## Pre-built Wheel Availability
 
 | Platform | Architecture | Python Versions |
@@ -25,6 +36,7 @@ A C++ compiler is **only** required if you install from source (e.g., `pip insta
 
 If `pip install pyorps` succeeds, the Cython extensions are already compiled — no further action needed.
 
+(installation-optional-dependencies)=
 ## Optional Dependencies
 
 PYORPS provides several optional dependency groups for different use cases:
@@ -33,12 +45,14 @@ PYORPS provides several optional dependency groups for different use cases:
 |-------|---------|----------|
 | `graph` | `pip install pyorps[graph]` | rustworkx, python-igraph, networkx, networkit |
 | `gpu` | `pip install pyorps[gpu]` | cupy-cuda12x |
-| `gpu-full` | `pip install pyorps[gpu-full]` | cupy-cuda12x, cugraph-cu12, cudf-cu12 |
+| `gpu-full` | `pip install pyorps[gpu-full]` | cupy-cuda12x plus the RAPIDS packages cugraph-cu12 and cudf-cu12. No PYORPS backend uses the RAPIDS packages; install the extra only if your own GPU workflow needs them alongside PYORPS. |
 | `dev` | `pip install pyorps[dev]` | coverage, pytest, cython |
 | `examples` | `pip install pyorps[examples]` | notebook, fiona |
 | `case_studies` | `pip install pyorps[case_studies]` | notebook, fiona, pandapower, contextily |
 | `additionals` | `pip install pyorps[additionals]` | openpyxl |
-| `full` | `pip install pyorps[full]` | All optional dependencies (except GPU) |
+| `gui` | `pip install pyorps[gui]` | dash, dash-leaflet, dash-ag-grid, dash-extensions, dash-bootstrap-components, localtileserver, pywebview, pyyaml, orjson, flask-compress, pyarrow, waitress, geobuf |
+| `viz` | `pip install pyorps[viz]` | Deprecated alias of `gui` (same packages) |
+| `full` | `pip install pyorps[full]` | graph, dev, examples, case_studies and additionals groups (not GPU, not GUI) |
 
 You can combine multiple groups:
 
@@ -47,7 +61,9 @@ pip install pyorps[graph,examples]
 ```
 
 :::{note}
-The `full` group does not include GPU dependencies (`gpu` / `gpu-full`) because these require a compatible NVIDIA GPU and CUDA toolkit. Install them separately if needed.
+The `full` group does not include GPU dependencies (`gpu`) because these require a compatible NVIDIA GPU and CUDA toolkit. Install them separately if needed.
+
+pyproject.toml also defines a `gpu-full` extra that pulls in additional RAPIDS packages next to CuPy. PYORPS does not use them: there is no `cugraph` backend (`graph_api="cugraph"` raises `NotImplementedError`). Use the `gpu` extra.
 :::
 
 (building-from-source)=
@@ -130,6 +146,7 @@ xcode-select --install
 
 ::::
 
+(installation-verify-installation)=
 ## Verify Installation
 
 After installation, verify that PYORPS is available:
@@ -146,6 +163,7 @@ from pyorps.utils import path_algorithms
 print("Cython extensions available")
 ```
 
+(installation-troubleshooting)=
 ## Troubleshooting
 
 ### `pip install pyorps` fails with "no matching distribution"
