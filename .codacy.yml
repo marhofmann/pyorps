@@ -27,3 +27,8 @@ engines:
       - "pyorps/gui/callbacks/*.py"
       - "pyorps/gui/layout.py"
       - "pyorps/raster/thinness.py"
+      - "pyorps/utils/sssp_gpu.py"
+      - "pyorps/graph/constrained_path_finder.py"
+      - "pyorps/graph/api/raster_fim_api.py"
+      - "pyorps/utils/constrained_sssp_gpu_v2.py"
+      - "pyorps/utils/constrained_sssp_gpu_v4.py"

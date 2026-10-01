@@ -146,6 +146,7 @@ class BuildExtWithProvenance(_build_ext):
         self.write_provenance()
 
     def write_provenance(self):
+        # lizard forgives: build script, branches follow platform and compiler options
         manifests = {}
 
         for ext in self.extensions:
@@ -200,6 +201,7 @@ class BuildExtWithProvenance(_build_ext):
 
 
 def make_extensions():
+    # lizard forgives: build script, branches follow platform and compiler options
     modules = MODULES
 
     system = platform.system().lower()
