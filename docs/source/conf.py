@@ -7,6 +7,7 @@ from datetime import datetime
 # -- Path setup --------------------------------------------------------------
 # Add the parent directory to the Python path so sphinx can find the modules
 sys.path.insert(0, os.path.abspath('../..'))
+sys.path.insert(0, os.path.abspath('_ext'))
 
 # -- Project information -----------------------------------------------------
 project = 'PYORPS'
@@ -21,8 +22,8 @@ try:
     version = __version__
 except ImportError:
     print("Warning: Could not import pyorps.__version__, using fallback")
-    release = '0.3.2'
-    version = '0.3.2'
+    release = '0.4.0'
+    version = '0.4.0'
 
 # -- General configuration ---------------------------------------------------
 
@@ -40,6 +41,10 @@ extensions = [
     'myst_parser',
     'sphinx_copybutton',
     'sphinx_design',
+    # Local extensions in docs/source/_ext
+    'status',
+    'api_index',
+    'llms',
 ]
 
 # -- MyST configuration ------------------------------------------------------
@@ -120,7 +125,7 @@ autodoc_mock_imports = [
 # -- Options for autosummary -------------------------------------------------
 
 autosummary_generate = True
-autosummary_generate_overwrite = False
+autosummary_generate_overwrite = True
 autosummary_imported_members = False
 
 # -- Options for napoleon ----------------------------------------------------
@@ -214,6 +219,9 @@ texinfo_documents = [
 ]
 
 # -- Options for todo extension ----------------------------------------------
+
+# Latest version on PyPI, shown in the availability banners and llms.txt
+pyorps_pypi_version = '0.4.0'
 
 todo_include_todos = True
 

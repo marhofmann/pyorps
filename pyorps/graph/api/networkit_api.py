@@ -96,7 +96,7 @@ class NetworkitAPI(GraphLibraryAPI):
         Returns:
             List or array of node indices of the nodes in the graph
         """
-        return [i for i in self.graph.iterNodes()]
+        return list(self.graph.iterNodes())
 
     def _compute_single_path(
             self,
@@ -166,7 +166,7 @@ class NetworkitAPI(GraphLibraryAPI):
         Returns:
             List of paths from the source to each target
         """
-        if algorithm == "dijkstra" or algorithm == "bidirectional_dijkstra":
+        if algorithm in ("dijkstra", "bidirectional_dijkstra"):
             return self._compute_multi_target_dijkstra(source, targets)
 
         if algorithm == "astar":

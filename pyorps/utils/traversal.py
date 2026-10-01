@@ -8,10 +8,39 @@ Reference:
 
 Backward-compatibility shim — imports from Cython _traversal module.
 Falls back to Numba implementations if Cython extension is not available.
+
+THE INTERMEDIATE-CELL INVARIANT (read before changing any edge builder)
+----------------------------------------------------------------------
+A step from ``(r, c)`` to ``(r+dr, c+dc)`` is admitted only if EVERY
+intermediate cell of that step is passable. ``intermediate_steps_numba``
+(``_raster_context.pyx:_calculate_intermediate_steps_cython``) enumerates them:
+a cardinal step has none, a single diagonal decomposes into exactly its two
+flanking cells ``(dr, 0)`` and ``(0, dc)``, and a longer r2/r3 step samples
+both the floor and the ceil of every fractional position, so no cell the
+segment could graze is missed.
+
+The routing consequence is not stated anywhere in the algorithm literature
+this project cites, so it is stated here: **pyorps cannot cut the corner of a
+diagonal barrier.** Two free cells that touch only at a corner are never
+connected, because the two cells flanking that corner are the step's
+intermediates. The rule is in fact stricter than "no corner cutting" — a
+diagonal is rejected when EITHER flank is impassable, not only when both are.
+
+This is an emergent property of the intermediate enumeration, not an explicit
+check, and it is relied on by every backend (Cython Dijkstra and delta
+stepping, the graph libraries via the edge list built here, the CUDA raster
+kernels via the same LUT uploaded by ``traversal_gpu``, and the constrained
+planners via their precomputed ``icache_status``). A "fast path" for diagonal
+steps that skips the intermediate loop would silently reintroduce corner
+cutting: routes stay optimal for the graph that was built, and the graph is
+what is wrong. ``tests/test_graph/test_corner_cutting_invariant.py`` pins it.
+
+It has no effect where nothing is impassable — with ``ignore_max=False`` the
+exclude mask is all-ones and every cell, 65535 included, is traversable.
 """
 
 try:
-    from pyorps.utils._traversal import (  # noqa: F401
+    from pyorps.utils._traversal import (  # noqa: F401  # pylint: disable=unused-import  # re-exported API
         # Gradient
         calculate_gradient_penalty,
         # Core path functions
@@ -36,7 +65,7 @@ try:
         # Node validation
         is_valid_node,
     )
-    from pyorps.utils._traversal import (  # noqa: F401
+    from pyorps.utils._traversal import (  # noqa: F401  # pylint: disable=unused-import  # re-exported API
         # Index manipulation
         py_ravel_index as ravel_index,
     )
@@ -47,7 +76,7 @@ except ImportError:
     # Fallback: use the Numba implementations
     _CYTHON_TRAVERSAL = False
 
-    from pyorps.utils._traversal_numba import (  # noqa: F401
+    from pyorps.utils._traversal_numba import (  # noqa: F401  # pylint: disable=unused-import  # re-exported API
         calculate_path_metrics_numba,
         intermediate_steps_numba,
         construct_edges,

@@ -26,7 +26,7 @@ While tailored for distribution grids, it can be adapted for various infrastruct
 <table>
   <tr>
     <td align="center" width="100%">
-      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png" alt="ex." width="100%"/><br>
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/source/_static/images/pyorps_planning_results_21_targets_22_5deg_1mxm.png" alt="ex." width="100%"/><br>
       <sub>
         <b>Figure 1:</b> Parallel computation of 21 paths from single source to multiple targets.<br>
         332 s total runtime on laptop with Intel(R) Core(TM) i7-8850H CPU @ 2.6 GHz and 32 GB memory
@@ -35,6 +35,51 @@ While tailored for distribution grids, it can be adapted for various infrastruct
   </tr>
 </table>
 
+
+## What's new in 0.4.0
+
+- **Route length in CRS units.** Lengths and costs no longer change with the raster resolution (breaking change for
+  results that were reported in cell units).
+- **Several metrics at once.** `CostAssumptions(metrics=...)`, `MetricStack`, `Objective` and DEM-based slope for
+  multi-objective routing.
+- **GPU backends.** `raster_gpu` (persistent delta-stepping kernels) and `raster_fim` (eikonal fast-iterative-method
+  solver, raw `.gpur` rasters); install with `pip install pyorps[gpu]`.
+- **Cost fields and search sessions.** Solve one field once and price many endpoint pairs.
+- **Corridor graphs and tower fields.** Shared trenches for many routes; precomputed fields for overhead lines.
+- **Interactive GUI.** `pip install pyorps[gui]`, then `python -m pyorps.gui`.
+- **Route simplification.** `simplify` option of `PathFinder.find_route`.
+
+Everything is listed with its status (`stable` or `experimental`) in the
+[release status](https://pyorps.readthedocs.io/en/latest/getting_started/release_status.html) and the
+[changelog](https://pyorps.readthedocs.io/en/latest/reference/changelog.html).
+
+### Planning substation sites with cost fields
+
+Instead of routing from every candidate site to every terminal, the siting research code solves one cost field per
+fixed terminal (grid connection points and turbines) and then prices each candidate substation site by lookup.
+
+<table>
+  <tr>
+    <td align="center" width="100%">
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/source/_static/images/substation_siting_method.gif" alt="Animation: ten cost fields are settled on a cost raster and candidate substation sites are priced by lookup" width="100%"/><br>
+      <sub>
+        <b>Figure 2:</b> Method illustration on public geodata: ten cost fields rooted at the fixed terminals
+        (<b>+</b> turbines, <b>&#9632;</b> grid connection points), then four illustrative candidate sites (<b>&#9675;</b>),
+        one west, north, east and south of the wind farm, are read off the fields.<br>
+        The siting packages (<code>pyorps.siting</code>, <code>pyorps.collector</code>, <code>pyorps.costmodel</code>,
+        <code>pyorps.certify</code>) are research code: shipped, but not part of the stable API.
+      </sub>
+    </td>
+  </tr>
+</table>
+
+How the workflow in Figure 2 runs:
+
+- Start from a cost raster in which every cell has a price per metre of trench and forbidden cells are black.
+- Solve one cost field per fixed terminal (seven turbines and three grid connection points). Each field is kept in memory, and the raster is not searched again.
+- Read a route out of a field by following the predecessor chain from a candidate site back to its root. No new search runs.
+- Move the candidate site and read all ten routes again (seven medium-voltage feeders and three high-voltage connections). The cheapest of each kind is the one that counts.
+- Ten searches therefore answer any number of candidate sites, because the search is rooted at what is fixed and what moves is looked up.
 
 ## Features
 
@@ -46,6 +91,9 @@ While tailored for distribution grids, it can be adapted for various infrastruct
 - **Environmental Consideration**: Add cost modifiers for nature reserves, water protection zones, and other sensitive 
   regions
 - **GIS Integration**: Export results as GeoJSON for further analysis in GIS applications
+- **Multiple Metrics**: Route on cost, slope or other metrics at once with `metrics=` and `Objective`
+- **GPU Backends**: `raster_gpu` and `raster_fim` for very large rasters (extra `gpu`)
+- **Interactive GUI**: Draw an area, load data from WFS services, edit costs and compare routes (extra `gui`)
 
 
 ## Quick Start
@@ -79,7 +127,7 @@ path_finder.plot_paths()
 path_finder.save_paths(r"<PATH>\<TO>\<YOUR>\<RESULTS>.geojson" )
 ```
 
-Please check out the [example](https://github.com/marhofmann/pyorps/blob/master/examples/create_rasterized_geodata.ipynb)
+Please check out the [example](https://github.com/marhofmann/pyorps/blob/main/examples/create_rasterized_geodata.ipynb)
 for creating and setting up a dedicated raster dataset for your planning task.
 
 ## Binder - Run Examples
@@ -135,6 +183,23 @@ This command will install the core functionality of **PYORPS** along with its es
   pip install pyorps[dev]
   ```
 
+- **Interactive GUI**: Dash-based route-planning workbench (`python -m pyorps.gui`):
+  ```bash
+  pip install pyorps[gui]
+  ```
+
+- **GPU backends**: CuPy for `raster_gpu` and `raster_fim` (CUDA 12; `gpu-full` adds cuGraph and cuDF):
+  ```bash
+  pip install pyorps[gpu]
+  ```
+
+- **Other graph libraries**: Rustworkx, iGraph, NetworkX and NetworKit backends:
+  ```bash
+  pip install pyorps[graph]
+  ```
+
+- **Route simplification**: `pip install pyorps[simplify]`
+
 - **Full Installation**: To install all optional dependencies at once:
   ```bash
   pip install pyorps[full]
@@ -179,9 +244,9 @@ This dramatically reduces memory and computation time, especially for high-resol
 <table>
   <tr>
     <td align="center" width="100%">
-      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/images/buffer_600.png" alt="search spaces" 
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/source/_static/images/buffer_600.png" alt="search spaces" 
 width="100%"/><br>
-      <sub><b>Figure 2:</b> Various optimal paths for different search spaces on rasterised geodata with 1 m² resolution</sub>
+      <sub><b>Figure 3:</b> Various optimal paths for different search spaces on rasterised geodata with 1 m² resolution</sub>
     </td>
   </tr>
 </table>
@@ -203,14 +268,14 @@ This allows you to balance accuracy (following real-world paths) and performance
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/images/R3-complete.PNG" 
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/source/_static/images/R3-complete.PNG" 
 alt="R3 complete" width="79%"/><br>
-      <sub><b>Figure 3a:</b> Steps for neighbourhoods R0 (blue), R1 (green), R2 (yellow), and R3 (red)</sub>
+      <sub><b>Figure 4a:</b> Steps for neighbourhoods R0 (blue), R1 (green), R2 (yellow), and R3 (red)</sub>
     </td>
     <td align="center" width="50%">
-      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/images/intermediate_steps.PNG" 
+      <img src="https://raw.githubusercontent.com/marhofmann/pyorps/refs/heads/main/docs/source/_static/images/intermediate_steps.PNG" 
 alt="intermediates" width="90%"/><br>
-      <sub><b>Figure 3b:</b> Intermediate elements Ik for selected edges of vertex v<sub>5,5</sub>.</sub>
+      <sub><b>Figure 4b:</b> Intermediate elements Ik for selected edges of vertex v<sub>5,5</sub>.</sub>
     </td>
   </tr>
 </table>
@@ -302,9 +367,9 @@ Routing is driven by a **cost raster**. **PYORPS** supports:
 - **[Rustworkx](https://qiskit.org/documentation/rustworkx/)**: Pythonic, Rust-powered graph algorithms.
 - **[NetworkX](https://networkx.org/)**: Widely-used, pure Python graph library.
 - **[iGraph](https://igraph.org/python/)**: Efficient C-based graph library.
-- **(Upcoming)**: GPU-accelerated backends (e.g., cuGraph, Dask-cuGraph).
+- **GPU** (experimental, extra `gpu`): `raster_gpu` (delta-stepping on the GPU) and `raster_fim` (eikonal fast-iterative-method solver).
 
-You can select the backend via the `graph_api` parameter in `PathFinder`. Each backend exposes a unified interface for shortest path computation, supporting:
+You can select the backend by name via the `graph_api` parameter in `PathFinder` (default `"cython"`; there is no automatic choice by problem size). Each backend exposes a unified interface for shortest path computation, supporting:
 
 - **Δ-stepping**: Parallel path-finding algorithm - highest performance on multicore 
   CPUs
@@ -316,17 +381,21 @@ You can select the backend via the `graph_api` parameter in `PathFinder`. Each b
 ## Documentation
 
 The documentation for **PYORPS**, including detailed explanations and usage instructions, can be found on 
-https://pyorps.readthedocs.io.
+https://pyorps.readthedocs.io. It is organised into concepts (cost semantics, neighborhoods, search space, path
+lengths and units, known limitations), one API page per feature and a
+[release status](https://pyorps.readthedocs.io/en/latest/getting_started/release_status.html) page. Every page
+states whether it is `stable` or `experimental`. For AI assistants and tools, the built site also ships
+`llms.txt`, `llms-full.txt` and `api-index.json` at its root.
 Examples demonstrating the functionality of **PYORPS**, along with practical use cases, are included as jupyter notebooks
-in the [examples directory](https://github.com/marhofmann/pyorps/blob/master/examples).
+in the [examples directory](https://github.com/marhofmann/pyorps/blob/main/examples).
 
 ## Contributing
 
-Contributions are welcome! If you want to contribute, please check out the [**PYORPS** contribution guidelines](https://github.com/marhofmann/pyorps/blob/master/CONTRIBUTING.md).
+Contributions are welcome! If you want to contribute, please check out the [**PYORPS** contribution guidelines](https://github.com/marhofmann/pyorps/blob/main/CONTRIBUTING.md).
 
 ## License
 
-This project is licensed under the [MIT License](https://github.com/marhofmann/pyorps/blob/master/LICENSE).
+This project is licensed under the [MIT License](https://github.com/marhofmann/pyorps/blob/main/LICENSE).
 
 ## Citation
 

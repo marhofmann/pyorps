@@ -1,0 +1,34 @@
+---
+# Codacy analyses the installable package (pyorps/). Everything below is measurement, teaching or
+# generated material whose complexity and style are not part of the library's quality gate.
+exclude_paths:
+  - "benchmarks/**"
+  - "case_studies/**"
+  - "docs/**"
+  - "examples/**"
+  - "tests/**"
+  - "tutorial/**"
+  - "profiles/**"
+  - "pyorps/gui/assets/**"
+  - "pyorps/utils/kernels/**"
+  - "pyorps/utils/*.cpp"
+  - "**/*.ipynb"
+
+# File-length rule of the Lizard tool only: these modules hold large, cohesive numerical or GUI code.
+engines:
+  lizard:
+    exclude_paths:
+      - "pyorps/collector/raster.py"
+      - "pyorps/collector/reference.py"
+      - "pyorps/collector/voltage.py"
+      - "pyorps/collector/voltage_plant.py"
+      - "pyorps/graph/search_session.py"
+      - "pyorps/graph/tower_field.py"
+      - "pyorps/gui/callbacks/*.py"
+      - "pyorps/gui/layout.py"
+      - "pyorps/raster/thinness.py"
+      - "pyorps/utils/sssp_gpu.py"
+      - "pyorps/graph/constrained_path_finder.py"
+      - "pyorps/graph/api/raster_fim_api.py"
+      - "pyorps/utils/constrained_sssp_gpu_v2.py"
+      - "pyorps/utils/constrained_sssp_gpu_v4.py"

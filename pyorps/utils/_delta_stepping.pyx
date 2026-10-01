@@ -20,9 +20,10 @@ import numpy as np
 cimport numpy as np
 from libcpp.vector cimport vector
 from libc.math cimport sqrtf, abs
-from cython.parallel cimport prange, threadid
+from cython.parallel cimport prange
 from libc.stdlib cimport malloc, free, calloc
 from openmp cimport omp_get_max_threads, omp_set_num_threads
+from time import monotonic as _monotonic
 
 
 # Import core data structures and utilities from refactored modules
@@ -57,6 +58,301 @@ cdef extern from "atomic_cas.h" nogil:
                              int num_threads, int* local_sense)
 
 
+# ==================== RELAXATION BUFFER OVERFLOW PROTOCOL ====================
+#
+# Every parallel relaxation phase commits a distance improvement by CAS and
+# then queues the improved vertex in a fixed per-thread buffer. A dropped
+# queue entry is a LOST RELAXATION: the improvement is already visible in the
+# distance array, but the vertex is never re-relaxed, so the returned path can
+# be silently suboptimal. The buffers only fill on frontiers of 10^5+ vertices,
+# i.e. at raster sizes the test suite never reaches.
+#
+# The protocol below is the one proven in _delta_stepping_fused.pyx: a thread
+# stops claiming new work once its buffer is within one chunk's worth of
+# relaxations of capacity (`guard`), and the work it did not claim rolls over
+# into an extra round of the same phase. Invariant:
+#
+#     a chunk is claimed only while count <= guard - 1, and one chunk adds at
+#     most CHUNK_SIZE * out_degree entries, so count stays < capacity.
+#
+# `drops` is therefore an assertable witness and must stay 0.
+
+_relaxation_stats = {
+    "capacity": 0,
+    "guard": 0,
+    "rollovers": 0,
+    "drops": 0,
+}
+
+_relaxation_config = {"forced_capacity": 0}
+
+
+def set_relaxation_buffer_capacity(int capacity):
+    """Pin the per-thread relaxation buffer capacity (0 = size from system limits).
+
+    Test hook: rollover only engages once a buffer fills, which on real
+    capacities needs frontiers far larger than a unit test can build. A pinned
+    capacity is still clamped up to the protocol's safety floor.
+    """
+    _relaxation_config["forced_capacity"] = int(capacity)
+
+
+def get_relaxation_stats():
+    """Relaxation-buffer bookkeeping of the most recent delta-stepping call."""
+    return dict(_relaxation_stats)
+
+
+# ==================== SYSTEM LIMITS MEMO ====================
+#
+# get_system_limits() probes psutil.virtual_memory() on every kernel entry.
+# What it returns are process-wide sizing hints -- an available-memory guard,
+# an iteration cap, a core count -- not per-query facts, so a short
+# time-to-live keeps them honest while taking the probe out of multi-pair
+# loops. The TTL matters exactly where the cost does: it only expires between
+# queries slow enough for a re-probe to be free.
+
+cdef double SYS_LIMITS_TTL_SECONDS = 1.0
+
+cdef SystemLimits _sys_limits_value
+cdef double _sys_limits_expiry = 0.0
+cdef bint _sys_limits_fresh = False
+
+
+cdef SystemLimits system_limits_memoized() except *:
+    """get_system_limits(), re-probed at most once per TTL."""
+    global _sys_limits_value, _sys_limits_expiry, _sys_limits_fresh
+    cdef double now = _monotonic()
+    if _sys_limits_fresh and now < _sys_limits_expiry:
+        return _sys_limits_value
+    _sys_limits_value = get_system_limits()
+    _sys_limits_expiry = now + SYS_LIMITS_TTL_SECONDS
+    _sys_limits_fresh = True
+    return _sys_limits_value
+
+
+def invalidate_system_limits_memo():
+    """Force the next kernel entry to re-probe the system (test hook)."""
+    global _sys_limits_fresh
+    _sys_limits_fresh = False
+
+
+# ==================== PER-RASTER WORKSPACE ====================
+#
+# Every kernel entry re-derives the same per-raster facts and re-allocates the
+# same O(cells) state before a single edge is relaxed:
+#   * the exclude mask, (raster != max_value)
+#   * the P1.3 span statistic, the largest traversable cost in the raster
+#   * the packed dist+pred array (8 B/cell) and the bucket stamps (4 B/cell)
+# At 25 M cells that is ~450 MB of memory traffic per query, and the multi-pair
+# and multi-source drivers below pay all of it once per query on a raster that
+# is identical across the whole loop.
+#
+# KEYING -- why a stale workspace cannot be served:
+#   A workspace is bound to one raster *object* plus one max_value, and the
+#   only code that constructs one is the drivers in this module, which build it
+#   and drop it inside a single call. There is deliberately no process-global
+#   cache: cost rasters are edited in place (the GUI does exactly that) and no
+#   key cheaper than the derivation itself can witness an in-place edit, so a
+#   workspace that outlived its call would be unsound. Within one driver call
+#   the raster provably cannot change -- the drivers never write to it and the
+#   kernels bind it as `const uint16_t[:, :]`. matches() additionally pins the
+#   buffer address and the cell count, so an array re-pointed or resized in
+#   place is rejected rather than reused. Every top-level entry therefore
+#   re-derives the mask and the span statistic from the live raster.
+
+cdef class DeltaWorkspace:
+    """Per-raster derivations and state arrays shared by one driver call.
+
+    Not a public API: pass a workspace only to the kernel it was built for, and
+    never hold one across a point where the raster could be edited.
+    """
+
+    cdef object raster
+    cdef object exclude_mask
+    cdef object dist_pred
+    cdef object last_bucket
+    cdef int64_t max_value
+    cdef size_t data_ptr
+    cdef uint64_t total_cells
+    cdef readonly double max_traversable_cost
+    cdef readonly bint has_traversable
+
+    def __cinit__(self, np.ndarray raster_arr, int64_t max_value):
+        # bool -> uint8 is exactly the 0/1 the kernels read, so the mask is a
+        # zero-copy view of the comparison result rather than an astype copy.
+        traversable = (raster_arr != max_value)
+        self.raster = raster_arr
+        self.max_value = max_value
+        self.data_ptr = <size_t><void*>raster_arr.data
+        self.total_cells = (<uint64_t>raster_arr.shape[0] *
+                            <uint64_t>raster_arr.shape[1])
+        self.exclude_mask = traversable.view(np.uint8)
+        self.dist_pred = None
+        self.last_bucket = None
+        self.has_traversable = <bint>traversable.any()
+        if self.has_traversable:
+            # Equal to np.max(raster_arr[traversable]): costs are uint16 >= 0,
+            # so the identity element 0 can never win. Avoids materialising the
+            # fancy-index copy of every traversable cell.
+            self.max_traversable_cost = <double>np.max(raster_arr, initial=0,
+                                                       where=traversable)
+        else:
+            self.max_traversable_cost = 0.0
+
+    cdef bint matches(self, np.ndarray raster_arr, int64_t max_value):
+        return (raster_arr is self.raster and
+                max_value == self.max_value and
+                <size_t><void*>raster_arr.data == self.data_ptr and
+                (<uint64_t>raster_arr.shape[0] *
+                 <uint64_t>raster_arr.shape[1]) == self.total_cells)
+
+    cdef object take_dist_pred(self, uint64_t init_packed, uint64_t source_idx):
+        """Packed dist+pred array with every element re-initialised.
+
+        fill() writes the whole array, so the reset is complete by
+        construction: there is no touched-region bookkeeping that could leave a
+        settled label from the previous query behind.
+        """
+        cdef object arr = self.dist_pred
+        if arr is None:
+            arr = np.empty(<size_t>self.total_cells, dtype=np.uint64)
+            self.dist_pred = arr
+        arr.fill(init_packed)
+        arr[source_idx] = pack_dist_pred(0.0, 0xFFFFFFFF)
+        return arr
+
+    cdef object take_last_bucket(self):
+        """Bucket stamps with every element reset to -1 (see take_dist_pred)."""
+        cdef object arr = self.last_bucket
+        if arr is None:
+            arr = np.empty(<size_t>self.total_cells, dtype=np.int32)
+            self.last_bucket = arr
+        arr.fill(-1)
+        return arr
+
+    def peek_dist(self, uint64_t idx):
+        """Distance label at ``idx`` without resetting the workspace."""
+        if self.dist_pred is None:
+            return float("inf")
+        cdef np.ndarray[uint64_t, ndim=1] arr = self.dist_pred
+        if idx >= <uint64_t>arr.shape[0]:
+            return float("inf")
+        return float(unpack_dist(arr[idx]))
+
+    def dist_array(self):
+        """All distance labels as float32; ``inf`` where never relaxed.
+
+        The packed layout keeps the float32 label in the high 32 bits, so
+        the unpack is a shift plus a reinterpret -- no per-cell call. The
+        unreached sentinel is ``INF_F32 == 1e38``, a large FINITE float,
+        so it is mapped to a real ``inf`` here rather than leaking as a
+        plausible cost.
+        """
+        if self.dist_pred is None:
+            return np.empty(0, dtype=np.float32)
+        packed = np.asarray(self.dist_pred)
+        out = (packed >> np.uint64(32)).astype(np.uint32).view(np.float32)
+        out = out.copy()
+        out[out >= np.float32(1e30)] = np.inf
+        return out
+
+    def pred_array(self):
+        """Predecessor per cell as uint32, ``0xFFFFFFFF`` where unreached.
+
+        The companion to :meth:`dist_array`. The packed layout keeps the
+        predecessor in the LOW 32 bits (the float32 label sits in the
+        high ones), so this is a mask rather than a per-cell call, and
+        together the two arrays are everything a settled field needs to
+        be stored and reopened without re-running the search.
+        """
+        if self.dist_pred is None:
+            return np.empty(0, dtype=np.uint32)
+        packed = np.asarray(self.dist_pred)
+        return (packed & np.uint64(0xFFFFFFFF)).astype(np.uint32)
+
+    def extract_path(self, uint64_t source_idx, uint64_t target_idx):
+        """Walk retained packed labels. Does not fill or re-solve."""
+        if self.dist_pred is None:
+            return np.empty(0, dtype=np.uint64)
+        if source_idx == target_idx:
+            return np.array([source_idx], dtype=np.uint64)
+        cdef np.ndarray[uint64_t, ndim=1] dist_pred_arr = self.dist_pred
+        cdef uint64_t* dist_pred_ptr = <uint64_t*>dist_pred_arr.data
+        cdef uint32_t pred_val = unpack_pred(dist_pred_ptr[target_idx])
+        if pred_val == 0xFFFFFFFF:
+            return np.empty(0, dtype=np.uint64)
+        cdef list path_vertices = []
+        cdef uint64_t current = target_idx
+        cdef uint64_t path_length = 0
+        cdef uint64_t max_len = self.total_cells + 1
+        while path_length < max_len:
+            path_vertices.append(current)
+            if current == source_idx:
+                break
+            pred_val = unpack_pred(dist_pred_ptr[current])
+            if pred_val == 0xFFFFFFFF:
+                return np.empty(0, dtype=np.uint64)
+            current = <uint64_t>pred_val
+            path_length += 1
+        else:
+            return np.empty(0, dtype=np.uint64)
+        path_vertices.reverse()
+        return np.array(path_vertices, dtype=np.uint64)
+
+    def release(self):
+        """Drop retained label arrays."""
+        self.dist_pred = None
+        self.last_bucket = None
+
+    def memory_bytes(self):
+        # long long, not int: at 240 M cells the workspace is 2.88 GB, which
+        # overflows a 32-bit signed accumulator and reports NEGATIVE bytes --
+        # exactly where a caller sizing a spill decision needs the truth.
+        cdef long long n = 0
+        if self.dist_pred is not None:
+            n = n + <long long>np.asarray(self.dist_pred).nbytes
+        if self.last_bucket is not None:
+            n = n + <long long>np.asarray(self.last_bucket).nbytes
+        return n
+
+
+cdef inline DeltaWorkspace bind_workspace(DeltaWorkspace workspace,
+                                          np.ndarray raster_arr,
+                                          int64_t max_value):
+    """The caller's workspace if it belongs to this raster, else a fresh one."""
+    if workspace is not None and workspace.matches(raster_arr, max_value):
+        return workspace
+    return DeltaWorkspace(raster_arr, max_value)
+
+
+# Work-claim granularity of relax_edges_delta_stepping(). The persistent
+# kernels declare their own CHUNK_SIZE with the same value.
+cdef enum:
+    RELAX_CHUNK_SIZE = 64
+
+
+cdef inline int relax_guard_slack(int out_degree, int chunk_size) noexcept nogil:
+    """Buffer headroom one claimed chunk can consume.
+
+    A chunk holds chunk_size vertices, each contributing at most out_degree
+    successful relaxations after the guard was last tested.
+    """
+    return chunk_size * out_degree + 64
+
+
+cdef inline int size_relax_buffer(uint64_t total_cells, int threads,
+                                  int guard_slack, SystemLimits* limits,
+                                  int forced) noexcept nogil:
+    """Per-thread buffer capacity, never below twice the guard slack."""
+    cdef int capacity = calculate_thread_buffer_capacity(
+        total_cells, threads, limits)
+    if forced > 0 and forced < capacity:
+        capacity = forced
+    if capacity < 2 * guard_slack:
+        capacity = 2 * guard_slack
+    return capacity
+
+
 # ==================== THREAD-LOCAL DATA STRUCTURES ====================
 
 cdef struct ThreadResults:
@@ -72,12 +368,23 @@ cdef struct ThreadResults:
     #     distances: Computed distances for priority ordering
     #     count: Number of valid entries currently stored
     #     capacity: Maximum number of entries this buffer can hold
+    #     guard: Fill level at which the thread stops claiming new work
+    #     overflow: Dropped relaxations; must stay 0 (see protocol note above)
 
     uint64_t *vertices
     uint32_t *bucket_indices
     float *distances
     int count
     int capacity
+    int guard
+    int overflow
+
+
+# Shared claim counter for the chunked relaxation loop. A struct member is
+# addressable from inside prange without triggering Cython's reduction-variable
+# analysis (same pattern as PersistentState below).
+cdef struct RelaxWork:
+    int work_idx
 
 # ==================== SPATIAL OPTIMIZATION ====================
 
@@ -172,141 +479,6 @@ cdef void ensure_bucket_size_dynamic(vector[vector[uint64_t]]& buckets, size_t b
 
         if new_size > current_size:
             buckets.resize(new_size)
-
-# ==================== DELTA-STEPPING EDGE RELAXATION ====================
-
-cdef void relax_edges_delta_stepping(vector[uint64_t]& vertices,
-                                    uint64_t* dist_pred,
-                                    const uint16_t[:, :] raster,
-                                    const uint8_t[:, :] exclude_mask,
-                                    const vector[StepData]& directions,
-                                    const vector[CachedStepData]& cached_steps,
-                                    int rows,
-                                    uint64_t cols,
-                                    float delta,
-                                    bint light_phase_only,
-                                    ThreadResults* thread_results,
-                                    int num_threads,
-                                    uint64_t total_cells,
-                                    uint64_t target_idx,
-                                    SystemLimits* limits) noexcept nogil:
-    """
-    Parallel edge relaxation for delta-stepping algorithm.
-
-    Uses lock-free atomic CAS on a packed dist+pred uint64 array
-    instead of mutex locks. IEEE 754 positive floats preserve integer
-    ordering, so packed comparisons are equivalent to distance comparisons.
-
-    Parameters:
-        vertices: Current set of vertices to relax edges from
-        dist_pred: Packed distance+predecessor array (lock-free via CAS)
-        raster: Cost raster for edge weight calculation
-        exclude_mask: Traversability mask
-        directions: Precomputed movement directions
-        cached_steps: Cached intermediate steps for each direction
-        rows, cols: Raster dimensions
-        delta: Bucket width for edge classification
-        light_phase_only: True for light edges, False for heavy edges
-        thread_results: Per-thread accumulation buffers
-        num_threads: Active thread count
-        total_cells: Total number of cells in raster
-        target_idx: Target index (unused, kept for API consistency)
-        limits: System resource constraints
-    """
-    cdef int i, tid, dir_idx, ur, uc, vr, vc
-    cdef uint64_t u, v, ur64, uc64, vr64, vc64
-    cdef size_t bucket_idx_temp
-    cdef uint32_t bucket_idx_stored
-    cdef float current_dist, edge_weight, new_dist, intermediate_cost
-    cdef float raster_ur_uc, raster_vr_vc
-    cdef int should_update
-    cdef int valid_path
-
-    # Process vertices in parallel with dynamic scheduling
-    for i in prange(<int>vertices.size(), schedule='dynamic', chunksize=64):
-        tid = threadid()
-        if tid < 0 or tid >= num_threads:
-            tid = 0
-
-        u = vertices[i]
-
-        if u >= total_cells:
-            continue
-
-        # Convert to 2D coordinates
-        ur64 = u // cols
-        uc64 = u - (ur64 * cols)
-        ur = <int>ur64
-        uc = <int>uc64
-
-        # Atomic load of current distance (no lock needed)
-        current_dist = unpack_dist(atomic_load_u64(&dist_pred[u]))
-
-        if current_dist >= INF_F32:
-            continue
-
-        raster_ur_uc = <float>raster[ur, uc]
-
-        # Process all movement directions
-        for dir_idx in range(<int>directions.size()):
-            vr = ur + directions[dir_idx].dr
-            vc = uc + directions[dir_idx].dc
-
-            # Boundary and traversability checks
-            if vr < 0 or vr >= rows or vc < 0 or vc >= <int>cols:
-                continue
-
-            if exclude_mask[vr, vc] == 0:
-                continue
-
-            vr64 = <uint64_t>vr
-            vc64 = <uint64_t>vc
-            v = vr64 * cols + vc64
-
-            if v >= total_cells:
-                continue
-
-            # Check intermediate steps
-            intermediate_cost = 0.0
-            valid_path = check_path_cached(
-                cached_steps[dir_idx].intermediates,
-                ur, uc, exclude_mask, raster, rows, <int>cols, &intermediate_cost
-            )
-
-            if not valid_path:
-                continue
-
-            # Calculate edge weight
-            raster_vr_vc = <float>raster[vr, vc]
-            edge_weight = (raster_ur_uc + intermediate_cost + raster_vr_vc) * directions[dir_idx].cost_factor
-
-            # Filter edges based on phase
-            if light_phase_only and edge_weight > delta:
-                continue
-            if not light_phase_only and edge_weight <= delta:
-                continue
-
-            new_dist = current_dist + edge_weight
-
-            # Lock-free CAS update of distance + predecessor
-            should_update = atomic_try_update_dist_pred(
-                <volatile uint64_t*>dist_pred, v, new_dist, <uint32_t>u
-            )
-
-            # Add to thread-local buffer for bucket insertion
-            if should_update and thread_results[tid].count < thread_results[tid].capacity:
-                bucket_idx_temp = <size_t>(new_dist / delta)
-
-                if bucket_idx_temp >= limits.max_buckets:
-                    bucket_idx_stored = limits.max_buckets - 1
-                else:
-                    bucket_idx_stored = <uint32_t>bucket_idx_temp
-
-                thread_results[tid].vertices[thread_results[tid].count] = v
-                thread_results[tid].bucket_indices[thread_results[tid].count] = bucket_idx_stored
-                thread_results[tid].distances[thread_results[tid].count] = new_dist
-                thread_results[tid].count += 1
-
 
 # ==================== PERSISTENT THREAD POOL PRIMITIVES ====================
 
@@ -405,18 +577,108 @@ cdef inline void relax_vertex_edges_inline(
         )
 
         # Add to thread-local buffer for bucket insertion
-        if should_update and thread_results[tid].count < thread_results[tid].capacity:
-            bucket_idx_temp = <size_t>(new_dist / delta)
+        if should_update:
+            if thread_results[tid].count < thread_results[tid].capacity:
+                bucket_idx_temp = <size_t>(new_dist / delta)
 
-            if bucket_idx_temp >= limits.max_buckets:
-                bucket_idx_stored = limits.max_buckets - 1
+                if bucket_idx_temp >= limits.max_buckets:
+                    bucket_idx_stored = limits.max_buckets - 1
+                else:
+                    bucket_idx_stored = <uint32_t>bucket_idx_temp
+
+                thread_results[tid].vertices[thread_results[tid].count] = v
+                thread_results[tid].bucket_indices[thread_results[tid].count] = bucket_idx_stored
+                thread_results[tid].distances[thread_results[tid].count] = new_dist
+                thread_results[tid].count += 1
             else:
-                bucket_idx_stored = <uint32_t>bucket_idx_temp
+                # Unreachable while the callers honour `guard`; counted so the
+                # invariant can be asserted instead of assumed.
+                thread_results[tid].overflow += 1
 
-            thread_results[tid].vertices[thread_results[tid].count] = v
-            thread_results[tid].bucket_indices[thread_results[tid].count] = bucket_idx_stored
-            thread_results[tid].distances[thread_results[tid].count] = new_dist
-            thread_results[tid].count += 1
+
+# ==================== DELTA-STEPPING EDGE RELAXATION ====================
+
+cdef int relax_edges_delta_stepping(vector[uint64_t]& vertices,
+                                    int start_idx,
+                                    uint64_t* dist_pred,
+                                    const uint16_t[:, :] raster,
+                                    const uint8_t[:, :] exclude_mask,
+                                    const vector[StepData]& directions,
+                                    const vector[CachedStepData]& cached_steps,
+                                    int rows,
+                                    uint64_t cols,
+                                    float delta,
+                                    bint light_phase_only,
+                                    ThreadResults* thread_results,
+                                    int num_threads,
+                                    uint64_t total_cells,
+                                    uint64_t target_idx,
+                                    SystemLimits* limits) noexcept nogil:
+    """
+    Parallel edge relaxation for delta-stepping algorithm.
+
+    Uses lock-free atomic CAS on a packed dist+pred uint64 array
+    instead of mutex locks. IEEE 754 positive floats preserve integer
+    ordering, so packed comparisons are equivalent to distance comparisons.
+
+    Threads claim CHUNK_SIZE-sized slices of vertices[start_idx:] through an
+    atomic counter and stop claiming once their result buffer reaches `guard`,
+    so no successful relaxation is ever dropped. Whatever was left unclaimed is
+    reported back to the caller, which merges and calls again from there.
+
+    Parameters:
+        vertices: Current set of vertices to relax edges from
+        start_idx: First vertex to process (rollover resume point)
+        dist_pred: Packed distance+predecessor array (lock-free via CAS)
+        raster: Cost raster for edge weight calculation
+        exclude_mask: Traversability mask
+        directions: Precomputed movement directions
+        cached_steps: Cached intermediate steps for each direction
+        rows, cols: Raster dimensions
+        delta: Bucket width for edge classification
+        light_phase_only: True for light edges, False for heavy edges
+        thread_results: Per-thread accumulation buffers
+        num_threads: Active thread count
+        total_cells: Total number of cells in raster
+        target_idx: Target index (unused, kept for API consistency)
+        limits: System resource constraints
+
+    Returns:
+        Index of the first vertex that was NOT processed (== vertices.size()
+        when the batch completed).
+    """
+    cdef RelaxWork rw_data
+    cdef RelaxWork* rw = &rw_data
+    cdef int CHUNK_SIZE = RELAX_CHUNK_SIZE
+    cdef int n_vertices = <int>vertices.size()
+    cdef int tid, chunk_start, chunk_end, j
+    cdef int omp_team = num_threads
+
+    rw.work_idx = start_idx
+
+    for tid in prange(omp_team, schedule='static', num_threads=omp_team):
+        while True:
+            if thread_results[tid].count >= thread_results[tid].guard:
+                break
+            chunk_start = atomic_fetch_add_int(
+                <volatile int*>&rw.work_idx, CHUNK_SIZE)
+            if chunk_start >= n_vertices:
+                break
+            chunk_end = chunk_start + CHUNK_SIZE
+            if chunk_end > n_vertices:
+                chunk_end = n_vertices
+            for j in range(chunk_start, chunk_end):
+                relax_vertex_edges_inline(
+                    vertices[j], tid,
+                    dist_pred, raster, exclude_mask,
+                    directions, cached_steps,
+                    rows, cols, delta, light_phase_only,
+                    thread_results, total_cells, limits
+                )
+
+    if rw.work_idx > n_vertices:
+        return n_vertices
+    return rw.work_idx
 
 
 # Shared mutable state struct for persistent thread pool.
@@ -433,12 +695,14 @@ cdef struct PersistentState:
     int n_vertices
     int light_iterations
     int light_phase_active
+    int heavy_phase_active
     int bucket_valid
     int target_found_flag
     float target_distance
     float cutoff_distance
     int targets_found
     float max_target_distance
+    int rollovers
     uint64_t* vertices_ptr
 
 
@@ -448,10 +712,11 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
                       np.ndarray[int8_t, ndim=2] steps_arr,
                       uint64_t source_idx, uint64_t target_idx,
                       float delta,
-                      uint16_t max_value=65535,
+                      int64_t max_value=65535,
                       int num_threads=0,
                       size_t max_buckets_in_memory=2048,
-                      float margin=1.00001):
+                      float margin=1.00001,
+                      DeltaWorkspace workspace=None):
     """
     Find the shortest path using parallel delta-stepping with circular buffer.
 
@@ -492,6 +757,8 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
         max_buckets_in_memory: Size of circular buffer (must be power of 2)
         margin: Safety factor for early termination (default 1.0001)
                 Values > 1.0 allow earlier termination with confidence
+        workspace: Optional DeltaWorkspace built for this exact raster object
+                and max_value; ignored (and re-derived) if it does not match
 
     Returns:
         1D numpy array (uint64) of linear indices representing the optimal path.
@@ -506,12 +773,13 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
     # ============= ALL VARIABLE DECLARATIONS AT TOP =============
 
     # System and problem dimensions
-    cdef SystemLimits sys_limits = get_system_limits()
+    cdef SystemLimits sys_limits = system_limits_memoized()
     cdef int rows = <int>raster_arr.shape[0]
     cdef uint64_t cols = <uint64_t>raster_arr.shape[1]
     cdef uint64_t total_cells = <uint64_t>rows * cols
 
     # Preprocessing variables
+    cdef DeltaWorkspace ws
     cdef float computed_delta
     cdef float termination_margin
     cdef np.ndarray[uint8_t, ndim=2] exclude_mask_arr
@@ -575,6 +843,12 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
     # Loop variables
     cdef int i, j
 
+    # Relaxation buffer overflow protocol
+    cdef int out_degree, guard_slack, resume_idx
+    cdef int forced_capacity = <int>_relaxation_config["forced_capacity"]
+    cdef int64_t rollovers = 0
+    cdef int64_t drops = 0
+
     # ============= VALIDATION =============
 
     if total_cells > sys_limits.max_array_size:
@@ -585,7 +859,8 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
 
     # ============= PREPROCESSING =============
 
-    exclude_mask_arr = (raster_arr != max_value).astype(np.uint8)
+    ws = bind_workspace(workspace, raster_arr, max_value)
+    exclude_mask_arr = ws.exclude_mask
 
     # Validate delta
     if delta <= 0.0:
@@ -623,8 +898,7 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
         raise OverflowError(
             f"Raster has {total_cells} cells, exceeding uint32 predecessor limit (4294967295)")
     init_packed = pack_dist_pred(INF_F32, 0xFFFFFFFF)
-    dist_pred_arr = np.full(<size_t>total_cells, init_packed, dtype=np.uint64)
-    dist_pred_arr[source_idx] = pack_dist_pred(0.0, 0xFFFFFFFF)
+    dist_pred_arr = ws.take_dist_pred(init_packed, source_idx)
     dist_pred_ptr = <uint64_t*>dist_pred_arr.data
 
     # Create memory views
@@ -638,7 +912,7 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
 
     # P1.3 fix: Validate circular buffer can hold max bucket span
     cdef double _max_step_dist = 0.0
-    cdef double _sd, _dr_f, _dc_f, _max_cell, _max_span
+    cdef double _sd, _dr_f, _dc_f, _max_span
     cdef int _si
     for _si in range(steps_arr.shape[0]):
         _dr_f = <double>steps_arr[_si, 0]
@@ -646,10 +920,8 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
         _sd = (_dr_f * _dr_f + _dc_f * _dc_f) ** 0.5
         if _sd > _max_step_dist:
             _max_step_dist = _sd
-    _valid_mask = (exclude_mask_arr == 1)
-    if np.any(_valid_mask):
-        _max_cell = <double>np.max(raster_arr[_valid_mask])
-        _max_span = _max_cell * _max_step_dist / computed_delta
+    if ws.has_traversable:
+        _max_span = ws.max_traversable_cost * _max_step_dist / computed_delta
         if _max_span >= <double>circular_buffer_size:
             raise ValueError(
                 f"Delta-stepping: max edge/delta ratio ({_max_span:.0f}) "
@@ -658,7 +930,7 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
 
 
     # Initialize last bucket tracking
-    last_bucket_arr = np.full(<size_t>total_cells, -1, dtype=np.int32)
+    last_bucket_arr = ws.take_last_bucket()
     last_bucket = last_bucket_arr
 
     # Add source to first bucket
@@ -671,7 +943,10 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
     if thread_results == NULL:
         raise MemoryError("Could not allocate thread data")
 
-    max_capacity = calculate_thread_buffer_capacity(total_cells, actual_threads, &sys_limits)
+    out_degree = <int>directions.size()
+    guard_slack = relax_guard_slack(out_degree, RELAX_CHUNK_SIZE)
+    max_capacity = size_relax_buffer(total_cells, actual_threads, guard_slack,
+                                     &sys_limits, forced_capacity)
 
     for tid in range(actual_threads):
         thread_results[tid].vertices = <uint64_t*>malloc(max_capacity * sizeof(uint64_t))
@@ -693,7 +968,9 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
             raise MemoryError("Could not allocate thread storage")
 
         thread_results[tid].capacity = max_capacity
+        thread_results[tid].guard = max_capacity - guard_slack
         thread_results[tid].count = 0
+        thread_results[tid].overflow = 0
 
     # ============= MAIN DELTA-STEPPING LOOP =============
 
@@ -727,41 +1004,54 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
 
                 current_vertices = buckets[physical_bucket_idx]
                 buckets[physical_bucket_idx].clear()
+                # Lost-relaxation fix: popped vertices are no longer queued
+                # anywhere, so clear their dedup stamp -- a later improvement
+                # landing in this same bucket must be able to re-queue them.
+                for i in range(<int>current_vertices.size()):
+                    last_bucket[current_vertices[i]] = -1
 
                 settled_vertices.insert(settled_vertices.end(),
                                        current_vertices.begin(),
                                        current_vertices.end())
 
-                for tid in range(actual_threads):
-                    thread_results[tid].count = 0
+                # Rollover: relax until every vertex of this batch was claimed;
+                # a round ends early when a thread buffer reaches its guard.
+                resume_idx = 0
+                while True:
+                    for tid in range(actual_threads):
+                        thread_results[tid].count = 0
 
-                relax_edges_delta_stepping(
-                    current_vertices,
-                    dist_pred_ptr,
-                    raster_view, exclude_view,
-                    directions, cached_steps,
-                    rows, cols, computed_delta, True,  # light_phase_only
-                    thread_results, actual_threads, total_cells,
-                    target_idx, &sys_limits
-                )
+                    resume_idx = relax_edges_delta_stepping(
+                        current_vertices, resume_idx,
+                        dist_pred_ptr,
+                        raster_view, exclude_view,
+                        directions, cached_steps,
+                        rows, cols, computed_delta, True,  # light_phase_only
+                        thread_results, actual_threads, total_cells,
+                        target_idx, &sys_limits
+                    )
 
-                # Merge thread results with deduplication
-                for tid in range(actual_threads):
-                    for i in range(thread_results[tid].count):
-                        vertex_to_add = thread_results[tid].vertices[i]
-                        new_dist = thread_results[tid].distances[i]
-                        new_logical_bucket = <size_t>(new_dist / computed_delta)
+                    # Merge thread results with deduplication
+                    for tid in range(actual_threads):
+                        for i in range(thread_results[tid].count):
+                            vertex_to_add = thread_results[tid].vertices[i]
+                            new_dist = thread_results[tid].distances[i]
+                            new_logical_bucket = <size_t>(new_dist / computed_delta)
 
-                        if new_logical_bucket < window_start + circular_buffer_size:
-                            new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
+                            if new_logical_bucket < window_start + circular_buffer_size:
+                                new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
 
-                            last_bucket_for_vertex = last_bucket[vertex_to_add]
-                            if last_bucket_for_vertex != <int32_t>new_logical_bucket:
-                                buckets[new_physical_bucket].push_back(vertex_to_add)
-                                last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
+                                last_bucket_for_vertex = last_bucket[vertex_to_add]
+                                if last_bucket_for_vertex != <int32_t>new_logical_bucket:
+                                    buckets[new_physical_bucket].push_back(vertex_to_add)
+                                    last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
 
-                            if new_logical_bucket >= logical_bucket_count:
-                                logical_bucket_count = new_logical_bucket + 1
+                                if new_logical_bucket >= logical_bucket_count:
+                                    logical_bucket_count = new_logical_bucket + 1
+
+                    if resume_idx >= <int>current_vertices.size():
+                        break
+                    rollovers += 1
 
             # Check if target found
             for i in range(<int>settled_vertices.size()):
@@ -777,36 +1067,42 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
 
             # HEAVY PHASE
             if not settled_vertices.empty():
-                for tid in range(actual_threads):
-                    thread_results[tid].count = 0
+                resume_idx = 0
+                while True:
+                    for tid in range(actual_threads):
+                        thread_results[tid].count = 0
 
-                relax_edges_delta_stepping(
-                    settled_vertices,
-                    dist_pred_ptr,
-                    raster_view, exclude_view,
-                    directions, cached_steps,
-                    rows, cols, computed_delta, False,  # heavy edges
-                    thread_results, actual_threads, total_cells,
-                    target_idx, &sys_limits
-                )
+                    resume_idx = relax_edges_delta_stepping(
+                        settled_vertices, resume_idx,
+                        dist_pred_ptr,
+                        raster_view, exclude_view,
+                        directions, cached_steps,
+                        rows, cols, computed_delta, False,  # heavy edges
+                        thread_results, actual_threads, total_cells,
+                        target_idx, &sys_limits
+                    )
 
-                for tid in range(actual_threads):
-                    for i in range(thread_results[tid].count):
-                        vertex_to_add = thread_results[tid].vertices[i]
-                        new_dist = thread_results[tid].distances[i]
-                        new_logical_bucket = <size_t>(new_dist / computed_delta)
+                    for tid in range(actual_threads):
+                        for i in range(thread_results[tid].count):
+                            vertex_to_add = thread_results[tid].vertices[i]
+                            new_dist = thread_results[tid].distances[i]
+                            new_logical_bucket = <size_t>(new_dist / computed_delta)
 
-                        if (new_logical_bucket > current_logical_bucket and
-                            new_logical_bucket < window_start + circular_buffer_size):
-                            new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
+                            if (new_logical_bucket > current_logical_bucket and
+                                new_logical_bucket < window_start + circular_buffer_size):
+                                new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
 
-                            last_bucket_for_vertex = last_bucket[vertex_to_add]
-                            if last_bucket_for_vertex != <int32_t>new_logical_bucket:
-                                buckets[new_physical_bucket].push_back(vertex_to_add)
-                                last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
+                                last_bucket_for_vertex = last_bucket[vertex_to_add]
+                                if last_bucket_for_vertex != <int32_t>new_logical_bucket:
+                                    buckets[new_physical_bucket].push_back(vertex_to_add)
+                                    last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
 
-                            if new_logical_bucket >= logical_bucket_count:
-                                logical_bucket_count = new_logical_bucket + 1
+                                if new_logical_bucket >= logical_bucket_count:
+                                    logical_bucket_count = new_logical_bucket + 1
+
+                    if resume_idx >= <int>settled_vertices.size():
+                        break
+                    rollovers += 1
 
             # Clear processed bucket to free memory
             buckets[physical_bucket_idx].clear()
@@ -818,6 +1114,7 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
         # Cleanup resources (no locks to destroy)
         if thread_results != NULL:
             for tid in range(actual_threads):
+                drops += thread_results[tid].overflow
                 if thread_results[tid].vertices != NULL:
                     free(thread_results[tid].vertices)
                 if thread_results[tid].bucket_indices != NULL:
@@ -825,6 +1122,10 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
                 if thread_results[tid].distances != NULL:
                     free(thread_results[tid].distances)
             free(thread_results)
+        _relaxation_stats["capacity"] = int(max_capacity)
+        _relaxation_stats["guard"] = int(max_capacity - guard_slack)
+        _relaxation_stats["rollovers"] = int(rollovers)
+        _relaxation_stats["drops"] = int(drops)
 
     # Path reconstruction
     pred_val = unpack_pred(dist_pred_ptr[target_idx])
@@ -857,9 +1158,10 @@ def delta_stepping_single_source_multiple_targets(
         uint64_t source_idx,
         np.ndarray[uint64_t, ndim=1] target_indices,
         float delta,
-        uint16_t max_value=65535,
+        int64_t max_value=65535,
         int num_threads=0,
-        size_t max_buckets_in_memory=2048):
+        size_t max_buckets_in_memory=2048,
+        DeltaWorkspace workspace=None):
     """
     Find optimal paths from single source to multiple targets.
 
@@ -895,6 +1197,8 @@ def delta_stepping_single_source_multiple_targets(
         max_value: Cost value representing obstacles
         num_threads: Number of OpenMP threads (0 = auto-detect)
         max_buckets_in_memory: Size of circular buffer (power of 2)
+        workspace: Optional DeltaWorkspace built for this exact raster object
+            and max_value; ignored (and re-derived) if it does not match
 
     Returns:
         List of numpy arrays, one path per target (empty if no path exists)
@@ -906,13 +1210,14 @@ def delta_stepping_single_source_multiple_targets(
     # ============= ALL VARIABLE DECLARATIONS AT TOP =============
 
     # System and problem dimensions
-    cdef SystemLimits sys_limits = get_system_limits()
+    cdef SystemLimits sys_limits = system_limits_memoized()
     cdef int rows = <int>raster_arr.shape[0]
     cdef uint64_t cols = <uint64_t>raster_arr.shape[1]
     cdef uint64_t total_cells = <uint64_t>rows * cols
     cdef int num_targets = <int>target_indices.shape[0]
 
     # Preprocessing variables
+    cdef DeltaWorkspace ws
     cdef np.ndarray[uint8_t, ndim=2] exclude_mask_arr
     cdef const uint16_t[:, :] raster_view
     cdef const uint8_t[:, :] exclude_view
@@ -979,6 +1284,12 @@ def delta_stepping_single_source_multiple_targets(
     # Loop variables
     cdef int i, j
 
+    # Relaxation buffer overflow protocol
+    cdef int out_degree, guard_slack, resume_idx
+    cdef int forced_capacity = <int>_relaxation_config["forced_capacity"]
+    cdef int64_t rollovers = 0
+    cdef int64_t drops = 0
+
     # ============= VALIDATION =============
 
     if delta <= 0.0:
@@ -1008,7 +1319,8 @@ def delta_stepping_single_source_multiple_targets(
             return [np.empty(0, dtype=np.uint64) for _ in range(num_targets)]
 
     # Create traversability mask
-    exclude_mask_arr = (raster_arr != max_value).astype(np.uint8)
+    ws = bind_workspace(workspace, raster_arr, max_value)
+    exclude_mask_arr = ws.exclude_mask
     source_r = source_idx // cols
     source_c = source_idx % cols
 
@@ -1021,8 +1333,7 @@ def delta_stepping_single_source_multiple_targets(
 
     # Initialize packed distance+predecessor array
     init_packed = pack_dist_pred(INF_F32, 0xFFFFFFFF)
-    dist_pred_arr = np.full(<size_t>total_cells, init_packed, dtype=np.uint64)
-    dist_pred_arr[source_idx] = pack_dist_pred(0.0, 0xFFFFFFFF)
+    dist_pred_arr = ws.take_dist_pred(init_packed, source_idx)
     dist_pred_ptr = <uint64_t*>dist_pred_arr.data
     target_found_arr = np.zeros(num_targets, dtype=np.uint8)
 
@@ -1038,7 +1349,7 @@ def delta_stepping_single_source_multiple_targets(
 
     # P1.3 fix: Validate circular buffer can hold max bucket span
     cdef double _max_step_dist = 0.0
-    cdef double _sd, _dr_f, _dc_f, _max_cell, _max_span
+    cdef double _sd, _dr_f, _dc_f, _max_span
     cdef int _si
     for _si in range(steps_arr.shape[0]):
         _dr_f = <double>steps_arr[_si, 0]
@@ -1046,10 +1357,8 @@ def delta_stepping_single_source_multiple_targets(
         _sd = (_dr_f * _dr_f + _dc_f * _dc_f) ** 0.5
         if _sd > _max_step_dist:
             _max_step_dist = _sd
-    _valid_mask = (exclude_mask_arr == 1)
-    if np.any(_valid_mask):
-        _max_cell = <double>np.max(raster_arr[_valid_mask])
-        _max_span = _max_cell * _max_step_dist / delta
+    if ws.has_traversable:
+        _max_span = ws.max_traversable_cost * _max_step_dist / delta
         if _max_span >= <double>circular_buffer_size:
             raise ValueError(
                 f"Delta-stepping: max edge/delta ratio ({_max_span:.0f}) "
@@ -1058,7 +1367,7 @@ def delta_stepping_single_source_multiple_targets(
 
 
     # Initialize last bucket tracking
-    last_bucket_arr = np.full(<size_t>total_cells, -1, dtype=np.int32)
+    last_bucket_arr = ws.take_last_bucket()
     last_bucket = last_bucket_arr
 
     # Add source to first bucket
@@ -1071,7 +1380,10 @@ def delta_stepping_single_source_multiple_targets(
     if thread_results == NULL:
         raise MemoryError("Could not allocate thread data")
 
-    max_capacity = calculate_thread_buffer_capacity(total_cells, actual_threads, &sys_limits)
+    out_degree = <int>directions.size()
+    guard_slack = relax_guard_slack(out_degree, RELAX_CHUNK_SIZE)
+    max_capacity = size_relax_buffer(total_cells, actual_threads, guard_slack,
+                                     &sys_limits, forced_capacity)
 
     for tid in range(actual_threads):
         thread_results[tid].vertices = <uint64_t*>malloc(max_capacity * sizeof(uint64_t))
@@ -1092,7 +1404,9 @@ def delta_stepping_single_source_multiple_targets(
             raise MemoryError("Could not allocate thread storage")
 
         thread_results[tid].capacity = max_capacity
+        thread_results[tid].guard = max_capacity - guard_slack
         thread_results[tid].count = 0
+        thread_results[tid].overflow = 0
 
     # Set iteration limit
     max_light_iterations = max(50, <int>(sqrtf(<float>total_cells)))
@@ -1126,41 +1440,54 @@ def delta_stepping_single_source_multiple_targets(
 
                 current_vertices = buckets[physical_bucket_idx]
                 buckets[physical_bucket_idx].clear()
+                # Lost-relaxation fix: popped vertices are no longer queued
+                # anywhere, so clear their dedup stamp -- a later improvement
+                # landing in this same bucket must be able to re-queue them.
+                for i in range(<int>current_vertices.size()):
+                    last_bucket[current_vertices[i]] = -1
 
                 settled_vertices.insert(settled_vertices.end(),
                                        current_vertices.begin(),
                                        current_vertices.end())
 
-                for tid in range(actual_threads):
-                    thread_results[tid].count = 0
+                # Rollover: relax until every vertex of this batch was claimed;
+                # a round ends early when a thread buffer reaches its guard.
+                resume_idx = 0
+                while True:
+                    for tid in range(actual_threads):
+                        thread_results[tid].count = 0
 
-                relax_edges_delta_stepping(
-                    current_vertices,
-                    dist_pred_ptr,
-                    raster_view, exclude_view,
-                    directions, cached_steps,
-                    rows, cols, delta, True,  # light_phase_only
-                    thread_results, actual_threads, total_cells,
-                    0, &sys_limits  # No specific target for multi-target
-                )
+                    resume_idx = relax_edges_delta_stepping(
+                        current_vertices, resume_idx,
+                        dist_pred_ptr,
+                        raster_view, exclude_view,
+                        directions, cached_steps,
+                        rows, cols, delta, True,  # light_phase_only
+                        thread_results, actual_threads, total_cells,
+                        0, &sys_limits  # No specific target for multi-target
+                    )
 
-                # Merge thread results with deduplication
-                for tid in range(actual_threads):
-                    for i in range(thread_results[tid].count):
-                        vertex_to_add = thread_results[tid].vertices[i]
-                        new_dist = thread_results[tid].distances[i]
-                        new_logical_bucket = <size_t>(new_dist / delta)
+                    # Merge thread results with deduplication
+                    for tid in range(actual_threads):
+                        for i in range(thread_results[tid].count):
+                            vertex_to_add = thread_results[tid].vertices[i]
+                            new_dist = thread_results[tid].distances[i]
+                            new_logical_bucket = <size_t>(new_dist / delta)
 
-                        if new_logical_bucket < window_start + circular_buffer_size:
-                            new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
+                            if new_logical_bucket < window_start + circular_buffer_size:
+                                new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
 
-                            last_bucket_for_vertex = last_bucket[vertex_to_add]
-                            if last_bucket_for_vertex != <int32_t>new_logical_bucket:
-                                buckets[new_physical_bucket].push_back(vertex_to_add)
-                                last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
+                                last_bucket_for_vertex = last_bucket[vertex_to_add]
+                                if last_bucket_for_vertex != <int32_t>new_logical_bucket:
+                                    buckets[new_physical_bucket].push_back(vertex_to_add)
+                                    last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
 
-                            if new_logical_bucket >= logical_bucket_count:
-                                logical_bucket_count = new_logical_bucket + 1
+                                if new_logical_bucket >= logical_bucket_count:
+                                    logical_bucket_count = new_logical_bucket + 1
+
+                    if resume_idx >= <int>current_vertices.size():
+                        break
+                    rollovers += 1
 
             # Check if any targets were settled
             for i in range(<int>settled_vertices.size()):
@@ -1181,36 +1508,42 @@ def delta_stepping_single_source_multiple_targets(
 
             # HEAVY PHASE
             if not settled_vertices.empty():
-                for tid in range(actual_threads):
-                    thread_results[tid].count = 0
+                resume_idx = 0
+                while True:
+                    for tid in range(actual_threads):
+                        thread_results[tid].count = 0
 
-                relax_edges_delta_stepping(
-                    settled_vertices,
-                    dist_pred_ptr,
-                    raster_view, exclude_view,
-                    directions, cached_steps,
-                    rows, cols, delta, False,  # heavy edges
-                    thread_results, actual_threads, total_cells,
-                    0, &sys_limits
-                )
+                    resume_idx = relax_edges_delta_stepping(
+                        settled_vertices, resume_idx,
+                        dist_pred_ptr,
+                        raster_view, exclude_view,
+                        directions, cached_steps,
+                        rows, cols, delta, False,  # heavy edges
+                        thread_results, actual_threads, total_cells,
+                        0, &sys_limits
+                    )
 
-                for tid in range(actual_threads):
-                    for i in range(thread_results[tid].count):
-                        vertex_to_add = thread_results[tid].vertices[i]
-                        new_dist = thread_results[tid].distances[i]
-                        new_logical_bucket = <size_t>(new_dist / delta)
+                    for tid in range(actual_threads):
+                        for i in range(thread_results[tid].count):
+                            vertex_to_add = thread_results[tid].vertices[i]
+                            new_dist = thread_results[tid].distances[i]
+                            new_logical_bucket = <size_t>(new_dist / delta)
 
-                        if (new_logical_bucket > current_logical_bucket and
-                            new_logical_bucket < window_start + circular_buffer_size):
-                            new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
+                            if (new_logical_bucket > current_logical_bucket and
+                                new_logical_bucket < window_start + circular_buffer_size):
+                                new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
 
-                            last_bucket_for_vertex = last_bucket[vertex_to_add]
-                            if last_bucket_for_vertex != <int32_t>new_logical_bucket:
-                                buckets[new_physical_bucket].push_back(vertex_to_add)
-                                last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
+                                last_bucket_for_vertex = last_bucket[vertex_to_add]
+                                if last_bucket_for_vertex != <int32_t>new_logical_bucket:
+                                    buckets[new_physical_bucket].push_back(vertex_to_add)
+                                    last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
 
-                            if new_logical_bucket >= logical_bucket_count:
-                                logical_bucket_count = new_logical_bucket + 1
+                                if new_logical_bucket >= logical_bucket_count:
+                                    logical_bucket_count = new_logical_bucket + 1
+
+                    if resume_idx >= <int>settled_vertices.size():
+                        break
+                    rollovers += 1
 
             # Clear processed bucket
             buckets[physical_bucket_idx].clear()
@@ -1222,10 +1555,15 @@ def delta_stepping_single_source_multiple_targets(
         # Cleanup resources (no locks to destroy)
         if thread_results != NULL:
             for tid in range(actual_threads):
+                drops += thread_results[tid].overflow
                 free(thread_results[tid].vertices)
                 free(thread_results[tid].bucket_indices)
                 free(thread_results[tid].distances)
             free(thread_results)
+        _relaxation_stats["capacity"] = int(max_capacity)
+        _relaxation_stats["guard"] = int(max_capacity - guard_slack)
+        _relaxation_stats["rollovers"] = int(rollovers)
+        _relaxation_stats["drops"] = int(drops)
 
     # Reconstruct paths for all targets
     for i in range(num_targets):
@@ -1268,7 +1606,7 @@ def delta_stepping_multiple_sources_multiple_targets(
         np.ndarray[uint64_t, ndim=1] source_indices,
         np.ndarray[uint64_t, ndim=1] target_indices,
         float delta,
-        uint16_t max_value=65535,
+        int64_t max_value=65535,
         bint return_paths=True,
         int num_threads=0,
         size_t max_buckets_in_memory=2048):
@@ -1327,6 +1665,7 @@ def delta_stepping_multiple_sources_multiple_targets(
     cdef list source_paths
     cdef np.ndarray[uint64_t, ndim=1] path
     cdef float cost
+    cdef DeltaWorkspace workspace = None
 
     # ============= MAIN PROCESSING =============
 
@@ -1345,6 +1684,10 @@ def delta_stepping_multiple_sources_multiple_targets(
                 source_idx_map[s] = original_idx
                 break
 
+    # The raster is the same for every source and nothing here writes to it, so
+    # its derivations and state arrays are derived once for the whole loop.
+    workspace = DeltaWorkspace(raster_arr, max_value)
+
     for s in range(num_sources):
         source_idx = sorted_sources[s]
         original_idx = source_idx_map[s]
@@ -1353,7 +1696,8 @@ def delta_stepping_multiple_sources_multiple_targets(
             # Find paths from this source to all targets
             source_paths = delta_stepping_single_source_multiple_targets(
                 raster_arr, steps_arr, source_idx, target_indices,
-                delta, max_value, num_threads, max_buckets_in_memory
+                delta, max_value, num_threads, max_buckets_in_memory,
+                workspace
             )
 
             # Store results in original order
@@ -1385,7 +1729,7 @@ def delta_stepping_some_pairs_shortest_paths(
         np.ndarray[uint64_t, ndim=1] source_indices,
         np.ndarray[uint64_t, ndim=1] target_indices,
         float delta,
-        uint16_t max_value=65535,
+        int64_t max_value=65535,
         bint return_paths=True,
         int num_threads=0,
         size_t max_buckets_in_memory=2048,
@@ -1457,6 +1801,9 @@ def delta_stepping_some_pairs_shortest_paths(
     # Margin validation
     cdef float validated_margin
 
+    # Per-raster derivations shared by every pair
+    cdef DeltaWorkspace workspace = None
+
     # ============= VALIDATION =============
 
     # Validate and sanitize margin parameter
@@ -1474,6 +1821,10 @@ def delta_stepping_some_pairs_shortest_paths(
 
     # ============= PAIRWISE PROCESSING =============
 
+    # The raster is the same for every pair and nothing here writes to it, so
+    # its derivations and state arrays are derived once for the whole loop.
+    workspace = DeltaWorkspace(raster_arr, max_value)
+
     # Process each source-target pair individually
     # This ensures consistent margin application and simple, predictable behavior
     for i in range(num_pairs):
@@ -1485,7 +1836,8 @@ def delta_stepping_some_pairs_shortest_paths(
         path = delta_stepping_2d(
             raster_arr, steps_arr, source, target,
             delta, max_value, num_threads, max_buckets_in_memory,
-            validated_margin  # MARGIN APPLIED TO EVERY PAIR
+            validated_margin,  # MARGIN APPLIED TO EVERY PAIR
+            workspace
         )
 
         # Store results based on return type preference
@@ -1512,10 +1864,11 @@ def delta_stepping_2d_persistent(
         np.ndarray[int8_t, ndim=2] steps_arr,
         uint64_t source_idx, uint64_t target_idx,
         float delta,
-        uint16_t max_value=65535,
+        int64_t max_value=65535,
         int num_threads=0,
         size_t max_buckets_in_memory=2048,
-        float margin=1.00001):
+        float margin=1.00001,
+        DeltaWorkspace workspace=None):
     """
     Persistent-thread-pool variant of delta_stepping_2d.
 
@@ -1532,12 +1885,13 @@ def delta_stepping_2d_persistent(
     # ============= ALL VARIABLE DECLARATIONS AT TOP =============
 
     # System and problem dimensions
-    cdef SystemLimits sys_limits = get_system_limits()
+    cdef SystemLimits sys_limits = system_limits_memoized()
     cdef int rows = <int>raster_arr.shape[0]
     cdef uint64_t cols = <uint64_t>raster_arr.shape[1]
     cdef uint64_t total_cells = <uint64_t>rows * cols
 
     # Preprocessing variables
+    cdef DeltaWorkspace ws
     cdef float computed_delta
     cdef float termination_margin
     cdef np.ndarray[uint8_t, ndim=2] exclude_mask_arr
@@ -1608,6 +1962,11 @@ def delta_stepping_2d_persistent(
     cdef int chunk_start, chunk_end
     cdef int local_sense
 
+    # Relaxation buffer overflow protocol
+    cdef int out_degree, guard_slack
+    cdef int forced_capacity = <int>_relaxation_config["forced_capacity"]
+    cdef int64_t drops = 0
+
     # ============= VALIDATION (same as original) =============
 
     if total_cells > sys_limits.max_array_size:
@@ -1618,7 +1977,8 @@ def delta_stepping_2d_persistent(
 
     # ============= PREPROCESSING (same as original) =============
 
-    exclude_mask_arr = (raster_arr != max_value).astype(np.uint8)
+    ws = bind_workspace(workspace, raster_arr, max_value)
+    exclude_mask_arr = ws.exclude_mask
 
     if delta <= 0.0:
         raise ValueError(f"Invalid delta value: {delta}! Choose a delta > 0.0!")
@@ -1653,8 +2013,7 @@ def delta_stepping_2d_persistent(
         raise OverflowError(
             f"Raster has {total_cells} cells, exceeding uint32 predecessor limit (4294967295)")
     init_packed = pack_dist_pred(INF_F32, 0xFFFFFFFF)
-    dist_pred_arr = np.full(<size_t>total_cells, init_packed, dtype=np.uint64)
-    dist_pred_arr[source_idx] = pack_dist_pred(0.0, 0xFFFFFFFF)
+    dist_pred_arr = ws.take_dist_pred(init_packed, source_idx)
     dist_pred_ptr = <uint64_t*>dist_pred_arr.data
 
     # Create memory views
@@ -1668,7 +2027,7 @@ def delta_stepping_2d_persistent(
 
     # P1.3 fix: Validate circular buffer can hold max bucket span
     cdef double _max_step_dist = 0.0
-    cdef double _sd, _dr_f, _dc_f, _max_cell, _max_span
+    cdef double _sd, _dr_f, _dc_f, _max_span
     cdef int _si
     for _si in range(steps_arr.shape[0]):
         _dr_f = <double>steps_arr[_si, 0]
@@ -1676,10 +2035,8 @@ def delta_stepping_2d_persistent(
         _sd = (_dr_f * _dr_f + _dc_f * _dc_f) ** 0.5
         if _sd > _max_step_dist:
             _max_step_dist = _sd
-    _valid_mask = (exclude_mask_arr == 1)
-    if np.any(_valid_mask):
-        _max_cell = <double>np.max(raster_arr[_valid_mask])
-        _max_span = _max_cell * _max_step_dist / computed_delta
+    if ws.has_traversable:
+        _max_span = ws.max_traversable_cost * _max_step_dist / computed_delta
         if _max_span >= <double>circular_buffer_size:
             raise ValueError(
                 f"Delta-stepping: max edge/delta ratio ({_max_span:.0f}) "
@@ -1688,7 +2045,7 @@ def delta_stepping_2d_persistent(
 
 
     # Initialize last bucket tracking
-    last_bucket_arr = np.full(<size_t>total_cells, -1, dtype=np.int32)
+    last_bucket_arr = ws.take_last_bucket()
     last_bucket = last_bucket_arr
 
     # Add source to first bucket
@@ -1701,7 +2058,10 @@ def delta_stepping_2d_persistent(
     if thread_results == NULL:
         raise MemoryError("Could not allocate thread data")
 
-    max_capacity = calculate_thread_buffer_capacity(total_cells, actual_threads, &sys_limits)
+    out_degree = <int>directions.size()
+    guard_slack = relax_guard_slack(out_degree, CHUNK_SIZE)
+    max_capacity = size_relax_buffer(total_cells, actual_threads, guard_slack,
+                                     &sys_limits, forced_capacity)
 
     for tid in range(actual_threads):
         thread_results[tid].vertices = <uint64_t*>malloc(max_capacity * sizeof(uint64_t))
@@ -1722,7 +2082,9 @@ def delta_stepping_2d_persistent(
             raise MemoryError("Could not allocate thread storage")
 
         thread_results[tid].capacity = max_capacity
+        thread_results[tid].guard = max_capacity - guard_slack
         thread_results[tid].count = 0
+        thread_results[tid].overflow = 0
 
     # ============= MAIN PERSISTENT DELTA-STEPPING LOOP =============
 
@@ -1738,10 +2100,12 @@ def delta_stepping_2d_persistent(
     ps.n_vertices = 0
     ps.light_iterations = 0
     ps.light_phase_active = 0
+    ps.heavy_phase_active = 0
     ps.bucket_valid = 0
     ps.target_found_flag = 0
     ps.target_distance = INF_F32
     ps.cutoff_distance = INF_F32
+    ps.rollovers = 0
     ps.vertices_ptr = NULL
 
     try:
@@ -1771,34 +2135,46 @@ def delta_stepping_2d_persistent(
                     light_iterations += 1
                     current_vertices = buckets[physical_bucket_idx]
                     buckets[physical_bucket_idx].clear()
+                    # Lost-relaxation fix (see above): clear dedup stamps
+                    for i in range(<int>current_vertices.size()):
+                        last_bucket[current_vertices[i]] = -1
                     settled_vertices.insert(settled_vertices.end(),
                                            current_vertices.begin(),
                                            current_vertices.end())
 
-                    thread_results[0].count = 0
-                    for i in range(<int>current_vertices.size()):
-                        relax_vertex_edges_inline(
-                            current_vertices[i], 0,
-                            dist_pred_ptr, raster_view, exclude_view,
-                            directions, cached_steps,
-                            rows, cols, computed_delta, True,
-                            thread_results, total_cells, &sys_limits
-                        )
+                    # Relax in guard-bounded slices, merging between slices so
+                    # the buffer can never overflow.
+                    j = 0
+                    while j < <int>current_vertices.size():
+                        thread_results[0].count = 0
+                        while (j < <int>current_vertices.size() and
+                               thread_results[0].count < thread_results[0].guard):
+                            relax_vertex_edges_inline(
+                                current_vertices[j], 0,
+                                dist_pred_ptr, raster_view, exclude_view,
+                                directions, cached_steps,
+                                rows, cols, computed_delta, True,
+                                thread_results, total_cells, &sys_limits
+                            )
+                            j += 1
 
-                    # Merge results
-                    for i in range(thread_results[0].count):
-                        vertex_to_add = thread_results[0].vertices[i]
-                        new_dist = thread_results[0].distances[i]
-                        new_logical_bucket = <size_t>(new_dist / computed_delta)
+                        # Merge results
+                        for i in range(thread_results[0].count):
+                            vertex_to_add = thread_results[0].vertices[i]
+                            new_dist = thread_results[0].distances[i]
+                            new_logical_bucket = <size_t>(new_dist / computed_delta)
 
-                        if new_logical_bucket < window_start + circular_buffer_size:
-                            new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
-                            last_bucket_for_vertex = last_bucket[vertex_to_add]
-                            if last_bucket_for_vertex != <int32_t>new_logical_bucket:
-                                buckets[new_physical_bucket].push_back(vertex_to_add)
-                                last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
-                            if new_logical_bucket >= logical_bucket_count:
-                                logical_bucket_count = new_logical_bucket + 1
+                            if new_logical_bucket < window_start + circular_buffer_size:
+                                new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
+                                last_bucket_for_vertex = last_bucket[vertex_to_add]
+                                if last_bucket_for_vertex != <int32_t>new_logical_bucket:
+                                    buckets[new_physical_bucket].push_back(vertex_to_add)
+                                    last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
+                                if new_logical_bucket >= logical_bucket_count:
+                                    logical_bucket_count = new_logical_bucket + 1
+
+                        if j < <int>current_vertices.size():
+                            ps.rollovers += 1
 
                 # Check target
                 for i in range(<int>settled_vertices.size()):
@@ -1813,30 +2189,37 @@ def delta_stepping_2d_persistent(
 
                 # HEAVY PHASE
                 if not settled_vertices.empty():
-                    thread_results[0].count = 0
-                    for i in range(<int>settled_vertices.size()):
-                        relax_vertex_edges_inline(
-                            settled_vertices[i], 0,
-                            dist_pred_ptr, raster_view, exclude_view,
-                            directions, cached_steps,
-                            rows, cols, computed_delta, False,
-                            thread_results, total_cells, &sys_limits
-                        )
+                    j = 0
+                    while j < <int>settled_vertices.size():
+                        thread_results[0].count = 0
+                        while (j < <int>settled_vertices.size() and
+                               thread_results[0].count < thread_results[0].guard):
+                            relax_vertex_edges_inline(
+                                settled_vertices[j], 0,
+                                dist_pred_ptr, raster_view, exclude_view,
+                                directions, cached_steps,
+                                rows, cols, computed_delta, False,
+                                thread_results, total_cells, &sys_limits
+                            )
+                            j += 1
 
-                    for i in range(thread_results[0].count):
-                        vertex_to_add = thread_results[0].vertices[i]
-                        new_dist = thread_results[0].distances[i]
-                        new_logical_bucket = <size_t>(new_dist / computed_delta)
+                        for i in range(thread_results[0].count):
+                            vertex_to_add = thread_results[0].vertices[i]
+                            new_dist = thread_results[0].distances[i]
+                            new_logical_bucket = <size_t>(new_dist / computed_delta)
 
-                        if (new_logical_bucket > current_logical_bucket and
-                            new_logical_bucket < window_start + circular_buffer_size):
-                            new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
-                            last_bucket_for_vertex = last_bucket[vertex_to_add]
-                            if last_bucket_for_vertex != <int32_t>new_logical_bucket:
-                                buckets[new_physical_bucket].push_back(vertex_to_add)
-                                last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
-                            if new_logical_bucket >= logical_bucket_count:
-                                logical_bucket_count = new_logical_bucket + 1
+                            if (new_logical_bucket > current_logical_bucket and
+                                new_logical_bucket < window_start + circular_buffer_size):
+                                new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
+                                last_bucket_for_vertex = last_bucket[vertex_to_add]
+                                if last_bucket_for_vertex != <int32_t>new_logical_bucket:
+                                    buckets[new_physical_bucket].push_back(vertex_to_add)
+                                    last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
+                                if new_logical_bucket >= logical_bucket_count:
+                                    logical_bucket_count = new_logical_bucket + 1
+
+                        if j < <int>settled_vertices.size():
+                            ps.rollovers += 1
 
                 buckets[physical_bucket_idx].clear()
                 buckets[physical_bucket_idx].shrink_to_fit()
@@ -1847,7 +2230,8 @@ def delta_stepping_2d_persistent(
             # All shared mutable scalars accessed through ps pointer
             # to avoid Cython reduction variable analysis in prange.
 
-            for tid in prange(actual_threads, schedule='static', nogil=True):
+            for tid in prange(actual_threads, schedule='static', nogil=True,
+                              num_threads=actual_threads):
                 local_sense = 0
 
                 while True:
@@ -1878,6 +2262,9 @@ def delta_stepping_2d_persistent(
 
                             current_vertices = buckets[ps.physical_bucket_idx]
                             buckets[ps.physical_bucket_idx].clear()
+                            # Lost-relaxation fix: clear dedup stamps
+                            for i in range(<int>current_vertices.size()):
+                                last_bucket[current_vertices[i]] = -1
                             settled_vertices.insert(settled_vertices.end(),
                                                    current_vertices.begin(),
                                                    current_vertices.end())
@@ -1900,6 +2287,8 @@ def delta_stepping_2d_persistent(
                     # ======= PHASE 2: All threads relax LIGHT edges (may repeat) =======
                     while ps.light_phase_active:
                         while True:
+                            if thread_results[tid].count >= thread_results[tid].guard:
+                                break
                             chunk_start = atomic_fetch_add_int(<volatile int*>&ps.work_idx, CHUNK_SIZE)
                             if chunk_start >= ps.n_vertices:
                                 break
@@ -1936,11 +2325,26 @@ def delta_stepping_2d_persistent(
                                         if new_logical_bucket >= ps.logical_bucket_count:
                                             ps.logical_bucket_count = new_logical_bucket + 1
 
-                            if (not buckets[ps.physical_bucket_idx].empty()
+                            if ps.work_idx < ps.n_vertices:
+                                # Rollover: some threads stopped claiming at
+                                # their buffer guard. Re-issue the unclaimed
+                                # tail as another light round -- these vertices
+                                # are already in settled_vertices and must not
+                                # be re-stamped or re-counted.
+                                ps.vertices_ptr = ps.vertices_ptr + ps.work_idx
+                                ps.n_vertices = ps.n_vertices - ps.work_idx
+                                ps.work_idx = 0
+                                ps.rollovers += 1
+                                for i in range(actual_threads):
+                                    thread_results[i].count = 0
+                            elif (not buckets[ps.physical_bucket_idx].empty()
                                     and ps.light_iterations < max_light_iterations):
                                 ps.light_iterations += 1
                                 current_vertices = buckets[ps.physical_bucket_idx]
                                 buckets[ps.physical_bucket_idx].clear()
+                                # Lost-relaxation fix: clear dedup stamps
+                                for i in range(<int>current_vertices.size()):
+                                    last_bucket[current_vertices[i]] = -1
                                 settled_vertices.insert(settled_vertices.end(),
                                                        current_vertices.begin(),
                                                        current_vertices.end())
@@ -1985,6 +2389,7 @@ def delta_stepping_2d_persistent(
                         else:
                             ps.n_vertices = 0
                         ps.work_idx = 0
+                        ps.heavy_phase_active = 1
                         for i in range(actual_threads):
                             thread_results[i].count = 0
 
@@ -1992,46 +2397,64 @@ def delta_stepping_2d_persistent(
                                        <volatile int*>&ps.barrier_sense,
                                        actual_threads, &local_sense)
 
-                    if ps.n_vertices > 0:
-                        while True:
-                            chunk_start = atomic_fetch_add_int(<volatile int*>&ps.work_idx, CHUNK_SIZE)
-                            if chunk_start >= ps.n_vertices:
-                                break
-                            chunk_end = chunk_start + CHUNK_SIZE
-                            if chunk_end > ps.n_vertices:
-                                chunk_end = ps.n_vertices
-                            for j in range(chunk_start, chunk_end):
-                                relax_vertex_edges_inline(
-                                    ps.vertices_ptr[j], tid,
-                                    dist_pred_ptr, raster_view, exclude_view,
-                                    directions, cached_steps,
-                                    rows, cols, computed_delta, False,
-                                    thread_results, total_cells, &sys_limits
-                                )
+                    while ps.heavy_phase_active:
+                        if ps.n_vertices > 0:
+                            while True:
+                                if thread_results[tid].count >= thread_results[tid].guard:
+                                    break
+                                chunk_start = atomic_fetch_add_int(<volatile int*>&ps.work_idx, CHUNK_SIZE)
+                                if chunk_start >= ps.n_vertices:
+                                    break
+                                chunk_end = chunk_start + CHUNK_SIZE
+                                if chunk_end > ps.n_vertices:
+                                    chunk_end = ps.n_vertices
+                                for j in range(chunk_start, chunk_end):
+                                    relax_vertex_edges_inline(
+                                        ps.vertices_ptr[j], tid,
+                                        dist_pred_ptr, raster_view, exclude_view,
+                                        directions, cached_steps,
+                                        rows, cols, computed_delta, False,
+                                        thread_results, total_cells, &sys_limits
+                                    )
 
-                    thread_barrier_wait(<volatile int*>&ps.barrier_arrive_count,
-                                       <volatile int*>&ps.barrier_sense,
-                                       actual_threads, &local_sense)
+                        thread_barrier_wait(<volatile int*>&ps.barrier_arrive_count,
+                                           <volatile int*>&ps.barrier_sense,
+                                           actual_threads, &local_sense)
 
-                    # ======= PHASE 5: Thread 0 merges heavy results =======
+                        # ======= PHASE 5: Thread 0 merges heavy results =======
+                        if tid == 0:
+                            for i in range(actual_threads):
+                                for j in range(thread_results[i].count):
+                                    vertex_to_add = thread_results[i].vertices[j]
+                                    new_dist = thread_results[i].distances[j]
+                                    new_logical_bucket = <size_t>(new_dist / computed_delta)
+
+                                    if (new_logical_bucket > ps.current_logical_bucket and
+                                        new_logical_bucket < ps.window_start + circular_buffer_size):
+                                        new_physical_bucket = get_circular_index(
+                                            new_logical_bucket, circular_buffer_size)
+                                        last_bucket_for_vertex = last_bucket[vertex_to_add]
+                                        if last_bucket_for_vertex != <int32_t>new_logical_bucket:
+                                            buckets[new_physical_bucket].push_back(vertex_to_add)
+                                            last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
+                                        if new_logical_bucket >= ps.logical_bucket_count:
+                                            ps.logical_bucket_count = new_logical_bucket + 1
+
+                            if ps.work_idx < ps.n_vertices:
+                                ps.vertices_ptr = ps.vertices_ptr + ps.work_idx
+                                ps.n_vertices = ps.n_vertices - ps.work_idx
+                                ps.work_idx = 0
+                                ps.rollovers += 1
+                                for i in range(actual_threads):
+                                    thread_results[i].count = 0
+                            else:
+                                ps.heavy_phase_active = 0
+
+                        thread_barrier_wait(<volatile int*>&ps.barrier_arrive_count,
+                                           <volatile int*>&ps.barrier_sense,
+                                           actual_threads, &local_sense)
+
                     if tid == 0:
-                        for i in range(actual_threads):
-                            for j in range(thread_results[i].count):
-                                vertex_to_add = thread_results[i].vertices[j]
-                                new_dist = thread_results[i].distances[j]
-                                new_logical_bucket = <size_t>(new_dist / computed_delta)
-
-                                if (new_logical_bucket > ps.current_logical_bucket and
-                                    new_logical_bucket < ps.window_start + circular_buffer_size):
-                                    new_physical_bucket = get_circular_index(
-                                        new_logical_bucket, circular_buffer_size)
-                                    last_bucket_for_vertex = last_bucket[vertex_to_add]
-                                    if last_bucket_for_vertex != <int32_t>new_logical_bucket:
-                                        buckets[new_physical_bucket].push_back(vertex_to_add)
-                                        last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
-                                    if new_logical_bucket >= ps.logical_bucket_count:
-                                        ps.logical_bucket_count = new_logical_bucket + 1
-
                         buckets[ps.physical_bucket_idx].clear()
                         buckets[ps.physical_bucket_idx].shrink_to_fit()
                         ps.current_logical_bucket += 1
@@ -2047,6 +2470,7 @@ def delta_stepping_2d_persistent(
         # Cleanup resources
         if thread_results != NULL:
             for tid in range(actual_threads):
+                drops += thread_results[tid].overflow
                 if thread_results[tid].vertices != NULL:
                     free(thread_results[tid].vertices)
                 if thread_results[tid].bucket_indices != NULL:
@@ -2054,6 +2478,10 @@ def delta_stepping_2d_persistent(
                 if thread_results[tid].distances != NULL:
                     free(thread_results[tid].distances)
             free(thread_results)
+        _relaxation_stats["capacity"] = int(max_capacity)
+        _relaxation_stats["guard"] = int(max_capacity - guard_slack)
+        _relaxation_stats["rollovers"] = int(ps.rollovers)
+        _relaxation_stats["drops"] = int(drops)
 
     # Path reconstruction (same as original)
     pred_val = unpack_pred(dist_pred_ptr[target_idx])
@@ -2089,9 +2517,10 @@ def delta_stepping_single_source_multiple_targets_persistent(
         uint64_t source_idx,
         np.ndarray[uint64_t, ndim=1] target_indices,
         float delta,
-        uint16_t max_value=65535,
+        int64_t max_value=65535,
         int num_threads=0,
-        size_t max_buckets_in_memory=2048):
+        size_t max_buckets_in_memory=2048,
+        DeltaWorkspace workspace=None):
     """
     Persistent-thread-pool variant of delta_stepping_single_source_multiple_targets.
 
@@ -2103,12 +2532,13 @@ def delta_stepping_single_source_multiple_targets_persistent(
     """
     # ============= ALL VARIABLE DECLARATIONS AT TOP =============
 
-    cdef SystemLimits sys_limits = get_system_limits()
+    cdef SystemLimits sys_limits = system_limits_memoized()
     cdef int rows = <int>raster_arr.shape[0]
     cdef uint64_t cols = <uint64_t>raster_arr.shape[1]
     cdef uint64_t total_cells = <uint64_t>rows * cols
     cdef int num_targets = <int>target_indices.shape[0]
 
+    cdef DeltaWorkspace ws
     cdef np.ndarray[uint8_t, ndim=2] exclude_mask_arr
     cdef const uint16_t[:, :] raster_view
     cdef const uint8_t[:, :] exclude_view
@@ -2168,6 +2598,11 @@ def delta_stepping_single_source_multiple_targets_persistent(
     cdef int chunk_start, chunk_end
     cdef int local_sense
 
+    # Relaxation buffer overflow protocol
+    cdef int out_degree, guard_slack
+    cdef int forced_capacity = <int>_relaxation_config["forced_capacity"]
+    cdef int64_t drops = 0
+
     # ============= VALIDATION =============
 
     if delta <= 0.0:
@@ -2194,7 +2629,8 @@ def delta_stepping_single_source_multiple_targets_persistent(
         if target_indices[i] >= total_cells:
             return [np.empty(0, dtype=np.uint64) for _ in range(num_targets)]
 
-    exclude_mask_arr = (raster_arr != max_value).astype(np.uint8)
+    ws = bind_workspace(workspace, raster_arr, max_value)
+    exclude_mask_arr = ws.exclude_mask
     source_r = source_idx // cols
     source_c = source_idx % cols
 
@@ -2205,8 +2641,7 @@ def delta_stepping_single_source_multiple_targets_persistent(
     directions = precompute_directions_optimized(steps_arr, cached_steps)
 
     init_packed = pack_dist_pred(INF_F32, 0xFFFFFFFF)
-    dist_pred_arr = np.full(<size_t>total_cells, init_packed, dtype=np.uint64)
-    dist_pred_arr[source_idx] = pack_dist_pred(0.0, 0xFFFFFFFF)
+    dist_pred_arr = ws.take_dist_pred(init_packed, source_idx)
     dist_pred_ptr = <uint64_t*>dist_pred_arr.data
     target_found_arr = np.zeros(num_targets, dtype=np.uint8)
 
@@ -2220,7 +2655,7 @@ def delta_stepping_single_source_multiple_targets_persistent(
 
     # P1.3 fix: Validate circular buffer can hold max bucket span
     cdef double _max_step_dist = 0.0
-    cdef double _sd, _dr_f, _dc_f, _max_cell, _max_span
+    cdef double _sd, _dr_f, _dc_f, _max_span
     cdef int _si
     for _si in range(steps_arr.shape[0]):
         _dr_f = <double>steps_arr[_si, 0]
@@ -2228,10 +2663,8 @@ def delta_stepping_single_source_multiple_targets_persistent(
         _sd = (_dr_f * _dr_f + _dc_f * _dc_f) ** 0.5
         if _sd > _max_step_dist:
             _max_step_dist = _sd
-    _valid_mask = (exclude_mask_arr == 1)
-    if np.any(_valid_mask):
-        _max_cell = <double>np.max(raster_arr[_valid_mask])
-        _max_span = _max_cell * _max_step_dist / delta
+    if ws.has_traversable:
+        _max_span = ws.max_traversable_cost * _max_step_dist / delta
         if _max_span >= <double>circular_buffer_size:
             raise ValueError(
                 f"Delta-stepping: max edge/delta ratio ({_max_span:.0f}) "
@@ -2239,7 +2672,7 @@ def delta_stepping_single_source_multiple_targets_persistent(
                 f"Increase max_buckets_in_memory or delta.")
 
 
-    last_bucket_arr = np.full(<size_t>total_cells, -1, dtype=np.int32)
+    last_bucket_arr = ws.take_last_bucket()
     last_bucket = last_bucket_arr
 
     physical_bucket_idx = get_circular_index(0, circular_buffer_size)
@@ -2250,7 +2683,10 @@ def delta_stepping_single_source_multiple_targets_persistent(
     if thread_results == NULL:
         raise MemoryError("Could not allocate thread data")
 
-    max_capacity = calculate_thread_buffer_capacity(total_cells, actual_threads, &sys_limits)
+    out_degree = <int>directions.size()
+    guard_slack = relax_guard_slack(out_degree, CHUNK_SIZE)
+    max_capacity = size_relax_buffer(total_cells, actual_threads, guard_slack,
+                                     &sys_limits, forced_capacity)
 
     for tid in range(actual_threads):
         thread_results[tid].vertices = <uint64_t*>malloc(max_capacity * sizeof(uint64_t))
@@ -2271,7 +2707,9 @@ def delta_stepping_single_source_multiple_targets_persistent(
             raise MemoryError("Could not allocate thread storage")
 
         thread_results[tid].capacity = max_capacity
+        thread_results[tid].guard = max_capacity - guard_slack
         thread_results[tid].count = 0
+        thread_results[tid].overflow = 0
 
     max_light_iterations = max(50, <int>(sqrtf(<float>total_cells)))
 
@@ -2289,12 +2727,14 @@ def delta_stepping_single_source_multiple_targets_persistent(
     ps.n_vertices = 0
     ps.light_iterations = 0
     ps.light_phase_active = 0
+    ps.heavy_phase_active = 0
     ps.bucket_valid = 0
     ps.target_found_flag = 0
     ps.target_distance = INF_F32
     ps.cutoff_distance = INF_F32
     ps.targets_found = 0
     ps.max_target_distance = 0.0
+    ps.rollovers = 0
     ps.vertices_ptr = NULL
 
     try:
@@ -2322,33 +2762,45 @@ def delta_stepping_single_source_multiple_targets_persistent(
                     light_iterations += 1
                     current_vertices = buckets[physical_bucket_idx]
                     buckets[physical_bucket_idx].clear()
+                    # Lost-relaxation fix (see above): clear dedup stamps
+                    for i in range(<int>current_vertices.size()):
+                        last_bucket[current_vertices[i]] = -1
                     settled_vertices.insert(settled_vertices.end(),
                                            current_vertices.begin(),
                                            current_vertices.end())
 
-                    thread_results[0].count = 0
-                    for i in range(<int>current_vertices.size()):
-                        relax_vertex_edges_inline(
-                            current_vertices[i], 0,
-                            dist_pred_ptr, raster_view, exclude_view,
-                            directions, cached_steps,
-                            rows, cols, delta, True,
-                            thread_results, total_cells, &sys_limits
-                        )
+                    # Relax in guard-bounded slices, merging between slices so
+                    # the buffer can never overflow.
+                    j = 0
+                    while j < <int>current_vertices.size():
+                        thread_results[0].count = 0
+                        while (j < <int>current_vertices.size() and
+                               thread_results[0].count < thread_results[0].guard):
+                            relax_vertex_edges_inline(
+                                current_vertices[j], 0,
+                                dist_pred_ptr, raster_view, exclude_view,
+                                directions, cached_steps,
+                                rows, cols, delta, True,
+                                thread_results, total_cells, &sys_limits
+                            )
+                            j += 1
 
-                    for i in range(thread_results[0].count):
-                        vertex_to_add = thread_results[0].vertices[i]
-                        new_dist = thread_results[0].distances[i]
-                        new_logical_bucket = <size_t>(new_dist / delta)
+                        for i in range(thread_results[0].count):
+                            vertex_to_add = thread_results[0].vertices[i]
+                            new_dist = thread_results[0].distances[i]
+                            new_logical_bucket = <size_t>(new_dist / delta)
 
-                        if new_logical_bucket < window_start + circular_buffer_size:
-                            new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
-                            last_bucket_for_vertex = last_bucket[vertex_to_add]
-                            if last_bucket_for_vertex != <int32_t>new_logical_bucket:
-                                buckets[new_physical_bucket].push_back(vertex_to_add)
-                                last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
-                            if new_logical_bucket >= logical_bucket_count:
-                                logical_bucket_count = new_logical_bucket + 1
+                            if new_logical_bucket < window_start + circular_buffer_size:
+                                new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
+                                last_bucket_for_vertex = last_bucket[vertex_to_add]
+                                if last_bucket_for_vertex != <int32_t>new_logical_bucket:
+                                    buckets[new_physical_bucket].push_back(vertex_to_add)
+                                    last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
+                                if new_logical_bucket >= logical_bucket_count:
+                                    logical_bucket_count = new_logical_bucket + 1
+
+                        if j < <int>current_vertices.size():
+                            ps.rollovers += 1
 
                 # Check targets
                 for i in range(<int>settled_vertices.size()):
@@ -2366,30 +2818,37 @@ def delta_stepping_single_source_multiple_targets_persistent(
 
                 # HEAVY PHASE
                 if not settled_vertices.empty():
-                    thread_results[0].count = 0
-                    for i in range(<int>settled_vertices.size()):
-                        relax_vertex_edges_inline(
-                            settled_vertices[i], 0,
-                            dist_pred_ptr, raster_view, exclude_view,
-                            directions, cached_steps,
-                            rows, cols, delta, False,
-                            thread_results, total_cells, &sys_limits
-                        )
+                    j = 0
+                    while j < <int>settled_vertices.size():
+                        thread_results[0].count = 0
+                        while (j < <int>settled_vertices.size() and
+                               thread_results[0].count < thread_results[0].guard):
+                            relax_vertex_edges_inline(
+                                settled_vertices[j], 0,
+                                dist_pred_ptr, raster_view, exclude_view,
+                                directions, cached_steps,
+                                rows, cols, delta, False,
+                                thread_results, total_cells, &sys_limits
+                            )
+                            j += 1
 
-                    for i in range(thread_results[0].count):
-                        vertex_to_add = thread_results[0].vertices[i]
-                        new_dist = thread_results[0].distances[i]
-                        new_logical_bucket = <size_t>(new_dist / delta)
+                        for i in range(thread_results[0].count):
+                            vertex_to_add = thread_results[0].vertices[i]
+                            new_dist = thread_results[0].distances[i]
+                            new_logical_bucket = <size_t>(new_dist / delta)
 
-                        if (new_logical_bucket > current_logical_bucket and
-                            new_logical_bucket < window_start + circular_buffer_size):
-                            new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
-                            last_bucket_for_vertex = last_bucket[vertex_to_add]
-                            if last_bucket_for_vertex != <int32_t>new_logical_bucket:
-                                buckets[new_physical_bucket].push_back(vertex_to_add)
-                                last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
-                            if new_logical_bucket >= logical_bucket_count:
-                                logical_bucket_count = new_logical_bucket + 1
+                            if (new_logical_bucket > current_logical_bucket and
+                                new_logical_bucket < window_start + circular_buffer_size):
+                                new_physical_bucket = get_circular_index(new_logical_bucket, circular_buffer_size)
+                                last_bucket_for_vertex = last_bucket[vertex_to_add]
+                                if last_bucket_for_vertex != <int32_t>new_logical_bucket:
+                                    buckets[new_physical_bucket].push_back(vertex_to_add)
+                                    last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
+                                if new_logical_bucket >= logical_bucket_count:
+                                    logical_bucket_count = new_logical_bucket + 1
+
+                        if j < <int>settled_vertices.size():
+                            ps.rollovers += 1
 
                 buckets[physical_bucket_idx].clear()
                 buckets[physical_bucket_idx].shrink_to_fit()
@@ -2399,7 +2858,8 @@ def delta_stepping_single_source_multiple_targets_persistent(
             # ---- MULTI-THREAD PERSISTENT LOOP ----
             # All shared mutable scalars accessed through ps pointer.
 
-            for tid in prange(actual_threads, schedule='static', nogil=True):
+            for tid in prange(actual_threads, schedule='static', nogil=True,
+                              num_threads=actual_threads):
                 local_sense = 0
 
                 while True:
@@ -2429,6 +2889,9 @@ def delta_stepping_single_source_multiple_targets_persistent(
 
                             current_vertices = buckets[ps.physical_bucket_idx]
                             buckets[ps.physical_bucket_idx].clear()
+                            # Lost-relaxation fix: clear dedup stamps
+                            for i in range(<int>current_vertices.size()):
+                                last_bucket[current_vertices[i]] = -1
                             settled_vertices.insert(settled_vertices.end(),
                                                    current_vertices.begin(),
                                                    current_vertices.end())
@@ -2451,6 +2914,8 @@ def delta_stepping_single_source_multiple_targets_persistent(
                     # Phase 2: Light edge relaxation (may repeat)
                     while ps.light_phase_active:
                         while True:
+                            if thread_results[tid].count >= thread_results[tid].guard:
+                                break
                             chunk_start = atomic_fetch_add_int(<volatile int*>&ps.work_idx, CHUNK_SIZE)
                             if chunk_start >= ps.n_vertices:
                                 break
@@ -2487,11 +2952,26 @@ def delta_stepping_single_source_multiple_targets_persistent(
                                         if new_logical_bucket >= ps.logical_bucket_count:
                                             ps.logical_bucket_count = new_logical_bucket + 1
 
-                            if (not buckets[ps.physical_bucket_idx].empty()
+                            if ps.work_idx < ps.n_vertices:
+                                # Rollover: some threads stopped claiming at
+                                # their buffer guard. Re-issue the unclaimed
+                                # tail as another light round -- these vertices
+                                # are already in settled_vertices and must not
+                                # be re-stamped or re-counted.
+                                ps.vertices_ptr = ps.vertices_ptr + ps.work_idx
+                                ps.n_vertices = ps.n_vertices - ps.work_idx
+                                ps.work_idx = 0
+                                ps.rollovers += 1
+                                for i in range(actual_threads):
+                                    thread_results[i].count = 0
+                            elif (not buckets[ps.physical_bucket_idx].empty()
                                     and ps.light_iterations < max_light_iterations):
                                 ps.light_iterations += 1
                                 current_vertices = buckets[ps.physical_bucket_idx]
                                 buckets[ps.physical_bucket_idx].clear()
+                                # Lost-relaxation fix: clear dedup stamps
+                                for i in range(<int>current_vertices.size()):
+                                    last_bucket[current_vertices[i]] = -1
                                 settled_vertices.insert(settled_vertices.end(),
                                                        current_vertices.begin(),
                                                        current_vertices.end())
@@ -2538,6 +3018,7 @@ def delta_stepping_single_source_multiple_targets_persistent(
                         else:
                             ps.n_vertices = 0
                         ps.work_idx = 0
+                        ps.heavy_phase_active = 1
                         for i in range(actual_threads):
                             thread_results[i].count = 0
 
@@ -2545,46 +3026,64 @@ def delta_stepping_single_source_multiple_targets_persistent(
                                        <volatile int*>&ps.barrier_sense,
                                        actual_threads, &local_sense)
 
-                    if ps.n_vertices > 0:
-                        while True:
-                            chunk_start = atomic_fetch_add_int(<volatile int*>&ps.work_idx, CHUNK_SIZE)
-                            if chunk_start >= ps.n_vertices:
-                                break
-                            chunk_end = chunk_start + CHUNK_SIZE
-                            if chunk_end > ps.n_vertices:
-                                chunk_end = ps.n_vertices
-                            for j in range(chunk_start, chunk_end):
-                                relax_vertex_edges_inline(
-                                    ps.vertices_ptr[j], tid,
-                                    dist_pred_ptr, raster_view, exclude_view,
-                                    directions, cached_steps,
-                                    rows, cols, delta, False,
-                                    thread_results, total_cells, &sys_limits
-                                )
+                    while ps.heavy_phase_active:
+                        if ps.n_vertices > 0:
+                            while True:
+                                if thread_results[tid].count >= thread_results[tid].guard:
+                                    break
+                                chunk_start = atomic_fetch_add_int(<volatile int*>&ps.work_idx, CHUNK_SIZE)
+                                if chunk_start >= ps.n_vertices:
+                                    break
+                                chunk_end = chunk_start + CHUNK_SIZE
+                                if chunk_end > ps.n_vertices:
+                                    chunk_end = ps.n_vertices
+                                for j in range(chunk_start, chunk_end):
+                                    relax_vertex_edges_inline(
+                                        ps.vertices_ptr[j], tid,
+                                        dist_pred_ptr, raster_view, exclude_view,
+                                        directions, cached_steps,
+                                        rows, cols, delta, False,
+                                        thread_results, total_cells, &sys_limits
+                                    )
 
-                    thread_barrier_wait(<volatile int*>&ps.barrier_arrive_count,
-                                       <volatile int*>&ps.barrier_sense,
-                                       actual_threads, &local_sense)
+                        thread_barrier_wait(<volatile int*>&ps.barrier_arrive_count,
+                                           <volatile int*>&ps.barrier_sense,
+                                           actual_threads, &local_sense)
 
-                    # Phase 5: Heavy merge + advance bucket
+                        # Phase 5: Heavy merge
+                        if tid == 0:
+                            for i in range(actual_threads):
+                                for j in range(thread_results[i].count):
+                                    vertex_to_add = thread_results[i].vertices[j]
+                                    new_dist = thread_results[i].distances[j]
+                                    new_logical_bucket = <size_t>(new_dist / delta)
+
+                                    if (new_logical_bucket > ps.current_logical_bucket and
+                                        new_logical_bucket < ps.window_start + circular_buffer_size):
+                                        new_physical_bucket = get_circular_index(
+                                            new_logical_bucket, circular_buffer_size)
+                                        last_bucket_for_vertex = last_bucket[vertex_to_add]
+                                        if last_bucket_for_vertex != <int32_t>new_logical_bucket:
+                                            buckets[new_physical_bucket].push_back(vertex_to_add)
+                                            last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
+                                        if new_logical_bucket >= ps.logical_bucket_count:
+                                            ps.logical_bucket_count = new_logical_bucket + 1
+
+                            if ps.work_idx < ps.n_vertices:
+                                ps.vertices_ptr = ps.vertices_ptr + ps.work_idx
+                                ps.n_vertices = ps.n_vertices - ps.work_idx
+                                ps.work_idx = 0
+                                ps.rollovers += 1
+                                for i in range(actual_threads):
+                                    thread_results[i].count = 0
+                            else:
+                                ps.heavy_phase_active = 0
+
+                        thread_barrier_wait(<volatile int*>&ps.barrier_arrive_count,
+                                           <volatile int*>&ps.barrier_sense,
+                                           actual_threads, &local_sense)
+
                     if tid == 0:
-                        for i in range(actual_threads):
-                            for j in range(thread_results[i].count):
-                                vertex_to_add = thread_results[i].vertices[j]
-                                new_dist = thread_results[i].distances[j]
-                                new_logical_bucket = <size_t>(new_dist / delta)
-
-                                if (new_logical_bucket > ps.current_logical_bucket and
-                                    new_logical_bucket < ps.window_start + circular_buffer_size):
-                                    new_physical_bucket = get_circular_index(
-                                        new_logical_bucket, circular_buffer_size)
-                                    last_bucket_for_vertex = last_bucket[vertex_to_add]
-                                    if last_bucket_for_vertex != <int32_t>new_logical_bucket:
-                                        buckets[new_physical_bucket].push_back(vertex_to_add)
-                                        last_bucket[vertex_to_add] = <int32_t>new_logical_bucket
-                                    if new_logical_bucket >= ps.logical_bucket_count:
-                                        ps.logical_bucket_count = new_logical_bucket + 1
-
                         buckets[ps.physical_bucket_idx].clear()
                         buckets[ps.physical_bucket_idx].shrink_to_fit()
                         ps.current_logical_bucket += 1
@@ -2596,10 +3095,15 @@ def delta_stepping_single_source_multiple_targets_persistent(
     finally:
         if thread_results != NULL:
             for tid in range(actual_threads):
+                drops += thread_results[tid].overflow
                 free(thread_results[tid].vertices)
                 free(thread_results[tid].bucket_indices)
                 free(thread_results[tid].distances)
             free(thread_results)
+        _relaxation_stats["capacity"] = int(max_capacity)
+        _relaxation_stats["guard"] = int(max_capacity - guard_slack)
+        _relaxation_stats["rollovers"] = int(ps.rollovers)
+        _relaxation_stats["drops"] = int(drops)
 
     # Reconstruct paths for all targets (same as original)
     for i in range(num_targets):
@@ -2644,7 +3148,7 @@ def delta_stepping_multiple_sources_multiple_targets_persistent(
         np.ndarray[uint64_t, ndim=1] source_indices,
         np.ndarray[uint64_t, ndim=1] target_indices,
         float delta,
-        uint16_t max_value=65535,
+        int64_t max_value=65535,
         bint return_paths=True,
         int num_threads=0,
         size_t max_buckets_in_memory=2048):
@@ -2669,6 +3173,7 @@ def delta_stepping_multiple_sources_multiple_targets_persistent(
     cdef list source_paths
     cdef np.ndarray[uint64_t, ndim=1] path
     cdef float cost
+    cdef DeltaWorkspace workspace = None
 
     if num_sources == 0 or num_targets == 0:
         if return_paths:
@@ -2684,6 +3189,10 @@ def delta_stepping_multiple_sources_multiple_targets_persistent(
                 source_idx_map[s] = original_idx
                 break
 
+    # The raster is the same for every source and nothing here writes to it, so
+    # its derivations and state arrays are derived once for the whole loop.
+    workspace = DeltaWorkspace(raster_arr, max_value)
+
     for s in range(num_sources):
         source_idx = sorted_sources[s]
         original_idx = source_idx_map[s]
@@ -2691,7 +3200,8 @@ def delta_stepping_multiple_sources_multiple_targets_persistent(
         try:
             source_paths = delta_stepping_single_source_multiple_targets_persistent(
                 raster_arr, steps_arr, source_idx, target_indices,
-                delta, max_value, num_threads, max_buckets_in_memory
+                delta, max_value, num_threads, max_buckets_in_memory,
+                workspace
             )
 
             if return_paths:
@@ -2721,7 +3231,7 @@ def delta_stepping_some_pairs_shortest_paths_persistent(
         np.ndarray[uint64_t, ndim=1] source_indices,
         np.ndarray[uint64_t, ndim=1] target_indices,
         float delta,
-        uint16_t max_value=65535,
+        int64_t max_value=65535,
         bint return_paths=True,
         int num_threads=0,
         size_t max_buckets_in_memory=2048,
@@ -2744,6 +3254,7 @@ def delta_stepping_some_pairs_shortest_paths_persistent(
     cdef np.ndarray[uint64_t, ndim=1] path
     cdef float path_cost_value
     cdef float validated_margin
+    cdef DeltaWorkspace workspace = None
 
     if margin <= 1.00001:
         validated_margin = 1.00001
@@ -2756,6 +3267,10 @@ def delta_stepping_some_pairs_shortest_paths_persistent(
         else:
             return np.empty(0, dtype=np.float32)
 
+    # The raster is the same for every pair and nothing here writes to it, so
+    # its derivations and state arrays are derived once for the whole loop.
+    workspace = DeltaWorkspace(raster_arr, max_value)
+
     for i in range(num_pairs):
         source = source_indices[i]
         target = target_indices[i]
@@ -2763,7 +3278,8 @@ def delta_stepping_some_pairs_shortest_paths_persistent(
         path = delta_stepping_2d_persistent(
             raster_arr, steps_arr, source, target,
             delta, max_value, num_threads, max_buckets_in_memory,
-            validated_margin
+            validated_margin,
+            workspace
         )
 
         if return_paths:

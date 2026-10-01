@@ -1,0 +1,1284 @@
+/* ==========================================================================
+   PYORPS GUI — design system
+   --------------------------------------------------------------------------
+   Everything hangs off the design tokens below (§1). Bootstrap 5.3 is
+   vendored in assets/00-bootstrap.min.css (alphabetical load order → this
+   file always wins). Light/dark follow Bootstrap colour modes: the header
+   toggle flips `data-bs-theme` on <html> (callbacks/theme.py) and every
+   component reads the re-mapped tokens — including the AG grids (new
+   Theming API, overridden via --ag-* custom properties) and Leaflet chrome.
+
+   Sections:
+     1. Design tokens (light + dark)
+     2. Bootstrap bridge (map tokens onto --bs-* component vars)
+     3. Base & typography
+     4. App shell (map + sidebar columns, collapse)
+     5. Header (brand lockup, actions)
+     6. Workflow stepper
+     7. Sidebar tabs (icon set)
+     8. Cards & sections
+     9. Forms & controls
+    10. Buttons
+    11. AG grids
+    12. Notices (toasts) & log panel
+    13. Offcanvas (layer table, log)
+    14. Map overlays & Leaflet chrome
+    15. Icons (inline SVG masks)
+    16. Motion, focus, misc
+   ========================================================================== */
+
+/* ------------------------------------------------------------------ 1. tokens */
+:root {
+    /* palette — light */
+    --bg: #f2f4f7;
+    --surface: #ffffff;
+    --surface-2: #f5f7fa;
+    --surface-3: #e9edf2;
+    --border: #dfe4ea;
+    --border-strong: #c6cfd9;
+    --text: #1d2733;
+    --text-2: #46535f;
+    --text-3: #8492a1;
+    --accent: #0e7490;
+    --accent-strong: #0a5b72;
+    --accent-soft: #e3f3f8;
+    --accent-contrast: #ffffff;
+    --success: #178a50;
+    --success-soft: #e4f5ec;
+    --warning: #b45309;
+    --warning-soft: #fdf1e2;
+    --error: #c0392f;
+    --error-soft: #fbeae8;
+    --info: #21689b;
+    --info-soft: #e7f1f9;
+
+    /* layout */
+    --sidebar-w: 420px;
+
+    /* type scale */
+    --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui,
+        -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "Cascadia Code", "Cascadia Mono", Consolas,
+        ui-monospace, "Courier New", monospace;
+    --fs-0: 0.6875rem;   /* 11px overlines, hints   */
+    --fs-1: 0.75rem;     /* 12px help text, badges  */
+    --fs-2: 0.8125rem;   /* 13px controls, body     */
+    --fs-3: 0.875rem;    /* 14px section titles     */
+    --fs-4: 1.0625rem;   /* 17px brand              */
+
+    /* spacing, radii, elevation */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --r-sm: 6px;
+    --r-md: 8px;
+    --r-lg: 12px;
+    --shadow-1: 0 1px 2px rgba(16, 24, 32, 0.06),
+                0 1px 1px rgba(16, 24, 32, 0.04);
+    --shadow-2: 0 4px 14px rgba(16, 24, 32, 0.12),
+                0 2px 4px rgba(16, 24, 32, 0.06);
+    --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+[data-bs-theme="dark"] {
+    --bg: #10141a;
+    --surface: #171d25;
+    --surface-2: #1e2530;
+    --surface-3: #28313e;
+    --border: #2a3340;
+    --border-strong: #3d4959;
+    --text: #e8edf3;
+    --text-2: #b2bdc9;
+    --text-3: #75818e;
+    --accent: #41b6d9;
+    --accent-strong: #63c7e4;
+    --accent-soft: rgba(65, 182, 217, 0.14);
+    --accent-contrast: #08222c;
+    --success: #3fbf7f;
+    --success-soft: rgba(63, 191, 127, 0.14);
+    --warning: #e2a03f;
+    --warning-soft: rgba(226, 160, 63, 0.14);
+    --error: #ef7060;
+    --error-soft: rgba(239, 112, 96, 0.14);
+    --info: #5ea3d8;
+    --info-soft: rgba(94, 163, 216, 0.14);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5),
+                0 1px 1px rgba(0, 0, 0, 0.35);
+    --shadow-2: 0 6px 18px rgba(0, 0, 0, 0.55),
+                0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* ------------------------------------------------- 2. bootstrap bridge */
+:root,
+[data-bs-theme="light"],
+[data-bs-theme="dark"] {
+    --bs-body-bg: var(--bg);
+    --bs-body-color: var(--text);
+    --bs-secondary-color: var(--text-2);
+    --bs-tertiary-color: var(--text-3);
+    --bs-border-color: var(--border);
+    --bs-body-font-family: var(--font-sans);
+    --bs-body-font-size: var(--fs-2);
+    --bs-primary: var(--accent);
+    --bs-danger: var(--error);
+    --bs-success: var(--success);
+    --bs-warning: var(--warning);
+    --bs-info: var(--info);
+    --bs-link-color: var(--accent);
+    --bs-link-hover-color: var(--accent-strong);
+    --bs-emphasis-color: var(--text);
+    --bs-secondary-bg: var(--surface-2);
+    --bs-tertiary-bg: var(--surface-3);
+}
+
+/* Dash 4 dcc components (Radix sliders/dropdowns/tooltips) read --Dash-*
+   design tokens — remap them onto ours so they stop being purple (#7f4bc4)
+   and follow both colour modes. */
+:root,
+[data-bs-theme="light"],
+[data-bs-theme="dark"] {
+    --Dash-Fill-Interactive-Strong: var(--accent);
+    --Dash-Fill-Interactive-Weak: var(--accent-soft);
+    --Dash-Fill-Inverse-Strong: var(--surface);
+    --Dash-Fill-Disabled: var(--surface-3);
+    --Dash-Fill-Primary-Hover: var(--surface-2);
+    --Dash-Fill-Primary-Active: var(--surface-3);
+    --Dash-Text-Primary: var(--text);
+    --Dash-Text-Strong: var(--text);
+    --Dash-Text-Weak: var(--text-2);
+    --Dash-Text-Disabled: var(--text-3);
+    --Dash-Stroke-Strong: var(--border-strong);
+    --Dash-Stroke-Weak: var(--border);
+    --Dash-Tooltip-Background-Color: var(--surface);
+    --Dash-Tooltip-Border-Color: var(--border);
+}
+
+/* keep text-* utility classes on-token in both modes */
+.text-muted { color: var(--text-3) !important; }
+.text-info { color: var(--info) !important; }
+.text-success { color: var(--success) !important; }
+.text-warning { color: var(--warning) !important; }
+.text-danger { color: var(--error) !important; }
+.text-primary { color: var(--accent) !important; }
+.bg-light { background-color: var(--surface-2) !important; }
+.border-start { border-color: var(--border) !important; }
+
+/* --------------------------------------------------- 3. base & typography */
+html, body {
+    height: 100%;
+    overflow: hidden;           /* the app is a fixed two-pane shell */
+}
+
+body {
+    font-family: var(--font-sans);
+    font-size: var(--fs-2);
+    color: var(--text);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+}
+
+pre, code, .font-monospace {
+    font-family: var(--font-mono);
+}
+
+small, .small {
+    font-size: var(--fs-1);
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--text-3); }
+
+/* --------------------------------------------------------- 4. app shell */
+.gui-shell {
+    height: 100vh;
+    overflow: hidden;
+}
+
+.gui-map-col {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0;
+}
+
+.gui-sidebar-col {
+    flex: 0 0 var(--sidebar-w) !important;
+    width: var(--sidebar-w) !important;
+    max-width: var(--sidebar-w) !important;
+    transition: flex-basis 0.28s ease, width 0.28s ease;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    box-shadow: var(--shadow-1);
+    z-index: 500;               /* above the map, below overlays */
+}
+
+.sidebar-collapsed .gui-sidebar-col {
+    flex-basis: 0 !important;
+    width: 0 !important;
+    max-width: 0 !important;
+    overflow: hidden;
+    border-left: none;
+}
+
+.gui-sidebar {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    min-width: 320px;           /* content keeps its shape while collapsing */
+    background: var(--surface);
+}
+
+/* the tab CONTENT is the only scrolling region — header, stepper and the
+   tab bar stay pinned */
+.gui-sidebar .tab-content {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+    background: var(--bg);
+}
+
+/* the drawer handle floats on the map at the sidebar boundary */
+.sidebar-handle {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    z-index: 900;
+    width: 22px;
+    height: 56px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-right: none;
+    border-radius: var(--r-md) 0 0 var(--r-md);
+    background: var(--surface);
+    color: var(--text-2);
+    box-shadow: var(--shadow-1);
+    cursor: pointer;
+}
+.sidebar-handle:hover { color: var(--accent); background: var(--surface-2); }
+.sidebar-handle .gi { transition: transform 0.28s ease; }
+.sidebar-collapsed .sidebar-handle .gi { transform: rotate(180deg); }
+
+/* the drag strip on the map/sidebar boundary — resizes the sidebar
+   (assets/sidebar-resize.js rewrites --sidebar-w) */
+.sidebar-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 6px;
+    height: 100%;
+    z-index: 850;               /* below the chevron handle (900) */
+    cursor: col-resize;
+    background: transparent;
+    transition: background 0.15s ease;
+}
+.sidebar-resizer:hover { background: var(--accent-soft); }
+.sidebar-collapsed .sidebar-resizer { display: none; }
+/* while dragging: no width transition (it would lag the pointer), no text
+   selection, keep the col-resize cursor everywhere */
+body.sidebar-resizing { cursor: col-resize; user-select: none; }
+body.sidebar-resizing .gui-sidebar-col { transition: none; }
+body.sidebar-resizing .sidebar-resizer { background: var(--accent-soft); }
+
+/* ------------------------------------------------------------- 5. header */
+.gui-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    padding: 10px var(--sp-3) 8px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+}
+
+.brand-lockup {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.brand-mark {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r-md);
+    background: linear-gradient(135deg,
+        var(--accent) 0%, var(--accent-strong) 100%);
+    color: #fff;
+    box-shadow: var(--shadow-1);
+}
+.brand-mark .gi { width: 18px; height: 18px; }
+
+.brand-title {
+    font-size: var(--fs-4);
+    font-weight: 350;
+    letter-spacing: 0.02em;
+    line-height: 1.1;
+    color: var(--text);
+    white-space: nowrap;
+}
+.brand-title .brand-strong { font-weight: 700; }
+
+.brand-sub {
+    font-size: var(--fs-0);
+    color: var(--text-3);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    line-height: 1.2;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+
+.header-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: var(--fs-1);
+    color: var(--text-2);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    text-decoration: none;
+}
+.header-actions .btn:hover {
+    color: var(--text);
+    background: var(--surface-3);
+    border-color: var(--border);
+}
+
+/* theme toggle shows the icon of the mode you would switch TO */
+#theme-toggle .gi-sun { display: none; }
+#theme-toggle .gi-moon { display: inline-block; }
+[data-bs-theme="dark"] #theme-toggle .gi-sun { display: inline-block; }
+[data-bs-theme="dark"] #theme-toggle .gi-moon { display: none; }
+
+/* -------------------------------------------------- 6. workflow stepper */
+.wf-stepper {
+    display: flex;
+    align-items: flex-start;
+    padding: 10px var(--sp-3) 9px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+}
+
+.wf-step {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    position: relative;
+    min-width: 0;
+    cursor: default;
+}
+
+/* connector line between dots */
+.wf-step + .wf-step::before {
+    content: "";
+    position: absolute;
+    top: 9px;
+    right: calc(50% + 12px);
+    left: calc(-50% + 12px);
+    height: 2px;
+    border-radius: 1px;
+    background: var(--border-strong);
+}
+.wf-step.wf-done + .wf-step.wf-done::before,
+.wf-step.wf-done + .wf-step.wf-current::before {
+    background: var(--accent);
+}
+
+.wf-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    z-index: 1;
+    background: var(--surface-3);
+    color: var(--text-3);
+    border: 1.5px solid var(--border-strong);
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+.wf-step.wf-done .wf-dot {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-contrast);
+}
+.wf-step.wf-current .wf-dot {
+    background: var(--surface);
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.wf-label {
+    font-size: var(--fs-0);
+    line-height: 1.15;
+    color: var(--text-3);
+    text-align: center;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.wf-step.wf-done .wf-label { color: var(--text-2); }
+.wf-step.wf-current .wf-label { color: var(--accent); font-weight: 600; }
+
+/* ------------------------------------------------------ 7. sidebar tabs */
+#sidebar-tabs {
+    --bs-nav-tabs-border-width: 0;
+    --bs-nav-link-color: var(--text-3);
+    --bs-nav-link-hover-color: var(--text);
+    display: flex;
+    flex-wrap: nowrap;
+    padding: 0 var(--sp-2);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+}
+
+#sidebar-tabs .nav-item { flex: 1 1 0; min-width: 0; }
+
+#sidebar-tabs .nav-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 7px 2px 6px;
+    font-size: var(--fs-0);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-3);
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    margin-bottom: 0;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+#sidebar-tabs .nav-link::before {
+    content: "";
+    width: 16px;
+    height: 16px;
+    background-color: currentColor;
+    -webkit-mask: var(--tab-icon) center / contain no-repeat;
+    mask: var(--tab-icon) center / contain no-repeat;
+}
+
+#sidebar-tabs .nav-item:nth-child(1) .nav-link { --tab-icon: var(--gi-data); }
+#sidebar-tabs .nav-item:nth-child(2) .nav-link { --tab-icon: var(--gi-cost); }
+#sidebar-tabs .nav-item:nth-child(3) .nav-link { --tab-icon: var(--gi-raster); }
+#sidebar-tabs .nav-item:nth-child(4) .nav-link { --tab-icon: var(--gi-routes); }
+#sidebar-tabs .nav-item:nth-child(5) .nav-link { --tab-icon: var(--gi-layers); }
+#sidebar-tabs .nav-item:nth-child(6) .nav-link { --tab-icon: var(--gi-attrs); }
+
+#sidebar-tabs .nav-link:hover {
+    color: var(--text-2);
+    background: transparent;
+    border-bottom-color: var(--border-strong);
+}
+
+#sidebar-tabs .nav-link.active {
+    color: var(--accent);
+    background: transparent;
+    border-bottom-color: var(--accent);
+}
+
+/* ------------------------------------------------- 8. cards & sections */
+.gui-tab-body {
+    padding: var(--sp-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+
+.gui-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-1);
+    padding: var(--sp-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+
+.gui-card-title {
+    font-size: var(--fs-0);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-2);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.gui-card-intro {
+    color: var(--text-3);
+    font-size: var(--fs-1);
+    line-height: 1.45;
+    margin-top: -4px;
+}
+
+.gui-subhead {
+    font-size: var(--fs-1);
+    font-weight: 600;
+    color: var(--text-2);
+    margin: var(--sp-1) 0 0;
+}
+
+.gui-card hr {
+    margin: var(--sp-1) 0;
+    border-color: var(--border);
+    opacity: 1;
+}
+
+/* collapsible section cards: native <details>/<summary> — the title row is
+   always visible, a caret (▾ closed / ▴ open) signals the toggle */
+.gui-card-collapsible > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    user-select: none;
+}
+.gui-card-collapsible > summary::-webkit-details-marker { display: none; }
+.gui-card-collapsible > summary .gui-card-title { margin: 0; }
+.gui-card-collapsible > summary:hover .gui-card-title { color: var(--accent); }
+.card-caret {
+    width: 13px;
+    height: 13px;
+    color: var(--text-3);
+    transform: rotate(90deg);            /* chevron points down = closed */
+    transition: transform 0.2s ease;
+}
+.gui-card-collapsible[open] > summary .card-caret {
+    transform: rotate(-90deg);           /* points up = open */
+}
+.gui-card-collapsible > summary:hover .card-caret { color: var(--accent); }
+.gui-card-collapsible > .gui-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+
+/* inline load spinner next to the Load buttons (dcc.Loading, type=dot) */
+.load-inline { display: inline-flex; align-items: center; min-height: 20px; }
+.load-inline .dash-spinner { transform: scale(0.45); transform-origin: left center; }
+
+/* ------------------------------------------------- 9. forms & controls */
+.form-label, label { color: var(--text-2); }
+.gui-card .form-label { margin-bottom: 2px; font-size: var(--fs-1); }
+
+.form-control, .form-select,
+.form-control-sm, .form-select-sm {
+    font-size: var(--fs-2);
+    color: var(--text);
+    background-color: var(--surface);
+    border-color: var(--border-strong);
+    border-radius: var(--r-sm);
+}
+.form-control:hover, .form-select:hover { border-color: var(--text-3); }
+.form-control:focus, .form-select:focus {
+    background-color: var(--surface);
+    color: var(--text);
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+}
+.form-control::placeholder { color: var(--text-3); }
+
+textarea.form-control { font-family: var(--font-mono); }
+
+.input-group-text {
+    font-size: var(--fs-1);
+    color: var(--text-2);
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+    border-radius: var(--r-sm);
+}
+
+.form-check-input {
+    border-color: var(--border-strong);
+    background-color: var(--surface);
+}
+.form-check-input:checked {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+.form-check-input:focus { box-shadow: var(--focus-ring); border-color: var(--accent); }
+.form-check-label { font-size: var(--fs-1); color: var(--text-2); }
+.form-switch .form-check-input { cursor: pointer; }
+
+/* dcc.Dropdown (Dash 4, Radix trigger button) — match the bootstrap inputs */
+button.dash-dropdown,
+.dash-dropdown[role="combobox"] {
+    font-size: var(--fs-2);
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+    min-height: 31px;
+    width: 100%;
+    text-align: left;
+}
+button.dash-dropdown:hover { border-color: var(--text-3); }
+button.dash-dropdown:focus-visible,
+button.dash-dropdown[data-state="open"] {
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring);
+    outline: none;
+}
+.dash-dropdown-value { color: var(--text); }
+.dash-dropdown-placeholder { color: var(--text-3); }
+.dash-dropdown-trigger-icon { color: var(--text-3); }
+
+/* the options list renders in a portal at <body> level */
+[role="listbox"] {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    box-shadow: var(--shadow-2);
+    font-size: var(--fs-2);
+}
+[role="option"] { color: var(--text); }
+[role="option"]:hover,
+[role="option"][data-focused],
+[role="option"][data-highlighted],
+[role="option"][aria-selected="true"] {
+    background: var(--accent-soft);
+    color: var(--text);
+}
+
+/* dcc.Slider (Dash 4, Radix) — colours come from the --Dash-* token bridge;
+   here we align the value input + marks with the form controls */
+.dash-slider-container input[type="number"] {
+    font-size: var(--fs-1);
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+    padding: 1px 4px;
+}
+.dash-slider-mark { color: var(--text-3); font-size: var(--fs-0); }
+.dash-slider-thumb:focus-visible { box-shadow: var(--focus-ring); }
+
+/* radio groups read as chips-lite: keep native check UI, tighten rhythm */
+.form-check-inline { margin-right: 10px; }
+
+/* ------------------------------------------------------------ 10. buttons */
+.btn {
+    font-size: var(--fs-2);
+    border-radius: var(--r-sm);
+    font-weight: 500;
+}
+.btn-sm { font-size: var(--fs-1); padding: 3px 10px; }
+.btn:focus-visible { box-shadow: var(--focus-ring); }
+
+.btn-primary {
+    --bs-btn-bg: var(--accent);
+    --bs-btn-border-color: var(--accent);
+    --bs-btn-color: var(--accent-contrast);
+    --bs-btn-hover-bg: var(--accent-strong);
+    --bs-btn-hover-border-color: var(--accent-strong);
+    --bs-btn-hover-color: var(--accent-contrast);
+    --bs-btn-active-bg: var(--accent-strong);
+    --bs-btn-active-border-color: var(--accent-strong);
+    --bs-btn-active-color: var(--accent-contrast);
+    --bs-btn-disabled-bg: var(--accent);
+    --bs-btn-disabled-border-color: var(--accent);
+    --bs-btn-disabled-color: var(--accent-contrast);
+}
+.btn-outline-primary {
+    --bs-btn-color: var(--accent);
+    --bs-btn-border-color: var(--accent);
+    --bs-btn-hover-bg: var(--accent-soft);
+    --bs-btn-hover-border-color: var(--accent);
+    --bs-btn-hover-color: var(--accent-strong);
+    --bs-btn-active-bg: var(--accent-soft);
+    --bs-btn-active-border-color: var(--accent);
+    --bs-btn-active-color: var(--accent-strong);
+}
+
+/* secondary = quiet neutral (filled and outline read the same) */
+.btn-secondary, .btn-outline-secondary {
+    --bs-btn-bg: var(--surface-2);
+    --bs-btn-border-color: var(--border-strong);
+    --bs-btn-color: var(--text-2);
+    --bs-btn-hover-bg: var(--surface-3);
+    --bs-btn-hover-border-color: var(--border-strong);
+    --bs-btn-hover-color: var(--text);
+    --bs-btn-active-bg: var(--surface-3);
+    --bs-btn-active-border-color: var(--border-strong);
+    --bs-btn-active-color: var(--text);
+    --bs-btn-disabled-bg: var(--surface-2);
+    --bs-btn-disabled-border-color: var(--border);
+    --bs-btn-disabled-color: var(--text-3);
+}
+
+.btn-success, .btn-outline-success {
+    --bs-btn-color: var(--success);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: var(--success);
+    --bs-btn-hover-bg: var(--success-soft);
+    --bs-btn-hover-color: var(--success);
+    --bs-btn-hover-border-color: var(--success);
+    --bs-btn-active-bg: var(--success-soft);
+    --bs-btn-active-color: var(--success);
+    --bs-btn-active-border-color: var(--success);
+}
+.btn-success {
+    --bs-btn-bg: var(--success);
+    --bs-btn-color: #fff;
+    --bs-btn-hover-bg: color-mix(in srgb, var(--success) 85%, black);
+    --bs-btn-hover-color: #fff;
+    --bs-btn-active-bg: color-mix(in srgb, var(--success) 85%, black);
+    --bs-btn-active-color: #fff;
+}
+
+.btn-danger, .btn-outline-danger {
+    --bs-btn-color: var(--error);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: color-mix(in srgb, var(--error) 55%, var(--border));
+    --bs-btn-hover-bg: var(--error-soft);
+    --bs-btn-hover-color: var(--error);
+    --bs-btn-hover-border-color: var(--error);
+    --bs-btn-active-bg: var(--error-soft);
+    --bs-btn-active-color: var(--error);
+    --bs-btn-active-border-color: var(--error);
+}
+.btn-danger {
+    --bs-btn-bg: var(--error);
+    --bs-btn-color: #fff;
+    --bs-btn-hover-bg: color-mix(in srgb, var(--error) 85%, black);
+    --bs-btn-hover-color: #fff;
+    --bs-btn-active-bg: color-mix(in srgb, var(--error) 85%, black);
+    --bs-btn-active-color: #fff;
+}
+
+.btn-info, .btn-outline-info {
+    --bs-btn-color: var(--info);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: color-mix(in srgb, var(--info) 55%, var(--border));
+    --bs-btn-hover-bg: var(--info-soft);
+    --bs-btn-hover-color: var(--info);
+    --bs-btn-hover-border-color: var(--info);
+    --bs-btn-active-bg: var(--info-soft);
+    --bs-btn-active-color: var(--info);
+    --bs-btn-active-border-color: var(--info);
+}
+
+.btn-link { color: var(--accent); }
+
+.btn:disabled, .btn.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* the one big call-to-action per workflow (Run routing, Build raster) */
+.gui-cta { width: 100%; }
+
+/* ----------------------------------------------------------- 11. AG grids */
+.ag-root-wrapper,
+div[class*="ag-theme-"] {
+    --ag-background-color: var(--surface);
+    --ag-foreground-color: var(--text);
+    --ag-accent-color: var(--accent);
+    --ag-border-color: var(--border);
+    --ag-header-background-color: var(--surface-2);
+    --ag-header-foreground-color: var(--text-2);
+    --ag-odd-row-background-color: color-mix(in srgb,
+        var(--surface-2) 45%, var(--surface));
+    --ag-row-hover-color: var(--accent-soft);
+    --ag-selected-row-background-color: var(--accent-soft);
+    --ag-font-family: var(--font-sans);
+    --ag-font-size: 12px;
+    --ag-grid-size: 6px;
+    --ag-row-height: 30px;
+    --ag-header-height: 30px;
+    --ag-cell-horizontal-padding: 8px;
+    --ag-wrapper-border-radius: var(--r-sm);
+    --ag-input-background-color: var(--surface);
+    --ag-input-border-color: var(--border-strong);
+    --ag-checkbox-checked-background-color: var(--accent);
+    --ag-checkbox-checked-border-color: var(--accent);
+    --ag-checkbox-unchecked-border-color: var(--border-strong);
+    --ag-menu-background-color: var(--surface);
+    --ag-menu-foreground-color: var(--text);
+    --ag-tooltip-background-color: var(--surface);
+}
+
+.ag-root-wrapper {
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    font-size: 12px;
+}
+.ag-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+}
+.ag-header-cell-text {
+    font-size: var(--fs-0);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: var(--text-2);
+}
+.ag-row { border-color: var(--border); }
+.ag-row-odd {
+    background-color: color-mix(in srgb, var(--surface-2) 45%, var(--surface));
+}
+.ag-row-hover { background-color: var(--accent-soft); }
+.ag-row-selected {
+    background-color: var(--accent-soft) !important;
+}
+/* Empty states: AG Grid 33 dropped overlayNoRowsTemplate, so the default
+   "No Rows To Show" is replaced in CSS — each grid sets its own helpful
+   next-step message via --gui-empty-msg. */
+.ag-overlay-no-rows-center {
+    font-size: 0;                        /* hide the stock text */
+    padding: var(--sp-3);
+}
+.ag-overlay-no-rows-center::after {
+    content: var(--gui-empty-msg, "No rows.");
+    display: block;
+    font-size: var(--fs-1);
+    color: var(--text-3);
+    line-height: 1.5;
+    max-width: 320px;
+    white-space: normal;
+}
+#cost-grid { --gui-empty-msg: "No cost rows yet — pick a base dataset and feature column(s), then Seed cost table."; }
+#modifier-grid { --gui-empty-msg: "No modifier conditions — '+ Modifier' adds one."; }
+#preproc-grid { --gui-empty-msg: "No preprocessing steps — '+ Step' adds one."; }
+#manual-cost-grid { --gui-empty-msg: "No cost polygons yet — switch drawing to 'cost polygons' and draw on the map."; }
+#build-points-table { --gui-empty-msg: "No control points — set 'Map click' to Source/Target, then click the map."; }
+#routes-grid { --gui-empty-msg: "No routes computed yet — place points and Run routing."; }
+#layers-grid { --gui-empty-msg: "Nothing loaded yet — add data in the Data tab."; }
+#layer-table-grid { --gui-empty-msg: "No attributes to show."; }
+
+/* ---------------------------------------------- 12. notices & log panel */
+.notice-stack {
+    position: absolute;
+    top: 54px;                  /* below the basemap-control icon */
+    right: 10px;
+    z-index: 1100;
+    width: 380px;
+    max-height: 90vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+
+.notice-stack .toast {
+    width: 100%;
+    margin-bottom: 0;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--text-3);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-2);
+    font-size: var(--fs-1);
+    overflow: hidden;
+}
+.notice-stack .toast-header {
+    background: transparent;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+    font-size: var(--fs-2);
+    padding: 8px 10px 6px;
+}
+.notice-stack .toast-header strong { font-weight: 600; }
+.notice-stack .toast-header svg,
+.notice-stack .toast-header .rounded {
+    width: 10px !important;
+    height: 10px !important;
+    border-radius: 50% !important;
+}
+.notice-stack .toast-body { padding: 8px 10px; color: var(--text-2); }
+.notice-stack .toast-body b { color: var(--text); font-weight: 600; }
+
+.notice-error { border-left-color: var(--error); }
+.notice-warning { border-left-color: var(--warning); }
+.notice-info { border-left-color: var(--info); }
+.notice-success { border-left-color: var(--success); }
+
+.notice-details {
+    white-space: pre-wrap;
+    font-size: var(--fs-0);
+    font-family: var(--font-mono);
+    max-height: 180px;
+    overflow-y: auto;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 6px;
+    color: var(--text-2);
+}
+
+/* --------------------------------------------------------- 13. offcanvas */
+.offcanvas {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--border) !important;
+    box-shadow: var(--shadow-2);
+}
+.offcanvas-title { font-size: var(--fs-3); font-weight: 600; }
+.offcanvas-header { border-bottom: 1px solid var(--border); padding: 10px 14px; }
+.offcanvas-body { padding: 12px 14px; }
+
+#log-content {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    color: var(--text-2);
+    font-size: var(--fs-0);
+}
+
+#layer-table-offcanvas {
+    width: calc(100% - var(--sidebar-w)) !important;
+    border-top: 1px solid var(--border);
+    /* no height transition — it would lag the drag-resize pointer */
+    transition: width 0.28s ease;
+}
+
+/* drag strip on the panel's top edge (assets/table-resize.js) */
+#layer-table-offcanvas .table-resizer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 7px;
+    cursor: row-resize;
+    z-index: 10;
+    background: transparent;
+    transition: background 0.15s ease;
+}
+#layer-table-offcanvas .table-resizer:hover { background: var(--accent-soft); }
+body.table-resizing { cursor: row-resize; user-select: none; }
+body.table-resizing .table-resizer { background: var(--accent-soft); }
+
+/* the grid fills whatever height the panel is dragged to */
+#layer-table-offcanvas .offcanvas-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+#layer-table-offcanvas #layer-table-grid {
+    flex: 1 1 auto;
+    height: auto !important;    /* beats the inline 30vh default */
+    min-height: 80px;
+}
+.sidebar-collapsed ~ * #layer-table-offcanvas,
+.sidebar-collapsed #layer-table-offcanvas {
+    width: 100% !important;
+}
+#layer-table-offcanvas .offcanvas-header { padding: 6px 14px; }
+#layer-table-offcanvas .offcanvas-body { padding: 6px 14px 10px; }
+
+/* --------------------------------------- 14. map overlays & leaflet chrome */
+.mode-badge {
+    position: absolute;
+    top: 10px;
+    left: 56px;
+    z-index: 1000;
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-1);
+    opacity: 1;
+}
+/* neutral (mode: off) reads quiet; armed modes keep their signal colour */
+.mode-badge.bg-secondary {
+    background-color: var(--surface) !important;
+    color: var(--text-2) !important;
+}
+.mode-badge.bg-success {
+    background-color: var(--success) !important;
+    border-color: var(--success);
+}
+.mode-badge.bg-danger {
+    background-color: var(--error) !important;
+    border-color: var(--error);
+}
+.mode-badge.bg-warning {
+    background-color: var(--warning) !important;
+    color: #fff !important;
+    border-color: var(--warning);
+}
+
+/* map-corner basemap switcher (top-right): a <details> styled like a
+   Leaflet control button; the panel drops down-left of the icon */
+.basemap-control {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1150;              /* above the toast stack — panel stays usable */
+}
+.basemap-control > summary {
+    list-style: none;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--text-2);
+    box-shadow: var(--shadow-1);
+}
+.basemap-control > summary::-webkit-details-marker { display: none; }
+.basemap-control > summary:hover { color: var(--accent); background: var(--surface-2); }
+.basemap-control[open] > summary { color: var(--accent); }
+.basemap-control > summary .gi { width: 18px; height: 18px; }
+.basemap-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    width: 240px;
+    max-height: min(70vh, 560px);
+    overflow-y: auto;
+    padding: var(--sp-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-2);
+}
+.basemap-list { display: flex; flex-direction: column; gap: 2px; }
+.basemap-list .form-check { margin-bottom: 0; }
+
+/* per-class colour picker in the graduated legend */
+.legend-color-input {
+    width: 26px !important;
+    height: 18px;
+    padding: 1px;
+    flex: 0 0 auto;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+}
+
+/* Leaflet controls follow the theme. background-COLOR only — the zoom/draw
+   toolbar buttons carry their icons as background-images (sprites), which a
+   `background:` shorthand would wipe out. */
+.leaflet-bar {
+    border: 1px solid var(--border) !important;
+    border-radius: var(--r-sm) !important;
+    box-shadow: var(--shadow-1) !important;
+    overflow: hidden;
+}
+.leaflet-bar a,
+.leaflet-touch .leaflet-bar a {
+    background-color: var(--surface);
+    color: var(--text);
+    border-bottom-color: var(--border);
+}
+.leaflet-bar a:hover,
+.leaflet-touch .leaflet-bar a:hover {
+    background-color: var(--surface-2);
+}
+[data-bs-theme="dark"] .leaflet-draw-toolbar a {
+    /* the leaflet-draw sprite is dark-on-transparent. Painting a LIGHT
+       background and inverting the whole button yields a dark button with
+       light icons — matching the zoom control. */
+    background-color: #dfe3e8;
+    filter: invert(1) hue-rotate(180deg);
+}
+[data-bs-theme="dark"] .leaflet-draw-toolbar a:hover {
+    background-color: #d3d9e0;
+}
+.leaflet-control-attribution {
+    background: color-mix(in srgb, var(--surface) 80%, transparent) !important;
+    color: var(--text-3) !important;
+    font-size: 10px !important;
+}
+.leaflet-control-attribution a { color: var(--text-2) !important; }
+.leaflet-control-scale-line {
+    background: transparent;
+    border-color: var(--text-2);
+    color: var(--text);
+    text-shadow: 0 0 2px var(--surface), 0 0 4px var(--surface);
+    font-size: var(--fs-0);
+}
+
+/* map popups/tooltips follow the theme */
+.leaflet-popup-content-wrapper, .leaflet-popup-tip,
+.leaflet-tooltip {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-2);
+    border-color: var(--border);
+}
+.leaflet-tooltip-right:before { border-right-color: var(--surface); }
+.leaflet-tooltip-left:before { border-left-color: var(--surface); }
+.leaflet-tooltip-top:before { border-top-color: var(--surface); }
+.leaflet-tooltip-bottom:before { border-bottom-color: var(--surface); }
+
+/* control-point markers (kept colour semantics; refined ring) */
+.gui-point-marker {
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 1px 4px rgba(0, 0, 0, 0.4);
+    width: 100%;
+    height: 100%;
+}
+
+/* colormap legend swatches (Raster tab) */
+.legend-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 3px;
+    min-width: 0;
+}
+.legend-swatch {
+    flex: 0 0 auto;
+    width: 13px;
+    height: 13px;
+    border-radius: 3px;
+    border: 1px solid rgba(127, 127, 127, 0.45);
+}
+.legend-label {
+    font-size: var(--fs-1);
+    color: var(--text-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* route tree (Layers tab) */
+.route-tree details { margin-left: 0; }
+.route-tree summary {
+    cursor: pointer;
+    font-size: var(--fs-1);
+    font-weight: 600;
+    color: var(--text-2);
+    padding: 2px 0;
+}
+.route-tree summary:hover { color: var(--text); }
+.route-tree .btn-link {
+    font-size: var(--fs-1);
+    color: var(--text-2);
+}
+.route-tree .btn-link:hover { color: var(--accent); }
+.route-tree .fw-bold { color: var(--accent) !important; }
+
+/* dataset list chips (Data tab) */
+#dataset-list .badge { font-weight: 500; }
+
+/* --------------------------------------------------- 15. icon definitions */
+:root {
+    --gi-data: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M8 1.6c-3.5 0-6 .95-6 2.4v8c0 1.45 2.5 2.4 6 2.4s6-.95 6-2.4V4c0-1.45-2.5-2.4-6-2.4z' fill='none' stroke='black' stroke-width='1.4'/><path d='M2 4c0 1.45 2.5 2.4 6 2.4S14 5.45 14 4M2 8c0 1.45 2.5 2.4 6 2.4S14 9.45 14 8' fill='none' stroke='black' stroke-width='1.4'/></svg>");
+    --gi-cost: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6.3' fill='none' stroke='black' stroke-width='1.4'/><path d='M10.6 5.6A3.2 3.2 0 1 0 10.6 10.4M4.6 6.9h4M4.6 9.1h4' fill='none' stroke='black' stroke-width='1.3'/></svg>");
+    --gi-raster: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2.2 2.2h11.6v11.6H2.2zM2.2 6.1h11.6M2.2 10h11.6M6.1 2.2v11.6M10 2.2v11.6' fill='none' stroke='black' stroke-width='1.25'/></svg>");
+    --gi-routes: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='3.4' cy='12.6' r='2.1' fill='black'/><circle cx='12.6' cy='3.4' r='2.1' fill='black'/><path d='M4.6 11.4C9 8.6 5.8 6 11.3 4.4' fill='none' stroke='black' stroke-width='1.6'/></svg>");
+    --gi-layers: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M8 1.8l6.2 3.3L8 8.4 1.8 5.1z' fill='black'/><path d='M1.8 8.3L8 11.6l6.2-3.3M1.8 11.3L8 14.6l6.2-3.3' fill='none' stroke='black' stroke-width='1.35'/></svg>");
+    --gi-attrs: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2.5 3.2h11M2.5 6.5h11M2.5 9.8h7M2.5 13.1h4.5' fill='none' stroke='black' stroke-width='1.5'/></svg>");
+    --gi-log: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4 1.8h8a1 1 0 0 1 1 1v10.4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2.8a1 1 0 0 1 1-1z' fill='none' stroke='black' stroke-width='1.35'/><path d='M5.4 4.8h5.2M5.4 7.3h5.2M5.4 9.8h3.4' fill='none' stroke='black' stroke-width='1.25'/></svg>");
+    --gi-sun: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='3.1' fill='none' stroke='black' stroke-width='1.4'/><path d='M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6L13 13M13 3l-1.4 1.4M4.4 11.6L3 13' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round'/></svg>");
+    --gi-moon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M13.2 9.9A5.6 5.6 0 0 1 6.1 2.8a5.6 5.6 0 1 0 7.1 7.1z' fill='none' stroke='black' stroke-width='1.4' stroke-linejoin='round'/></svg>");
+    --gi-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M6 3.5L10.5 8 6 12.5' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    --gi-pin: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M8 1.6a4.6 4.6 0 0 1 4.6 4.6C12.6 9.7 8 14.4 8 14.4S3.4 9.7 3.4 6.2A4.6 4.6 0 0 1 8 1.6z' fill='none' stroke='black' stroke-width='1.4'/><circle cx='8' cy='6.2' r='1.7' fill='black'/></svg>");
+}
+
+.gi {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    background-color: currentColor;
+    -webkit-mask: var(--gi) center / contain no-repeat;
+    mask: var(--gi) center / contain no-repeat;
+    flex: 0 0 auto;
+}
+.gi-data { --gi: var(--gi-data); }
+.gi-cost { --gi: var(--gi-cost); }
+.gi-raster { --gi: var(--gi-raster); }
+.gi-routes { --gi: var(--gi-routes); }
+.gi-layers { --gi: var(--gi-layers); }
+.gi-attrs { --gi: var(--gi-attrs); }
+.gi-log { --gi: var(--gi-log); }
+.gi-sun { --gi: var(--gi-sun); }
+.gi-moon { --gi: var(--gi-moon); }
+.gi-chevron { --gi: var(--gi-chevron); }
+.gi-pin { --gi: var(--gi-pin); }
+
+/* ------------------------------------------------- 16. motion, focus, misc */
+.accordion {
+    --bs-accordion-bg: var(--surface);
+    --bs-accordion-color: var(--text);
+    --bs-accordion-border-color: var(--border);
+    --bs-accordion-btn-color: var(--text-2);
+    --bs-accordion-btn-bg: var(--surface-2);
+    --bs-accordion-active-bg: var(--accent-soft);
+    --bs-accordion-active-color: var(--accent-strong);
+    --bs-accordion-btn-focus-box-shadow: var(--focus-ring);
+    --bs-accordion-btn-padding-y: 6px;
+    --bs-accordion-btn-padding-x: 10px;
+    --bs-accordion-body-padding-y: 10px;
+    --bs-accordion-body-padding-x: 10px;
+}
+.accordion-button { font-size: var(--fs-1); font-weight: 600; }
+
+/* loading dots/spinners pick up the accent */
+.dash-spinner, ._dash-loading { color: var(--accent); }
+
+/* empty status/log placeholders take no visual space until they have content */
+#rasterize-log:empty { display: none; }
+
+/* "Go fix" target highlight (kept) */
+.pyorps-flash {
+    animation: pyorps-flash-kf 0.8s ease-in-out 3;
+    border-radius: 4px;
+}
+
+@keyframes pyorps-flash-kf {
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 85%, transparent); }
+}
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

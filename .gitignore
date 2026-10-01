@@ -16,6 +16,9 @@ dist/
 .venv*/
 *.so
 *.pyd
+# Per-machine build stamp read by tests/test_build_provenance.py. Committing it
+# would make that gate fail on every other checkout.
+pyorps/utils/_build_provenance.json
 docs/build/
 pyorps/utils/*.cpp
 .claude/
@@ -25,9 +28,37 @@ pyorps/utils/*.cpp
 profiles/
 uv.lock
 
-# Local-only files and generated outputs
+# --- Large generated data -------------------------------------------------
+# ~5.6 GB of routing outputs, study results and benchmark fixtures live in the
+# working tree. GitHub hard-rejects any single file over 100 MB and git history
+# is immutable, so these stay local. Keep the CODE in these directories.
+output/
+examples/data/shapes/
+examples/data/raster/raster_for_distribution_grid_planning.tiff
+examples/data/raster/modified_raster_for_distribution_grid_planning.tiff
+case_studies/substation_planning/*.json
+case_studies/substation_planning/*.geojson
+case_studies/substation_planning/*.txt
+case_studies/substation_planning/shape/
+case_studies/substation_planning/results/
+case_studies/substation_planning/find_substation_tree/
+benchmarks/realworld_data/
+benchmarks/results/
+benchmarks/arcgis_comparison/cases/
+benchmarks/arcgis_comparison/fim/
+
+# --- Scratch and build leftovers ------------------------------------------
+cost_*.tif
+*.pyd.*.old
+*.pyd.locked_old
+git_commands.txt
+
+# Duplicate of docs/source/_static/images (Sphinx reads the _static copy).
+docs/images/
+# Generated case-study routing results; reproducible from the inputs.
+case_studies/*/results/
+docs/source/generated/
+docs/api/
+# Agent working files (kept in a private archive)
 CLAUDE.md
 docs/superpowers/
-examples/analyze_simplification.py
-examples/batch_route_planning_pandapower.py
-output/

@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 jobs:
   code-quality:
@@ -52,6 +52,7 @@ jobs:
           flake8 . --count --max-complexity=10 --max-line-length=88 --statistics
 
       - name: Lint with Pylint
-        continue-on-error: true
+        # Blocking: the configuration lives in pyproject.toml ([tool.pylint]); run the same command locally
+        # (python -m pylint pyorps) before opening a PR. Raise the threshold when the score improves.
         run: |
-          find . -name "*.py" -type f -not -path "./build/*" -not -path "./.venv/*" | xargs pylint --disable=C0111,R0903,C0103 --exit-zero
+          python -m pylint pyorps --fail-under=9.9

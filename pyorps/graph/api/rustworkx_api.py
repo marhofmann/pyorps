@@ -8,7 +8,7 @@ Reference:
 """
 # Third party
 
-import rustworkx as rx
+import rustworkx as rx  # pylint: disable=import-error  # optional dependency
 from numpy import max as np_max
 from numpy import ndarray
 
