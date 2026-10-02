@@ -33,6 +33,43 @@ jobs:
       - name: Install cibuildwheel
         run: python -m pip install cibuildwheel==2.23.3
 
+      # cibuildwheel 2.23.3 downloads its virtualenv helper from a github.com/.../blob/...?raw=true address that
+      # answers HTTP 503 (seen 2026-10-02) and fails the macOS and Windows builds. The raw/ address of the same file
+      # works, so fetch the helpers from there into the cache folder cibuildwheel checks first. Linux builds in Docker.
+      - name: Pre-seed the virtualenv helpers for cibuildwheel (macOS, Windows)
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          CACHE="$RUNNER_TEMP/cibw-cache"
+          mkdir -p "$CACHE"
+          echo "CIBW_CACHE_PATH=$CACHE" >> "$GITHUB_ENV"
+          CIBW_CACHE="$CACHE" python - <<'PY'
+          import os, pathlib, time, tomllib, urllib.request
+          import cibuildwheel
+          toml = pathlib.Path(cibuildwheel.__file__).parent / "resources" / "virtualenv.toml"
+          cfg = tomllib.loads(toml.read_text())
+          cache = pathlib.Path(os.environ["CIBW_CACHE"])
+          for entry in cfg.values():
+              if not isinstance(entry, dict) or "url" not in entry:
+                  continue
+              path = entry["url"].split("github.com/", 1)[1].split("?")[0].replace("/blob/", "/raw/")
+              urls = ["https://github.com/" + path,
+                      "https://raw.githubusercontent.com/" + path.replace("/raw/", "/", 1)]
+              target = cache / f"virtualenv-{entry['version']}.pyz"
+              for attempt in range(6):
+                  if target.exists():
+                      break
+                  url = urls[attempt % 2]
+                  try:
+                      print("fetching", url)
+                      urllib.request.urlretrieve(url, target)
+                  except Exception as exc:
+                      print("  failed:", exc)
+                      time.sleep(10)
+              if not target.exists():
+                  raise SystemExit(f"could not fetch {target.name}")
+          PY
+
       - name: Build wheels on Linux
         if: runner.os == 'Linux'
         env:
