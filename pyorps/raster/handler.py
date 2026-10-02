@@ -557,7 +557,7 @@ class RasterHandler:
         for point1 in coords1_list:
             for point2 in coords2_list:
                 # Calculate Euclidean distance
-                distance = np.sqrt(np.sum((a - b) ** 2 for a, b in zip(point1, point2)))
+                distance = np.sqrt(sum((a - b) ** 2 for a, b in zip(point1, point2)))
 
                 if distance > max_distance:
                     max_distance = distance

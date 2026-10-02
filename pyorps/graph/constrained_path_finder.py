@@ -1012,7 +1012,7 @@ class ConstrainedPathFinder(PathFinder):
 
         def idx_to_coord(idx):
             r, c = int(idx) // ncols, int(idx) % ncols
-            x, y = transform * (c + 0.5, r + 0.5)
+            x, y = transform @ (c + 0.5, r + 0.5)
             return x, y
 
         path_coords = np.array([idx_to_coord(i) for i in path_indices])
