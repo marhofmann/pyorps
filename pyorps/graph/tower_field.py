@@ -358,7 +358,7 @@ class TowerLattice:
         if self.transform is None:
             raise ValueError("this lattice is not georeferenced")
         inv = ~self.transform
-        cols, rows = inv * (np.asarray(x, dtype=np.float64),
+        cols, rows = inv @ (np.asarray(x, dtype=np.float64),
                             np.asarray(y, dtype=np.float64))
         return (np.floor(rows).astype(np.int64),
                 np.floor(cols).astype(np.int64))

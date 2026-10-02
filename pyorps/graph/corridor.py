@@ -438,7 +438,7 @@ def _canonical(run: np.ndarray) -> tuple[int, ...]:
 def _cell_to_xy(cell: int, cols: int, transform) -> tuple[float, float]:
     """Cell centre in CRS units."""
     row, col = divmod(int(cell), cols)
-    x, y = transform * (col + 0.5, row + 0.5)
+    x, y = transform @ (col + 0.5, row + 0.5)
     return (float(x), float(y))
 
 

@@ -72,7 +72,7 @@ def sample_field(field: np.ndarray, transform, xs, ys, *,
     if rule not in ("floor", "round"):
         raise ValueError(f"rule must be 'floor' or 'round', got {rule!r}")
     inv = ~transform
-    cols, rows = inv * (np.asarray(xs, dtype=np.float64),
+    cols, rows = inv @ (np.asarray(xs, dtype=np.float64),
                         np.asarray(ys, dtype=np.float64))
     fn = np.floor if rule == "floor" else np.round
     rows = fn(rows).astype(np.int64)

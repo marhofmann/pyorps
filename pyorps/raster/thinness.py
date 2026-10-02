@@ -868,7 +868,7 @@ def _feature_window(
     if not all(map(math.isfinite, (minx, miny, maxx, maxy))):
         return None
     inverse = ~transform
-    corners = [inverse * (x, y) for x in (minx, maxx) for y in (miny, maxy)]
+    corners = [inverse @ (x, y) for x in (minx, maxx) for y in (miny, maxy)]
     cols = [c for c, _ in corners]
     rows = [r for _, r in corners]
     row0 = max(0, int(math.floor(min(rows))) - 1)
@@ -889,7 +889,7 @@ def _burn_alone(geometry, window: tuple[int, int, int, int],
         out_shape=(row1 - row0, col1 - col0),
         fill=0,
         dtype="uint8",
-        transform=transform * Affine.translation(col0, row0),
+        transform=transform @ Affine.translation(col0, row0),
         all_touched=all_touched,
     ).astype(bool)
 
