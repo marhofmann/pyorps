@@ -1,0 +1,58 @@
+name: overhead_line_220kv
+description: "220kV overhead transmission line with lattice steel towers"
+
+soft_angle_limit_deg: 5.0
+hard_angle_limit_deg: 35.0
+angle_cost_function: piecewise
+angle_cost_params:
+  breakpoints: [0, 3, 5, 10, 15, 20, 25, 30, 35]
+  costs: [0, 0, 400, 1500, 6000, 15000, 35000, 70000, 100000]
+
+min_span_m: 50
+max_span_m: 350
+span_bin_size_m: 10
+
+tower_cost_function: terrain_plus_angle
+tower_cost_params:
+  # EUR per SQUARE METRE of foundation (x tower_ground_area_m2 = 144
+  # below -> 54,720-280,800 EUR/tower). Same fix as overhead_line_110kv.yaml:
+  # these were previously ~144x too large (EUR/tower entered directly).
+  terrain_cost_map:
+    "0": 380
+    "100": 590
+    "200": 900
+    "300": 1250
+    "500": 1950
+  terrain_interpolation: linear
+  angle_types:
+    suspension:
+      max_angle_deg: 5.0
+      base_cost: 45000
+    light_angle:
+      max_angle_deg: 15.0
+      base_cost: 110000
+    heavy_angle:
+      max_angle_deg: 25.0
+      base_cost: 220000
+    strain:
+      max_angle_deg: 35.0
+      base_cost: 380000
+
+max_gradient_percent: 35.0
+gradient_cost_function: exponential
+gradient_cost_params:
+  scale: 2.0
+
+tower_height_m: 35.0              # lowest conductor attachment height [m], not physical tower top
+tower_heights_m: [35, 50, 65]     # attachment height options (implies ~45-80m physical tower)
+tower_height_cost_per_increment: 10000  # EUR per 3m step above base (35m)
+terminal_tower_height_m: 20.0
+terminal_tower_cost: 450000
+conductor_weight_per_m: 15.0
+conductor_tension_n: 30000.0
+min_clearance_m: 8.0
+
+tower_ground_area_m2: 144.0       # 12x12m lattice steel foundation
+tower_area_cost_mode: uniform     # "uniform" or "exact" (rotated pixel sum)
+
+recommended_buffer_m: 30.0

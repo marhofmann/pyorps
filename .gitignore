@@ -25,7 +25,9 @@ pyorps/utils/*.cpp
 .superpowers/
 .serena/
 .playwright-mcp/
-profiles/
+# Profiling output; the shipped YAML infrastructure profiles stay tracked (tests and the GUI read them).
+profiles/*
+!profiles/*.yaml
 uv.lock
 
 # --- Large generated data -------------------------------------------------
