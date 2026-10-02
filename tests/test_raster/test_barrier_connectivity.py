@@ -316,7 +316,8 @@ class TestDetection:
     def test_defect_warning_leads_with_routing_assessment(self):
         with pytest.warns(ThinForbiddenFeatureWarning) as caught:
             burn([BACKGROUND, (_vertical(30.0), 'barrier')], **PLAIN)
-        message = str(caught[0].message)
+        message = str(next(w.message for w in caught
+                           if issubclass(w.category, ThinForbiddenFeatureWarning)))
         assert "Severity: CRITICAL" in message, message
         assert "Practical takeaways:" in message, message
         assert "NOT RELIABLE" in message, message
@@ -325,7 +326,8 @@ class TestDetection:
         """Option E feeds A's message, so the warning is actionable."""
         with pytest.warns(ThinForbiddenFeatureWarning) as caught:
             burn([BACKGROUND, (_vertical(30.0), 'barrier')], **PLAIN)
-        message = str(caught[0].message)
+        message = str(next(w.message for w in caught
+                           if issubclass(w.category, ThinForbiddenFeatureWarning)))
         assert "0.8" in message, message
         assert "cell size of" in message, message
         # BOTH repairs are named, and each carries its measured sealing

@@ -248,7 +248,9 @@ class TestRepairSealsAreDetected:
 
     def test_ignore_mode_silences_it(self):
         with warnings.catch_warnings():
-            warnings.simplefilter("error")
+            # Only our own warnings matter here: rasterio 1.4 with affine 3 warns about the * operator.
+            warnings.simplefilter("error", ThinForbiddenFeatureWarning)
+            warnings.simplefilter("error", SealedOpeningWarning)
             burn(self.WALL, widen_thin_forbidden=True,
                  on_thin_features="ignore")
 
