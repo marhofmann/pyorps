@@ -8,6 +8,7 @@ exclude_paths:
   - "examples/**"
   - "tests/**"
   - "tutorial/**"
+  - "tools/**"          # release and CI helper scripts: they run git and pip on purpose
   - "profiles/**"
   - "pyorps/gui/assets/**"
   - "pyorps/utils/kernels/**"
