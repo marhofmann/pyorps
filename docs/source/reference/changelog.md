@@ -12,6 +12,10 @@ api: []
 (changelog-unreleased)=
 ## Unreleased
 
+Added:
+
+- Python 3.14 is supported (wheels for Windows, Linux and macOS, and a test job).
+
 Changed:
 
 - Python 3.11 is no longer supported: PYORPS requires Python 3.12 or newer. numpy 2.5, scipy 1.18 and rasterio 1.5 already require 3.12, so a Python 3.11 installation was stuck on older releases of its dependencies. Stay on PYORPS 0.4.0 if you need Python 3.11.

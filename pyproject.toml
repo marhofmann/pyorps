@@ -29,6 +29,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: GIS",
     "Topic :: Scientific/Engineering :: Physics",
 ]
@@ -70,11 +71,11 @@ dev = [
 ]
 examples = [
     "notebook>=7.4.0",
-    "fiona>=1.10.0",
+    "fiona>=1.10.0; python_version < '3.14'",
 ]
 case_studies = [
     "notebook>=7.4.0",
-    "fiona>=1.10.0",
+    "fiona>=1.10.0; python_version < '3.14'",
     "pandapower>=3.0.0",
     "contextily>=1.6.0",
 ]
@@ -139,7 +140,7 @@ full = [
     "cython>=3.0.0",
     # examples
     "notebook>=7.4.0",
-    "fiona>=1.10.0",
+    "fiona>=1.10.0; python_version < '3.14'",
     # case_studies
     "pandapower>=3.0.0",
     "contextily>=1.6.0",
