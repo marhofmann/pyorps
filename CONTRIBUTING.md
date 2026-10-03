@@ -353,23 +353,72 @@ Use the [enhancement template](https://github.com/marhofmann/pyorps/issues/new?t
 
 - Follow [Semantic Versioning](https://semver.org/)
 - Major: Breaking changes
-- Minor: New features, backward compatible
+- Minor: New features, backward compatible (a change of reported numbers, such as lengths in CRS units, counts as breaking)
 - Patch: Bug fixes, backward compatible
+- Release candidates: `X.Y.ZrcN` (PEP 440), for example `0.5.0rc1`
+
+### What runs automatically
+
+| Workflow | When | What it checks |
+|---|---|---|
+| **Code Quality Check** | pull requests and pushes to `main` and `develop` | flake8 and Pylint (blocking, threshold in the workflow) |
+| **Tests** | pull requests and pushes to `main` and `develop` | the whole test suite from a clean checkout, Linux (3.12, 3.13) and Windows (3.12) |
+| **Tests with the newest dependencies** | every Monday and on demand | the suite against the newest numpy, scipy, rasterio, affine, ... |
+| **Build and Publish to PyPI** | a tag `v*` (or a manual dry run) | release gate, wheels for Linux, Windows and macOS, wheel tests, publish |
+
+The release gate refuses a tag whose version differs from `pyproject.toml` or `pyorps/__init__.py`, and a tag on a
+commit that is not on `main`.
+
+### Releasing, step by step
+
+1. **Everything is merged to `main` first** (squash merge from `develop`), and *Tests* and *Code Quality Check* are green.
+2. **Bump the version** in `pyproject.toml` and `pyorps/__init__.py`, update the changelog and the status labels of the
+   documentation pages (`docs/source/getting_started/release_status.md`), and merge that too.
+3. **Check what git tracks, not what your machine has.** Run, from the repository root:
+
+   ```bash
+   python tools/release_check.py            # tests of the committed tree, exactly as the wheel-test job runs them
+   python tools/release_check.py --build    # additionally builds the wheel and tests it in a clean virtual environment
+   ```
+
+   Files that are ignored or untracked (a `.gitignore` entry for `profiles/` hid four required files for months) do
+   not exist in this check, so they cannot hide a failure.
+4. **Rehearse with a release candidate.** Push `v0.5.0rc1` on the commit from step 2. The pipeline builds, tests and
+   publishes to **TestPyPI only**. Install it in a clean environment and look at it.
+5. **Push the final tag last**: `git tag v0.5.0 && git push origin v0.5.0`. The commit must already be on `main`.
+6. **Verify** with `pip install --upgrade pyorps` in a clean environment and check `pyorps.__version__`.
+
+### If a release run fails
+
+- A failure of the infrastructure (a download answering 503, a runner without capacity): re-run the failed jobs from
+  the Actions page. **Do not delete or move the tag.**
+- A failure in the code, the tests or the packaging: fix it on `main`, then publish the next patch version or the next
+  release candidate (`0.5.0rc2`). PyPI never lets a version number be reused, and a moved tag makes the history
+  untrustworthy.
+- A tag that was pushed before the fix was merged is the most common mistake. The release gate catches the version
+  mismatch and the missing merge.
+
+### One-time setup (maintainers)
+
+- PyPI: a *trusted publisher* for this repository and the environment `pypi`.
+- TestPyPI (release candidates): a trusted publisher on <https://test.pypi.org> and a GitHub environment `testpypi`.
 
 ### Multi-Platform Wheels
 
-The project uses GitHub Actions to automatically build wheels for:
-- Windows (x64)
-- macOS (Intel + Apple Silicon)
-- Linux (x64 + ARM64)
-- Python 3.11, 3.12+
+The release builds wheels for Windows (x64), macOS (Apple Silicon) and Linux (x64) for the CPython versions listed in `pyproject.toml` (the build matrix in the workflow follows it).
+The wheel tests install each wheel with the `full` extra in a clean environment and run the tests from a temporary
+folder, so only files that git tracks are available to them.
 
-### Release Checklist
+### Writing tests that survive a clean machine
 
-1. Update version in `pyproject.toml`
-2. Update CHANGELOG.md
-3. Create and push tag: `git tag v0.x.x && git push origin v0.x.x`
-4. GitHub Actions automatically builds and publishes wheels
+- A test may only read files that are tracked in git. Shared helpers belong in `tests/`; the CI job copies only
+  `tests/` and `profiles/`.
+- Tests that need a GPU, the GUI packages or the source tree must skip themselves (`@gpu_only`, `pytest.importorskip`
+  inside the test module, `collect_ignore_glob` in a `conftest.py` - never a module-level `importorskip` in a
+  `conftest.py`, it cancels the whole session). `tests/test_ci_hygiene.py` checks the common mistakes.
+- Do not assume the first warning a call emits is yours: pick it by category (`ThinForbiddenFeatureWarning`, ...).
+- A deprecation warning raised from pyorps code fails the test run (see `filterwarnings` in `pyproject.toml`); fix the
+  call instead of silencing it.
 
 ## Recognition
 

@@ -239,3 +239,12 @@ max-locals = 30
 max-attributes = 16
 max-statements = 80
 max-branches = 25
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    # Our own use of a deprecated API must fail the build the day the dependency deprecates it. Only warnings that
+    # are attributed to pyorps code count: third-party code (rasterio 1.4 with affine 3, for example) warns on its own.
+    'error::DeprecationWarning:pyorps\..*',
+    'error::PendingDeprecationWarning:pyorps\..*',
+]

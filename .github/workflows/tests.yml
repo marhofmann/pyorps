@@ -1,0 +1,57 @@
+name: Tests
+
+# Runs the test suite on every pull request and push, from a clean checkout (tracked files only).
+# Why: the 0.4.0 release found its test failures only when the tag was pushed - ignored or untracked files,
+# repo-relative paths, optional packages and newer dependencies all behaved differently on a clean machine.
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  python: "3.12" }
+          - { os: ubuntu-latest,  python: "3.13" }
+          - { os: windows-latest, python: "3.12" }
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libomp-dev
+
+      - name: Install the package with the full extra
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[full]"
+          python -m pip list
+
+      - name: Show the versions the tests run against
+        run: python -c "import numpy, scipy, rasterio, affine, shapely, geopandas, pandas; print('numpy', numpy.__version__, '| scipy', scipy.__version__, '| rasterio', rasterio.__version__, '| affine', affine.__version__, '| shapely', shapely.__version__, '| geopandas', geopandas.__version__, '| pandas', pandas.__version__)"
+
+      - name: Run the tests
+        run: python -m pytest tests --tb=short -p no:cacheprovider --ignore=tests/test_io/test_vector_loader.py

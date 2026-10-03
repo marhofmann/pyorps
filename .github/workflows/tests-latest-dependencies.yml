@@ -1,0 +1,46 @@
+name: Tests with the newest dependencies
+
+# Weekly early warning: the release tests broke on new releases of numpy, affine and rasterio that nobody
+# had installed locally. This job installs the newest of everything and runs the suite, so a dependency
+# change shows up on a Monday, not on release day. A failure here is information, not a blocked pull request.
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+jobs:
+  newest:
+    name: Newest dependencies (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  python: "3.13" }
+          - { os: windows-latest, python: "3.13" }
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libomp-dev
+
+      - name: Install the package and upgrade everything to the newest release
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[full]"
+          python -m pip install --upgrade --upgrade-strategy eager numpy scipy rasterio affine shapely geopandas pandas pytest
+          python -m pip list
+
+      - name: Run the tests with every pyorps deprecation as an error
+        run: python -m pytest tests --tb=short -p no:cacheprovider --ignore=tests/test_io/test_vector_loader.py
