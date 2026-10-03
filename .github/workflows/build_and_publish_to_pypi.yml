@@ -219,7 +219,7 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Download wheels
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: cibw-wheels-*
           merge-multiple: true
@@ -419,7 +419,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: cibw-*
           merge-multiple: true
@@ -457,7 +457,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: cibw-*
           merge-multiple: true
