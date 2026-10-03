@@ -12,7 +12,7 @@ api: []
 (installation-quick-install-recommended)=
 ## Quick Install (recommended)
 
-Pre-built binary wheels are available on PyPI for **Windows**, **Linux**, and **macOS** with **Python 3.11, 3.12, and 3.13**. No C++ compiler required:
+Pre-built binary wheels are available on PyPI for **Windows**, **Linux**, and **macOS** with **Python 3.12 and 3.13**. No C++ compiler required:
 
 ```{code-block} bash
 pip install pyorps
@@ -29,10 +29,10 @@ A C++ compiler is **only** required if you install from source (e.g., `pip insta
 
 | Platform | Architecture | Python Versions |
 |----------|-------------|-----------------|
-| **Windows** | x86_64 (AMD64) | 3.11, 3.12, 3.13 |
-| **Linux (glibc)** | x86_64 | 3.11, 3.12, 3.13 |
-| **Linux (musl/Alpine)** | x86_64 | 3.11, 3.12, 3.13 |
-| **macOS** | x86_64, ARM64 (Apple Silicon) | 3.11, 3.12, 3.13 |
+| **Windows** | x86_64 (AMD64) | 3.12, 3.13 |
+| **Linux (glibc)** | x86_64 | 3.12, 3.13 |
+| **Linux (musl/Alpine)** | x86_64 | 3.12, 3.13 |
+| **macOS** | x86_64, ARM64 (Apple Silicon) | 3.12, 3.13 |
 
 If `pip install pyorps` succeeds, the Cython extensions are already compiled — no further action needed.
 
@@ -168,7 +168,7 @@ print("Cython extensions available")
 
 ### `pip install pyorps` fails with "no matching distribution"
 
-Your platform or Python version may not have a pre-built wheel. Check that you are using **Python 3.11, 3.12, or 3.13** on a supported platform (see [Pre-built Wheel Availability](#pre-built-wheel-availability)). If no wheel is available, pip will attempt to build from source, which requires a C++ compiler (see [C++ Compiler Requirements](#c-compiler-requirements)).
+Your platform or Python version may not have a pre-built wheel. Check that you are using **Python 3.12 or 3.13** on a supported platform (see [Pre-built Wheel Availability](#pre-built-wheel-availability)). If no wheel is available, pip will attempt to build from source, which requires a C++ compiler (see [C++ Compiler Requirements](#c-compiler-requirements)).
 
 ### Missing C++ compiler on Windows
 

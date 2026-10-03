@@ -9,6 +9,13 @@ api: []
 ---
 # 📝 Changelog
 
+(changelog-unreleased)=
+## Unreleased
+
+Changed:
+
+- Python 3.11 is no longer supported: PYORPS requires Python 3.12 or newer. numpy 2.5, scipy 1.18 and rasterio 1.5 already require 3.12, so a Python 3.11 installation was stuck on older releases of its dependencies. Stay on PYORPS 0.4.0 if you need Python 3.11.
+
 (changelog-0-4-0)=
 ## 0.4.0 (2026-10-01)
 
