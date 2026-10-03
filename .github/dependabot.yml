@@ -1,0 +1,9 @@
+version: 2
+updates:
+  # Keep the GitHub Actions themselves current (the release run warned that Node 20 actions are deprecated).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels: [ "ci" ]
