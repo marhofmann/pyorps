@@ -17,8 +17,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest,  python: "3.13" }
-          - { os: windows-latest, python: "3.13" }
+          - { os: ubuntu-latest,  python: "3.14" }
+          - { os: windows-latest, python: "3.14" }
 
     steps:
       - name: Checkout code

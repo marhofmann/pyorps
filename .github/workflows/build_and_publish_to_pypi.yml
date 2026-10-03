@@ -64,7 +64,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install cibuildwheel
-        run: python -m pip install cibuildwheel==2.23.3
+        run: python -m pip install cibuildwheel==3.4.1
 
       # cibuildwheel 2.23.3 downloads its virtualenv helper from a github.com/.../blob/...?raw=true address that
       # answers HTTP 503 (seen 2026-10-02) and fails the macOS and Windows builds. The raw/ address of the same file
@@ -80,6 +80,9 @@ jobs:
           import os, pathlib, time, tomllib, urllib.request
           import cibuildwheel
           toml = pathlib.Path(cibuildwheel.__file__).parent / "resources" / "virtualenv.toml"
+          if not toml.exists():
+              print("this cibuildwheel has no virtualenv.toml: nothing to pre-seed")
+              raise SystemExit(0)
           cfg = tomllib.loads(toml.read_text())
           cache = pathlib.Path(os.environ["CIBW_CACHE"])
           for entry in cfg.values():
@@ -106,7 +109,7 @@ jobs:
       - name: Build wheels on Linux
         if: runner.os == 'Linux'
         env:
-          CIBW_BUILD: "cp312-* cp313-*"
+          CIBW_BUILD: "cp312-* cp313-* cp314-*"
           CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_i686"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_ARCHS_LINUX: ${{ matrix.CIBW_ARCHS_LINUX }}
@@ -118,7 +121,7 @@ jobs:
       - name: Build wheels on Windows
         if: runner.os == 'Windows'
         env:
-          CIBW_BUILD: "cp312-* cp313-*"
+          CIBW_BUILD: "cp312-* cp313-* cp314-*"
           CIBW_SKIP: "*-win32"
           CIBW_ARCHS_WINDOWS: ${{ matrix.CIBW_ARCHS_WINDOWS }}
           CIBW_BEFORE_BUILD: "python -m pip install --upgrade pip setuptools>=77 wheel packaging>=24.2 numpy>=2.0.0 cython>=3.0.0"
@@ -128,7 +131,7 @@ jobs:
       - name: Build wheels on macOS
         if: runner.os == 'macOS'
         env:
-          CIBW_BUILD: "cp312-* cp313-*"
+          CIBW_BUILD: "cp312-* cp313-* cp314-*"
           CIBW_ARCHS_MACOS: ${{ matrix.CIBW_ARCHS_MACOS }}
           CIBW_BEFORE_BUILD: "brew install libomp && python -m pip install --upgrade pip setuptools>=77 wheel packaging>=24.2 numpy>=2.0.0 cython>=3.0.0"
           CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=14.0"
@@ -195,14 +198,20 @@ jobs:
             python: "3.12"
           - os: ubuntu-latest
             python: "3.13"
+          - os: ubuntu-latest
+            python: "3.14"
           - os: windows-latest
             python: "3.12"
           - os: windows-latest
             python: "3.13"
+          - os: windows-latest
+            python: "3.14"
           - os: macos-14
             python: "3.12"
           - os: macos-14
             python: "3.13"
+          - os: macos-14
+            python: "3.14"
 
     steps:
       - name: Checkout code (for tests only)
@@ -371,6 +380,25 @@ jobs:
 
       - name: Smoke test on Windows 3.13 (avoid LLVM teardown assertion)
         if: runner.os == 'Windows' && matrix.python == '3.13'
+        shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: 1
+        run: |
+          Set-Location $env:TEMP
+          python -c @"
+          import pyorps
+          import pyorps.utils._heap
+          import pyorps.utils._raster_context
+          import pyorps.utils._dijkstra
+          import pyorps.utils._delta_stepping
+          import pyorps.utils.path_algorithms as m
+          import pyorps.utils.path_core as c
+          print('SUCCESS: All modules imported correctly!')
+          "@
+
+      - name: Smoke test on Windows 3.14 (avoid LLVM teardown assertion)
+        if: runner.os == 'Windows' && matrix.python == '3.14'
         shell: pwsh
         env:
           PYTHONIOENCODING: utf-8
