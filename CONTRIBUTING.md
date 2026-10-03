@@ -39,7 +39,7 @@ We welcome contributions to PYORPS! Whether you've found a bug, have a suggestio
 
 ### Prerequisites
 
-- Python 3.11 or higher
+- Python 3.12 or higher
 - Git
 - C++ compiler (MSVC on Windows, GCC/Clang on Linux/macOS)
 - GitHub account
