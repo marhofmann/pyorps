@@ -151,7 +151,8 @@ class InfrastructureProfile:
 
         with open(path, encoding="utf-8") as f:
             if path.endswith((".yaml", ".yml")):
-                import yaml
+                from pyorps.core.optional_deps import import_yaml
+                yaml = import_yaml()
                 config = yaml.safe_load(f)
             else:
                 config = json.load(f)
@@ -166,9 +167,13 @@ class InfrastructureProfile:
     def save(self, path: str) -> None:
         """Save profile to YAML or JSON file."""
         data = self.to_dict()
+        as_yaml = path.endswith((".yaml", ".yml"))
+        if as_yaml:
+            # before the file is opened: a missing PyYAML must not leave an empty file behind
+            from pyorps.core.optional_deps import import_yaml
+            yaml = import_yaml()
         with open(path, "w", encoding="utf-8") as f:
-            if path.endswith((".yaml", ".yml")):
-                import yaml
+            if as_yaml:
                 yaml.dump(data, f, default_flow_style=False, sort_keys=False)
             else:
                 json.dump(data, f, indent=2)

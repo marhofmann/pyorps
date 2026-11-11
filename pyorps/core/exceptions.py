@@ -49,6 +49,8 @@ Hierarchy (a name in brackets is the builtin the class also derives from)::
     +-- PyorpsRuntimeError                 [RuntimeError]
     +-- InsufficientMemoryError            [MemoryError]
     +-- InputFileNotFoundError             [FileNotFoundError]
+    +-- ConsistencyCheckError              [AssertionError]
+    +-- NumericalPrecisionError            [ArithmeticError]
 
     PyorpsWarning                          [UserWarning]
     +-- ThinForbiddenFeatureWarning        (pyorps.raster.thinness)
@@ -76,6 +78,7 @@ __all__ = [
     "InvalidInputError", "InvalidTypeError", "MissingKeyError",
     "MissingDependencyError", "FeatureNotImplementedError",
     "PyorpsRuntimeError", "InsufficientMemoryError", "InputFileNotFoundError",
+    "ConsistencyCheckError", "NumericalPrecisionError",
     # Warnings
     "PyorpsWarning", "CrsReprojectionWarning",
 ]
@@ -321,4 +324,20 @@ class InputFileNotFoundError(PyorpsError, FileNotFoundError):
     """
     A file the caller named (raster, profile, saved field) does not exist. Also a
     ``FileNotFoundError``.
+    """
+
+
+class ConsistencyCheckError(PyorpsError, AssertionError):
+    """
+    A result failed a consistency check that must hold if the inputs are what
+    they claim to be (for example a lower bound above an upper bound). Also an
+    ``AssertionError``.
+    """
+
+
+class NumericalPrecisionError(PyorpsError, ArithmeticError):
+    """
+    A computation cannot be carried out exactly enough in the number format used
+    (for example an FFT convolution too large for exact float64). Also an
+    ``ArithmeticError``.
     """

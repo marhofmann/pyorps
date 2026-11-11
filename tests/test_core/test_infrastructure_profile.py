@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 import numpy as np
+import pytest
 
 from pyorps.core.constrained_path import ConstrainedPath
 from pyorps.core.infrastructure_profile import InfrastructureProfile
@@ -256,6 +257,7 @@ class TestConstrainedPathFinder(unittest.TestCase):
 
     def test_end_to_end_with_380kv_profile(self):
         """Full workflow: load profile YAML, find route, export towers."""
+        pytest.importorskip("yaml")
         from pyorps.graph.constrained_path_finder import ConstrainedPathFinder
 
         profile_path = os.path.join(
@@ -330,6 +332,7 @@ class TestConstrainedPathFinder(unittest.TestCase):
 
     def test_end_to_end_with_rural_road_profile(self):
         """Rural road profile: direction-only, no towers."""
+        pytest.importorskip("yaml")
         from pyorps.graph.constrained_path_finder import ConstrainedPathFinder
 
         profile_path = os.path.join(

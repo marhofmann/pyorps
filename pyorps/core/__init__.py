@@ -10,6 +10,7 @@ from .ensemble import EnsembleError, RouteEnsemble
 from .exceptions import (
                                AlgorithmNotImplementedError,
                                ColumnAnalysisError,
+                               ConsistencyCheckError,
                                # Cost assumption exceptions
                                CostAssumptionsError,
                                CrsReprojectionWarning,
@@ -29,6 +30,7 @@ from .exceptions import (
                                MissingKeyError,
                                NoPathFoundError,
                                NoSuitableColumnsError,
+                               NumericalPrecisionError,
                                # Objective exceptions
                                ObjectiveError,
                                PairwiseError,
@@ -102,6 +104,7 @@ __all__ = [
     "InvalidInputError", "InvalidTypeError", "MissingKeyError",
     "MissingDependencyError", "FeatureNotImplementedError",
     "PyorpsRuntimeError", "InsufficientMemoryError", "InputFileNotFoundError",
+    "ConsistencyCheckError", "NumericalPrecisionError",
 
     # Warning root
     "PyorpsWarning", "CrsReprojectionWarning",

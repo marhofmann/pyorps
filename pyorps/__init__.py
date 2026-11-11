@@ -23,6 +23,7 @@ from .core.ensemble import EnsembleError, RouteEnsemble  # pylint: disable=wrong
 from .core.exceptions import (  # pylint: disable=wrong-import-position
     AlgorithmNotImplementedError,
     ColumnAnalysisError,
+    ConsistencyCheckError,
     CostAssumptionsError,
     CrsReprojectionWarning,
     FeatureColumnError,
@@ -39,6 +40,7 @@ from .core.exceptions import (  # pylint: disable=wrong-import-position
     MissingKeyError,
     NoPathFoundError,
     NoSuitableColumnsError,
+    NumericalPrecisionError,
     ObjectiveError,
     PairwiseError,
     PyorpsError,
@@ -186,6 +188,7 @@ __all__ = [
     "InvalidInputError", "InvalidTypeError", "MissingKeyError",
     "MissingDependencyError", "FeatureNotImplementedError",
     "PyorpsRuntimeError", "InsufficientMemoryError", "InputFileNotFoundError",
+    "ConsistencyCheckError", "NumericalPrecisionError",
     # Warning root
     "PyorpsWarning", "CrsReprojectionWarning",
 ]

@@ -30,8 +30,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from pyorps.certify.windows import drain
 from pyorps.core.exceptions import InvalidInputError, PyorpsRuntimeError
+from pyorps.graph.drain import drain
 
 __all__ = ["MixedLegResult", "mixed_leg_fixpoint"]
 

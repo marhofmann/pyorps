@@ -8,7 +8,7 @@
 * ``__all__`` of the four packages lists only names that exist, lists each name
   once, and lists every exception class.
 
-The out-of-scope research packages are skipped on purpose (see ``_OUT_OF_SCOPE``).
+The front-end packages (gui, webviz) are skipped on purpose (see ``_OUT_OF_SCOPE``).
 """
 import importlib
 import inspect
@@ -27,6 +27,7 @@ import pyorps
 from pyorps.core import exceptions as pex
 from pyorps.core.exceptions import (
     AlgorithmNotImplementedError,
+    ConsistencyCheckError,
     FeatureNotImplementedError,
     FormatError,
     InputFileNotFoundError,
@@ -36,6 +37,7 @@ from pyorps.core.exceptions import (
     MissingDependencyError,
     MissingKeyError,
     NoPathFoundError,
+    NumericalPrecisionError,
     PairwiseError,
     PyorpsError,
     PyorpsRuntimeError,
@@ -49,10 +51,10 @@ from pyorps.io.provenance import ProvenanceMismatch
 from pyorps.utils.neighborhood import get_neighborhood_steps
 
 #: Packages whose exception classes are covered here.
-_IN_SCOPE = ("core", "graph", "raster", "io", "utils")
-#: Research and front-end packages: they keep their own exception classes.
-_OUT_OF_SCOPE = ("pyorps.gui", "pyorps.webviz", "pyorps.certify", "pyorps.siting",
-                 "pyorps.collector", "pyorps.costmodel")
+_IN_SCOPE = ("core", "graph", "raster", "io", "utils",
+             "certify", "collector", "costmodel", "siting")
+#: Front-end packages: they keep their own exception classes.
+_OUT_OF_SCOPE = ("pyorps.gui", "pyorps.webviz")
 
 #: The new classes, with the builtin each one also derives from.
 DUAL_BASE = [
@@ -64,6 +66,8 @@ DUAL_BASE = [
     (PyorpsRuntimeError, RuntimeError),
     (InsufficientMemoryError, MemoryError),
     (InputFileNotFoundError, FileNotFoundError),
+    (ConsistencyCheckError, AssertionError),
+    (NumericalPrecisionError, ArithmeticError),
 ]
 
 CRS = "EPSG:32632"
@@ -371,6 +375,9 @@ def test_a_missing_dict_key_is_a_pyorps_key_error():
 # ---------------------------------------------------------------------------
 
 PACKAGES = ["pyorps", "pyorps.core", "pyorps.io", "pyorps.utils"]
+#: The research packages keep their classes in their own namespaces; the root
+#: package does not import them (they are optional and heavy).
+_RESEARCH = ("pyorps.certify.", "pyorps.collector.", "pyorps.costmodel.", "pyorps.siting.")
 
 
 @pytest.mark.parametrize("package_name", PACKAGES)
@@ -398,19 +405,31 @@ class TestAllLists:
         package = importlib.import_module(package_name)
         prefix = package_name + "."
         own = {cls.__name__ for qualified, cls in ALL_CLASSES.items()
-               if qualified.startswith(prefix) and not cls.__name__.startswith("_")}
+               if qualified.startswith(prefix) and not cls.__name__.startswith("_")
+               and not (package_name == "pyorps" and qualified.startswith(_RESEARCH))}
         assert own <= set(package.__all__), sorted(own - set(package.__all__))
 
 
 def test_the_root_package_lists_every_exception_and_warning_class():
-    missing = sorted({cls.__name__ for cls in ALL_CLASSES.values()
-                      if not cls.__name__.startswith("_")} - set(pyorps.__all__))
+    missing = sorted({cls.__name__ for qualified, cls in ALL_CLASSES.items()
+                      if not cls.__name__.startswith("_")
+                      and not qualified.startswith(_RESEARCH)} - set(pyorps.__all__))
     assert not missing
 
 
 def test_core_lists_every_class_of_the_exceptions_module():
     names = {cls.__name__ for cls in _classes_of_module(pex)} | {"PyorpsWarning"}
     assert names <= set(pyorps.core.__all__)
+
+
+@pytest.mark.parametrize("package_name", ["pyorps.certify", "pyorps.collector",
+                                          "pyorps.costmodel", "pyorps.siting"])
+def test_research_packages_list_their_exception_classes(package_name):
+    package = importlib.import_module(package_name)
+    prefix = package_name + "."
+    own = {cls.__name__ for qualified, cls in ALL_CLASSES.items()
+           if qualified.startswith(prefix) and not cls.__name__.startswith("_")}
+    assert own <= set(package.__all__), sorted(own - set(package.__all__))
 
 
 def test_io_lists_the_wfs_errors_and_the_raster_loader_functions():
