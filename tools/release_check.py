@@ -27,18 +27,18 @@ ROOT = Path(__file__).resolve().parent.parent
 HIDE = ("dash", "dash_leaflet", "dash_ag_grid", "dash_bootstrap_components", "dash_extensions", "localtileserver",
         "webview", "geobuf", "flask_compress", "waitress", "cupy", "cupyx", "cugraph", "cudf", "playwright")
 
-BLOCKER = '''import sys, importlib.abc, importlib.util
-BLOCK = %r
+BLOCKER = f'''import sys, importlib.abc, importlib.util
+BLOCK = {set(HIDE)!r}
 class _B(importlib.abc.MetaPathFinder):
     def find_spec(self, name, path=None, target=None):
         if name.split(".")[0] in BLOCK:
-            raise ModuleNotFoundError(f"No module named {name!r}", name=name)
+            raise ModuleNotFoundError(f"No module named {{name!r}}", name=name)
 sys.meta_path.insert(0, _B())
 _orig = importlib.util.find_spec
 def _fs(name, package=None):
     return None if name.split(".")[0] in BLOCK else _orig(name, package)
 importlib.util.find_spec = _fs
-''' % (set(HIDE),)
+'''
 
 
 def git(*args: str, binary: bool = False):
@@ -60,9 +60,12 @@ def run(cmd: list[str], cwd: Path, env: dict | None = None) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--tree", choices=("head", "index"), default="head", help="what to test (default: HEAD)")
-    parser.add_argument("--build", action="store_true", help="build the wheel and test it in a clean virtual environment")
+    parser.add_argument("--build", action="store_true",
+                        help="build the wheel and test it in a clean virtual environment")
     parser.add_argument("--extra", default="dev", help="extra installed with the wheel in --build mode (default dev)")
-    parser.add_argument("--clean", action="store_true", help="delete the temporary folder after a pass (kept by default: mass deletes can trip endpoint protection)")
+    parser.add_argument("--clean", action="store_true",
+                        help="delete the temporary folder after a pass "
+                             "(kept by default: mass deletes can trip endpoint protection)")
     parser.add_argument("pytest_args", nargs="*", help="extra arguments for pytest (after --)")
     args = parser.parse_args()
 
@@ -102,7 +105,8 @@ def main() -> int:
         if run([python, "-m", "pip", "install", f"{wheel}[{args.extra}]", "pytest"], cwd=tmp):
             print("FAIL: the wheel does not install")
             return 1
-        smoke = "import pyorps, pyorps.utils._dijkstra as d; print('pyorps', pyorps.__version__, 'from', pyorps.__file__)"
+        smoke = ("import pyorps, pyorps.utils._dijkstra as d; "
+                 "print('pyorps', pyorps.__version__, 'from', pyorps.__file__)")
         if run([python, "-c", smoke], cwd=work):
             print("FAIL: the installed wheel does not import")
             return 1
@@ -113,7 +117,7 @@ def main() -> int:
     env = dict(os.environ, PYTHONPATH=str(blocker) + os.pathsep + os.environ.get("PYTHONPATH", ""),
                NUMBA_NUM_THREADS=os.environ.get("NUMBA_NUM_THREADS", "4"))
     cmd = [python, "-m", "pytest", ".", "-q", "--tb=short", "-p", "no:cacheprovider", "--import-mode=importlib",
-           "--ignore=test_io/test_vector_loader.py", *args.pytest_args]
+           *args.pytest_args]
     code = run(cmd, cwd=work / "tests_run", env=env)
     print("\nRELEASE CHECK", "PASSED" if code == 0 else f"FAILED (pytest exit code {code})")
     if args.clean and code == 0:
