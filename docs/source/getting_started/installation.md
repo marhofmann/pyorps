@@ -32,7 +32,7 @@ A C++ compiler is **only** required if you install from source (e.g., `pip insta
 | **Windows** | x86_64 (AMD64) | 3.12, 3.13, 3.14, 3.15 |
 | **Linux (glibc)** | x86_64 | 3.12, 3.13, 3.14, 3.15 |
 | **Linux (musl/Alpine)** | x86_64 | 3.12, 3.13, 3.14, 3.15 |
-| **macOS** | ARM64 (Apple Silicon, macOS 14+); Intel Macs build from source | 3.12, 3.13, 3.14, 3.15 |
+| **macOS** | ARM64 (Apple Silicon, macOS 15+); Intel Macs build from source | 3.12, 3.13, 3.14, 3.15 |
 
 If `pip install pyorps` succeeds, the Cython extensions are already compiled — no further action needed.
 

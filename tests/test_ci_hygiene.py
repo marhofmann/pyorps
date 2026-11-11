@@ -106,7 +106,7 @@ def test_tests_workflow_covers_every_supported_python_and_system():
     text = _workflow_text("tests.yml")
     for version in _SUPPORTED_PYTHONS:
         assert f'python: "{version}"' in text, f"Python {version} is missing from the test matrix"
-    for system in ("ubuntu-latest", "windows-latest", "macos-14"):
+    for system in ("ubuntu-latest", "windows-latest", "macos-15"):
         assert re.search(rf"os: {system}\b", text), f"{system} is missing from the test matrix"
 
 

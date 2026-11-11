@@ -58,8 +58,9 @@ jobs:
           - { os: windows-latest, python: "3.12" }
           - { os: windows-latest, python: "3.15" }
           # networkit is not installed on macOS (its wheels need macOS 26); the tests that need it skip themselves.
-          - { os: macos-14, python: "3.12" }
-          - { os: macos-14, python: "3.15" }
+          # macos-15 is the oldest macOS runner on offer: GitHub retired the macOS 14 images on 2026-11-02.
+          - { os: macos-15, python: "3.12" }
+          - { os: macos-15, python: "3.15" }
 
     steps:
       - name: Checkout code
@@ -80,14 +81,15 @@ jobs:
           sudo apt-get install -y build-essential libomp-dev
 
       # setup.py finds OpenMP through "brew --prefix libomp". The release workflow builds with the same target.
-      # PIP_PREFER_BINARY: the newest rasterio wheel for macOS 14 is one release behind its source distribution,
-      # and pip would otherwise pick the source distribution and try to compile GDAL bindings.
+      # The deployment target equals the runner: the Homebrew libomp is built for the runner's macOS.
+      # PIP_PREFER_BINARY: when the newest release of a dependency has no wheel for this macOS (rasterio on
+      # macOS 14 was one release behind), pip would otherwise pick the source distribution and try to compile it.
       - name: Install OpenMP and prefer wheels (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: |
           brew install libomp
-          echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> "$GITHUB_ENV"
+          echo "MACOSX_DEPLOYMENT_TARGET=15.0" >> "$GITHUB_ENV"
           echo "PIP_PREFER_BINARY=1" >> "$GITHUB_ENV"
 
       - name: Install the package with the full and gui extras

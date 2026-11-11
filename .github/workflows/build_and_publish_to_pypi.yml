@@ -56,7 +56,7 @@ jobs:
             archs: "AMD64"
             skip: "*-win32"
             before_build: "python -m pip install --upgrade pip setuptools>=77 wheel packaging>=24.2 numpy>=2.0.0 cython>=3.0.0"
-          - os: macos-14
+          - os: macos-15
             archs: "arm64"
             before_build: "brew install libomp && python -m pip install --upgrade pip setuptools>=77 wheel packaging>=24.2 numpy>=2.0.0 cython>=3.0.0"
 
@@ -84,7 +84,8 @@ jobs:
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_BEFORE_BUILD: ${{ matrix.before_build }}
           CIBW_TEST_SKIP: ${{ matrix.test_skip }}
-          CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=14.0"
+          # equals the runner (macos-15): the bundled Homebrew libomp is built for the runner's macOS
+          CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=15.0"
           CIBW_BUILD_VERBOSITY: 2
         run: python -m cibuildwheel --output-dir wheelhouse
 
@@ -143,7 +144,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-14]
+        os: [ubuntu-latest, windows-latest, macos-15]
         python: ["3.12", "3.13", "3.14", "3.15"]
 
     steps:
@@ -246,9 +247,9 @@ jobs:
 
           # Install without [full] — networkit requires OpenMP which is
           # difficult to set up on macOS. Install graph extras individually.
-          # rasterio 1.5.2 ships macOS wheels for macOS 15 only; without --prefer-binary pip would take its source
-          # distribution on the macos-14 runner and compile it. With it pip falls back to rasterio 1.5.1, which has
-          # macOS 14 wheels for 3.12 to 3.15 (the old pin rasterio<1.5 has none for 3.15).
+          # --prefer-binary: when the newest release of a dependency has no wheel for this runner, pip takes the
+          # newest release that has one instead of compiling the source distribution (rasterio 1.5.2 had wheels
+          # for macOS 15 only while this job still ran on macOS 14).
           python -m pip install "${WHEEL}[dev]" --prefer-binary --force-reinstall
           python -m pip install rustworkx python-igraph networkx || true
 

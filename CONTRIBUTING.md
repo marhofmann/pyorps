@@ -363,7 +363,7 @@ Use the [enhancement template](https://github.com/marhofmann/pyorps/issues/new?t
 | Workflow | When | What it checks |
 |---|---|---|
 | **Tests**, job `lint` | pull requests and pushes to `main` and `develop` | `ruff check .` (blocking; rules in `[tool.ruff]`) |
-| **Tests**, job `tests` | pull requests and pushes to `main` and `develop`, every Monday, on demand | the whole test suite from a clean checkout, with the `full` and `gui` extras: Linux (3.12 to 3.15), Windows (3.12, 3.15) and macOS 14 (3.12, 3.15). The browser tests skip themselves (no Playwright in CI) |
+| **Tests**, job `tests` | pull requests and pushes to `main` and `develop`, every Monday, on demand | the whole test suite from a clean checkout, with the `full` and `gui` extras: Linux (3.12 to 3.15), Windows (3.12, 3.15) and macOS 15 (3.12, 3.15). The browser tests skip themselves (no Playwright in CI) |
 | **Tests**, job `newest` | every Monday and on demand only | the suite on Python 3.15 against the newest numpy, scipy, rasterio, affine, ... A failure is information, not a blocked pull request |
 | **Build and Publish to PyPI** | a tag `v*` (or a manual dry run) | release gate, wheels for Linux, Windows and macOS (Python 3.12 to 3.15), wheel tests, publish |
 
