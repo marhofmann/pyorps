@@ -1,16 +1,21 @@
 """Constrained path finder with infrastructure-aware routing."""
 
 import math
+import os
 import time
 import warnings
 
 import numpy as np
-from shapely.geometry import Point, LineString
+from shapely.geometry import LineString, Point
 
-from pyorps.core.constrained_path import Tower, ConstrainedPath
+from pyorps.core.constrained_path import ConstrainedPath, Tower
+from pyorps.core.exceptions import FeatureNotImplementedError, InvalidInputError, InvalidTypeError
 from pyorps.core.infrastructure_profile import InfrastructureProfile
 from pyorps.core.types import IMPASSABLE_CELL_COST
+from pyorps.graph.api.graph_library_api import reject_unknown_options
 from pyorps.graph.path_finder import PathFinder
+from pyorps.utils.constrained_sssp_gpu import CONSTRAINED_GPU_CHECKED_SETTINGS, check_constrained_gpu_settings
+from pyorps.utils.traversal_gpu import describe_gpu_error, gpu_out_of_memory_error, is_gpu_out_of_memory
 
 
 class ConstrainedPathFinder(PathFinder):
@@ -32,6 +37,18 @@ class ConstrainedPathFinder(PathFinder):
     SUPPORTED_BACKENDS = ("cython", "cython_parallel", "raster_gpu",
                           "raster_gpu_v4")
 
+    #: The graph_api values that run a constrained GPU solver (keys of
+    #: ``pyorps.utils.constrained_sssp_gpu.CONSTRAINED_GPU_SOLVERS``).
+    GPU_BACKENDS = ("raster_gpu", "raster_gpu_v4")
+
+    #: Keyword arguments find_route() reads besides its named parameters.
+    _FIND_ROUTE_KEYWORDS = ("source", "target")
+    #: Keyword arguments find_route() accepts although nothing reads them.
+    #: Empty on purpose: no caller in the package (the GUI service
+    #: ``pyorps.gui.services.constrained`` included) passes one. Add a name
+    #: here, with the caller that needs it, rather than widening the check.
+    _FIND_ROUTE_IGNORED_KEYWORDS = ()
+
     def __init__(self, dataset_source, source_coords, target_coords,
                  profile, graph_api="cython", neighborhood_str="r2",
                  dsm=None, **kwargs):
@@ -42,29 +59,45 @@ class ConstrainedPathFinder(PathFinder):
             dataset_source: Raster or vector data source (same as PathFinder).
             source_coords: Source coordinates (same as PathFinder).
             target_coords: Target coordinates (same as PathFinder).
-            profile: InfrastructureProfile, dict, or path to YAML/JSON.
-            graph_api: "cython" or "raster_gpu".
+            profile: InfrastructureProfile, dict, or path (str or
+                os.PathLike, e.g. pathlib.Path) to a YAML/JSON profile.
+            graph_api: One of ``SUPPORTED_BACKENDS``. The GPU backends do
+                not implement every constraint: "raster_gpu_v4" has no DEM
+                gradient, clearance or exact tower footprint, and
+                "raster_gpu" enforces max_span_m only on its span-bin grid.
+                find_route() raises AlgorithmNotImplementedError when the
+                profile and data ask for something the backend would
+                ignore (see ``pyorps.utils.constrained_sssp_gpu``).
             neighborhood_str: Neighborhood string (e.g. "r1", "r2").
             dsm: Digital Surface Model (includes trees/buildings). When both
                  dem and dsm are provided, obstacle_heights = dsm - dem is
                  computed automatically for clearance checking.
             **kwargs: All other PathFinder parameters (search_space_buffer_m,
-                      cost_assumptions, dem, etc.).
+                      cost_assumptions, dem, etc.). They are checked by
+                      PathFinder: an unknown name raises TypeError.
+
+        Raises:
+            TypeError: profile is none of the accepted types.
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if graph_api not in self.SUPPORTED_BACKENDS:
-            raise ValueError(
+            raise InvalidInputError(
                 f"ConstrainedPathFinder requires graph_api in "
                 f"{self.SUPPORTED_BACKENDS}, got '{graph_api}'"
             )
 
         # Load profile before super().__init__ so it's available if needed
-        if isinstance(profile, str):
-            self._profile = InfrastructureProfile.load(profile)
+        if isinstance(profile, (str, os.PathLike)):
+            self._profile = InfrastructureProfile.load(os.fsdecode(profile))
         elif isinstance(profile, dict):
             self._profile = InfrastructureProfile.from_dict(profile)
-        else:
+        elif isinstance(profile, InfrastructureProfile):
             self._profile = profile
+        else:
+            raise InvalidTypeError(
+                "profile must be an InfrastructureProfile, a dict or a path "
+                "(str or os.PathLike) to a YAML/JSON profile file, got "
+                f"{type(profile).__name__}")
 
         # Store the requested backend for constrained routing
         self._constrained_backend = graph_api
@@ -92,19 +125,19 @@ class ConstrainedPathFinder(PathFinder):
         self._tower_cost_raster = None
         if self.objective is not None:
             if self.objective.has_gradient_terms:
-                raise NotImplementedError(
+                raise FeatureNotImplementedError(
                     "Constrained routing keeps the PROFILE's gradient "
                     "model (gradient_cost_params / max_gradient_percent); "
                     "objective gradient terms are not wired into the "
                     "constrained kernels yet.")
             if self._constrained_backend != "cython":
-                raise NotImplementedError(
+                raise FeatureNotImplementedError(
                     "Feasibility objectives on constrained routing are "
                     "supported on the 'cython' backend (per-cell tower "
                     "costs); parallel/GPU constrained variants are "
                     "pending.")
             if self._profile.has_clearance_constraints:
-                raise NotImplementedError(
+                raise FeatureNotImplementedError(
                     "Feasibility objectives with clearance constraints "
                     "are not wired yet (the clearance kernels lack the "
                     "per-cell tower-cost raster).")
@@ -223,8 +256,7 @@ class ConstrainedPathFinder(PathFinder):
         if (self._dsm_source is not None and
                 hasattr(self, 'dem_raster_handler') and
                 self.dem_raster_handler is not None):
-            from pyorps.io.geo_dataset import (
-                initialize_geo_dataset, RasterDataset)
+            from pyorps.io.geo_dataset import RasterDataset, initialize_geo_dataset
             from pyorps.raster.handler import RasterHandler
             dsm_dataset = initialize_geo_dataset(
                 self._dsm_source, crs=self.dataset.crs)
@@ -331,11 +363,30 @@ class ConstrainedPathFinder(PathFinder):
         Parameters:
             source: Override source coordinates (default: use init coords).
             target: Override target coordinates (default: use init coords).
+            **kwargs: None are accepted. The parameter only exists so that
+                a PathFinder.find_route option (algorithm=, simplify=, ...)
+                or a misspelt name is rejected with the valid names instead
+                of being dropped: constrained routing has no per-call
+                options, the solver is chosen with graph_api= at
+                construction.
 
         Returns:
             ConstrainedPath with towers, cost breakdown, and geometry.
+
+        Raises:
+            TypeError: An unknown keyword argument was passed.
+            PyorpsError: source or target is NaN/infinite or lies outside
+                the search window (it would otherwise reach a kernel as an
+                out-of-raster index).
+            AlgorithmNotImplementedError: A GPU backend was chosen and the
+                profile/data set a constraint it does not enforce.
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        reject_unknown_options(
+            kwargs, self._FIND_ROUTE_KEYWORDS, "ConstrainedPathFinder.find_route()",
+            ignored=self._FIND_ROUTE_IGNORED_KEYWORDS,
+            hint="Constrained routing has no per-call options; the solver is chosen with graph_api= at construction.")
+
         t_start = time.time()
 
         # Resolve coordinates (allow overrides like parent)
@@ -343,14 +394,16 @@ class ConstrainedPathFinder(PathFinder):
         tgt = target if target is not None else self.target_coords
 
         if src is None or tgt is None:
-            raise ValueError("Source and target coordinates must not be None!")
+            raise InvalidInputError("Source and target coordinates must not be None!")
 
         src = PathFinder.normalize_coordinates(src)
         tgt = PathFinder.normalize_coordinates(tgt)
 
-        # Convert CRS coordinates to local raster row/col
-        src_indices = self.raster_handler.coords_to_indices([src])
-        tgt_indices = self.raster_handler.coords_to_indices([tgt])
+        # Convert CRS coordinates to local raster row/col. check_bounds: a
+        # point outside the search window raises here, with the window
+        # bounds, instead of reaching a kernel as an out-of-raster index.
+        src_indices = self.raster_handler.coords_to_indices([src], check_bounds=True)
+        tgt_indices = self.raster_handler.coords_to_indices([tgt], check_bounds=True)
         source_row, source_col = int(src_indices[0][0]), int(src_indices[0][1])
         target_row, target_col = int(tgt_indices[0][0]), int(tgt_indices[0][1])
 
@@ -579,10 +632,10 @@ class ConstrainedPathFinder(PathFinder):
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from pyorps.utils.constrained_path_algorithms import (
-            constrained_dijkstra_2d,
             constrained_delta_stepping_2d,
             constrained_delta_stepping_height_2d,
             constrained_delta_stepping_lazy,
+            constrained_dijkstra_2d,
         )
 
         # Helper: build clearance kwargs and dispatch to dense or lazy.
@@ -706,6 +759,14 @@ class ConstrainedPathFinder(PathFinder):
         # Extract DEM data if available (aligned via parent's dem_raster_handler)
         dem_data, dem_kwargs = self._prepare_dem_data(raster)
 
+        # The one place that decides whether a GPU solver may run: refuse
+        # before any GPU code is imported when the profile/data set a
+        # constraint the chosen solver would ignore.
+        if backend in self.GPU_BACKENDS:
+            self._check_gpu_backend_settings(
+                backend, n_span_bins, span_bin_size, max_span,
+                dem_data, dem_kwargs)
+
         if backend == "raster_gpu":
             try:
                 from pyorps.utils.constrained_sssp_gpu_v2 import (
@@ -717,9 +778,8 @@ class ConstrainedPathFinder(PathFinder):
                     n_span_bins, span_bin_size, min_span, max_span,
                     dem_data, dem_kwargs, extra_kwargs={'sparse': 'auto'},
                 )
-            except (ImportError, RuntimeError) as e:
-                warnings.warn(
-                    f"GPU v2 unavailable ({e}), falling back to Cython")
+            except (ImportError, RuntimeError) as err:
+                self._fall_back_to_cython("GPU v2", err, raster)
                 backend = "cython"
 
         if backend == "raster_gpu_v4":
@@ -734,9 +794,8 @@ class ConstrainedPathFinder(PathFinder):
                     dem_data, dem_kwargs,
                     extra_kwargs={'max_visited_fraction': 0.4},
                 )
-            except (ImportError, RuntimeError) as e:
-                warnings.warn(
-                    f"GPU v4 unavailable ({e}), falling back to Cython")
+            except (ImportError, RuntimeError) as err:
+                self._fall_back_to_cython("GPU v4", err, raster)
                 backend = "cython"
 
         return self._run_cython_backend(
@@ -744,6 +803,47 @@ class ConstrainedPathFinder(PathFinder):
             n_span_bins, span_bin_size, min_span, max_span,
             dem_data, dem_kwargs, backend,
         )
+
+    def _check_gpu_backend_settings(self, backend, n_span_bins, span_bin_size,
+                                    max_span, dem_data, dem_kwargs):
+        """Raise when the GPU solver of ``backend`` would ignore a constraint.
+
+        Looks at exactly the keyword arguments :meth:`_run_gpu_backend`
+        hands to the solver (same helpers), so the check cannot drift from
+        the call.
+
+        Raises:
+            AlgorithmNotImplementedError: Names the settings, the solver
+                and the backends that enforce them.
+        """
+        settings = {"n_span_bins": n_span_bins, "span_bin_size": span_bin_size,
+                    "max_span": max_span}
+        self._add_dem_to_kwargs(settings, dem_data, dem_kwargs)
+        self._add_area_to_kwargs(settings)
+        check_constrained_gpu_settings(
+            backend,
+            **{name: settings[name]
+               for name in CONSTRAINED_GPU_CHECKED_SETTINGS if name in settings})
+
+    @staticmethod
+    def _fall_back_to_cython(label, err, raster):
+        """Warn that a constrained GPU solver could not run and Cython takes over.
+
+        Called for an ``ImportError`` (no CuPy) or a ``RuntimeError`` (the
+        solver's "CUDA GPU not available", or a CUDA runtime/driver error of
+        CuPy). Every other exception of the solver propagates to the caller.
+
+        Raises:
+            MemoryError: ``err`` is an out-of-memory condition. It is never
+                reported as "unavailable" and there is no silent fallback.
+        """
+        if is_gpu_out_of_memory(err):
+            raise gpu_out_of_memory_error(
+                err, f"running the constrained {label} solver",
+                shape=raster.shape, nbytes=raster.nbytes) from err
+        warnings.warn(
+            f"{label} unavailable ({describe_gpu_error(err)}), falling back to Cython",
+            UserWarning, stacklevel=4)
 
     def _enforce_terminal_tower_spans(self, path_indices, tower_cell_indices,
                                        tower_set, min_span_m, idx_to_coord):

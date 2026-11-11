@@ -40,26 +40,40 @@ Usage:
 
 from __future__ import annotations
 
-from typing import Union, List, Optional, Sequence, Tuple
+import warnings
+from collections.abc import Sequence
 
 import numpy as np
 from numpy import ndarray
 
 from pyorps.core.exceptions import (
-    NoPathFoundError, AlgorithmNotImplementedError, PairwiseError
+    AlgorithmNotImplementedError,
+    InvalidInputError,
+    MissingDependencyError,
+    NoPathFoundError,
+    PairwiseError,
 )
 from pyorps.core.types import NodeList, NodePathList
 from pyorps.graph.api.graph_api import GraphAPI
+from pyorps.utils.traversal_gpu import (
+    GPU_IMPORT_ERROR,
+    describe_gpu_error,
+    gpu_out_of_memory_error,
+    is_gpu_out_of_memory,
+)
 
-# Availability check — only depends on CuPy (no cuGraph/cuDF)
+# Availability check — only depends on CuPy (no cuGraph/cuDF). The import error is kept so that the
+# "requires CuPy" message of RasterGPUAPI can name it.
 try:
     from pyorps.utils.sssp_gpu import GpuSsspSession, sssp_raster_gpu
     from pyorps.utils.traversal_gpu import GPU_AVAILABLE as _gpu_flag
     RASTER_GPU_AVAILABLE = _gpu_flag
-except ImportError:  # pragma: no cover - exercised only without CuPy
+    _RASTER_GPU_IMPORT_ERROR = GPU_IMPORT_ERROR
+except ImportError as _import_error:  # pragma: no cover - exercised only without CuPy
     GpuSsspSession = None
     sssp_raster_gpu = None
     RASTER_GPU_AVAILABLE = False
+    _RASTER_GPU_IMPORT_ERROR = _import_error
 
 #: ``dist`` values at or above this are the kernel's "unreachable"
 #: sentinel. The device already rewrites them to ``inf`` on download; the
@@ -73,7 +87,7 @@ def _walk_predecessors(
         source: int,
         target: int,
         n_nodes: int,
-) -> Optional[List[int]]:
+) -> list[int] | None:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Host predecessor walk: ``source -> target`` node list, or None.
 
@@ -94,7 +108,7 @@ def _walk_predecessors(
     if np.isinf(dist[target]) or dist[target] >= _UNREACHABLE:
         return None
 
-    path: List[int] = []
+    path: list[int] = []
     current = target
     max_steps = n_nodes
     visited = set()
@@ -161,8 +175,8 @@ class RasterGPUAPI(GraphAPI):
             raster_data: ndarray,
             steps: ndarray,
             ignore_max: bool = True,
-            dem_data: Optional[ndarray] = None,
-            delta: Union[float, str] = "auto",
+            dem_data: ndarray | None = None,
+            delta: float | str = "auto",
             margin: float = 1.00001,
             gradient_luts=None,
             arena_factor: float = 1.0,
@@ -170,10 +184,13 @@ class RasterGPUAPI(GraphAPI):
     ):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not RASTER_GPU_AVAILABLE:
-            raise ImportError(
+            reason = ("" if _RASTER_GPU_IMPORT_ERROR is None
+                      else f" (cause: {describe_gpu_error(_RASTER_GPU_IMPORT_ERROR)})")
+            raise MissingDependencyError(
                 "Raster GPU backend requires CuPy with CUDA support. "
-                "Install with: pip install cupy-cuda12x"
-            )
+                f"Install with: pip install cupy-cuda12x{reason}",
+                extra="gpu",
+            ) from _RASTER_GPU_IMPORT_ERROR
 
         super().__init__(raster_data, steps, ignore_max, dem_data)
 
@@ -182,7 +199,7 @@ class RasterGPUAPI(GraphAPI):
         # legacy behavior (it merely disables the symmetric-search trick).
         self.gradient_luts = gradient_luts
         if gradient_luts is not None and dem_data is None:
-            raise ValueError(
+            raise InvalidInputError(
                 "gradient_luts require dem_data aligned to the raster")
 
         self._delta = delta
@@ -203,12 +220,14 @@ class RasterGPUAPI(GraphAPI):
         #: — the field value at the target, bit-identical to what a full
         #: ``dist`` download would have carried. Informational: nothing in
         #: the package consumes it yet.
-        self.last_path_costs: List[float] = []
+        self.last_path_costs: list[float] = []
 
         # Device state (item 1.2), built on first query and owned by this
         # object. Lazy so that constructing an API never touches the GPU.
         self._session = None
         self._session_unavailable = False
+        #: The error that made the device session unavailable (None while it is usable or untried).
+        self._session_error = None
 
         # No graph construction — these are reported as zero
         self.edge_construction_time = 0.0
@@ -232,10 +251,22 @@ class RasterGPUAPI(GraphAPI):
     def _get_session(self):
         """The device-resident session, or None if V5 is unavailable.
 
-        Built once, on the first query. A ``RuntimeError`` means this
-        machine cannot compile the V5 cooperative kernel; the stateless
-        ``sssp_raster_gpu`` entry point then serves the query from V4/V3
-        exactly as it did before Phase 1b.
+        Built once, on the first query. An ``ImportError`` or a
+        ``RuntimeError`` (the session's own "V5 could not be compiled", or
+        a CUDA runtime/driver error of CuPy) means this machine cannot run
+        the V5 cooperative kernel; the
+        stateless ``sssp_raster_gpu`` entry point then serves the query
+        from V4/V3 exactly as it did before Phase 1b. That switch is
+        announced once per API object in a UserWarning that names the
+        error, and the error is kept in ``_session_error``.
+
+        Raises:
+            MemoryError: The device ran out of memory while the session was
+                allocated. Never reported as "unavailable": the stateless
+                kernel needs the same memory and would hide the cause.
+            Exception: Anything else (a ``TypeError``, ``ValueError``,
+                ``ZeroDivisionError``, ... from the session) is a bug or a
+                bad argument and propagates unchanged.
         """
         if self._session is not None:
             return self._session
@@ -251,10 +282,26 @@ class RasterGPUAPI(GraphAPI):
                 gradient_luts=self.gradient_luts,
                 arena_factor=self._arena_factor,
             )
-        except RuntimeError:
+        except MemoryError as err:
+            raise self._session_out_of_memory(err) from err
+        except (ImportError, RuntimeError) as err:
+            if is_gpu_out_of_memory(err):
+                raise self._session_out_of_memory(err) from err
             self._session_unavailable = True
+            self._session_error = err
+            warnings.warn(
+                f"raster_gpu: no device session ({describe_gpu_error(err)}); "
+                "this API object solves with the stateless GPU kernel "
+                "(V4/V3) instead", UserWarning, stacklevel=2)
             return None
         return self._session
+
+    def _session_out_of_memory(self, err: BaseException) -> MemoryError:
+        """The MemoryError for a device session that did not fit on the GPU."""
+        raster = np.asarray(self.raster_data)
+        return gpu_out_of_memory_error(
+            err, "allocating the raster_gpu device session",
+            shape=raster.shape, nbytes=raster.nbytes)
 
     @property
     def device_bytes(self) -> int:
@@ -287,7 +334,7 @@ class RasterGPUAPI(GraphAPI):
         if session is not None:
             session.close()
 
-    def __enter__(self) -> "RasterGPUAPI":
+    def __enter__(self) -> RasterGPUAPI:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:
@@ -299,7 +346,8 @@ class RasterGPUAPI(GraphAPI):
         # rebuild, so refcounting is the primary release path.
         try:
             self.close()
-        except Exception:  # pragma: no cover - interpreter teardown  # nosec B110  # pylint: disable=broad-exception-caught
+        except Exception:  # pragma: no cover  # nosec B110  # pylint: disable=broad-exception-caught
+            # interpreter teardown
             pass
 
     # ------------------------------------------------------------------
@@ -309,8 +357,8 @@ class RasterGPUAPI(GraphAPI):
     def _run_sssp(
             self,
             source: int,
-            target_indices: Optional[np.ndarray] = None,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+            target_indices: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Run SSSP and return the FULL (dist, pred) arrays.
 
         The cost-surface route: it downloads O(window). Path queries go
@@ -347,7 +395,7 @@ class RasterGPUAPI(GraphAPI):
             self,
             source: int,
             target_indices,
-    ) -> Tuple[List[Optional[List[int]]], np.ndarray]:
+    ) -> tuple[list[list[int] | None], np.ndarray]:
         """One solve; the paths to ``target_indices`` and their costs.
 
         Items 1.3 + 1.4: with a session this runs the on-device
@@ -382,7 +430,7 @@ class RasterGPUAPI(GraphAPI):
 
         # V4/V3 fallback: full field + host walk (pre-Phase-1b behaviour).
         dist, pred = self._run_sssp(source, targets)
-        paths: List[Optional[List[int]]] = []
+        paths: list[list[int] | None] = []
         costs = np.full(targets.size, np.inf, dtype=np.float32)
         for i, target in enumerate(targets):
             target = int(target)
@@ -395,7 +443,7 @@ class RasterGPUAPI(GraphAPI):
 
     def _paths_for_pairs(
             self,
-            pairs: Sequence[Tuple[int, int]],
+            pairs: Sequence[tuple[int, int]],
     ) -> NodePathList:
         """Solve a list of (source, target) pairs, one solve per source.
 
@@ -409,8 +457,8 @@ class RasterGPUAPI(GraphAPI):
         for index, (source, target) in enumerate(pairs):
             groups.setdefault(int(source), []).append((index, int(target)))
 
-        results: List[Optional[NodeList]] = [None] * len(pairs)
-        costs: List[float] = [float("inf")] * len(pairs)
+        results: list[NodeList | None] = [None] * len(pairs)
+        costs: list[float] = [float("inf")] * len(pairs)
         for source, entries in groups.items():
             targets = np.array([t for _, t in entries], dtype=np.int32)
             paths, group_costs = self._solve_paths(source, targets)
@@ -495,11 +543,11 @@ class RasterGPUAPI(GraphAPI):
 
     def shortest_path(
             self,
-            source_indices: Union[int, List[int], ndarray],
-            target_indices: Union[int, List[int], ndarray],
+            source_indices: int | list[int] | ndarray,
+            target_indices: int | list[int] | ndarray,
             algorithm: str = "delta-stepping",
             **kwargs,
-    ) -> Union[NodeList, NodePathList]:
+    ) -> NodeList | NodePathList:
         """
         Find shortest path(s) using raster-direct GPU delta-stepping.
 

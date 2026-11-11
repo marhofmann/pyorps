@@ -4,7 +4,6 @@ The contour test is the v2/v3 discriminator: on a uniformly TILTED PLANE
 every cell has identical |∇DEM|, so no per-cell layer can prefer
 contour-following — only the in-kernel edge slope can.
 """
-import math
 import unittest
 
 import numpy as np

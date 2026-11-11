@@ -19,8 +19,7 @@ except ImportError:
 
 pytestmark = pytest.mark.skipif(not GPU, reason="CUDA GPU not available")
 
-from pyorps.core.exceptions import (           # noqa: E402
-    AlgorithmNotImplementedError, NoPathFoundError)
+from pyorps.core.exceptions import AlgorithmNotImplementedError, NoPathFoundError  # noqa: E402
 
 if GPU:
     from pyorps.graph.api.raster_fim_api import RasterFIMAPI
@@ -220,8 +219,9 @@ class TestShortestPath:
 
 class TestPathFinderIntegration:
     def _make_finder(self, raster, src, tgt, **kw):
-        from pyorps.graph.path_finder import PathFinder
         from rasterio.transform import from_origin
+
+        from pyorps.graph.path_finder import PathFinder
         rows = raster.shape[0]
         return PathFinder(
             dataset_source=raster,
@@ -281,6 +281,7 @@ class TestMetricStackPipeline:
     def _finder(self, objective, **kw):
         import geopandas as gpd
         from shapely.geometry import Polygon
+
         from pyorps.graph.path_finder import PathFinder
         polys = {
             "neutral": [Polygon([(0, 0), (3, 0), (3, 12), (0, 12)]),
@@ -369,7 +370,7 @@ class TestTierAAcceptance:
     def test_identity_callable_multiplier_is_accepted(self):
         """Tier A is defined by the metric produced, not by how the user
         spelled it: a callable that happens to BE the identity passes."""
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         from pyorps.graph.api.raster_fim_api import tier_a_report
         obj = Objective({"cost": 1.0}, GradientOptions(
             multiplier=lambda s: np.ones_like(s)))
@@ -377,7 +378,7 @@ class TestTierAAcceptance:
         assert ok, reason
 
     def test_non_identity_callable_multiplier_is_refused(self):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         from pyorps.graph.api.raster_fim_api import tier_a_report
         obj = Objective({"cost": 1.0}, GradientOptions(
             multiplier=lambda s: 1.0 + 0.02 * s))
@@ -387,7 +388,7 @@ class TestTierAAcceptance:
         assert "76.8" in reason        # our own measured figure
 
     def test_named_multiplier_model_is_refused(self):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         from pyorps.graph.api.raster_fim_api import tier_a_report
         obj = Objective({"cost": 1.0},
                         GradientOptions(multiplier="power"))
@@ -395,7 +396,7 @@ class TestTierAAcceptance:
         assert not ok and "NON-CONVEX" in reason
 
     def test_additive_exposure_term_is_refused(self):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         from pyorps.graph.api.raster_fim_api import tier_a_report
         obj = Objective({"cost": 1.0, "gradient": 2.0},
                         GradientOptions(additive="linear"))
@@ -404,7 +405,7 @@ class TestTierAAcceptance:
         assert "additive" in reason and "sqrt(d^T M d)" in reason
 
     def test_grade_limit_alone_stays_tier_a(self):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         from pyorps.graph.api.raster_fim_api import tier_a_report
         obj = Objective({"cost": 1.0},
                         GradientOptions(max_gradient_pct=15.0))
@@ -424,7 +425,7 @@ class TestTierARefusals:
         return make_api(raster, **base)
 
     def test_multiplier_refusal_message(self):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         obj = Objective({"cost": 1.0},
                         GradientOptions(multiplier="power"))
         with pytest.raises(AlgorithmNotImplementedError) as e:
@@ -433,7 +434,7 @@ class TestTierARefusals:
         assert "benchmark_slope_indicatrix" in str(e.value)
 
     def test_additive_refusal_message(self):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         obj = Objective({"cost": 1.0, "gradient": 3.0},
                         GradientOptions(additive="linear"))
         with pytest.raises(AlgorithmNotImplementedError) as e:
@@ -447,7 +448,7 @@ class TestTierARefusals:
         assert "simplex analogue" in str(e.value)
 
     def test_s_max_above_acuteness_threshold_refusal_message(self):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         obj = Objective({"cost": 1.0},
                         GradientOptions(s_max_pct=400.0))
         with pytest.raises(AlgorithmNotImplementedError) as e:
@@ -524,7 +525,7 @@ class TestGradeLimitLoop:
         return hill.astype(np.float32)
 
     def _api(self, limit, mode="lazy", n=81, **kw):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         raster = np.ones((n, n), dtype=np.uint16)
         obj = Objective({"cost": 1.0},
                         GradientOptions(max_gradient_pct=limit))
@@ -580,7 +581,7 @@ class TestGradeLimitLoop:
         # a steep collar right around the target: no approach is legal
         dem = (60.0 * np.clip(12.0 - np.hypot(rr - 30, cc - 45), 0.0, 12.0)
                ).astype(np.float32)
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         obj = Objective({"cost": 1.0},
                         GradientOptions(max_gradient_pct=10.0))
         api = make_api(np.ones((n, n), dtype=np.uint16), dem_data=dem,
@@ -644,7 +645,7 @@ class TestGradeCheckMatchesTheDiscreteKernel:
         return raster, dem
 
     def _both_verdicts(self, height):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         from pyorps.graph.api.cython_api import CythonAPI
         raster, dem = self._corridor(height)
         luts = Objective(
@@ -676,7 +677,7 @@ class TestGradeCheckMatchesTheDiscreteKernel:
         'simplifies' grade_violations back to a percent-slope compare,
         this is the case that silently starts accepting illegal routes.
         """
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         luts = Objective(
             {"cost": 1.0},
             GradientOptions(max_gradient_pct=self.LIMIT)
@@ -706,6 +707,7 @@ class TestGradeCheckMatchesTheDiscreteKernel:
         """The tripwire: if objective.py ever forms bin_factor
         differently, refuse rather than verify with other arithmetic."""
         import copy
+
         from pyorps.core.objective import Objective
         luts = copy.copy(_luts(Objective({"cost": 1.0})))
         luts.bin_factor = np.asarray(luts.bin_factor,
@@ -734,7 +736,7 @@ class TestGradeLimitRidgeAndPass:
         return (amplitude * profile).astype(np.float32)
 
     def _api(self, limit, **kw):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         obj = Objective({"cost": 1.0},
                         GradientOptions(max_gradient_pct=limit))
         return make_api(np.ones((self.N, self.N), dtype=np.uint16),
@@ -804,7 +806,7 @@ class TestGradeLimitLoopIterates:
         return dem
 
     def _apis(self, limit=10.0, **kw):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         n = self.N
         raster = np.ones((n, n), dtype=np.uint16)
         dem = self._bump_dem(n)
@@ -856,7 +858,7 @@ class TestGradeLimitInfeasibility:
     N = 61
 
     def _api(self, dem, limit=10.0, **kw):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         obj = Objective({"cost": 1.0},
                         GradientOptions(max_gradient_pct=limit))
         return make_api(np.ones((self.N, self.N), dtype=np.uint16),
@@ -943,7 +945,7 @@ class TestGradeLimitAndExclusions:
     N = 61
 
     def _fixture(self, curb_row=46):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         n = self.N
         raster = np.ones((n, n), dtype=np.uint16)
         raster[0:46, 30] = 65535           # wall, gap at rows 46..60
@@ -975,7 +977,7 @@ class TestGradeLimitAndExclusions:
         assert api._forbidden() is None
 
     def test_eager_mask_composes_with_the_wall(self):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         n = self.N
         raster = np.ones((n, n), dtype=np.uint16)
         raster[0:46, 30] = 65535
@@ -998,7 +1000,7 @@ class TestChordRuleProjection:
     central-difference |q| — which is what makes eager mode sound."""
 
     def test_a_one_sided_cliff_is_steep_even_though_q_reads_flat(self):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         n = 21
         dem = np.zeros((n, n), dtype=np.float32)
         dem[:, 10:] = 3.0                  # a 30 % step, flat either side
@@ -1017,7 +1019,7 @@ class TestChordRuleProjection:
     def test_eager_mode_route_has_no_illegal_step(self):
         """If no cell on an 8-adjacent route is steep, no step of that
         route is forbidden. Checked on the cliff the |q| test misses."""
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         n = 41
         dem = np.zeros((n, n), dtype=np.float32)
         dem[15:25, 20] = 3.0
@@ -1033,8 +1035,9 @@ class TestChordRuleProjection:
 
 class TestTierAPathFinderIntegration:
     def test_end_to_end_with_dem(self):
-        from pyorps.graph.path_finder import PathFinder
         from rasterio.transform import from_origin
+
+        from pyorps.graph.path_finder import PathFinder
         rng = np.random.default_rng(9)
         n = 100
         raster = rng.integers(1, 50, (n, n)).astype(np.uint16)
@@ -1171,7 +1174,7 @@ class TestCertificateUsesTheCallersSteps:
         return get_neighborhood_steps("r2", directed=True)
 
     def _case(self, steps):
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         n = self.N
         dem = np.zeros((n, n), dtype=np.float32)
         dem[:, self.WALL_COL:] = self.RISE
@@ -1237,8 +1240,7 @@ class TestMaskCaveatIsMeasuredNotSoothing:
     must carry that number instead of the word "slightly"."""
 
     def test_the_caveat_states_the_measured_rate(self):
-        from pyorps.graph.api.raster_fim_api import (
-            _MASK_CAVEAT, MASK_FALSE_NEGATIVE_RATE)
+        from pyorps.graph.api.raster_fim_api import _MASK_CAVEAT, MASK_FALSE_NEGATIVE_RATE
         assert 0.40 < MASK_FALSE_NEGATIVE_RATE < 0.55
         assert "48.3 %" in _MASK_CAVEAT
         assert "320 of 662" in _MASK_CAVEAT
@@ -1257,7 +1259,7 @@ class TestMaskCaveatIsMeasuredNotSoothing:
         """The honesty regression: on a case the Cython kernel solves,
         the loop failure must say a legal route exists and point at the
         discrete backend — never "INFEASIBLE as posed"."""
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         from pyorps.graph.api.cython_api import CythonAPI
         n = 40
         rng = np.random.default_rng(0)          # a measured FN case
@@ -1288,7 +1290,7 @@ class TestMaskCaveatIsMeasuredNotSoothing:
         """The connectivity filter: no candidate may disconnect source
         from target in the legal-chord graph, so a lost-reachability
         report can no longer be self-inflicted."""
-        from pyorps.core.objective import Objective, GradientOptions
+        from pyorps.core.objective import GradientOptions, Objective
         n = 24
         dem = np.zeros((n, n), dtype=np.float32)
         dem[:, 12:] = 2.0

@@ -10,7 +10,9 @@ import concurrent.futures
 import functools
 import ipaddress
 import logging
+import re
 import tempfile
+import warnings
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
@@ -22,14 +24,18 @@ import geopandas as gpd
 import pandas as pd
 import requests
 from defusedxml import ElementTree as et
+from pyogrio.errors import DataSourceError
 from shapely.geometry import box
 from shapely.ops import unary_union
 
 from ..core.exceptions import (
+    InvalidInputError,
     WFSConnectionError,
     WFSError,
     WFSLayerNotFoundError,
+    WFSRequestRejectedError,
     WFSResponseParsingError,
+    WFSServerError,
 )
 from ..core.types import BboxType, GeometryMaskType
 
@@ -85,30 +91,30 @@ def _validate_wfs_url(url: str, block_private: bool = True) -> None:
     parsed = urlparse(url)
 
     if parsed.scheme not in _ALLOWED_WFS_SCHEMES:
-        raise ValueError(
+        raise InvalidInputError(
             f"Invalid WFS URL scheme '{parsed.scheme}'. "
             f"Only {sorted(_ALLOWED_WFS_SCHEMES)} are allowed."
         )
 
     if not parsed.hostname:
-        raise ValueError("WFS URL must include a hostname.")
+        raise InvalidInputError("WFS URL must include a hostname.")
 
     if block_private:
-        # Check if hostname is a literal IP address in a private range
+        # Only a literal IP address can be in a private range; a hostname
+        # (ip_address() raises ValueError for it) is fine here. The guard's own
+        # ValueError is raised OUTSIDE the try block, so it is never mistaken
+        # for the parse failure -- no matching on message text.
         try:
             ip = ipaddress.ip_address(parsed.hostname)
-            for network in _PRIVATE_NETWORKS:
-                if ip in network:
-                    raise ValueError(
-                        f"WFS URL points to a private/reserved IP address "
-                        f"({parsed.hostname}). This is not allowed for "
-                        f"security reasons."
-                    )
-        except ValueError as e:
-            # Re-raise our own ValueErrors (private/reserved IP)
-            if "private" in str(e).lower() or "reserved" in str(e).lower():
-                raise
-            # If it's not a valid IP literal, it's a hostname -- that's fine
+        except ValueError:
+            return
+        for network in _PRIVATE_NETWORKS:
+            if ip in network:
+                raise InvalidInputError(
+                    f"WFS URL points to a private/reserved IP address "
+                    f"({parsed.hostname}). This is not allowed for "
+                    f"security reasons."
+                )
 
 
 def _sanitize_filter_params(filter_params: dict | None) -> dict | None:
@@ -136,7 +142,7 @@ def _sanitize_filter_params(filter_params: dict | None) -> dict | None:
         upper_key = key.upper()
 
         if upper_key in _RESERVED_WFS_KEYS:
-            raise ValueError(
+            raise InvalidInputError(
                 f"filter_params must not contain the reserved WFS key "
                 f"'{key}'. Reserved keys ({sorted(_RESERVED_WFS_KEYS)}) "
                 f"are managed internally and cannot be overridden."
@@ -171,6 +177,73 @@ MAX_CHUNK_DEPTH = 8
 # for degree-based CRS it is ~1e-6 sq degrees (~0.01 m^2 at equator).
 MIN_CHUNK_AREA = 1e-6
 
+# Stop the chunked download when this many chunk requests fail in a row
+# without a single success. "Split a failed chunk" otherwise queues up to
+# 4^MAX_CHUNK_DEPTH requests against a server that is simply down.
+MAX_CONSECUTIVE_CHUNK_FAILURES = 16
+
+# OGC exception codes that say the request itself is wrong: splitting the
+# chunk cannot fix them. Any other code (InternalServerError,
+# NoApplicableCode, ...) is treated as a server failure worth retrying.
+_REJECTED_EXCEPTION_CODES = frozenset({
+    "invalidparametervalue", "missingparametervalue",
+    "operationnotsupported", "optionnotsupported",
+    "versionnegotiationfailed", "invalidrequest",
+})
+
+_ROOT_ELEMENT_RE = re.compile(r"<(?![?!])(?:[\w.-]+:)?([\w.-]+)")
+_EXCEPTION_CODE_RE = re.compile(r'(?:exceptionCode|code)="([^"]*)"')
+_EXCEPTION_TEXT_RE = re.compile(
+    r"<(?:[\w.-]+:)?(?:ExceptionText|ServiceException)\b[^>]*>(.*?)</",
+    re.DOTALL)
+
+
+def _wfs_exception_report(response) -> tuple[str, str] | None:
+    """
+    Return ``(code, message)`` if a response is an OGC exception report.
+
+    Some WFS servers (e.g. Hessen's XtraServer for WFS 1.1.0) report errors
+    as ``HTTP 200`` with an ``ExceptionReport`` body, so the status code and
+    the XML content type cannot be trusted. Only the first 4 kB is inspected:
+    real responses can be hundreds of MB.
+    """
+    head = getattr(response, "content", None)
+    if not isinstance(head, (bytes, bytearray)):
+        return None
+    text = bytes(head[:4096]).decode("utf-8", errors="replace")
+    root = _ROOT_ELEMENT_RE.search(text)
+    if root is None or not root.group(1).endswith("ExceptionReport"):
+        return None
+    code = _EXCEPTION_CODE_RE.search(text)
+    message = _EXCEPTION_TEXT_RE.search(text)
+    return (code.group(1) if code else "unknown",
+            " ".join(message.group(1).split()) if message else "")
+
+
+def _exception_for_reports(reports: list[tuple[str, str]]) -> WFSError | None:
+    """Return the WFS error that fits the exception reports collected (or None)."""
+    if not reports:
+        return None
+    summary = "; ".join(f"{code}: {msg}" for code, msg in reports)
+    if all(code.lower() in _REJECTED_EXCEPTION_CODES for code, _ in reports):
+        return WFSRequestRejectedError(f"WFS server rejected the request ({summary})")
+    return WFSServerError(f"WFS server failed to process the request ({summary})")
+
+
+def _raise_for_exception_reports(reports: list[tuple[str, str]]) -> None:
+    """Raise the WFS error that fits the exception reports collected."""
+    error = _exception_for_reports(reports)
+    if error is not None:
+        raise error
+
+
+def _response_excerpt(response, limit: int = 200) -> str:
+    """First ``limit`` characters of a response body, for error messages."""
+    content = getattr(response, "content", None)
+    if not isinstance(content, (bytes, bytearray)):
+        return ""
+    return " ".join(bytes(content[:limit]).decode("utf-8", errors="replace").split())
+
 
 def load_from_wfs(
         url: str,
@@ -180,7 +253,8 @@ def load_from_wfs(
         filter_params: dict | None = None,
         auto_match: bool = True,
         max_workers: int = 4,
-        crs: str | None = None
+        crs: str | None = None,
+        allow_partial: bool = False
 ) -> gpd.GeoDataFrame | None:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """
@@ -198,12 +272,21 @@ def load_from_wfs(
         max_workers: Maximum number of parallel threads to use
         crs: Spatial reference system for WFS requests (e.g. "EPSG:4326").
             Defaults to "EPSG:25832" if not provided.
+        allow_partial: What to do when the chunked download cannot be completed
+            (chunk requests keep failing, or the server's feature limit still
+            truncates a chunk at the finest subdivision). ``False`` (default)
+            raises a WFS error that names the failed request and says how many
+            features were received. ``True`` returns what was received and
+            emits a ``UserWarning`` with the same counts.
 
     Returns:
         Loaded GeoDataFrame or None if no data could be loaded
 
     Raises:
         WFSLayerNotFoundError: If the layer cannot be found and auto_match is False
+        WFSConnectionError, WFSServerError, WFSResponseParsingError, WFSError:
+            If the chunked download is incomplete and ``allow_partial`` is False
+            (the class of the underlying failure; its cause is chained)
         ValueError: If the URL scheme is invalid or filter_params contain
             reserved WFS keys
     """
@@ -227,9 +310,19 @@ def load_from_wfs(
 
     # If no bounding box is provided, try to load the entire dataset directly
     if bbox is None:
-        # Try to load the entire dataset first
-        gdf, limit_reached = _try_direct_load(url, layer, filter_params,
-                                              mask, srs=srs)
+        # Try to load the entire dataset first. A failed direct request is not
+        # fatal -- many servers refuse an unbounded request that they would
+        # answer chunk by chunk -- but the reason is kept and reported if the
+        # chunked path cannot proceed either.
+        direct_error: WFSError | None = None
+        try:
+            gdf, limit_reached = _try_direct_load(url, layer, filter_params,
+                                                  mask, srs=srs)
+        except WFSError as err:
+            direct_error = err
+            gdf, limit_reached = None, False
+            logger.warning("Direct WFS request for layer '%s' failed (%s); "
+                           "falling back to chunked loading.", layer, err)
 
         # If we successfully loaded the entire dataset without hitting limits
         if gdf is not None and not limit_reached:
@@ -244,11 +337,16 @@ def load_from_wfs(
 
         # If we still can't get a bbox, we can't proceed
         if bbox is None:
-            raise WFSError("Could not determine data extent for chunked loading.")
+            reason = (f" The direct request failed first: {direct_error}"
+                      if direct_error is not None else "")
+            raise WFSError("Could not determine data extent for chunked "
+                           f"loading.{reason}") from direct_error
 
-    # Load data using parallel chunked approach
+    # Load data using parallel chunked approach. ``allow_partial`` is only
+    # forwarded when set, so the call made by the default path is unchanged.
+    extra = {"allow_partial": True} if allow_partial else {}
     return _load_data_in_parallel(url, layer, bbox, filter_params, max_workers,
-                                 mask, srs=srs)
+                                 mask, srs=srs, **extra)
 
 
 def _get_bbox_from_mask(mask) -> tuple[float, float, float, float]:
@@ -266,12 +364,14 @@ def _get_bbox_from_mask(mask) -> tuple[float, float, float, float]:
         ValueError: If the mask is not a supported type
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+    # For GeoDataFrame or GeoSeries. This must come first: they also have a
+    # ``bounds`` attribute, but it is a per-geometry DataFrame, not one box.
+    if hasattr(mask, 'total_bounds'):
+        minx, miny, maxx, maxy = mask.total_bounds
+        return float(minx), float(miny), float(maxx), float(maxy)
     # For a Shapely geometry
     if hasattr(mask, 'bounds'):
         return mask.bounds
-    # For GeoDataFrame or GeoSeries
-    if hasattr(mask, 'total_bounds'):
-        return mask.total_bounds
     # For list of geometries
     if isinstance(mask, list) and all(hasattr(item, 'bounds') for item in mask):
         bounds_list = [geom.bounds for geom in mask]
@@ -280,7 +380,7 @@ def _get_bbox_from_mask(mask) -> tuple[float, float, float, float]:
         max_x = max(b[2] for b in bounds_list)
         max_y = max(b[3] for b in bounds_list)
         return min_x, min_y, max_x, max_y
-    raise ValueError("Mask must be a Shapely geometry, GeoDataFrame, or GeoSeries")
+    raise InvalidInputError("Mask must be a Shapely geometry, GeoDataFrame, or GeoSeries")
 
 
 def _chunk_intersects_mask(chunk: tuple[float, float, float, float], mask) -> bool:
@@ -359,13 +459,23 @@ def _try_direct_load(
 
     Returns:
         tuple of (GeoDataFrame or None, boolean indicating if a server limit was
-        likely reached)
+        likely reached). ``None`` means the server answered but sent no features.
+
+    Raises:
+        WFSError: If no WFS version produced a usable answer: the last failure
+            (WFSConnectionError, WFSServerError, WFSResponseParsingError, ...)
+            with its cause chained. ``load_from_wfs`` treats this as "the direct
+            request is not possible" and falls back to chunked loading.
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     # Extract namespace if present
     namespace = None
     if ':' in layer:
         namespace, _ = layer.split(':', 1)
+
+    # What went wrong per version, and whether any version answered at all
+    failures: list[Exception] = []
+    answered = False
 
     # Try different WFS versions
     for version in ["2.0.0", "1.1.0", "1.0.0"]:
@@ -393,6 +503,11 @@ def _try_direct_load(
             response = requests.get(url, params=params, timeout=30)
             response.raise_for_status()
 
+            report = _wfs_exception_report(response)
+            if report is not None:
+                failures.append(_exception_for_reports([report]))
+                continue
+
             content_type = response.headers.get('Content-Type', '').lower()
 
             gdf = None
@@ -400,6 +515,7 @@ def _try_direct_load(
                 gdf = _parse_geojson_response(response)
             elif 'xml' in content_type or 'gml' in content_type:
                 gdf = _parse_xml_response(response)
+            answered = True
 
             if gdf is not None:
                 # Apply mask if provided
@@ -416,8 +532,17 @@ def _try_direct_load(
                 limit_reached = len(gdf) in (10_000, 100_000, 1_000, 5_000, 50_000)
                 return gdf, limit_reached
 
-        except requests.RequestException:
+        except (requests.RequestException, WFSResponseParsingError) as exc:
+            failures.append(exc)
             continue
+
+    if failures and not answered:
+        last = failures[-1]
+        if isinstance(last, WFSError):
+            raise last
+        raise WFSConnectionError(
+            f"Direct WFS request for layer '{layer}' failed for every WFS "
+            f"version tried (last error: {last})") from last
 
     return None, False
 
@@ -723,6 +848,15 @@ def _chunk_area(chunk: tuple[float, float, float, float]) -> float:
     return abs((maxx - minx) * (maxy - miny))
 
 
+def _partial_wfs_error(message: str, cause: BaseException | None) -> WFSError:
+    """The WFS error class that fits the failure behind an incomplete download."""
+    if isinstance(cause, WFSError):
+        return type(cause)(message)
+    if cause is not None:
+        return WFSConnectionError(message)
+    return WFSError(message)
+
+
 def _load_data_in_parallel(
         url: str,
         layer: str,
@@ -730,7 +864,8 @@ def _load_data_in_parallel(
         filter_params: dict | None = None,
         max_workers: int = 4,
         mask=None,
-        srs: str = 'EPSG:25832'
+        srs: str = 'EPSG:25832',
+        allow_partial: bool = False
 ) -> gpd.GeoDataFrame | None:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """
@@ -746,6 +881,11 @@ def _load_data_in_parallel(
     * **MIN_CHUNK_AREA** -- the smallest chunk area (in squared CRS
       units) below which further subdivision is skipped.
 
+    A download that cannot be completed (a chunk fails and cannot be split
+    further, the server's limit still truncates a chunk at the finest level,
+    or too many requests fail in a row) leaves a hole in the result. By
+    default that raises a WFS error; see ``allow_partial``.
+
     Args:
         url: The base URL of the WFS service
         layer: Name of the layer
@@ -755,12 +895,36 @@ def _load_data_in_parallel(
         mask: Optional geometry mask to limit the query
         srs: Spatial reference system for SRSNAME and BBOX parameters
             (default: "EPSG:25832")
+        allow_partial: If False (default) an incomplete download raises the WFS
+            error that fits the failure (WFSConnectionError, WFSServerError,
+            WFSResponseParsingError, or WFSError for a truncated chunk). The
+            message names the request and says how many features were received;
+            the underlying failure is chained. If True the data received is
+            returned and a ``UserWarning`` reports the same counts.
 
     Returns:
         Combined GeoDataFrame with all data or None if no data found
+
+    Raises:
+        WFSRequestRejectedError: If the server rejects a request as invalid.
+        WFSError: If the download is incomplete and ``allow_partial`` is False.
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     all_gdfs = []
+    n_features = 0       # features kept so far (before de-duplication)
+    n_requests_ok = 0    # chunk requests that were answered
+    holes: list[str] = []  # allow_partial only: one line per request that left a hole
+
+    def incomplete(message: str, cause: BaseException | None = None) -> None:
+        """A request left a hole in the result: fail now, or remember it."""
+        message = (f"{message} Received so far: {n_features} features from "
+                   f"{n_requests_ok} successful chunk requests.")
+        if not allow_partial:
+            raise _partial_wfs_error(
+                f"WFS download of layer '{layer}' from {url} is incomplete. "
+                f"{message}", cause) from cause
+        logger.warning("WFS download of layer '%s' is incomplete: %s", layer, message)
+        holes.append(message)
 
     # Start with a 2x2 grid of chunks
     initial_chunks = _create_grid(bbox, 2, 2)
@@ -780,6 +944,7 @@ def _load_data_in_parallel(
     # copies, which reads as a hang rather than a slow call.
     chunks_to_process = deque((chunk, 2, 2, 0) for chunk in initial_chunks)
     processed_chunks = set()
+    failed_in_a_row = 0
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         while chunks_to_process:
@@ -816,70 +981,33 @@ def _load_data_in_parallel(
 
                 try:
                     gdf = future.result()
-
-                    if gdf is None or gdf.empty:
+                except WFSRequestRejectedError:
+                    # The request itself is wrong; smaller chunks cannot help
+                    raise
+                except (WFSError, requests.RequestException) as exc:
+                    failed_in_a_row += 1
+                    if failed_in_a_row > MAX_CONSECUTIVE_CHUNK_FAILURES:
+                        incomplete(
+                            f"{failed_in_a_row} chunk requests failed in a row; "
+                            f"giving up. Last failed request: chunk {chunk} "
+                            f"({srs}): {exc}", exc)
+                        chunks_to_process.clear()
                         continue
 
-                    # Apply mask if provided
-                    if mask is not None:
-                        gdf = _clip_data_by_mask(gdf, mask)
-                        if gdf.empty:
-                            continue
-
-                    # Add successful results
-                    all_gdfs.append(gdf)
-
-                    # Check if we likely hit a feature limit
-                    if len(gdf) in (10_000, 100_000, 1_000, 5_000, 50_000):
-                        # Guard: stop subdividing if max depth reached
-                        if depth >= MAX_CHUNK_DEPTH:
-                            logger.warning(
-                                "WFS chunk subdivision reached maximum "
-                                "depth %d for chunk %s -- returning "
-                                "partial data.", MAX_CHUNK_DEPTH, chunk)
-                            continue
-
-                        # Guard: stop subdividing if chunk is too small
-                        if _chunk_area(chunk) < MIN_CHUNK_AREA:
-                            logger.warning(
-                                "WFS chunk area (%.2e) below minimum "
-                                "(%.2e) for chunk %s -- returning "
-                                "partial data.",
-                                _chunk_area(chunk), MIN_CHUNK_AREA, chunk)
-                            continue
-
-                        # Create subchunks
-                        new_x_div, new_y_div = x_div * 2, y_div * 2
-                        sub_chunks = _create_grid(chunk, 2, 2)
-
-                        # Filter sub-chunks by mask if provided
-                        if mask is not None:
-                            sub_chunks = [
-                                sub_chunk for sub_chunk in sub_chunks
-                                if _chunk_intersects_mask(sub_chunk, mask)
-                            ]
-
-                        # Add new sub-chunks to queue
-                        chunks_to_process.extend(
-                            [(sub_chunk, new_x_div, new_y_div, depth + 1)
-                             for sub_chunk in sub_chunks]
-                        )
-
-                except (WFSError, requests.RequestException):
                     # Guard: don't subdivide on error if depth exceeded
                     if depth >= MAX_CHUNK_DEPTH:
-                        logger.warning(
-                            "WFS chunk failed and max subdivision "
-                            "depth %d reached for chunk %s -- skipping.",
-                            MAX_CHUNK_DEPTH, chunk)
+                        incomplete(
+                            f"Request for chunk {chunk} ({srs}) failed and the "
+                            f"maximum subdivision depth {MAX_CHUNK_DEPTH} is "
+                            f"reached: {exc}", exc)
                         continue
 
                     # Guard: don't subdivide on error if chunk is too small
                     if _chunk_area(chunk) < MIN_CHUNK_AREA:
-                        logger.warning(
-                            "WFS chunk failed and area (%.2e) below "
-                            "minimum (%.2e) for chunk %s -- skipping.",
-                            _chunk_area(chunk), MIN_CHUNK_AREA, chunk)
+                        incomplete(
+                            f"Request for chunk {chunk} ({srs}) failed and its "
+                            f"area ({_chunk_area(chunk):.2e}) is below the "
+                            f"minimum ({MIN_CHUNK_AREA:.2e}): {exc}", exc)
                         continue
 
                     # If a chunk fails, try to subdivide it
@@ -896,6 +1024,68 @@ def _load_data_in_parallel(
                         [(sub_chunk, x_div * 2, y_div * 2, depth + 1)
                          for sub_chunk in sub_chunks]
                     )
+                    continue
+
+                failed_in_a_row = 0
+                n_requests_ok += 1
+
+                if gdf is None or gdf.empty:
+                    continue
+
+                # Apply mask if provided
+                if mask is not None:
+                    gdf = _clip_data_by_mask(gdf, mask)
+                    if gdf.empty:
+                        continue
+
+                # Add successful results
+                all_gdfs.append(gdf)
+                n_features += len(gdf)
+
+                # Check if we likely hit a feature limit
+                if len(gdf) in (10_000, 100_000, 1_000, 5_000, 50_000):
+                    # Guard: stop subdividing if max depth reached
+                    if depth >= MAX_CHUNK_DEPTH:
+                        incomplete(
+                            f"Chunk {chunk} ({srs}) returned exactly {len(gdf)} "
+                            f"features at the maximum subdivision depth "
+                            f"{MAX_CHUNK_DEPTH}; the server's feature limit "
+                            f"probably truncates it.")
+                        continue
+
+                    # Guard: stop subdividing if chunk is too small
+                    if _chunk_area(chunk) < MIN_CHUNK_AREA:
+                        incomplete(
+                            f"Chunk {chunk} ({srs}) returned exactly {len(gdf)} "
+                            f"features and its area ({_chunk_area(chunk):.2e}) "
+                            f"is below the minimum ({MIN_CHUNK_AREA:.2e}); the "
+                            f"server's feature limit probably truncates it.")
+                        continue
+
+                    # Create subchunks
+                    new_x_div, new_y_div = x_div * 2, y_div * 2
+                    sub_chunks = _create_grid(chunk, 2, 2)
+
+                    # Filter sub-chunks by mask if provided
+                    if mask is not None:
+                        sub_chunks = [
+                            sub_chunk for sub_chunk in sub_chunks
+                            if _chunk_intersects_mask(sub_chunk, mask)
+                        ]
+
+                    # Add new sub-chunks to queue
+                    chunks_to_process.extend(
+                        [(sub_chunk, new_x_div, new_y_div, depth + 1)
+                         for sub_chunk in sub_chunks]
+                    )
+
+    if holes:
+        warnings.warn(
+            f"WFS download of layer '{layer}' from {url} is PARTIAL "
+            f"(allow_partial=True): {n_features} features from "
+            f"{n_requests_ok} successful chunk requests; {len(holes)} request(s) "
+            f"left a hole. First: {holes[0]}",
+            UserWarning, stacklevel=2)
 
     # Combine all collected data
     return _combine_geodataframes(all_gdfs)
@@ -934,7 +1124,15 @@ def _fetch_wfs_data(
             (default: "EPSG:25832")
 
     Returns:
-        GeoDataFrame with data or None if no data found or error occurred
+        GeoDataFrame with data, or None if the server answered with no features
+
+    Raises:
+        WFSServerError, WFSRequestRejectedError: If the server answered with
+            an OGC exception report.
+        WFSConnectionError: If every WFS version failed at the HTTP level (the
+            last ``requests`` exception is chained). A failed request is never
+            reported as an empty chunk.
+        WFSResponseParsingError: If an answer could not be parsed.
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     # Extract namespace if present
@@ -942,7 +1140,10 @@ def _fetch_wfs_data(
     if ':' in layer:
         namespace, _ = layer.split(':', 1)
 
-    # Try different WFS versions
+    # Try different WFS versions; collect OGC exception reports on the way
+    reports = []
+    last_error: requests.RequestException | None = None
+    answered = False
     for version in ["2.0.0", "1.1.0", "1.0.0"]:
         # Set version-specific parameters
         type_param = "TYPENAMES" if version == "2.0.0" else "TYPENAME"
@@ -969,15 +1170,36 @@ def _fetch_wfs_data(
             response = requests.get(url, params=params, timeout=30)
             response.raise_for_status()
 
+            report = _wfs_exception_report(response)
+            if report is not None:
+                logger.warning("WFS %s answered with an exception report "
+                               "for chunk %s: %s", version, bbox, report)
+                reports.append(report)
+                continue
+
             content_type = response.headers.get('Content-Type', '').lower()
 
             if 'json' in content_type:
                 return _parse_geojson_response(response)
             if 'xml' in content_type or 'gml' in content_type:
                 return _parse_xml_response(response)
+            answered = True
+            logger.warning("WFS %s answered with the unrecognised content type "
+                           "%r for chunk %s; treating it as no data.",
+                           version, content_type, bbox)
 
-        except requests.RequestException:
+        except requests.RequestException as exc:
+            report = _wfs_exception_report(getattr(exc, "response", None))
+            if report is not None:
+                reports.append(report)
+            else:
+                last_error = exc
             continue
+    _raise_for_exception_reports(reports)
+    if last_error is not None and not answered:
+        raise WFSConnectionError(
+            f"WFS request for layer '{layer}' (bbox {bbox}) failed for every "
+            f"WFS version tried; last error: {last_error}") from last_error
     return None
 
 
@@ -989,14 +1211,23 @@ def _parse_geojson_response(response: requests.Response) -> gpd.GeoDataFrame | N
         response: HTTP response object containing GeoJSON data
 
     Returns:
-        GeoDataFrame created from GeoJSON features or None if parsing fails
+        GeoDataFrame created from GeoJSON features, or None if the response is
+        valid GeoJSON without features
+
+    Raises:
+        WFSResponseParsingError: If the body is not JSON at all (typically an
+            HTML or text error page served under a JSON content type). The
+            first 200 characters of the body are part of the message.
     """
     try:
         geojson_data = response.json()
-        if 'features' in geojson_data and geojson_data['features']:
-            return gpd.GeoDataFrame.from_features(geojson_data['features'])
-    except ValueError:
-        return None
+    except ValueError as exc:
+        excerpt = _response_excerpt(response)
+        starts = f" (body starts: {excerpt!r})" if excerpt else ""
+        raise WFSResponseParsingError(
+            f"WFS response announced as JSON could not be parsed{starts}: {exc}") from exc
+    if 'features' in geojson_data and geojson_data['features']:
+        return gpd.GeoDataFrame.from_features(geojson_data['features'])
     return None
 
 
@@ -1008,7 +1239,12 @@ def _parse_xml_response(response: requests.Response) -> gpd.GeoDataFrame | None:
         response: HTTP response object containing XML/GML data
 
     Returns:
-        GeoDataFrame created from XML/GML data or None if parsing fails
+        GeoDataFrame created from XML/GML data, or None if the response is a
+        valid feature collection without features
+
+    Raises:
+        WFSResponseParsingError: If the body is not readable as GML/GeoJSON or
+            the temporary file used to read it cannot be handled (OSError).
     """
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1036,8 +1272,19 @@ def _parse_xml_response(response: requests.Response) -> gpd.GeoDataFrame | None:
                     if "nonlinear" not in str(exc).lower():
                         raise
             return gpd.read_file(temp_file, use_arrow=False)
-    except (OSError, IndexError):
+    except DataSourceError as exc:
+        raise WFSResponseParsingError(
+            f"WFS response is not readable as GML/GeoJSON: {exc}") from exc
+    except IndexError:
+        # MEASURED (2026-11-10): GDAL/pyogrio raise "IndexError: index 0 is out
+        # of bounds" for a well-formed GML FeatureCollection with zero
+        # features, so this is an EMPTY answer, not a failure.
+        logger.debug("WFS response holds no features (body starts: %r)",
+                     _response_excerpt(response))
         return None
+    except OSError as exc:
+        raise WFSResponseParsingError(
+            f"WFS response could not be read from a temporary file: {exc}") from exc
 
 
 def _combine_geodataframes(gdfs: list[gpd.GeoDataFrame]) -> gpd.GeoDataFrame | None:

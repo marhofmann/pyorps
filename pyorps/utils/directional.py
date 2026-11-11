@@ -38,6 +38,8 @@ import math
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError
+
 __all__ = [
     "primitive_directions",
     "direction_angles",
@@ -73,7 +75,7 @@ def primitive_directions(dmax: int) -> np.ndarray:
         ``(K, 2)`` int64 array of ``(dr, dc)``.
     """
     if dmax < 1:
-        raise ValueError(f"dmax must be >= 1, got {dmax}")
+        raise InvalidInputError(f"dmax must be >= 1, got {dmax}")
     out = [(p, q)
            for p in range(-dmax, dmax + 1)
            for q in range(-dmax, dmax + 1)
@@ -110,7 +112,7 @@ def bezout(p: int, q: int) -> tuple[int, int]:
     """
     p, q = int(p), int(q)
     if math.gcd(abs(p), abs(q)) != 1:
-        raise ValueError(f"direction ({p}, {q}) is not primitive")
+        raise InvalidInputError(f"direction ({p}, {q}) is not primitive")
     old_r, r = abs(p), abs(q)
     old_s, s = 1, 0
     old_t, t = 0, 1
@@ -219,13 +221,13 @@ def _ray_window(a, p, q, m_lo, m_hi, *, kind, return_arg):
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     a = np.asarray(a, dtype=np.float64)
     if a.ndim != 2:
-        raise ValueError(f"expected a 2-D grid, got shape {a.shape}")
+        raise InvalidInputError(f"expected a 2-D grid, got shape {a.shape}")
     m_lo, m_hi = int(m_lo), int(m_hi)
     if m_lo < 0 or m_hi < m_lo:
-        raise ValueError(f"need 0 <= m_lo <= m_hi, got {m_lo}, {m_hi}")
+        raise InvalidInputError(f"need 0 <= m_lo <= m_hi, got {m_lo}, {m_hi}")
     p, q = int(p), int(q)
     if math.gcd(abs(p), abs(q)) != 1:
-        raise ValueError(f"direction ({p}, {q}) is not primitive")
+        raise InvalidInputError(f"direction ({p}, {q}) is not primitive")
 
     w = m_hi - m_lo + 1
     if kind == "min":
@@ -312,7 +314,7 @@ def ray_run_length(blocked, p: int, q: int, cap: int) -> np.ndarray:
     """
     cap = int(cap)
     if cap < 1:
-        raise ValueError(f"cap must be >= 1, got {cap}")
+        raise InvalidInputError(f"cap must be >= 1, got {cap}")
     r = (~np.asarray(blocked, dtype=bool)).astype(np.int64)
     k = 1
     while k < cap:
@@ -339,7 +341,7 @@ def circular_window_min(a, half_width: int) -> np.ndarray:
     n = a.shape[0]
     h = int(half_width)
     if h < 0:
-        raise ValueError("half_width must be >= 0")
+        raise InvalidInputError("half_width must be >= 0")
     if h == 0:
         return a.copy()
     if 2 * h + 1 >= n:

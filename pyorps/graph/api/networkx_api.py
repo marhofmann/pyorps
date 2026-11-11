@@ -11,7 +11,7 @@ Reference:
 import networkx as nx
 from numpy import ndarray
 
-from pyorps.core.exceptions import AlgorithmNotImplementedError, NoPathFoundError
+from pyorps.core.exceptions import NoPathFoundError
 
 # Project files
 from pyorps.core.types import Node, NodeList, NodePathList
@@ -19,6 +19,8 @@ from pyorps.graph.api.graph_library_api import GraphLibraryAPI
 
 
 class NetworkxAPI(GraphLibraryAPI):
+    #: Algorithm names shortest_path accepts (any letter case).
+    ALGORITHMS = ("dijkstra", "bidirectional_dijkstra", "astar")
 
     def create_graph(
             self,
@@ -133,9 +135,10 @@ class NetworkxAPI(GraphLibraryAPI):
                                      weight='weight')
 
             else:
-                raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
+                raise self.unsupported_algorithm(algorithm)
 
-        except nx.NetworkXNoPath:
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            # NodeNotFound: a cell whose neighbours are all barriers has no edge, so it is not a graph node.
             raise NoPathFoundError(source=source, target=target) from None
 
         path = self._ensure_path_endpoints(path, source, target)
@@ -188,7 +191,7 @@ class NetworkxAPI(GraphLibraryAPI):
                     paths.append([])
             return paths
 
-        raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
+        raise self.unsupported_algorithm(algorithm)
 
     def _all_pairs_shortest_path(
             self,

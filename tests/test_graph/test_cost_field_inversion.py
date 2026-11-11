@@ -23,7 +23,6 @@ import rasterio
 
 import pyorps
 
-
 CELL = 2.0
 SHAPE = (60, 80)
 

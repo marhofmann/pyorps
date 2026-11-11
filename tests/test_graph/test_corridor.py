@@ -48,8 +48,14 @@ phantom differences for genuinely tied optima.
 import numpy as np
 import pytest
 from affine import Affine
-
 from exactness_referee import EdgeModel, reprice_path
+from pyorps.utils._dijkstra import (
+    make_dijkstra_solver,
+    make_multi_source_solver,
+    price_route_cython,
+)
+from pyorps.utils._traversal import calculate_path_metrics_numba
+
 from pyorps.core.corridor import NODE_TERMINAL
 from pyorps.graph.corridor import (
     cell_sharing_profile,
@@ -57,12 +63,6 @@ from pyorps.graph.corridor import (
     route_metrics,
     supercover_cells,
 )
-from pyorps.utils._dijkstra import (
-    make_dijkstra_solver,
-    make_multi_source_solver,
-    price_route_cython,
-)
-from pyorps.utils._traversal import calculate_path_metrics_numba
 from pyorps.utils.neighborhood import get_neighborhood_steps
 
 NEIGHBORHOODS = ("r0", "r1", "r2", "r3")

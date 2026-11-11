@@ -4,18 +4,20 @@ Raster loading, combining, and discovery utilities for PYORPS
 import logging
 import warnings
 from collections import defaultdict
+from contextlib import ExitStack
 from pathlib import Path
 
+import numpy as np
+import rasterio
+from rasterio.crs import CRS
+from rasterio.io import MemoryFile
+from rasterio.merge import merge
+from rasterio.warp import Resampling, calculate_default_transform, reproject
+
+from pyorps.core.exceptions import InputFileNotFoundError, InvalidInputError
+from pyorps.io.geo_dataset import InMemoryRasterDataset
+
 logger = logging.getLogger(__name__)
-
-import numpy as np  # pylint: disable=wrong-import-position
-import rasterio  # pylint: disable=wrong-import-position
-from rasterio.crs import CRS  # pylint: disable=wrong-import-position
-from rasterio.io import MemoryFile  # pylint: disable=wrong-import-position
-from rasterio.merge import merge  # pylint: disable=wrong-import-position
-from rasterio.warp import Resampling, calculate_default_transform, reproject  # pylint: disable=wrong-import-position
-
-from pyorps.io.geo_dataset import InMemoryRasterDataset  # pylint: disable=wrong-import-position
 
 
 def _parse_crs(crs_input):
@@ -34,12 +36,21 @@ def _validate_raster_paths(file_paths):
     for fp in file_paths:
         path = Path(fp)
         if not path.exists():
-            raise FileNotFoundError(f"Raster file not found: {path}")
+            raise InputFileNotFoundError(f"Raster file not found: {path}")
         if path.suffix.lower() not in ['.tif', '.tiff', '.geotiff']:
             warnings.warn(
-                f"File {path} may not be a GeoTIFF file (extension: {path.suffix})")
+                f"File {path} may not be a GeoTIFF file (extension: {path.suffix})",
+                stacklevel=3)  # helper of read_raster_files: point at its caller
         paths.append(path)
     return paths
+
+
+def _close_quietly(handle):
+    """Close a rasterio dataset or MemoryFile; one that is already closed is fine."""
+    try:
+        handle.close()
+    except (OSError, RuntimeError):
+        pass
 
 
 def _assign_crs_in_memory(src, default_crs):
@@ -50,8 +61,12 @@ def _assign_crs_in_memory(src, default_crs):
     src.close()
 
     memfile = MemoryFile()
-    mem_dst = memfile.open(**profile)
-    mem_dst.write(data)
+    with ExitStack() as cleanup:  # a failed copy must not leak the half-built copy
+        cleanup.callback(_close_quietly, memfile)
+        mem_dst = memfile.open(**profile)
+        cleanup.callback(_close_quietly, mem_dst)  # runs first (LIFO)
+        mem_dst.write(data)
+        cleanup.pop_all()
     return mem_dst, memfile
 
 
@@ -70,18 +85,22 @@ def _reproject_to_target_crs(src, target_crs):
     })
 
     memfile = MemoryFile()
-    mem_dst = memfile.open(**profile)
+    with ExitStack() as cleanup:  # a failed reprojection must not leak the copy
+        cleanup.callback(_close_quietly, memfile)
+        mem_dst = memfile.open(**profile)
+        cleanup.callback(_close_quietly, mem_dst)  # runs first (LIFO)
 
-    for band_idx in range(1, src.count + 1):
-        reproject(
-            source=rasterio.band(src, band_idx),
-            destination=rasterio.band(mem_dst, band_idx),
-            src_transform=src.transform,
-            src_crs=src.crs,
-            dst_transform=transform,
-            dst_crs=target_crs,
-            resampling=Resampling.bilinear
-        )
+        for band_idx in range(1, src.count + 1):
+            reproject(
+                source=rasterio.band(src, band_idx),
+                destination=rasterio.band(mem_dst, band_idx),
+                src_transform=src.transform,
+                src_crs=src.crs,
+                dst_transform=transform,
+                dst_crs=target_crs,
+                resampling=Resampling.bilinear
+            )
+        cleanup.pop_all()
     src.close()
     return mem_dst, memfile
 
@@ -105,7 +124,10 @@ def read_raster_files(
         target_crs: Optional CRS to reproject all rasters to for consistency
 
     Returns:
-        Tuple of (List of opened rasterio dataset readers, List of MemoryFile objects to keep alive)
+        Tuple of (List of opened rasterio dataset readers, List of MemoryFile objects to keep alive).
+        On success the caller owns these handles and must close them (``combine_rasters``
+        does). If reading any file fails, every handle opened so far is closed before the
+        error propagates.
 
     Raises:
         FileNotFoundError: If any of the specified files don't exist
@@ -118,26 +140,33 @@ def read_raster_files(
     datasets = []
     memory_files = []
 
-    for path in paths:
-        src = rasterio.open(path, 'r')
+    with ExitStack() as cleanup:
+        for path in paths:
+            src = rasterio.open(path, 'r')
+            cleanup.callback(_close_quietly, src)
 
-        if src.crs is None:
-            if default_crs is None:
-                src.close()
-                raise ValueError(
-                    f"Raster file {path} has no CRS defined and no "
-                    f"default_crs was provided")
-            mem_dst, memfile = _assign_crs_in_memory(src, default_crs)
-            memory_files.append(memfile)
-            datasets.append(mem_dst)
+            if src.crs is None:
+                if default_crs is None:
+                    raise InvalidInputError(
+                        f"Raster file {path} has no CRS defined and no "
+                        f"default_crs was provided")
+                mem_dst, memfile = _assign_crs_in_memory(src, default_crs)
+                cleanup.callback(_close_quietly, memfile)
+                cleanup.callback(_close_quietly, mem_dst)
+                memory_files.append(memfile)
+                datasets.append(mem_dst)
 
-        elif target_crs and src.crs != target_crs:
-            mem_dst, memfile = _reproject_to_target_crs(src, target_crs)
-            memory_files.append(memfile)
-            datasets.append(mem_dst)
+            elif target_crs and src.crs != target_crs:
+                mem_dst, memfile = _reproject_to_target_crs(src, target_crs)
+                cleanup.callback(_close_quietly, memfile)
+                cleanup.callback(_close_quietly, mem_dst)
+                memory_files.append(memfile)
+                datasets.append(mem_dst)
 
-        else:
-            datasets.append(src)
+            else:
+                datasets.append(src)
+
+        cleanup.pop_all()  # success: the open handles now belong to the caller
 
     return datasets, memory_files
 
@@ -145,16 +174,10 @@ def read_raster_files(
 def _close_datasets_safely(datasets, memory_files):
     """Close rasterio datasets and memory files, ignoring already-closed errors."""
     for ds in datasets:
-        try:
-            ds.close()
-        except (OSError, RuntimeError):
-            pass
+        _close_quietly(ds)
 
     for memfile in memory_files:
-        try:
-            memfile.close()
-        except (OSError, RuntimeError):
-            pass
+        _close_quietly(memfile)
 
 
 def _resolve_merge_params(datasets, dtype, nodata):
@@ -172,21 +195,27 @@ def _resolve_merge_params(datasets, dtype, nodata):
     return dtype, nodata
 
 
-def _validate_and_unpack_datasets(raster_datasets):
-    """Unpack and validate raster datasets input, return (datasets, memory_files)."""
+def _unpack_datasets(raster_datasets):
+    """Split the ``(datasets, memory_files)`` tuple or plain list form, without validating."""
     if isinstance(raster_datasets, tuple):
         datasets, memory_files = raster_datasets
     else:
         datasets = raster_datasets
         memory_files = []
+    return datasets, memory_files
+
+
+def _validate_and_unpack_datasets(raster_datasets):
+    """Unpack and validate raster datasets input, return (datasets, memory_files)."""
+    datasets, memory_files = _unpack_datasets(raster_datasets)
 
     if not datasets:
-        raise ValueError("No raster datasets provided for combining")
+        raise InvalidInputError("No raster datasets provided for combining")
 
     base_crs = datasets[0].crs
     for ds in datasets[1:]:
         if ds.crs != base_crs:
-            raise ValueError(
+            raise InvalidInputError(
                 f"All rasters must have the same CRS. Found {base_crs} "
                 f"and {ds.crs}. Consider using target_crs in read_raster_files()")
 
@@ -214,25 +243,30 @@ def combine_rasters(
 ) -> tuple[np.ndarray, dict]:
     """Combine multiple raster datasets into a single array.
 
+    Takes ownership of the datasets and memory files passed in: they are closed
+    when this function returns, whether the merge succeeded or failed.
+
     Returns (merged_array, profile_dict) with CRS, transform, shape, etc.
     """
-    datasets, memory_files, base_crs = _validate_and_unpack_datasets(raster_datasets)
-    dtype, nodata = _resolve_merge_params(datasets, dtype, nodata)
+    datasets, memory_files = _unpack_datasets(raster_datasets)
+    try:
+        datasets, memory_files, base_crs = _validate_and_unpack_datasets(raster_datasets)
+        dtype, nodata = _resolve_merge_params(datasets, dtype, nodata)
 
-    merged_array, merged_transform = merge(
-        datasets, method=method, nodata=nodata, dtype=dtype, resampling=resampling
-    )
-    profile = _build_merge_profile(
-        merged_array, merged_transform, base_crs, dtype, nodata)
+        merged_array, merged_transform = merge(
+            datasets, method=method, nodata=nodata, dtype=dtype, resampling=resampling
+        )
+        profile = _build_merge_profile(
+            merged_array, merged_transform, base_crs, dtype, nodata)
 
-    if save_path is not None:
-        save_path = Path(save_path)
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        with rasterio.open(save_path, 'w', **profile) as dst:
-            dst.write(merged_array)
-        logger.info("Combined raster saved to: %s", save_path)
-
-    _close_datasets_safely(datasets, memory_files)
+        if save_path is not None:
+            save_path = Path(save_path)
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            with rasterio.open(save_path, 'w', **profile) as dst:
+                dst.write(merged_array)
+            logger.info("Combined raster saved to: %s", save_path)
+    finally:
+        _close_datasets_safely(datasets or [], memory_files or [])
     return merged_array, profile
 
 
@@ -241,7 +275,10 @@ def create_combined_raster_dataset(
     crs: str | None = None,
     target_crs: str | None = None,
     save_path: str | Path | None = None,
-    method: str = 'first'
+    method: str = 'first',
+    nodata: float | None = None,
+    dtype: str | None = None,
+    resampling: Resampling = Resampling.bilinear
 ) -> 'InMemoryRasterDataset':
     """
     Convenience function to read and combine rasters, returning an InMemoryRasterDataset
@@ -253,6 +290,9 @@ def create_combined_raster_dataset(
         target_crs: Optional CRS to reproject all rasters to
         save_path: Optional path to save the combined raster
         method: Method for combining overlapping pixels
+        nodata: Nodata value of the result; None takes the first input's nodata
+        dtype: Data type of the result; None takes the common type of the inputs
+        resampling: Resampling used while merging (default bilinear)
 
     Returns:
         InMemoryRasterDataset object compatible with your existing code
@@ -264,7 +304,10 @@ def create_combined_raster_dataset(
     merged_array, profile = combine_rasters(
         (datasets, memory_files),
         save_path=save_path,
-        method=method
+        method=method,
+        nodata=nodata,
+        dtype=dtype,
+        resampling=resampling
     )
 
     # Create InMemoryRasterDataset compatible with your existing code
@@ -321,9 +364,9 @@ def find_raster_files(
     dir_path = Path(directory)
 
     if not dir_path.exists():
-        raise ValueError(f"Directory does not exist: {directory}")
+        raise InvalidInputError(f"Directory does not exist: {directory}")
     if not dir_path.is_dir():
-        raise ValueError(f"Path is not a directory: {directory}")
+        raise InvalidInputError(f"Path is not a directory: {directory}")
 
     if extensions is None:
         extensions = _DEFAULT_RASTER_EXTENSIONS

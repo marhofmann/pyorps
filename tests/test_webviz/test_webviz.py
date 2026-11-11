@@ -22,7 +22,6 @@ from shapely.geometry import LineString
 from pyorps import PathFinder
 from pyorps.raster.handler import create_test_tiff
 
-
 SOURCE = (500020.0, 5599980.0)
 TARGET = (500180.0, 5599820.0)
 
@@ -64,6 +63,7 @@ def test_gdf_wgs84_handles_timestamp_columns():
     """Real WFS/ALKIS layers carry datetime columns; they must serialize."""
     import pandas as pd
     from shapely.geometry import Point
+
     from pyorps.webviz import geo
 
     gdf = gpd.GeoDataFrame(
@@ -131,6 +131,7 @@ def test_route_layer_is_direct_map_child(finder):
     """route-layer must be a direct Map child (not nested in LayersControl),
     otherwise its data updates (new/edited routes) do not re-render."""
     import dash_leaflet as dl
+
     from pyorps.webviz import RouteViewer
 
     viewer = RouteViewer.from_path_finder(finder)
@@ -158,6 +159,7 @@ def test_route_layer_is_direct_map_child(finder):
 def test_no_marker_drag_input(finder):
     """Drag doesn't sync back in dash-leaflet; ensure we rely on no such input."""
     import json as _json
+
     from pyorps.webviz import RouteViewer
 
     viewer = RouteViewer.from_path_finder(finder)
@@ -234,6 +236,7 @@ def test_route_through_points_respects_waypoint_order(finder):
 
 def test_route_through_points_needs_two_points(finder):
     import pytest as _pytest
+
     from pyorps.webviz.reroute import route_through_points
 
     with _pytest.raises(ValueError):

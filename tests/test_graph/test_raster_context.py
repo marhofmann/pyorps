@@ -10,14 +10,12 @@ Covers:
 
 import numpy as np
 import pytest
-
 from pyorps.utils._raster_context import (
     RasterContext,
     py_create_exclude_mask,
     py_path_cost,
     py_path_cost_uint32,
 )
-
 
 # ==================== FIXTURES ====================
 

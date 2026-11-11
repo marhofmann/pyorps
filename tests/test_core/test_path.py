@@ -1,4 +1,5 @@
 import unittest
+
 import numpy as np
 from shapely.geometry import LineString
 
@@ -76,6 +77,7 @@ class TestPath(unittest.TestCase):
 
     def test_path_simplification_fields_default_none(self):
         from shapely.geometry import LineString
+
         from pyorps.core.path import Path
         p = Path(
             source=(0, 0),
@@ -97,6 +99,7 @@ class TestPath(unittest.TestCase):
 
     def test_path_simplification_fields_set(self):
         from shapely.geometry import LineString
+
         from pyorps.core.path import Path
         orig = LineString([(0, 0), (0.5, 0), (1, 0)])
         simp = LineString([(0, 0), (1, 0)])
@@ -118,6 +121,7 @@ class TestPath(unittest.TestCase):
 
     def test_to_geodataframe_dict_includes_simplification(self):
         from shapely.geometry import LineString
+
         from pyorps.core.path import Path
         p = Path(
             source=(0, 0), target=(1, 0),
@@ -136,6 +140,7 @@ class TestPath(unittest.TestCase):
 
     def test_analyze_mentions_simplification_when_present(self):
         from shapely.geometry import LineString
+
         from pyorps.core.path import Path
         p = Path(
             source=(0, 0), target=(1, 0),
@@ -406,8 +411,8 @@ class TestPathCollectionEquality(unittest.TestCase):
         """Collections with same paths in different order are equal."""
         c1 = PathCollection()
         c2 = PathCollection()
-        p1 = self._make_path(1, 2)
-        p2 = self._make_path(3, 4, np.array([2, 3]))
+        self._make_path(1, 2)
+        self._make_path(3, 4, np.array([2, 3]))
 
         c1.add(self._make_path(1, 2))
         c1.add(self._make_path(3, 4, np.array([2, 3])))

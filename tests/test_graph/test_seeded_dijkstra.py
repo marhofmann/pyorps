@@ -17,7 +17,6 @@ Runs against ``pyorps.utils._dijkstra``; until that extension is rebuilt
 from the current ``.pyx`` it lacks ``solve_stream`` and these tests skip.
 ``PYORPS_D1_MODULE`` names another build of the same source to test instead.
 """
-import importlib
 import math
 import os
 
@@ -34,7 +33,6 @@ if not hasattr(dj.MultiSourceSolver, "solve_stream"):
                 f"`python setup.py build_ext --inplace`",
                 allow_module_level=True)
 
-from pyorps.utils._raster_context import RasterContext  # noqa: E402
 
 INF = math.inf
 

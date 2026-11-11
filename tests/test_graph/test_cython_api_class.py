@@ -1,10 +1,9 @@
 import unittest
+
 import numpy as np
 
+from pyorps.core.exceptions import AlgorithmNotImplementedError, PairwiseError
 from pyorps.graph.api.cython_api import CythonAPI
-from pyorps.core.exceptions import (
-    AlgorithmNotImplementedError, PairwiseError
-)
 
 
 class TestCythonAPIInit(unittest.TestCase):
@@ -32,8 +31,9 @@ class TestCythonAPIInit(unittest.TestCase):
 
     def test_ignore_max_default_matches_base_class(self):
         """Regression: CythonAPI default for ignore_max must match GraphAPI (True)."""
-        from pyorps.graph.api.graph_api import GraphAPI
         import inspect
+
+        from pyorps.graph.api.graph_api import GraphAPI
 
         # Get the default value from both classes
         base_sig = inspect.signature(GraphAPI.__init__)

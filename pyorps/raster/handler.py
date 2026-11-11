@@ -11,18 +11,52 @@ import warnings
 from typing import Any
 
 import numpy as np
-from pyproj import Transformer
+from pyproj import CRS, Transformer
 from rasterio import open as rio_open
 from rasterio.features import rasterize
-from rasterio.transform import Affine, from_origin, rowcol
+from rasterio.transform import Affine, array_bounds, from_origin, rowcol
 from rasterio.transform import xy as transform_xy
 from rasterio.windows import Window
+from rasterio.windows import bounds as window_bounds
 from rasterio.windows import transform as transform_window
 from shapely.geometry import LineString, MultiPoint, Polygon
 
-from pyorps.core.exceptions import RasterShapeError
+from pyorps.core.exceptions import InvalidInputError, PyorpsError, RasterShapeError
 from pyorps.core.types import CoordinateList, CoordinateTuple
 from pyorps.io.geo_dataset import RasterDataset
+
+
+def _crs_name(crs: Any) -> str:
+    """Short printable name of a CRS (``EPSG:32632`` where possible)."""
+    if crs is None:
+        return "None (unknown)"
+    try:
+        parsed = CRS.from_user_input(crs)
+    except Exception:  # noqa: BLE001  # any unparsable CRS: print it raw
+        return str(crs)
+    epsg = parsed.to_epsg()
+    return f"EPSG:{epsg}" if epsg is not None else parsed.to_string()
+
+
+def _require_integer_dtype(dtype: Any, why: str, remedy: str) -> None:
+    """Raise PyorpsError when ``dtype`` has no integer maximum."""
+    if np.issubdtype(np.dtype(dtype), np.integer):
+        return
+    raise PyorpsError(
+        f"Unsupported raster dtype {np.dtype(dtype).name!r}: {why}, which "
+        f"exists only for integer dtypes. Either {remedy}, or use a uint16 "
+        f"cost raster (the dtype PathFinder routes on; cast with "
+        f".astype('uint16') after clipping to 0..65534, 65535 = forbidden).")
+
+
+def _is_projected(crs: Any) -> bool:
+    """True when ``crs`` parses as a projected CRS (metres, not degrees)."""
+    if crs is None:
+        return False
+    try:
+        return bool(CRS.from_user_input(crs).is_projected)
+    except Exception:  # noqa: BLE001  # unparsable: make no claim
+        return False
 
 
 class RasterHandler:
@@ -135,7 +169,7 @@ class RasterHandler:
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if apply_mask and not copy_window:
-            raise ValueError(
+            raise InvalidInputError(
                 "copy_window=False is only allowed with apply_mask=False: masking "
                 "a view would write the outside_value sentinel through into the "
                 "source dataset and permanently corrupt it.")
@@ -201,11 +235,21 @@ class RasterHandler:
             # are NaN. Left alone that surfaces three frames down as rasterio's
             # "Number of columns or rows must be non-negative", which says
             # nothing about the cause. Buffer 0 is NOT "the whole raster".
-            raise ValueError(
+            # A negative buffer SHRINKS the hull, and empties it for the same
+            # hulls (and for any hull narrower than twice the buffer); the
+            # cause is then the sign, not a zero.
+            if self.search_space_buffer_m < 0:
+                cause = (f"a negative buffer shrinks the source/target hull "
+                         f"(a {buffer_geom.geom_type}) by "
+                         f"{abs(self.search_space_buffer_m)} m on every side, "
+                         f"and nothing of it is left")
+            else:
+                cause = (f"the source/target hull is a "
+                         f"{buffer_geom.geom_type} with no area, so buffering "
+                         f"it by zero removes it")
+            raise InvalidInputError(
                 f"search_space_buffer_m={self.search_space_buffer_m} leaves an "
-                f"empty search space: the source/target hull is a "
-                f"{buffer_geom.geom_type} with no area, so buffering it by "
-                f"zero removes it. Pass a positive buffer, or "
+                f"empty search space: {cause}. Pass a positive buffer, or "
                 f"pyorps.full_window_buffer_m(dataset) to search the whole "
                 f"raster.")
 
@@ -248,7 +292,7 @@ class RasterHandler:
                 self.data = self.data.copy()
         else:
             # This shouldn't happen with current implementation
-            raise ValueError("Data must be a numpy array")
+            raise InvalidInputError("Data must be a numpy array")
 
         # Apply mask if requested
         if apply_mask:
@@ -445,6 +489,11 @@ class RasterHandler:
             Estimated optimal buffer width in meters
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        _require_integer_dtype(
+            self.raster_dataset.dtype,
+            "estimating the search buffer (search_space_buffer_m=None) treats "
+            "the dtype maximum as forbidden",
+            "pass an explicit search_space_buffer_m")
         forbidden_value = np.iinfo(self.raster_dataset.dtype).max
         points, euclidean_dist = RasterHandler.max_distance_pair(source_coords,
                                                                  target_coords)
@@ -592,6 +641,11 @@ class RasterHandler:
 
         # Set default outside value if needed
         if outside_value is None:
+            _require_integer_dtype(
+                self.data.dtype,
+                "masking the search window without an outside_value writes the "
+                "dtype maximum outside the buffer",
+                "pass outside_value (e.g. numpy.inf for a float raster)")
             outside_value = np.iinfo(self.data.dtype).max
 
         # Create a mask using rasterization. Deliberately NOT routed through
@@ -622,7 +676,9 @@ class RasterHandler:
 
     def coords_to_indices(
             self,
-            coords: CoordinateTuple | CoordinateList
+            coords: CoordinateTuple | CoordinateList,
+            *,
+            check_bounds: bool = False
     ) -> np.ndarray:
         """
         Convert geographic coordinates to pixel row/column indices within this raster
@@ -630,24 +686,96 @@ class RasterHandler:
 
         Parameters:
             coords: List of (x, y) coordinate tuples or a single coordinate tuple
+            check_bounds: If True, raise when a point maps to a cell outside the
+                search window. The default (False) returns such indices unchanged
+                (negative or past the window edge), which callers use to detect
+                points outside the window; those indices must never be handed to
+                a routing kernel.
 
         Returns:
             numpy.ndarray: Array of (row, col) pixel indices
+
+        Raises:
+            PyorpsError: If a coordinate is NaN or infinite (always), or lies
+                outside the search window (only with ``check_bounds=True``).
         """
         transform = self.raster_dataset.transform
         # Use rasterio's rowcol function with the window-specific transform
         if isinstance(coords[0], tuple):
             xs, ys = zip(*coords)
-            rows, cols = rowcol(transform, xs, ys)
         else:
             # Single coordinate
-            rows, cols = rowcol(transform, coords[0], coords[1])
+            xs, ys = coords[0], coords[1]
+        # NaN/inf turn into arbitrary integers in rowcol, and a kernel then
+        # reads far outside the raster; they are never a valid position.
+        self._check_finite(xs, ys)
+        rows, cols = rowcol(transform, xs, ys)
 
         # Adjust indices to the window's local coordinate system
         rows = np.array(rows) - self.window.row_off
         cols = np.array(cols) - self.window.col_off
 
-        return np.array(list(zip(rows, cols)))
+        indices = np.array(list(zip(rows, cols)))
+        if check_bounds:
+            self._check_indices_in_window(indices, xs, ys)
+        return indices
+
+    @staticmethod
+    def _check_finite(xs, ys) -> None:
+        """Raise PyorpsError naming the first non-finite (x, y) point."""
+        try:
+            x_arr = np.atleast_1d(np.asarray(xs, dtype=float))
+            y_arr = np.atleast_1d(np.asarray(ys, dtype=float))
+        except (TypeError, ValueError):
+            return  # not numeric: leave the error to rowcol, as before
+        if x_arr.shape != y_arr.shape:
+            return
+        bad = ~(np.isfinite(x_arr) & np.isfinite(y_arr))
+        if bad.any():
+            i = int(np.flatnonzero(bad)[0])
+            raise PyorpsError(
+                f"Coordinate ({float(x_arr[i])!r}, {float(y_arr[i])!r}) is not finite "
+                f"({int(bad.sum())} of {bad.size} point(s) are NaN or "
+                f"infinite). Allowed: finite (x, y) numbers in the raster "
+                f"CRS.")
+
+    def _check_indices_in_window(self, indices: np.ndarray, xs, ys) -> None:
+        """Raise PyorpsError if any (row, col) lies outside the window data.
+
+        Runs once per call on the given points (never per cell).
+        """
+        n_rows, n_cols = self.data.shape[-2:]
+        rows = indices[:, 0]
+        cols = indices[:, 1]
+        outside = (rows < 0) | (rows >= n_rows) | (cols < 0) | (cols >= n_cols)
+        if not outside.any():
+            return
+        i = int(np.flatnonzero(outside)[0])
+        x = float(np.atleast_1d(np.asarray(xs, dtype=float))[i])
+        y = float(np.atleast_1d(np.asarray(ys, dtype=float))[i])
+        transform = self.raster_dataset.transform
+        left, bottom, right, top = window_bounds(self.window, transform)
+        height, width = self.raster_dataset.shape[-2:]
+        full_w, full_s, full_e, full_n = array_bounds(height, width, transform)
+        crs = self.raster_dataset.crs
+        message = (
+            f"Point ({x!r}, {y!r}) lies outside the search window: it maps to "
+            f"window cell (row {int(rows[i])}, col {int(cols[i])}), but the "
+            f"window has {n_rows} x {n_cols} cells "
+            f"({int(outside.sum())} of {outside.size} point(s) are outside). "
+            f"Search window bounds (left, bottom, right, top) = "
+            f"({left:.3f}, {bottom:.3f}, {right:.3f}, {top:.3f}); full raster "
+            f"bounds = ({full_w:.3f}, {full_s:.3f}, {full_e:.3f}, {full_n:.3f}); "
+            f"raster CRS = {_crs_name(crs)}. Allowed: points inside the "
+            f"search window, given in the raster CRS.")
+        if -180.0 <= x <= 180.0 and -90.0 <= y <= 90.0 and _is_projected(crs):
+            message += (
+                f" The point looks like longitude/latitude degrees while the "
+                f"raster CRS is projected: this is probably a CRS mismatch. "
+                f"Reproject the point to {_crs_name(crs)} first, e.g. with "
+                f"pyproj.Transformer.from_crs('EPSG:4326', "
+                f"'{_crs_name(crs)}', always_xy=True).")
+        raise PyorpsError(message)
 
     def indices_to_coords(self, indices: list[tuple[int, int]]) -> np.ndarray:
         """
@@ -749,7 +877,7 @@ def create_test_tiff(
         for i in range(bands):
             data[i] = ((x + y + i) % 2) * 50 + 25
     else:
-        raise ValueError(f"Pattern {pattern} not recognized!")
+        raise InvalidInputError(f"Pattern {pattern} not recognized!")
 
     # Write the GeoTIFF
     with rio_open(

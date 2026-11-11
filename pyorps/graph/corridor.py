@@ -45,6 +45,7 @@ from pyorps.core.corridor import (
     CorridorNode,
     CorridorSegment,
 )
+from pyorps.core.exceptions import InvalidInputError, InvalidTypeError
 from pyorps.core.path import Path, PathCollection
 from pyorps.core.types import IMPASSABLE_CELL_COST
 from pyorps.utils._dijkstra import make_multi_source_solver
@@ -84,7 +85,7 @@ def _normalize_routes(routes) -> list[tuple[Any, np.ndarray]]:
     elif isinstance(routes, Sequence) and not isinstance(routes, (str, bytes)):
         items = enumerate(routes)
     else:
-        raise TypeError(
+        raise InvalidTypeError(
             "routes must be a mapping of key -> cell sequence, a sequence of "
             f"cell sequences, or a PathCollection; got {type(routes)!r}")
 
@@ -100,7 +101,7 @@ def _normalize_routes(routes) -> list[tuple[Any, np.ndarray]]:
             value.path_indices if isinstance(value, Path) else value,
             dtype=np.uint32)
         if cells.ndim != 1:
-            raise ValueError(
+            raise InvalidInputError(
                 f"route {key!r} is not a 1D cell sequence (shape {cells.shape})")
         if cells.size < 2:
             # A degenerate route contributes no step and therefore no trench;
@@ -108,14 +109,14 @@ def _normalize_routes(routes) -> list[tuple[Any, np.ndarray]]:
             # source/target pair is a legitimate input.
             continue
         if key in seen_keys:
-            raise ValueError(
+            raise InvalidInputError(
                 f"route key {key!r} appears twice; keys identify routes in "
                 f"pair_routes, so a duplicate would silently drop one of them")
         seen_keys.add(key)
         normalized.append((key, cells))
 
     if not normalized:
-        raise ValueError("no route with at least two cells was supplied")
+        raise InvalidInputError("no route with at least two cells was supplied")
     return normalized
 
 
@@ -133,7 +134,7 @@ def _terminal_table(
         by_id = {tid: int(cell) for tid, cell in terminal_cells.items()}
         by_cell = {cell: tid for tid, cell in by_id.items()}
         if len(by_cell) != len(by_id):
-            raise ValueError(
+            raise InvalidInputError(
                 "terminal_cells maps two terminals onto the same cell; "
                 "deduplicate them before building a corridor graph")
         return by_cell, by_id
@@ -249,13 +250,13 @@ def corridor_graph_from_routes(
     normalized = _normalize_routes(routes)
     raster = np.ascontiguousarray(raster)
     if raster.ndim != 2:
-        raise ValueError(f"raster must be 2D, got shape {raster.shape}")
+        raise InvalidInputError(f"raster must be 2D, got shape {raster.shape}")
     rows, cols = raster.shape
     cell_size = float(abs(transform.a))
 
     for key, cells in normalized:
         if cells.max() >= rows * cols:
-            raise ValueError(
+            raise InvalidInputError(
                 f"route {key!r} references cell {int(cells.max())}, outside "
                 f"the {rows}x{cols} raster window it was priced against")
 
@@ -342,7 +343,7 @@ def corridor_graph_from_routes(
         solver = pricer
         if solver is None:
             if steps is None:
-                raise ValueError(
+                raise InvalidInputError(
                     "price_routing_cost=True needs the neighbourhood step "
                     "table; pass steps=, pricer=, or set "
                     "price_routing_cost=False")

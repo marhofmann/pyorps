@@ -8,37 +8,35 @@ P5.4: GPU raster sidecar validation
 P5.5: WFS filter_params sanitization
 """
 import json
-import logging
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-import numpy as np
 import geopandas as gpd
-import pandas as pd
+import numpy as np
 from rasterio.transform import from_origin
 from shapely.geometry import Polygon
+
+# ---------------------------------------------------------------------------
+# P5.2: Raster size validation
+# ---------------------------------------------------------------------------
+from pyorps.graph.path_finder import MAX_SAFE_CELLS, PathFinder
+from pyorps.io.geo_dataset import InMemoryRasterDataset
 
 # ---------------------------------------------------------------------------
 # P5.1 & P5.5: WFS URL validation + filter_params sanitization
 # ---------------------------------------------------------------------------
 from pyorps.io.vector_loader import (
-    _validate_wfs_url,
     _sanitize_filter_params,
+    _validate_wfs_url,
     load_from_wfs,
 )
-
-# ---------------------------------------------------------------------------
-# P5.2: Raster size validation
-# ---------------------------------------------------------------------------
-from pyorps.graph.path_finder import PathFinder, MAX_SAFE_CELLS
 
 # ---------------------------------------------------------------------------
 # P5.3: uint16 overflow in raster multiplication
 # ---------------------------------------------------------------------------
 from pyorps.raster.rasterizer import GeoRasterizer
-from pyorps.io.geo_dataset import InMemoryRasterDataset
 
 # ---------------------------------------------------------------------------
 # P5.4: GPU raster sidecar validation
@@ -237,7 +235,6 @@ class TestRasterSizeValidation(unittest.TestCase):
         # Create a mock raster handler whose data has an oversized shape
         mock_rh = MagicMock()
         # Shape: band=1, rows=70000, cols=70000 => 4.9 billion cells > uint32
-        oversized = np.empty((1,), dtype=object)
         oversized_band = MagicMock()
         oversized_band.shape = (70000, 70000)
         mock_rh.data.__getitem__ = MagicMock(return_value=oversized_band)

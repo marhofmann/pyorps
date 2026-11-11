@@ -31,7 +31,14 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 
-from pyorps.core.exceptions import NoPathFoundError
+from pyorps.core.exceptions import (
+    FeatureNotImplementedError,
+    InvalidInputError,
+    InvalidTypeError,
+    MissingKeyError,
+    NoPathFoundError,
+    PyorpsRuntimeError,
+)
 from pyorps.core.path import Path
 from pyorps.core.types import IMPASSABLE_CELL_COST
 from pyorps.io.geo_dataset import InMemoryRasterDataset, LocalRasterDataset
@@ -84,7 +91,7 @@ _LABEL_PRECISION = {"dijkstra": "float64", "delta": "float32",
 def _require_gradient_support(finder: PathFinder, kind: str) -> None:
     """Refuse a full-field kernel that would drop the DEM's slope terms."""
     if kind in ("delta", "gpu") and _uses_gradients(finder):
-        raise NotImplementedError(
+        raise FeatureNotImplementedError(
             f"the {kind} full-field kernel does not apply the DEM's "
             f"per-edge slope terms, so its field would price flat terrain; "
             f"use algorithm='dijkstra' (what 'auto' picks here on cython)")
@@ -224,7 +231,7 @@ def _encode_pred_steps(pred: np.ndarray, steps: np.ndarray,
     kernel workspace it came from.
     """
     if len(steps) > _NO_STEP:
-        raise ValueError(
+        raise InvalidInputError(
             f"{len(steps)} steps exceed the {_NO_STEP} a one-byte "
             f"predecessor can name; save with with_paths=False")
     out = np.full(pred.size, _NO_STEP, dtype=np.uint8)
@@ -247,12 +254,12 @@ def _encode_pred_steps(pred: np.ndarray, steps: np.ndarray,
         dr = row - prow
         dc = col - pcol
         if np.any(np.abs(dr) > reach) or np.any(np.abs(dc) > reach):
-            raise ValueError(
+            raise InvalidInputError(
                 "a predecessor lies further than one step away; the field "
                 "cannot be step-encoded")
         enc = lut[(dr + reach) * span + (dc + reach)]
         if np.any(enc == _NO_STEP):
-            raise ValueError(
+            raise InvalidInputError(
                 "a predecessor offset is not in the step table; the field "
                 "cannot be step-encoded")
         out[start:start + _ENCODE_BLOCK][reached] = enc
@@ -410,7 +417,7 @@ def _luts_hash(luts) -> str | None:
     elif isinstance(luts, dict):
         items = dict(luts)
     else:
-        raise TypeError(f"cannot hash gradient LUTs of type "
+        raise InvalidTypeError(f"cannot hash gradient LUTs of type "
                         f"{type(luts).__name__}")
     return parameter_hash({k: (np.asarray(v).tolist()
                                if isinstance(v, np.ndarray) else v)
@@ -535,14 +542,14 @@ def _storage_section(storage: str, codec: str = "raw",
     from pyorps.io.field_codec import FIELD_CODECS, is_lossy
 
     if codec not in FIELD_CODECS:
-        raise ValueError(f"unknown codec {codec!r}; have {FIELD_CODECS}")
+        raise InvalidInputError(f"unknown codec {codec!r}; have {FIELD_CODECS}")
     if codec == "raw":
         if storage not in FIELD_STORAGE:
-            raise ValueError(f"unknown storage {storage!r}; "
+            raise InvalidInputError(f"unknown storage {storage!r}; "
                              f"have {FIELD_STORAGE}")
         return _storage_meta(storage)
     if is_lossy(codec) and error_bound is None:
-        raise ValueError(
+        raise InvalidInputError(
             f"codec={codec!r} needs an explicit error_bound -- the "
             f"whole point of a fixed quantum is that the error is a "
             f"stated parameter rather than a measured surprise")
@@ -555,7 +562,7 @@ def _require_bound_storage(kind: str, storage: str, codec: str) -> None:
     if _LABEL_PRECISION.get(kind) == "float64":
         return
     if codec == "raw" and storage in ("float64", "float32-down"):
-        raise ValueError(
+        raise InvalidInputError(
             f"storage={storage!r} promises a bound on the least cost, but "
             f"a {kind} field's labels are float32-accumulated (and above "
             f"one thread may settle a little high); settle the field with "
@@ -887,7 +894,7 @@ def _check_session_key(finder: PathFinder, neighborhood, ignore_max,
     if (finder.neighborhood_str != neighborhood
             or finder.ignore_max_cost != ignore_max
             or finder.graph_api_name != api_name):
-        raise ValueError(
+        raise InvalidInputError(
             f"{what} invalidated: neighborhood, ignore-max, or "
             f"algorithm/backend changed -- open a new one")
 
@@ -980,11 +987,13 @@ class _DeltaTree:
         self._ws = DeltaWorkspace(raster, max_value)
         self.root_idx = int(root_idx)
         dummy = _delta_dummy_target(raster, self.root_idx, max_value)
+        # return_path=False: only the field is wanted, the path to the dummy
+        # target would be built and thrown away.
         delta_stepping_2d_persistent(
             raster, steps, np.uint64(self.root_idx), np.uint64(dummy),
             delta=float(delta), max_value=max_value,
             num_threads=int(num_threads), margin=_FULL_FIELD_MARGIN,
-            workspace=self._ws)
+            workspace=self._ws, return_path=False)
         self._expansions = 1
         self._cutoff = float("inf")
 
@@ -1322,7 +1331,7 @@ class SearchSession:
         self._check_key()
         pts = _as_points(points)
         if len(pts) < 2:
-            raise ValueError("SearchSession.route needs at least two points")
+            raise InvalidInputError("SearchSession.route needs at least two points")
         if not _points_in_window(self._finder, pts):
             self._rebuild_window(pts)
         self._drop_trees()
@@ -1345,7 +1354,7 @@ class SearchSession:
         self._check_key()
         pts = _as_points(points)
         if len(pts) < 2:
-            raise ValueError("SearchSession.update needs at least two points")
+            raise InvalidInputError("SearchSession.update needs at least two points")
         if not self._points:
             return self.route(pts)
         if not _points_in_window(self._finder, pts):
@@ -1382,7 +1391,7 @@ class SearchSession:
 
     def _check_open(self) -> None:
         if self._closed:
-            raise RuntimeError("SearchSession is closed")
+            raise PyorpsRuntimeError("SearchSession is closed")
 
     def _check_key(self) -> None:
         _check_session_key(self._finder, self._neighborhood, self._ignore_max,
@@ -1569,12 +1578,12 @@ class CostField:
             algo_kwargs.setdefault("num_threads", _auto_threads())
         origin = _as_point(origin)
         if not _points_in_window(finder, [origin]):
-            raise ValueError(
+            raise InvalidInputError(
                 f"CostField origin {origin} is outside the search window; "
                 f"widen search_space_buffer_m or move the origin")
         ok, why = _reversible(finder)
         if not ok:
-            raise ValueError(
+            raise InvalidInputError(
                 f"CostField needs symmetric edge weights: {why}. The field "
                 f"is rooted at the fixed terminal and read in the other "
                 f"direction, which is only sound when d(u->v) == d(v->u).")
@@ -1590,7 +1599,7 @@ class CostField:
         if self._kind in ("dijkstra", "delta"):
             raster = _raster_of(finder)
             if raster.dtype != np.uint16:
-                raise ValueError(
+                raise InvalidInputError(
                     f"CostField on the {self._kind} backend needs a uint16 "
                     f"weight raster, got {raster.dtype}")
         self._scale = _cell_size(finder)
@@ -1598,7 +1607,7 @@ class CostField:
         if (finder.ignore_max_cost
                 and _raster_of(finder).reshape(-1)[self._origin_idx]
                 == IMPASSABLE_CELL_COST):
-            raise ValueError(
+            raise InvalidInputError(
                 f"origin {origin} snapped to an impassable cell; a root the "
                 f"exclude mask forbids relaxes outward but cannot be reached "
                 f"back, which breaks the symmetry the field relies on")
@@ -1706,7 +1715,7 @@ class CostField:
         if not pts:
             return np.empty(0, dtype=np.float64)
         if not _points_in_window(self._finder, pts):
-            raise ValueError(
+            raise InvalidInputError(
                 "some points fall outside the CostField search window; "
                 "widen search_space_buffer_m so it covers every candidate")
         idxs = _indices(self._finder, pts)
@@ -1718,7 +1727,7 @@ class CostField:
         elif mode == "each":
             self._settle_each(idxs)
         elif mode != "none":
-            raise ValueError(f"unknown settle mode {settle!r}")
+            raise InvalidInputError(f"unknown settle mode {settle!r}")
         return self._gather(idxs) * self._scale
 
     def cost_to(self, point) -> float:
@@ -1761,7 +1770,7 @@ class CostField:
         self._check_key()
         pt = _as_point(point)
         if not _points_in_window(self._finder, [pt]):
-            raise ValueError(f"point {pt} is outside the CostField window")
+            raise InvalidInputError(f"point {pt} is outside the CostField window")
         idx = _index(self._finder, pt)
         self._settle_each(np.array([idx], dtype=np.uint32))
         cells = self._tree.extract_or_resume(idx)
@@ -1839,7 +1848,7 @@ class CostField:
         # finite cell, so the collision test needs no isfinite mask of its own.
         arr = self.field_array(dtype=dtype)
         if np.isfinite(nodata) and bool(np.any(arr == nodata)):
-            raise ValueError(
+            raise InvalidInputError(
                 f"nodata={nodata} collides with a reachable cost in this "
                 f"field; pick a value no cell can take")
         np.copyto(arr, nodata, where=~np.isfinite(arr))
@@ -1953,7 +1962,7 @@ class CostField:
         sections = dict(provenance or {})
         unknown = set(sections) - {"cost_model", "code", "dw", "extra"}
         if unknown:
-            raise ValueError(
+            raise InvalidInputError(
                 f"provenance may add only cost_model, code, dw and extra "
                 f"sections; the rest is taken from the finder, got "
                 f"{sorted(unknown)}")
@@ -1996,7 +2005,7 @@ class CostField:
         if with_paths:
             pred = self._tree.pred()
             if pred is None:
-                raise NotImplementedError(
+                raise FeatureNotImplementedError(
                     f"the {self._kind} backend keeps no predecessor array, "
                     f"so a saved field cannot return routes; save with "
                     f"with_paths=False to store costs only")
@@ -2092,7 +2101,7 @@ class CostField:
 
     def _check_open(self) -> None:
         if self._closed:
-            raise RuntimeError("CostField is closed")
+            raise PyorpsRuntimeError("CostField is closed")
 
     def _check_key(self) -> None:
         _check_session_key(self._finder, self._neighborhood, self._ignore_max,
@@ -2109,7 +2118,7 @@ class CostField:
                          source_sha256=self._key["raster"]["source_sha256"])
         changed = diff(self._key, now, ignore=())
         if changed:
-            raise ValueError(
+            raise InvalidInputError(
                 "the finder changed since this field was settled, so its "
                 "labels no longer describe it (" + "; ".join(changed[:4])
                 + (" ..." if len(changed) > 4 else "")
@@ -2179,7 +2188,7 @@ class SavedCostField:
         try:
             handle = np.load(self._path, allow_pickle=False)
         except Exception as exc:                         # noqa: BLE001
-            raise ValueError(
+            raise InvalidInputError(
                 f"{self._path} is not a readable saved field ({exc}). A "
                 f"field written by a run that was interrupted mid-write is "
                 f"the usual cause; delete it and let it be settled again."
@@ -2189,7 +2198,7 @@ class SavedCostField:
         with handle as data:
             meta = json.loads(str(data["meta"]))
             if int(meta.get("format", 0)) != _FIELD_FORMAT_VERSION:
-                raise ValueError(
+                raise InvalidInputError(
                     f"{self._path.name} is format {meta.get('format')}, "
                     f"this build reads {_FIELD_FORMAT_VERSION}")
             if expect is not None:
@@ -2218,7 +2227,7 @@ class SavedCostField:
         self._cell_size = float(meta["cell_size_m"])
         expected = self._rows * self._cols
         if self._dist.size != expected:
-            raise ValueError(
+            raise InvalidInputError(
                 f"{self._path.name} holds {self._dist.size} labels for a "
                 f"{self._rows}x{self._cols} window")
         # How far a stored raw label may sit from the kernel's label, in
@@ -2285,7 +2294,7 @@ class SavedCostField:
         row = int(np.asarray(row).ravel()[0])
         col = int(np.asarray(col).ravel()[0])
         if not (0 <= row < self._rows and 0 <= col < self._cols):
-            raise ValueError(
+            raise InvalidInputError(
                 f"point {(x, y)} is outside the saved window "
                 f"({self._rows}x{self._cols})")
         return row * self._cols + col
@@ -2300,7 +2309,7 @@ class SavedCostField:
         from rasterio.transform import rowcol
         arr = np.asarray(points, dtype=np.float64)
         if arr.ndim != 2 or arr.shape[1] != 2:
-            raise ValueError("points must be an (n, 2) array of (x, y)")
+            raise InvalidInputError("points must be an (n, 2) array of (x, y)")
         rows, cols = rowcol(self.transform, arr[:, 0], arr[:, 1])
         rows = np.asarray(rows, dtype=np.int64)
         cols = np.asarray(cols, dtype=np.int64)
@@ -2308,7 +2317,7 @@ class SavedCostField:
                    | (cols < 0) | (cols >= self._cols))
         if outside.any():
             first = int(np.flatnonzero(outside)[0])
-            raise ValueError(
+            raise InvalidInputError(
                 f"{int(outside.sum())} point(s) fall outside the saved "
                 f"window ({self._rows}x{self._cols}), first is "
                 f"{tuple(arr[first])}")
@@ -2389,7 +2398,7 @@ class SavedCostField:
                 kernel's labels.
         """
         if bound not in ("lower", "upper", "label"):
-            raise ValueError(f"bound must be 'lower', 'upper' or 'label', "
+            raise InvalidInputError(f"bound must be 'lower', 'upper' or 'label', "
                              f"got {bound!r}")
         arr = np.asarray(points, dtype=np.float64)
         if arr.size == 0:
@@ -2414,9 +2423,13 @@ class SavedCostField:
         """The route origin -> point as flat cell indices.
 
         Walks the stored predecessor steps. Empty when no route exists.
+
+        Raises:
+            PyorpsRuntimeError: the stored predecessors run in a cycle (the
+                walk is bounded by the cell count).
         """
         if self._pred_step is None:
-            raise NotImplementedError(
+            raise FeatureNotImplementedError(
                 f"{self._path.name} was saved with with_paths=False, so it "
                 f"prices candidates but cannot return routes")
         idx = self._index(point)
@@ -2437,7 +2450,10 @@ class SavedCostField:
             if cur == self._origin_idx:
                 walk.reverse()
                 return np.array(walk, dtype=np.int64)
-        return np.empty(0, dtype=np.int64)
+        raise PyorpsRuntimeError(
+            f"The stored predecessor chain from cell {idx} does not reach the "
+            f"origin cell {self._origin_idx} within {limit - 1} cells: the "
+            f"saved field contains a predecessor cycle")
 
     def path_coords(self, point) -> np.ndarray:
         """:meth:`path_cells` as an ``(n, 2)`` array of map coordinates."""
@@ -2563,7 +2579,7 @@ class CostFieldSet:
             # make the numbers this set returns depend on how much
             # memory the machine happened to have. Save the fields
             # explicitly if a lossy cache is what is wanted.
-            raise ValueError(
+            raise InvalidInputError(
                 f"CostFieldSet refuses codec={codec!r}: it chooses "
                 f"resident-vs-spilled from available memory, so a lossy "
                 f"spill would make precision machine-dependent. Settle "
@@ -2574,15 +2590,15 @@ class CostFieldSet:
             finder.create_raster_handler()
         pts = _as_points(origins)
         if not pts:
-            raise ValueError("CostFieldSet needs at least one origin")
+            raise InvalidInputError("CostFieldSet needs at least one origin")
         if labels is None:
             labels = [f"t{i}" for i in range(len(pts))]
         labels = [str(x) for x in labels]
         if len(labels) != len(pts):
-            raise ValueError(
+            raise InvalidInputError(
                 f"{len(labels)} labels for {len(pts)} origins")
         if len(set(labels)) != len(labels):
-            raise ValueError("labels must be unique")
+            raise InvalidInputError("labels must be unique")
 
         self._finder = finder
         self._labels = tuple(labels)
@@ -2671,7 +2687,7 @@ class CostFieldSet:
         try:
             return self._index_of[str(label)]
         except KeyError:
-            raise KeyError(
+            raise MissingKeyError(
                 f"no terminal {label!r}; have {list(self._labels)}") from None
 
     def costs_to(self, points: Sequence, labels: Sequence | None = None
@@ -2750,7 +2766,7 @@ class CostFieldSet:
 
     def _check_open(self) -> None:
         if self._closed:
-            raise RuntimeError("CostFieldSet is closed")
+            raise PyorpsRuntimeError("CostFieldSet is closed")
 
     def close(self) -> None:
         """Release every field, and any temporary cache this set created."""

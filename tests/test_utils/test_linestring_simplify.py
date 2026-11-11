@@ -1,5 +1,4 @@
 """Tests for pyorps.utils.linestring_simplify."""
-import math
 import pytest
 from shapely.geometry import LineString
 

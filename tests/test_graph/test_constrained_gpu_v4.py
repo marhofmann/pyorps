@@ -2,8 +2,8 @@
 import re
 from pathlib import Path
 
-import pytest
 import numpy as np
+import pytest
 
 try:
     import cupy as cp
@@ -429,7 +429,6 @@ extern "C" __global__ void test_enqueue_read(
         )
 
         # Allocate global memory
-        d_pool = cp.zeros(n_buckets * ipb * 4, dtype=cp.int32)  # 16 bytes each
         # Reinterpret as raw byte pool — WorkItem is 16 bytes = 4 int32s
         pool_bytes = n_buckets * ipb * 16
         d_pool_raw = cp.zeros(pool_bytes // 4, dtype=cp.int32)
@@ -1380,7 +1379,7 @@ extern "C" __global__ void test_concurrent_read(
         # At least one thread should have succeeded
         h_results = d_relax_results.get()
         assert np.sum(h_results) >= 1, (
-            f"No thread succeeded in relaxing"
+            "No thread succeeded in relaxing"
         )
 
         # Read back the final distance
@@ -2639,10 +2638,8 @@ extern "C" __global__ void seed_state(
             pred_state = int(np.int64(pred_lo) | (np.int64(pred_hi) << 32))
 
             # Unpack new state: should have small span_bin (reset after tower)
-            new_cell = state // spc
             rem = state % spc
             sbh = n_span_bins * n_heights
-            new_dir = rem // sbh
             rem2 = rem % sbh
             new_span_bin = rem2 // n_heights
 
@@ -2881,7 +2878,7 @@ class TestMTBAssignment:
             f"-DITEMS_PER_BUCKET={ipb}",
             f"-DMAX_SEGMENTS_PER_BUCKET={max_seg}",
             f"-DMAX_WTBS={n_wtbs}",
-            f"-DMTB_STAGING_SIZE=256",
+            "-DMTB_STAGING_SIZE=256",
         )
 
         kernel = cp.RawKernel(
@@ -3008,7 +3005,7 @@ class TestMTBAssignment:
             f"-DITEMS_PER_BUCKET={ipb}",
             f"-DMAX_SEGMENTS_PER_BUCKET={max_seg}",
             f"-DMAX_WTBS={n_wtbs}",
-            f"-DMTB_STAGING_SIZE=256",
+            "-DMTB_STAGING_SIZE=256",
         )
 
         kernel = cp.RawKernel(
@@ -3112,7 +3109,7 @@ class TestMTBTermination:
             f"-DITEMS_PER_BUCKET={ipb}",
             f"-DMAX_SEGMENTS_PER_BUCKET={max_seg}",
             f"-DMAX_WTBS={n_wtbs}",
-            f"-DMTB_STAGING_SIZE=256",
+            "-DMTB_STAGING_SIZE=256",
         )
 
         kernel = cp.RawKernel(
@@ -3187,7 +3184,7 @@ class TestMTBTermination:
             f"-DITEMS_PER_BUCKET={ipb}",
             f"-DMAX_SEGMENTS_PER_BUCKET={max_seg}",
             f"-DMAX_WTBS={n_wtbs}",
-            f"-DMTB_STAGING_SIZE=256",
+            "-DMTB_STAGING_SIZE=256",
         )
 
         kernel = cp.RawKernel(
@@ -3275,7 +3272,7 @@ class TestMTBTermination:
             f"-DITEMS_PER_BUCKET={ipb}",
             f"-DMAX_SEGMENTS_PER_BUCKET={max_seg}",
             f"-DMAX_WTBS={n_wtbs}",
-            f"-DMTB_STAGING_SIZE=256",
+            "-DMTB_STAGING_SIZE=256",
         )
 
         kernel = cp.RawKernel(
@@ -3375,7 +3372,7 @@ class TestMTBBucketAdvancement:
             f"-DITEMS_PER_BUCKET={ipb}",
             f"-DMAX_SEGMENTS_PER_BUCKET={max_seg}",
             f"-DMAX_WTBS={n_wtbs}",
-            f"-DMTB_STAGING_SIZE=256",
+            "-DMTB_STAGING_SIZE=256",
         )
 
         kernel = cp.RawKernel(
@@ -3582,7 +3579,7 @@ class TestEndToEndTiny:
             f"-DMAX_SEGMENTS_PER_BUCKET={max_seg}",
             f"-DMAX_INTER={max_inter_cols}",
             f"-DMAX_WTBS={n_wtbs}",
-            f"-DMTB_STAGING_SIZE=256",
+            "-DMTB_STAGING_SIZE=256",
         )
 
         main_src = _load_constrained_adds(
@@ -3787,7 +3784,7 @@ class TestEndToEndTiny:
             f"-DMAX_SEGMENTS_PER_BUCKET={max_seg}",
             f"-DMAX_INTER={max_inter_cols}",
             f"-DMAX_WTBS={n_wtbs}",
-            f"-DMTB_STAGING_SIZE=256",
+            "-DMTB_STAGING_SIZE=256",
         )
 
         main_src = _load_constrained_adds(
@@ -3982,7 +3979,7 @@ class TestEndToEnd50x50:
             f"-DMAX_SEGMENTS_PER_BUCKET={max_seg}",
             f"-DMAX_INTER={max_inter_cols}",
             f"-DMAX_WTBS={n_wtbs}",
-            f"-DMTB_STAGING_SIZE=256",
+            "-DMTB_STAGING_SIZE=256",
         )
 
         main_src = _load_constrained_adds(
@@ -4770,8 +4767,9 @@ class TestCythonComparison:
         - All interior tower spans within [min_span, max_span] (with
           discretization tolerance).
         """
-        from pyorps.utils.neighborhood import get_neighborhood_steps
         import math
+
+        from pyorps.utils.neighborhood import get_neighborhood_steps
 
         rows, cols = 50, 50
         cell_size = 10.0

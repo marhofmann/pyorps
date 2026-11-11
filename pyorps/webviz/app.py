@@ -21,8 +21,7 @@ from __future__ import annotations
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
 import geopandas as gpd
-from dash import (ALL, Dash, Input, Output, State, callback_context, dash_table,
-                  html, no_update)
+from dash import ALL, Dash, Input, Output, State, callback_context, dash_table, html, no_update
 from pyproj import Transformer
 from shapely.geometry import LineString
 

@@ -130,13 +130,17 @@ from __future__ import annotations
 import logging
 import math
 import zlib
-from typing import List, Optional, Tuple, Union
 
 import numpy as np
 from numpy import ndarray
 
 from pyorps.core.exceptions import (
-    NoPathFoundError, AlgorithmNotImplementedError, PairwiseError
+    AlgorithmNotImplementedError,
+    InvalidInputError,
+    MissingDependencyError,
+    NoPathFoundError,
+    PairwiseError,
+    PyorpsRuntimeError,
 )
 from pyorps.core.types import NodeList, NodePathList
 from pyorps.graph.api.graph_api import GraphAPI
@@ -192,7 +196,7 @@ _MASK_CAVEAT = (
 )
 
 
-def tier_a_report(gradient_luts) -> Tuple[bool, str]:
+def tier_a_report(gradient_luts) -> tuple[bool, str]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Decide Tier A acceptance from the LUT ARRAYS, not the option names.
 
@@ -288,16 +292,16 @@ class RasterFIMAPI(GraphAPI):
             raster_data: ndarray,
             steps: ndarray,
             ignore_max: bool = True,
-            dem_data: Optional[ndarray] = None,
-            tile: Optional[int] = None,
-            n_inner: Optional[int] = None,
+            dem_data: ndarray | None = None,
+            tile: int | None = None,
+            n_inner: int | None = None,
             eps_rel: float = 1e-6,
-            eps_abs: Optional[float] = None,
+            eps_abs: float | None = None,
             disk_init: bool = True,
-            max_outer_iterations: Optional[int] = None,
+            max_outer_iterations: int | None = None,
             order: int = 1,
             gradient_luts=None,
-            cell_size: Optional[float] = None,
+            cell_size: float | None = None,
             q_flat_eps: float = 1e-3,
             slope_stencil: str = "central",
             strict_dem_check: bool = False,
@@ -307,9 +311,10 @@ class RasterFIMAPI(GraphAPI):
     ):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not RASTER_FIM_AVAILABLE:
-            raise ImportError(
+            raise MissingDependencyError(
                 "The raster_fim backend requires CuPy with CUDA support. "
-                "Install with: pip install cupy-cuda12x"
+                "Install with: pip install cupy-cuda12x",
+                extra="gpu",
             )
         if gradient_luts is not None and dem_data is None:
             raise AlgorithmNotImplementedError(
@@ -318,7 +323,7 @@ class RasterFIMAPI(GraphAPI):
                 graph_library="raster_fim",
             )
         if grade_limit_mode not in ("lazy", "eager"):
-            raise ValueError(
+            raise InvalidInputError(
                 f"grade_limit_mode must be 'lazy' or 'eager', "
                 f"got {grade_limit_mode!r}")
 
@@ -346,7 +351,7 @@ class RasterFIMAPI(GraphAPI):
         self._grade_limit = None
         self._grade_limit_mode = grade_limit_mode
         self._max_mask_iterations = int(max_mask_iterations)
-        self._eager_mask: Optional[np.ndarray] = None
+        self._eager_mask: np.ndarray | None = None
         #: Never mask a cell whose removal would cut the last legal
         #: corridor — see :meth:`_drop_disconnecting`. Escalation point
         #: of the aggressive rule; 0 = always aggressive (measured best).
@@ -374,7 +379,7 @@ class RasterFIMAPI(GraphAPI):
                     graph_library="raster_fim",
                 )
             if cell_size is None:
-                raise ValueError(
+                raise InvalidInputError(
                     "raster_fim with a DEM needs cell_size (metres per "
                     "cell): the Tier A metric M = c^2 (I + grad_z "
                     "grad_z^T) is built from an elevation gradient in "
@@ -382,7 +387,7 @@ class RasterFIMAPI(GraphAPI):
                     "anisotropy is wrong by a factor of the cell size.")
             cell_size = float(cell_size)
             if not math.isfinite(cell_size) or cell_size <= 0:
-                raise ValueError(
+                raise InvalidInputError(
                     f"cell_size must be finite and > 0, got {cell_size}")
 
             s_max_pct = 100.0 * 2.0            # solver default clamp
@@ -420,7 +425,7 @@ class RasterFIMAPI(GraphAPI):
             # array. See the DEM contract in the module docstring.
             self._dem = np.ascontiguousarray(dem_data, dtype=np.float32)
             if self._dem.shape != (self._rows, self._cols):
-                raise ValueError(
+                raise InvalidInputError(
                     f"dem_data shape {self._dem.shape} does not match the "
                     f"cost raster {(self._rows, self._cols)}")
             self._strict_dem_check = bool(strict_dem_check)
@@ -454,14 +459,14 @@ class RasterFIMAPI(GraphAPI):
         #: Continuous polylines (float (row, col), source -> target
         #: order) of the last shortest_path call, parallel to the
         #: returned path list (None for unreachable pairs).
-        self.last_polylines: List[Optional[np.ndarray]] = []
+        self.last_polylines: list[np.ndarray | None] = []
         #: Authoritative routing metric T[target] per returned path
         #: (np.inf for unreachable pairs).
-        self.last_field_costs: List[float] = []
+        self.last_field_costs: list[float] = []
         # Trace field of the most recent solve (GPU tracer input; the
         # first-order field when order=2 — see _solve)
-        self._last_host_field: Optional[np.ndarray] = None
-        self._last_trace_host: Optional[np.ndarray] = None
+        self._last_host_field: np.ndarray | None = None
+        self._last_trace_host: np.ndarray | None = None
         self._last_trace_device = None
         # The Tier A metric is a property of the DEM, not of any one
         # solve, so it is cached once and EVERY trace under a DEM uses
@@ -475,7 +480,7 @@ class RasterFIMAPI(GraphAPI):
         self._label_cache = None
         #: Grade-limit mask iterations per returned path (empty without a
         #: limit) — the honest per-route cost of the lazy-constraint loop.
-        self.last_mask_iterations: List[int] = []
+        self.last_mask_iterations: list[int] = []
 
         if self._grade_limit is not None and grade_limit_mode == "eager":
             self._eager_mask = self._steep_cells(self._grade_limit)
@@ -526,7 +531,7 @@ class RasterFIMAPI(GraphAPI):
         if self._dem_checksum_of(
                 self._dem, self._strict_dem_check) == self._dem_checksum:
             return
-        raise RuntimeError(
+        raise PyorpsRuntimeError(
             "raster_fim: dem_data was modified in place after "
             "RasterFIMAPI was constructed. The Tier A metric, "
             "grade-limit chord maps and legal-chord certificates were "
@@ -577,7 +582,7 @@ class RasterFIMAPI(GraphAPI):
                  (0, 1), (1, -1), (1, 0), (1, 1))
 
     @staticmethod
-    def _offsets_from_steps(steps) -> Tuple[Tuple[int, int], ...]:
+    def _offsets_from_steps(steps) -> tuple[tuple[int, int], ...]:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Symmetric closure of the caller's ``steps`` as (dr, dc) pairs.
 
@@ -603,7 +608,7 @@ class RasterFIMAPI(GraphAPI):
         return tuple(sorted(out)) if out else RasterFIMAPI._OFFSETS8
 
     @staticmethod
-    def _forward_offsets(offsets) -> Tuple[Tuple[int, int], ...]:
+    def _forward_offsets(offsets) -> tuple[tuple[int, int], ...]:
         """One representative per undirected chord direction."""
         return tuple(o for o in offsets
                      if o[0] > 0 or (o[0] == 0 and o[1] > 0))
@@ -660,7 +665,7 @@ class RasterFIMAPI(GraphAPI):
         ours = cls._bin_factor_for(lengths, cell_size, float(luts.bin_inv))
         theirs = np.asarray(bf, dtype=np.float32)
         if ours.shape != theirs.shape or not np.array_equal(ours, theirs):
-            raise ValueError(
+            raise InvalidInputError(
                 "raster_fim cannot reproduce GradientLUTs.bin_factor "
                 "bit-for-bit, so it cannot verify a route against the "
                 "discrete grade rule the search kernels apply. The "
@@ -690,7 +695,7 @@ class RasterFIMAPI(GraphAPI):
             return
         recovered = 1.0 / (inv * lengths)
         if not np.allclose(recovered, cell_size, rtol=1e-6, atol=0.0):
-            raise ValueError(
+            raise InvalidInputError(
                 f"cell_size mismatch: raster_fim was given "
                 f"cell_size = {cell_size!r} m, but the gradient LUTs were "
                 f"built with {float(np.median(recovered)):.10g} m "
@@ -698,7 +703,7 @@ class RasterFIMAPI(GraphAPI):
                 f"then be scaled wrong at every point. Pass the search "
                 f"window's cell size.")
 
-    def _q_host(self) -> Tuple[np.ndarray, np.ndarray]:
+    def _q_host(self) -> tuple[np.ndarray, np.ndarray]:
         """Host metric planes (cached) — the grade-limit mask rule and
         the host tracer fallback both need |q| per cell."""
         self._check_dem_unchanged()
@@ -816,7 +821,7 @@ class RasterFIMAPI(GraphAPI):
         if rows * cols > self._MAX_CERTIFY_CELLS:
             return None
         try:
-            import scipy.sparse                       # noqa: F401  # pylint: disable=unused-import
+            import scipy.sparse  # noqa: F401  # pylint: disable=unused-import
         except ImportError:              # pragma: no cover - scipy is a dep
             return None
 
@@ -850,8 +855,8 @@ class RasterFIMAPI(GraphAPI):
         self._edge_cache = (a, b)
         return self._edge_cache
 
-    def _components(self, removed: Optional[np.ndarray] = None
-                    ) -> Optional[np.ndarray]:
+    def _components(self, removed: np.ndarray | None = None
+                    ) -> np.ndarray | None:
         """Component labels of the legal-chord graph minus ``removed``."""
         edges = self._legal_chord_edges()
         if edges is None:
@@ -875,7 +880,7 @@ class RasterFIMAPI(GraphAPI):
         labels[~ok] = -1
         return labels
 
-    def _legal_chord_labels(self) -> Optional[np.ndarray]:
+    def _legal_chord_labels(self) -> np.ndarray | None:
         """Connected components of the LEGAL-CHORD graph (cached).
 
         Two cells in different components cannot be joined by ANY legal
@@ -899,7 +904,7 @@ class RasterFIMAPI(GraphAPI):
         self._label_cache = self._components(None)
         return self._label_cache
 
-    def _steep_cells(self, limit_pct: Optional[float] = None) -> np.ndarray:  # pylint: disable=unused-argument
+    def _steep_cells(self, limit_pct: float | None = None) -> np.ndarray:  # pylint: disable=unused-argument
         """Flat indices of cells with at least one forbidden chord.
 
         ``limit_pct`` is accepted for call-site readability and ignored:
@@ -976,7 +981,7 @@ class RasterFIMAPI(GraphAPI):
     # ------------------------------------------------------------------
 
     def _solve(self, field_sources: np.ndarray,
-               target_index: Optional[int] = None) -> np.ndarray:
+               target_index: int | None = None) -> np.ndarray:
         """One eikonal solve; T field for the given field sources.
 
         The trace field of the most recent solve is kept for the GPU
@@ -1060,8 +1065,8 @@ class RasterFIMAPI(GraphAPI):
             field_sources: np.ndarray,
             trace_starts: np.ndarray,
             reverse: bool,
-            trace: Optional[tuple] = None,
-    ) -> List[Optional[NodeList]]:
+            trace: tuple | None = None,
+    ) -> list[NodeList | None]:
         """Trace descent paths for ``trace_starts`` on one T field.
 
         With ``reverse=True`` the field sources are the routing sources
@@ -1094,7 +1099,7 @@ class RasterFIMAPI(GraphAPI):
                                     trace_starts, t_device=trace_dev,
                                     q_device=q_dev)
         forbidden = t_field >= FINITE_LIMIT
-        results: List[Optional[NodeList]] = []
+        results: list[NodeList | None] = []
         for poly in polylines:
             if poly is None:
                 self.last_polylines.append(None)
@@ -1335,7 +1340,7 @@ class RasterFIMAPI(GraphAPI):
                         _MASK_CAVEAT))
             mask = merged
         verdict = self._certificate_note(source, target) + " "
-        raise RuntimeError(
+        raise PyorpsRuntimeError(
             f"raster_fim grade-limit loop hit its cap "
             f"(max_mask_iterations = {self._max_mask_iterations}) for "
             f"{source} -> {target} with {mask.size} cell(s) masked; the "
@@ -1566,13 +1571,13 @@ class RasterFIMAPI(GraphAPI):
         return keep
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
-    def _pairwise_limited(self, pairs) -> List[NodeList]:
+    def _pairwise_limited(self, pairs) -> list[NodeList]:
         """Fallback for a hard grade limit: the mask that certifies a
         route is specific to that route, so one field can no longer serve
         several targets. Each pair pays its own solve/check/mask loop —
         the price of never returning an unverified route.
         """
-        results: List[NodeList] = []
+        results: list[NodeList] = []
         for s, t in pairs:
             try:
                 results.append(self._solve_with_grade_limit(int(s), int(t)))
@@ -1624,7 +1629,7 @@ class RasterFIMAPI(GraphAPI):
                  else [(s, t) for s in sources for t in targets])
         if self._grade_limit is not None and self._grade_limit_mode == "lazy":
             return self._pairwise_limited(pairs)
-        results: List[NodeList] = []
+        results: list[NodeList] = []
         # One solve per unique source, reused across its pairs
         fields: dict = {}
         for s, t in pairs:
@@ -1653,11 +1658,11 @@ class RasterFIMAPI(GraphAPI):
 
     def shortest_path(
             self,
-            source_indices: Union[int, List[int], ndarray],
-            target_indices: Union[int, List[int], ndarray],
+            source_indices: int | list[int] | ndarray,
+            target_indices: int | list[int] | ndarray,
             algorithm: str = "fim",
             **kwargs,
-    ) -> Union[NodeList, NodePathList]:
+    ) -> NodeList | NodePathList:
         """Continuous least-cost path(s) via the eikonal field.
 
         Parameters:

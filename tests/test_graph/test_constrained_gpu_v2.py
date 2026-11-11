@@ -1,8 +1,8 @@
-import pytest
 import numpy as np
+import pytest
 
 try:
-    import cupy as cp
+    import cupy as cp  # noqa: F401
     GPU_AVAILABLE = True
 except ImportError:
     GPU_AVAILABLE = False
@@ -139,9 +139,8 @@ class TestBasicKernel:
 
     def test_uniform_raster_finds_path(self):
         """Source (5,5) to target (45,45) on uniform 50x50 raster."""
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -170,9 +169,8 @@ class TestBasicKernel:
 
     def test_no_feasible_path_returns_empty(self):
         """Block entire middle band with 65535 so no path exists."""
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -198,9 +196,8 @@ class TestBasicKernel:
 
     def test_source_on_forbidden_raises(self):
         """Source cell = 65535 should raise ValueError."""
+        from pyorps.utils.constrained_sssp_gpu_v2 import constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2)
 
         steps = get_neighborhood_steps(1, directed=True)
         raster, params = self._make_params(
@@ -218,9 +215,8 @@ class TestBasicKernel:
 
     def test_target_on_forbidden_raises(self):
         """Target cell = 65535 should raise ValueError."""
+        from pyorps.utils.constrained_sssp_gpu_v2 import constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2)
 
         steps = get_neighborhood_steps(1, directed=True)
         raster, params = self._make_params(
@@ -238,9 +234,8 @@ class TestBasicKernel:
 
     def test_adjacent_cells_no_tower_needed(self):
         """Source and target 1 cell apart should find path with no towers."""
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -265,9 +260,8 @@ class TestBasicKernel:
 
     def test_long_straight_path_multiple_towers(self):
         """Long horizontal path should produce multiple towers."""
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -325,8 +319,7 @@ class TestPathReconstruction:
 
     def test_reconstruct_no_towers(self):
         """Reconstruction with 0 tower records gives direct path."""
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            _reconstruct_from_tower_records, pack_state)
+        from pyorps.utils.constrained_sssp_gpu_v2 import _reconstruct_from_tower_records, pack_state
         from pyorps.utils.neighborhood import get_neighborhood_steps
 
         steps = get_neighborhood_steps(1, directed=True)
@@ -427,9 +420,8 @@ class TestClearanceAndHeight:
 
     def test_flat_dem_no_obstacles_finds_path(self):
         """Flat DEM with no obstacles should find path same as without DEM."""
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -466,9 +458,8 @@ class TestClearanceAndHeight:
 
     def test_tall_obstacle_forces_taller_tower(self):
         """20m obstacle in span should force selection of taller tower."""
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -524,9 +515,8 @@ class TestClearanceAndHeight:
         that even the tallest tower cannot clear it, forcing all tower
         placements that span the obstacle zone to fail.
         """
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -574,9 +564,8 @@ class TestClearanceAndHeight:
 
     def test_gradient_penalty_avoids_steep(self):
         """Steep DEM slope should steer route around or block steep cells."""
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -683,9 +672,8 @@ class TestWarpCooperative:
         Runs the same test case as test_uniform_raster_finds_path and
         verifies path found, towers placed, same general behavior.
         """
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -717,9 +705,8 @@ class TestWarpCooperative:
         Same scenario as test_tall_obstacle_forces_taller_tower: 20m obstacle
         should force selection of taller tower height class.
         """
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -767,9 +754,8 @@ class TestWarpCooperative:
         that the parallel clearance walk produces correct results when the
         work is distributed across all 32 lanes.
         """
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -812,9 +798,8 @@ class TestWarpCooperative:
 
     def test_no_dem_skips_clearance(self):
         """Without DEM, clearance checking is skipped (fast path)."""
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -923,9 +908,8 @@ class TestAreaCost:
 
     def test_forbidden_pixel_blocks_tower(self):
         """Tower placement rejected if any footprint pixel is 65535."""
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -971,9 +955,8 @@ class TestAreaCost:
         (single-pixel) would not affect tower cost if the tower center
         is on cheap terrain.
         """
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -1010,9 +993,8 @@ class TestAreaCost:
         This is the same as test_uniform_raster_finds_path but explicitly
         verifies that not passing area offsets still works.
         """
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -1046,9 +1028,8 @@ class TestAreaCost:
         offsets, the slope multiplier exp(gradient_scale * avg_slope / 100)
         increases tower cost on steep terrain.
         """
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -1116,6 +1097,7 @@ class TestIntegration:
     def _make_test_raster(self, shape=(100, 100), value=100, cell_size=1.0):
         """Create a temporary GeoTIFF raster file for testing."""
         import tempfile
+
         import rasterio
         from rasterio.transform import from_bounds
 
@@ -1139,9 +1121,10 @@ class TestIntegration:
     def test_constrained_path_finder_gpu_backend(self):
         """Full end-to-end: ConstrainedPathFinder with raster_gpu backend."""
         import os
-        from pyorps.graph.constrained_path_finder import ConstrainedPathFinder
-        from pyorps.core.infrastructure_profile import InfrastructureProfile
+
         from pyorps.core.constrained_path import ConstrainedPath
+        from pyorps.core.infrastructure_profile import InfrastructureProfile
+        from pyorps.graph.constrained_path_finder import ConstrainedPathFinder
 
         profile = InfrastructureProfile.from_dict({
             "name": "test_gpu_v2",
@@ -1194,8 +1177,9 @@ class TestIntegration:
     def test_gpu_backend_matches_cython_basic(self):
         """GPU v2 and Cython backends produce comparable results."""
         import os
-        from pyorps.graph.constrained_path_finder import ConstrainedPathFinder
+
         from pyorps.core.infrastructure_profile import InfrastructureProfile
+        from pyorps.graph.constrained_path_finder import ConstrainedPathFinder
 
         profile = InfrastructureProfile.from_dict({
             "name": "test_gpu_vs_cython",
@@ -1263,11 +1247,12 @@ class TestIntegration:
     def test_gpu_fallback_warning(self):
         """GPU backend emits warning and falls back when GPU unavailable."""
         import os
-        import warnings
         import unittest.mock as mock
-        from pyorps.graph.constrained_path_finder import ConstrainedPathFinder
-        from pyorps.core.infrastructure_profile import InfrastructureProfile
+        import warnings
+
         from pyorps.core.constrained_path import ConstrainedPath
+        from pyorps.core.infrastructure_profile import InfrastructureProfile
+        from pyorps.graph.constrained_path_finder import ConstrainedPathFinder
 
         profile = InfrastructureProfile.from_dict({
             "name": "test_fallback",
@@ -1388,11 +1373,9 @@ class TestValidation:
     @pytest.mark.parametrize("size", [30, 50, 100])
     def test_cost_match_vs_cython(self, size):
         """GPU and Cython find paths with similar tower counts on uniform rasters."""
+        from pyorps.utils.constrained_path_algorithms import constrained_delta_stepping_height_2d
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
-        from pyorps.utils.constrained_path_algorithms import (
-            constrained_delta_stepping_height_2d)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -1471,11 +1454,9 @@ class TestValidation:
 
     def test_height_selection_matches_with_obstacles(self):
         """When obstacles force taller towers, both GPU and Cython select taller."""
+        from pyorps.utils.constrained_path_algorithms import constrained_delta_stepping_height_2d
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
-        from pyorps.utils.constrained_path_algorithms import (
-            constrained_delta_stepping_height_2d)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -1563,11 +1544,9 @@ class TestValidation:
 
     def test_no_path_agreement(self):
         """Both GPU and Cython agree when no path exists."""
+        from pyorps.utils.constrained_path_algorithms import constrained_delta_stepping_height_2d
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
-        from pyorps.utils.constrained_path_algorithms import (
-            constrained_delta_stepping_height_2d)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -1650,11 +1629,9 @@ class TestValidation:
         footprints. The path should route around via cells with valid footprints.
         Both GPU and Cython should find paths that avoid the forbidden band.
         """
+        from pyorps.utils.constrained_path_algorithms import constrained_delta_stepping_height_2d
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
-        from pyorps.utils.constrained_path_algorithms import (
-            constrained_delta_stepping_height_2d)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -1820,11 +1797,10 @@ class TestBenchmarks:
     def test_speedup_vs_cython(self, size):
         """GPU should be faster than Cython for large rasters."""
         import time
+
+        from pyorps.utils.constrained_path_algorithms import constrained_delta_stepping_height_2d
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
-        from pyorps.utils.constrained_path_algorithms import (
-            constrained_delta_stepping_height_2d)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -1841,7 +1817,6 @@ class TestBenchmarks:
         raster = np.random.randint(5, 500, size=(size, size),
                                    dtype=np.uint16)
 
-        n_span_bins = int(max_span / span_bin_size) + 1
         _, params = self._make_params(
             steps, rows=size, cols=size, raster_val=10,
             cell_size=cell_size, min_span=min_span, max_span=max_span,
@@ -1924,9 +1899,9 @@ class TestBenchmarks:
     def test_large_raster_completes(self):
         """1000x1000 raster completes without OOM or hang."""
         import time
+
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -2057,9 +2032,8 @@ class TestSparseKernel:
 
     def test_sparse_finds_same_path_as_dense(self):
         """Sparse and dense modes produce identical results on small raster."""
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -2111,8 +2085,7 @@ class TestSparseKernel:
 
     def test_sparse_memory_much_smaller(self):
         """Sparse mode uses much less memory than dense."""
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            compute_memory_budget_gb)
+        from pyorps.utils.constrained_sssp_gpu_v2 import compute_memory_budget_gb
 
         rows, cols = 1433, 1834  # Real-world R4 dimensions
         n_dirs, n_span_bins, n_heights = 48, 6, 3
@@ -2132,9 +2105,8 @@ class TestSparseKernel:
 
     def test_sparse_handles_no_path(self):
         """Sparse mode terminates cleanly when no path exists."""
+        from pyorps.utils.constrained_sssp_gpu_v2 import _check_v2_available, constrained_sssp_raster_gpu_v2
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            constrained_sssp_raster_gpu_v2, _check_v2_available)
 
         if not _check_v2_available():
             pytest.skip("V2 persistent kernel not available on this GPU")
@@ -2162,8 +2134,7 @@ class TestSparseKernel:
 
     def test_sparse_fits_large_raster(self):
         """Sparse mode fits R4 on a raster that dense cannot."""
-        from pyorps.utils.constrained_sssp_gpu_v2 import (
-            compute_memory_budget_gb, check_memory_fits)
+        from pyorps.utils.constrained_sssp_gpu_v2 import check_memory_fits, compute_memory_budget_gb
 
         # R4 on 1433x1834 raster: dense needs ~13 GB, sparse ~0.5 GB
         rows, cols = 1433, 1834
