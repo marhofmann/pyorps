@@ -27,6 +27,7 @@ from pathlib import Path
 
 from pyorps.collector.condition_c import ConditionC, condition_c
 from pyorps.collector.model import CableType, CollectorModel
+from pyorps.core.exceptions import InvalidInputError
 from pyorps.costmodel.catalogue import CostCatalogue
 from pyorps.costmodel.losses import LossCategories, annuity_factor, loss_coef
 
@@ -52,7 +53,9 @@ class CollectorInputs:
     @classmethod
     def load(cls, path) -> CollectorInputs:
         """Read the file and check that every tagged node has a valid status."""
-        import yaml
+        from pyorps.core.optional_deps import import_yaml
+
+        yaml = import_yaml()
 
         raw = Path(path).read_bytes()
         data = yaml.safe_load(raw.decode("utf-8"))
@@ -61,7 +64,7 @@ class CollectorInputs:
         bad = [f"{k}: {s!r}" for k, s in inp.statuses().items()
                if s not in STATUSES]
         if bad:
-            raise ValueError(f"{path}: invalid status in " + "; ".join(bad))
+            raise InvalidInputError(f"{path}: invalid status in " + "; ".join(bad))
         return inp
 
     def statuses(self) -> dict[str, str]:
@@ -142,7 +145,7 @@ def _price_table(spec: Mapping, u_kv: float) -> dict[int, float]:
     if key in spec:
         return {int(m): float(v) for m, v in spec[key].items()}
     if not 20.0 < u_kv < 33.0:
-        raise ValueError(f"no cable price for {u_kv} kV (20 to 33 kV only)")
+        raise InvalidInputError(f"no cable price for {u_kv} kV (20 to 33 kV only)")
     w = (u_kv - 20.0) / 13.0
     return {int(m): float(lo[m]) * (1 - w) + float(hi[m]) * w for m in lo}
 
@@ -151,13 +154,15 @@ def _cable_electrics(voltage_file: Path, u_kv: float, sections: list[int],
                      alpha: float, temp_c: float
                      ) -> dict[int, tuple[float, float]]:
     """``{mm2: (ampacity A, r ohm/m at temp_c)}`` from the voltage data file."""
-    import yaml
+    from pyorps.core.optional_deps import import_yaml
+
+    yaml = import_yaml()
 
     cab = yaml.safe_load(voltage_file.read_text(encoding="utf-8"))["cables"]
     key = _level_key(u_kv)
     cls = {"20": "kv20", "30": "kv30", "33": "kv33"}.get(key)
     if cls is None:
-        raise ValueError(f"no cable class for {u_kv} kV (20, 30 or 33)")
+        raise InvalidInputError(f"no cable class for {u_kv} kV (20, 30 or 33)")
     table = cab[cls]
     if cls == "kv30":                    # [trefoil, flat] per cross-section
         amp = {m: float(table["ampacity_trefoil_flat_a"]["value"][m][0])
@@ -198,15 +203,15 @@ def build_collector_model(inputs: CollectorInputs, catalogue: CostCatalogue,
     d = inputs.data
     assumed = tuple(inputs.assumptions())
     if certified and assumed:
-        raise ValueError(
+        raise InvalidInputError(
             f"a certified build needs sourced inputs; {len(assumed)} "
             "assumption(s) remain: " + ", ".join(assumed))
     rated = [float(x) for x in rated_mw]
     if loss.n != len(rated):
-        raise ValueError(f"the loss table has {loss.n} turbines, "
-                         f"rated_mw has {len(rated)}")
+        raise InvalidInputError(f"the loss table has {loss.n} turbines, "
+                                f"rated_mw has {len(rated)}")
     if price not in ("headline", "sensitivity"):
-        raise ValueError("price must be 'headline' or 'sensitivity'")
+        raise InvalidInputError("price must be 'headline' or 'sensitivity'")
 
     lc = d["loss"]
     years, rate, growth = (float(_val(lc[k])) for k in

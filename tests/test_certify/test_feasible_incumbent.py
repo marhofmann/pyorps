@@ -47,8 +47,7 @@ def test_a_passing_design_is_unchanged_and_costs_nothing_extra(farm):
 
 def test_a_failing_design_is_repaired_and_then_passes_at_every_length(farm):
     _fld, pricer, turb, model, vm, d0, base, top = farm
-    # fails at some leg lengths only if the top varies
-    rules = dataclasses.replace(base, frt_ns=(0.5, top + 0.02))
+    # a limit just below the design's own top at the 5 km leg: it must fail
     rules = dataclasses.replace(base, frt_ns=(0.5, top - 1e-3))
     res = make_feasible(d0, pricer, turb, model, vm, rules, _plant_for, GRID)
     assert res.feasible and res.extra_eur >= 0.0 and res.record["repair_steps"]

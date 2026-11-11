@@ -75,6 +75,7 @@ from pyorps.collector.model import (
     popcount,
     set_partitions,
 )
+from pyorps.core.exceptions import InvalidInputError, PyorpsRuntimeError
 
 __all__ = [
     "CollectorGraph",
@@ -99,11 +100,11 @@ class CollectorGraph:
         self.adj = [[] for _ in range(self.n_nodes)]
         for ei, (u, w, c, length) in enumerate(self.edges):
             if not (0 <= u < self.n_nodes and 0 <= w < self.n_nodes):
-                raise ValueError(f"edge {ei} ({u}, {w}) leaves the graph")
+                raise InvalidInputError(f"edge {ei} ({u}, {w}) leaves the graph")
             if u == w:
-                raise ValueError(f"edge {ei} is a loop")
+                raise InvalidInputError(f"edge {ei} is a loop")
             if c < 0 or not length > 0:
-                raise ValueError(f"edge {ei} needs c >= 0 and l > 0")
+                raise InvalidInputError(f"edge {ei} needs c >= 0 and l > 0")
             self.adj[u].append((w, ei))
             self.adj[w].append((u, ei))
 
@@ -624,7 +625,7 @@ class CollectorResult:
     def design(self, g: int):
         """The optimal design rooted at ``g`` (see :mod:`.design`)."""
         if self._solver is None:
-            raise RuntimeError("solve with keep_trace=True to trace designs")
+            raise PyorpsRuntimeError("solve with keep_trace=True to trace designs")
         return self._solver.trace(int(g))
 
 
@@ -662,24 +663,24 @@ def solve_collector(graph: CollectorGraph, turbines: Sequence[int],
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if engine not in ("A", "B"):
-        raise ValueError("engine must be 'A' or 'B'")
+        raise InvalidInputError("engine must be 'A' or 'B'")
     tokens = tokens or ("set" if engine == "B" else "count")
     conductor = conductor or ("per_cable" if engine == "B" else "per_section")
     if tokens not in ("set", "count") or conductor not in ("per_cable",
                                                            "per_section"):
-        raise ValueError("tokens must be set|count, conductor "
-                         "per_cable|per_section")
+        raise InvalidInputError("tokens must be set|count, conductor "
+                                "per_cable|per_section")
     if (tokens == "count" and conductor == "per_cable"
             and not model.interchangeable()):
-        raise ValueError(
+        raise InvalidInputError(
             "count tokens with one option per cable are neither exact nor a "
             "relaxation for turbines that differ; use engine A "
             "(count, per_section) for a bound or engine B for the value")
     turbines = [int(t) for t in turbines]
     if len(turbines) != model.n or len(set(turbines)) != model.n:
-        raise ValueError(f"need {model.n} distinct turbine nodes")
+        raise InvalidInputError(f"need {model.n} distinct turbine nodes")
     if node_order not in ("canonical", "full"):
-        raise ValueError("node_order must be 'canonical' or 'full'")
+        raise InvalidInputError("node_order must be 'canonical' or 'full'")
     algebra_cls = _SetAlgebra if tokens == "set" else _CountAlgebra
     alg = algebra_cls(model, conductor == "per_cable", candidate_rule,
                       canonical=node_order == "canonical")
@@ -707,7 +708,7 @@ class _Solver:
         self.is_turb[turbines] = True
         self.root = None if root is None else int(root)
         if self.root is not None and self.is_turb[self.root]:
-            raise ValueError("the root cannot be a turbine node")
+            raise InvalidInputError("the root cannot be a turbine node")
         # no_transit: nodes a grow may not enter and where no merge or
         # junction happens -- the turbines, plus the root in single-root mode
         self.no_transit = self.is_turb.copy()
@@ -973,7 +974,7 @@ class _Solver:
         from pyorps.collector.design import Design, Junction, System
 
         if not np.isfinite(self.mv[g]):
-            raise ValueError(f"no feasible collector at root {g}")
+            raise InvalidInputError(f"no feasible collector at root {g}")
         tnodes: list[int] = []
         tedges: list[tuple[int, int, int]] = []
         systems: list[System] = []
@@ -1003,7 +1004,7 @@ class _Solver:
             while True:
                 rec = self.pred.get((L, st, v))
                 if rec is None:
-                    raise RuntimeError(f"no trace record for {(L, st, v)}")
+                    raise PyorpsRuntimeError(f"no trace record for {(L, st, v)}")
                 if rec[0] != "grow":
                     break
                 _, u, st_u, ei = rec
@@ -1047,7 +1048,7 @@ class _Solver:
                     systems[sid].sink = ("junction", jid)
                     junctions[jid].inputs.append(sid)
             else:
-                raise RuntimeError(f"unknown trace record {kind!r}")
+                raise PyorpsRuntimeError(f"unknown trace record {kind!r}")
             return first
 
         root_node = new_node(g)

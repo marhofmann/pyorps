@@ -25,6 +25,7 @@ import numpy as np
 
 from pyorps.collector.model import INF, CollectorModel
 from pyorps.collector.raster import RasterCollector
+from pyorps.core.exceptions import InvalidInputError
 
 __all__ = ["ExactCollectorField", "exact_collector_field"]
 
@@ -86,7 +87,7 @@ def exact_collector_field(values, steps, cell_m: float, turbines,
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if eps < 0:
-        raise ValueError("eps must be >= 0 (the safe sign)")
+        raise InvalidInputError("eps must be >= 0 (the safe sign)")
     v = np.asarray(values)
     N = v.size
     rc = (np.zeros(N) if root_cost is None

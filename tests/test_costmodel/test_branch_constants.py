@@ -2,7 +2,10 @@
 from pathlib import Path
 
 import pytest
-import yaml
+
+pytest.importorskip("yaml")
+
+import yaml  # noqa: E402
 
 from pyorps.costmodel import CostCatalogue
 from pyorps.costmodel.branch_constants import BranchConstants

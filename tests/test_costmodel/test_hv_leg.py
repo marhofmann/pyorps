@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytest.importorskip("yaml")
+
 from pyorps.costmodel.catalogue import CostCatalogue
 from pyorps.costmodel.collector_inputs import CollectorInputs, build_collector_model
 from pyorps.costmodel.hv_leg import FORBIDDEN, HvLegConstraints

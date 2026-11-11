@@ -4,6 +4,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytest.importorskip("yaml")
+
 from pyorps.certify.rv import consent_lattice
 from pyorps.costmodel import CostCatalogue
 from pyorps.costmodel.consent import FORBIDDEN, PRICE_CAP, ConsentTable

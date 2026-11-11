@@ -50,6 +50,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError, NumericalPrecisionError
 from pyorps.siting.footprint import rotated_kernel
 
 __all__ = [
@@ -112,7 +113,7 @@ def _limbs(values: np.ndarray) -> list[np.ndarray]:
     """Base-256 digit layers of a non-negative int64 array."""
     v = np.asarray(values, dtype=np.int64)
     if v.size and v.min() < 0:
-        raise ValueError("prices must be non-negative integer cents")
+        raise InvalidInputError("prices must be non-negative integer cents")
     top = int(v.max()) if v.size else 0
     n = max(1, math.ceil(math.log(top + 1, 256)) if top > 0 else 1)
     while 256 ** n <= top:
@@ -130,7 +131,7 @@ def _rounded(x: np.ndarray, what: str) -> np.ndarray:
     r = np.rint(x)
     err = float(np.max(np.abs(x - r))) if x.size else 0.0
     if err > _ROUND_TOL:
-        raise ArithmeticError(
+        raise NumericalPrecisionError(
             f"{what}: FFT sum {err:.3f} away from an integer; the layer is "
             f"too large for exact float64 convolution")
     return r.astype(np.int64)
@@ -169,22 +170,22 @@ def site_field(price_cents: np.ndarray, forbidden: np.ndarray, *,
     rows, cols = forb.shape
     if method == "classes":
         if classes is None or class_cents is None:
-            raise ValueError("method='classes' needs classes and class_cents")
+            raise InvalidInputError("method='classes' needs classes and class_cents")
         cls = np.asarray(classes, dtype=np.int64)
         cc = np.asarray(class_cents, dtype=np.int64)
         if cls.shape != forb.shape:
-            raise ValueError("classes and forbidden differ in shape")
+            raise InvalidInputError("classes and forbidden differ in shape")
         if cls.min() < 0 or cls.max() >= cc.size:
-            raise ValueError("a class id has no price")
+            raise InvalidInputError("a class id has no price")
         if np.any(cc < 0):
-            raise ValueError("class prices must be >= 0 cents")
+            raise InvalidInputError("class prices must be >= 0 cents")
         price = cc[cls]
     elif method == "limbs":
         price = np.asarray(price_cents, dtype=np.int64)
         if price.shape != forb.shape:
-            raise ValueError("price_cents and forbidden differ in shape")
+            raise InvalidInputError("price_cents and forbidden differ in shape")
     else:
-        raise ValueError("method must be 'limbs' or 'classes'")
+        raise InvalidInputError("method must be 'limbs' or 'classes'")
     thetas = (np.arange(0.0, 180.0, 5.0) if thetas is None
               else np.asarray(thetas, dtype=np.float64))
     masks = [footprint_mask(t, length_m, width_m, cell_m) for t in thetas]

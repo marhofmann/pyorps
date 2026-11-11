@@ -106,6 +106,7 @@ def test_a_barrier_made_of_corner_touching_polygons_is_closed_too():
 
 @pytest.mark.skipif(not MANIFEST.exists(), reason="case-study manifest not present")
 def test_the_registered_closed_cost_map_has_no_forbidden_traversal_on_a_real_window():
+    pytest.importorskip("yaml")
     import geopandas as gpd
     import rasterio
     from rasterio.windows import Window

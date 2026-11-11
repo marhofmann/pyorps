@@ -35,6 +35,8 @@ from typing import Any
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError
+
 __all__ = ["CandidateSet", "candidate_lattice", "sample_field", "cell_xy"]
 
 
@@ -71,7 +73,7 @@ def sample_field(field: np.ndarray, transform, xs, ys, *,
         float64 values, ``inf`` outside the field unless ``clip``.
     """
     if rule not in ("floor", "round"):
-        raise ValueError(f"rule must be 'floor' or 'round', got {rule!r}")
+        raise InvalidInputError(f"rule must be 'floor' or 'round', got {rule!r}")
     inv = ~transform
     cols, rows = inv @ (np.asarray(xs, dtype=np.float64),
                         np.asarray(ys, dtype=np.float64))

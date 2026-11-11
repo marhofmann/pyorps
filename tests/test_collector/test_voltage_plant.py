@@ -21,6 +21,8 @@ import random
 import numpy as np
 import pytest
 
+pytest.importorskip("yaml")
+
 from pyorps.collector import CollectorGraph, solve_collector
 from pyorps.collector.voltage import (
     Branch,
@@ -276,3 +278,15 @@ def test_plant_follows_the_lv_reference_of_the_limits():
     assert lv.q_over_p < mv.q_over_p and lv.q_under_p > mv.q_under_p
     # about 4.7-4.8 Mvar less over-excited range for the whole farm
     assert 4.5 < sum(lv.p_rated_mw) * (mv.q_over_p - lv.q_over_p) < 5.0
+
+
+def test_rule_defaults_are_parameters():
+    pytest.importorskip("yaml")
+    base = grid_rules_from_yaml(YAML, "operator_b")
+    alt = grid_rules_from_yaml(YAML, "operator_b", trip_ns_default=(0.7, 1.3), mv_upper_ms_default=1.12,
+                               frt_ns=(0.9, 1.1), pcc_nominal_kv=100.0)
+    assert alt.trip_ns == (0.7, 1.3) and alt.mv_upper_ms == 1.12 and alt.frt_ns == (0.9, 1.1)
+    assert alt.corners[0].u_nap_pu == pytest.approx(base.corners[0].u_nap_pu * 1.1)
+    vm = dataclasses.replace(_collector()[0], meta={})
+    pm = plant_model_from_yaml(YAML, vm, q_over_p_default=0.3, q_under_p_default=0.2)
+    assert (pm.q_over_p, pm.q_under_p) == (0.3, 0.2)

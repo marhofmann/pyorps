@@ -40,6 +40,7 @@ from typing import Any
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError
 from pyorps.io.provenance import ProvenanceMismatch, sha256_file
 
 __all__ = [
@@ -62,7 +63,7 @@ _STATUS = ("pending", "present")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
-class ManifestError(ValueError):
+class ManifestError(InvalidInputError):
     """The manifest is malformed, or a layer cannot be used."""
 
 
@@ -185,7 +186,9 @@ class DataManifest:
     @classmethod
     def load(cls, path) -> DataManifest:
         """Read and validate a manifest."""
-        import yaml
+        from pyorps.core.optional_deps import import_yaml
+
+        yaml = import_yaml()
 
         path = Path(path)
         doc = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -229,7 +232,9 @@ class DataManifest:
 
     def save(self, path=None) -> Path:
         """Write the manifest as YAML (to ``path`` or where it was read)."""
-        import yaml
+        from pyorps.core.optional_deps import import_yaml
+
+        yaml = import_yaml()
 
         target = Path(path) if path else self.path
         doc = {"schema": SCHEMA, "meta": self.meta,

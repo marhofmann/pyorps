@@ -5,6 +5,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytest.importorskip("yaml")
+
 from pyorps.io.provenance import ProvenanceMismatch
 from pyorps.siting.data_manifest import (
     KINDS,
@@ -88,12 +90,18 @@ def test_the_shipped_manifest_is_valid_and_its_present_layers_verify():
     on_disk = [k for k in present if m.file_of(k).is_file()]
     if on_disk:                       # a clone without the data skips the hash check
         assert set(m.verify(on_disk)) == set(on_disk)
+    # a pending layer (there may be none once every layer is downloaded) has
+    # no file: it can neither be located, verified nor read
     pending = m.pending()
-    assert pending                    # e.g. the DEM is not downloaded yet
-    # read_window refuses a non-raster first
-    pending_raster = next(k for k in pending if m.layer(k).format == "raster")
-    with pytest.raises(ManifestError, match="pending"):
-        m.read_window(pending_raster)
+    assert all(m.layer(k).status == "pending" for k in pending)
+    for k in pending:
+        with pytest.raises(ManifestError, match="pending"):
+            m.file_of(k)
+        with pytest.raises(ManifestError, match="pending"):
+            m.verify([k])
+    for k in (k for k in pending if m.layer(k).format == "raster"):
+        with pytest.raises(ManifestError, match="pending"):
+            m.read_window(k)
 
 
 def test_round_trip_keeps_hashes_and_dates(manifest):

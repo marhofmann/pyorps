@@ -19,12 +19,13 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from pyorps.collector.model import INF, CollectorModel
+from pyorps.core.exceptions import InvalidInputError
 
 __all__ = ["Design", "DesignError", "Junction", "Layout", "System",
            "layout", "reprice"]
 
 
-class DesignError(ValueError):
+class DesignError(InvalidInputError):
     """A design violates a rule of ``D_share``."""
 
 

@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyorps.collector.model import INF, CollectorModel, bits, set_partitions
+from pyorps.core.exceptions import InvalidInputError
 
 __all__ = ["ConditionC", "condition_c"]
 
@@ -101,7 +102,7 @@ def condition_c(model: CollectorModel, min_trench_rate: float) -> ConditionC:
     """Evaluate condition (C) for ``model`` against ``min_trench_rate`` (the
     smallest ``c(e) / l(e)`` of the trench graph, EUR per metre)."""
     if not min_trench_rate >= 0:
-        raise ValueError("min_trench_rate must be >= 0")
+        raise InvalidInputError("min_trench_rate must be >= 0")
     cap = min(model.m_cap(), model.n)       # a system carries >= 1 turbine
     worst, groups, cache = 0.0, 0, {}
     for union in range(1, 1 << model.n):

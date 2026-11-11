@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytest.importorskip("yaml")
+
 from pyorps.costmodel.access_road import (
     FORBIDDEN,
     AccessConstraints,

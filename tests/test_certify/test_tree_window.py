@@ -45,16 +45,22 @@ def test_tree_certificate_is_sound_and_exact_where_it_says(seed):
     inside = np.zeros((R, C), dtype=bool)
     inside[2:14, 2:14] = True
     turb = [7 * C + 7, 8 * C + 9, 9 * C + 6][:rng.choice([2, 3])]
-    model = _model(rng, len(turb))
+    # A model whose cables cannot carry any label has mu_min = inf and no
+    # feasible design at all; redraw until one exists (seed 2 needs a
+    # second draw), and fail loudly if none does.
+    for _attempt in range(50):
+        model = _model(rng, len(turb))
+        mu_min = min(mu_star(model)[1:])
+        if np.isfinite(mu_min):
+            break
+    else:
+        pytest.fail("no collector model with a feasible label in 50 draws")
     full = RasterCollector(vals, steps, 1.0, turb, model, engine="B",
                            drain_engine="python").run().ravel()
     win = vals.copy()
     win[~inside] = 65535
     mv_w = RasterCollector(win, steps, 1.0, turb, model, engine="B",
                            drain_engine="python").run().ravel()
-    mu_min = min(mu_star(model)[1:])
-    if not np.isfinite(mu_min):
-        pytest.skip("no feasible label in this draw")
     cert = certify_tree_field(vals, steps, inside, turb, mv_w,
                               mu_min=mu_min, engine="python")
     lower, exact = cert.lower.ravel(), cert.exact.ravel()

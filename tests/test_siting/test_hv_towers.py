@@ -44,3 +44,9 @@ def test_empty_and_crs_errors():
     assert verified_110kv_towers(_lines(), _towers().iloc[0:0]).empty
     with pytest.raises(ValueError, match="projected CRS"):
         verified_110kv_towers(_lines(), _towers().to_crs("EPSG:4326"))
+
+
+def test_traction_markers_are_parameters():
+    # a different railway operator name and frequency: the German-marked line e stays, line a is dropped instead
+    out = verified_110kv_towers(_lines(), _towers(), traction_operator="Netz", traction_frequency="60")
+    assert 4 in out.index and 0 not in out.index and bool(out.loc[1, "traction"]) is False

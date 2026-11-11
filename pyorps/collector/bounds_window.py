@@ -24,6 +24,7 @@ import numpy as np
 
 from pyorps.collector.bounds import rho_hat
 from pyorps.collector.model import INF, CollectorModel, all_submasks, bits
+from pyorps.core.exceptions import InvalidInputError
 
 __all__ = ["cable_rate_floor", "exit_cells", "rho_hat_exit_value"]
 
@@ -40,7 +41,7 @@ def cable_rate_floor(model: CollectorModel) -> float:
 
 def exit_cells(values: np.ndarray, steps) -> np.ndarray:
     """Flat indices of the allowed cells of the window that have a step leaving it (the window boundary)."""
-    from pyorps.certify.windows import EXCLUDED, boundary_cells
+    from pyorps.graph.drain import EXCLUDED, boundary_cells
 
     v = np.asarray(values)
     inside = np.ones(v.shape, dtype=bool)
@@ -57,8 +58,8 @@ def rho_hat_exit_value(values, steps, cell_m: float, turbines, model: CollectorM
     turbines no-transit, arrivals by one exact kernel step); the arrival fields are kept only at the exit cells; a
     turbine on the boundary can itself be the top of its component (its own label counts).
     """
-    from pyorps.certify.windows import EXCLUDED, drain
     from pyorps.collector.raster import _step_weights
+    from pyorps.graph.drain import EXCLUDED, drain
 
     v = np.asarray(values)
     rows, cols = v.shape
@@ -76,7 +77,7 @@ def rho_hat_exit_value(values, steps, cell_m: float, turbines, model: CollectorM
     ex_turb = ex[is_turb[ex]]                      # a turbine on the boundary can be the top of its component
     ex = ex[~is_turb[ex]]
     if ex.size == 0 and ex_turb.size == 0:
-        raise ValueError("the window has no exit cell")
+        raise InvalidInputError("the window has no exit cell")
     rho, _nbm = rho_hat(model)
 
     def one_step(F, r):

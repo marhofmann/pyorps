@@ -383,6 +383,7 @@ def test_transformer_adds_its_drop_on_the_lv_side():
 
 
 def test_model_from_the_yaml_carries_the_file_values():
+    pytest.importorskip("yaml")
     vm = voltage_model_from_yaml(YAML, u_kv=20, cable_mm2=[240, 630],
                                  n_turbines=7)
     assert vm.n == 7 and vm.u_m_kv == 24.0
@@ -406,12 +407,14 @@ def test_model_from_the_yaml_carries_the_file_values():
 
 
 def test_reactive_limits_default_to_the_mv_terminals():
+    pytest.importorskip("yaml")
     vm = voltage_model_from_yaml(YAML, u_kv=20, cable_mm2=[240], n_turbines=7)
     assert vm.meta["q_reference"] == "mv"
     assert vm.meta["q_over_p"] == 0.540 and vm.meta["q_under_p"] == 0.484
 
 
 def test_lv_reference_converts_the_limits_through_the_transformer():
+    pytest.importorskip("yaml")
     vm = voltage_model_from_yaml(YAML, u_kv=20, cable_mm2=[240], n_turbines=7,
                                  q_reference="lv")
     tr, p = vm.transformer, 6.8
@@ -430,6 +433,7 @@ def test_lv_reference_converts_the_limits_through_the_transformer():
 
 
 def test_lv_reference_needs_the_transformer_and_a_valid_name():
+    pytest.importorskip("yaml")
     with pytest.raises(ValueError, match="needs the turbine transformer"):
         voltage_model_from_yaml(YAML, u_kv=20, cable_mm2=[240], n_turbines=1,
                                 q_reference="lv", include_transformer=False)
@@ -439,6 +443,7 @@ def test_lv_reference_needs_the_transformer_and_a_valid_name():
 
 
 def test_missing_33kv_cables_fall_back_and_flag(tmp_path):
+    pytest.importorskip("yaml")
     import yaml
 
     data = yaml.safe_load(YAML.read_text(encoding="utf-8"))
@@ -450,3 +455,18 @@ def test_missing_33kv_cables_fall_back_and_flag(tmp_path):
     with pytest.raises(ValueError, match="kv33"):
         voltage_model_from_yaml(f, u_kv=33, cable_mm2=[240], n_turbines=1,
                                 cable_class="kv33")
+
+
+def test_cable_class_tables_and_fallback_are_parameters(tmp_path):
+    pytest.importorskip("yaml")
+    import yaml
+
+    data = yaml.safe_load(YAML.read_text(encoding="utf-8"))
+    data["cables"].pop("kv33", None)
+    f = tmp_path / "v.yaml"
+    f.write_text(yaml.safe_dump(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="kv33"):
+        voltage_model_from_yaml(f, u_kv=33, cable_mm2=[240], n_turbines=1, cable_class_fallback={})
+    vm = voltage_model_from_yaml(YAML, u_kv=20, cable_mm2=[240], n_turbines=1,
+                                 default_um_kv={20: 30.0}, default_cable_class={20: "kv30"})
+    assert vm.u_m_kv == 30.0 and vm.meta["cable_class"] == "kv30"

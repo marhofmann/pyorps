@@ -62,7 +62,6 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from pyorps.certify.windows import EXCLUDED, drain, step_table
 from pyorps.collector.model import (
     INF,
     CollectorModel,
@@ -76,6 +75,8 @@ from pyorps.collector.reference import (
     _CountAlgebra,
     _SetAlgebra,
 )
+from pyorps.core.exceptions import InvalidInputError, PyorpsRuntimeError
+from pyorps.graph.drain import EXCLUDED, drain, step_table
 
 __all__ = ["RasterCollector", "graph_from_raster"]
 
@@ -225,7 +226,7 @@ class RasterCollector:
         model: The ``D_share`` model of one MV level.
         engine: ``"A"`` (count tokens, type free per section) or ``"B"``.
         trench_mult: ``1 + omega`` on the trench.
-        drain_engine: passed to :func:`pyorps.certify.windows.drain`.
+        drain_engine: passed to :func:`pyorps.graph.drain.drain`.
         keep_trace: Keep the trace codes :meth:`design` follows (engine B
             only).
         budget: Prune against this total (EUR), e.g. an incumbent
@@ -255,7 +256,7 @@ class RasterCollector:
     def run(self) -> np.ndarray:
         # pylint: disable=attribute-defined-outside-init  # per-run solver state
         if self.keep_trace and self.engine != "B":
-            raise ValueError("traceback needs engine B (set tokens)")
+            raise InvalidInputError("traceback needs engine B (set tokens)")
         v = np.asarray(self.values)
         self._shape = v.shape
         N = v.size
@@ -272,7 +273,7 @@ class RasterCollector:
         model = self.model
         per_cable = self.engine == "B"
         if self.node_order not in ("canonical", "full"):
-            raise ValueError("node_order must be 'canonical' or 'full'")
+            raise InvalidInputError("node_order must be 'canonical' or 'full'")
         self.alg = (_SetAlgebra if self.engine == "B" else _CountAlgebra)(
             model, per_cable, canonical=self.node_order == "canonical")
         self._cell = float(self.cell_m)
@@ -286,7 +287,7 @@ class RasterCollector:
         if self.budget is not None:
             from pyorps.collector.bounds import completion_bounds_raster
             if self.prune_eps < 0:
-                raise ValueError("prune_eps must be >= 0 (the safe sign)")
+                raise InvalidInputError("prune_eps must be >= 0 (the safe sign)")
             self._out = completion_bounds_raster(
                 v, self.steps, self.cell_m, self.turbines, model,
                 root_cost=self.root_cost, trench_mult=self.trench_mult,
@@ -468,8 +469,8 @@ class RasterCollector:
                                 and np.isfinite(cand1).any())):
                         continue
                     if L2 in done:
-                        raise RuntimeError("junction into a finished label: "
-                                           "the potential order is broken")
+                        raise PyorpsRuntimeError("junction into a finished label: "
+                                                 "the potential order is broken")
                     e2 = pend.get(L2)
                     if e2 is None:
                         e2 = _Seeds(N, trace)
@@ -594,7 +595,7 @@ class RasterCollector:
         """``(origin cell, state)`` of the arrival ``Aarr[L][v]``."""
         k = int(self.Aarg[L][v])
         if k < 0:
-            raise RuntimeError(f"no arrival code for {L} at cell {v}")
+            raise PyorpsRuntimeError(f"no arrival code for {L} at cell {v}")
         x = self._origin(v, k)
         lab = self.labels[L]
         f1 = INF if lab.F1 is None else lab.F1[x]
@@ -612,10 +613,10 @@ class RasterCollector:
         from pyorps.collector.design import Design, Junction, System
 
         if not self.keep_trace:
-            raise RuntimeError("run with keep_trace=True to trace designs")
+            raise PyorpsRuntimeError("run with keep_trace=True to trace designs")
         g = int(g)
         if not np.isfinite(self._mv.ravel()[g]):
-            raise ValueError(f"no feasible collector at cell {g}")
+            raise InvalidInputError(f"no feasible collector at cell {g}")
         tnodes: list[int] = []
         tedges: list = []
         systems: list = []
@@ -661,9 +662,9 @@ class RasterCollector:
                     op = lab.ops1[code] if code >= 0 else None
                 break
             else:
-                raise RuntimeError("trace codes form a cycle")
+                raise PyorpsRuntimeError("trace codes form a cycle")
             if op is None:
-                raise RuntimeError(f"no trace code for {L} (st={st}) at {v}")
+                raise PyorpsRuntimeError(f"no trace code for {L} (st={st}) at {v}")
             kind = op[0]
             if kind == "turb":
                 _, i, kids, ins, downs, o = op
@@ -722,7 +723,7 @@ class RasterCollector:
         while X:
             Y = H[X][1]
             if Y == 0:
-                raise RuntimeError(f"no root partition for {X:b} at {g}")
+                raise PyorpsRuntimeError(f"no root partition for {X:b} at {g}")
             L = best[Y][1]
             x, st_x = self._arrival(L, g)
             tedges.append((rooted(L, st_x, x), root_node, None))

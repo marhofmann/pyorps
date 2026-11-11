@@ -12,13 +12,20 @@ lets a caller report the difference either way.
 
 from __future__ import annotations
 
+from pyorps.core.exceptions import InvalidInputError
+
 __all__ = ["verified_110kv_towers"]
 
 SUPPORT_TYPES = ("tower", "pole")
+#: ``operator`` substring (case-insensitive) that marks a railway traction line: the German railway's energy company.
+TRACTION_OPERATOR = "DB Energie"
+#: ``frequency`` substring that marks a railway traction line: the German 16.7 Hz traction supply.
+TRACTION_FREQUENCY = "16.7"
 
 
 def verified_110kv_towers(lines, towers, *, tol_m: float = 1.0, voltage_token: str = "110000",
-                          line_power=("line",), tower_power=SUPPORT_TYPES, exclude_traction: bool = True):
+                          line_power=("line",), tower_power=SUPPORT_TYPES, exclude_traction: bool = True,
+                          traction_operator: str = TRACTION_OPERATOR, traction_frequency: str = TRACTION_FREQUENCY):
     """The towers that lie on a line whose ``voltage`` contains ``voltage_token``.
 
     Args:
@@ -29,6 +36,15 @@ def verified_110kv_towers(lines, towers, *, tol_m: float = 1.0, voltage_token: s
         voltage_token: Substring of the ``voltage`` field that marks a 110 kV line (also matches ``380000;110000``).
         line_power, tower_power: ``power`` values accepted for lines and for support points.
         exclude_traction: Drop railway traction lines and their towers (default, decision D-e).
+        traction_operator: Substring of the ``operator`` field (case-insensitive) that marks a traction line.
+            Default: the German railway's energy company (:data:`TRACTION_OPERATOR`). An empty string matches every
+            line that has an ``operator`` field, so pass a real name or disable the filter with
+            ``exclude_traction=False``.
+        traction_frequency: Substring of the ``frequency`` field that marks a traction line. Default: the German
+            railway supply, 16.7 Hz (:data:`TRACTION_FREQUENCY`).
+
+    The defaults of ``voltage_token``, ``tol_m``, ``traction_operator`` and ``traction_frequency`` are the German
+    110 kV and railway values; pass others for another country.
 
     Returns:
         The matching towers with the added columns ``line_osm_id``, ``line_voltage``, ``traction`` and ``line_dist_m``.
@@ -36,13 +52,14 @@ def verified_110kv_towers(lines, towers, *, tol_m: float = 1.0, voltage_token: s
     import geopandas as gpd
 
     if lines.crs is None or towers.crs is None or lines.crs != towers.crs or not lines.crs.is_projected:
-        raise ValueError("lines and towers must share one projected CRS")
+        raise InvalidInputError("lines and towers must share one projected CRS")
     sel = (lines["voltage"].fillna("").astype(str).str.contains(voltage_token, regex=False)
            & lines["power"].isin(line_power))
     ln = lines[sel].copy()
     operator = ln["operator"].fillna("").astype(str) if "operator" in ln else ln["power"].astype(str).str.slice(0, 0)
     freq = ln["frequency"].fillna("").astype(str) if "frequency" in ln else operator.str.slice(0, 0)
-    ln["traction"] = operator.str.contains("DB Energie", case=False) | freq.str.contains("16.7", regex=False)
+    ln["traction"] = operator.str.contains(traction_operator, case=False, regex=False) \
+        | freq.str.contains(traction_frequency, regex=False)
     if exclude_traction:
         ln = ln[~ln["traction"]]
     tw = towers[towers["power"].isin(tower_power)]

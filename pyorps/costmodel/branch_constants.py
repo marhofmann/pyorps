@@ -15,6 +15,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from pyorps.core.exceptions import InvalidInputError
+
 __all__ = ["BranchConstants"]
 
 STATUSES = ("sourced", "decided", "catalogue", "derived", "assumption")
@@ -22,15 +24,15 @@ STATUSES = ("sourced", "decided", "catalogue", "derived", "assumption")
 
 def _value(node, catalogue) -> float:
     if not isinstance(node, Mapping) or node.get("status") not in STATUSES:
-        raise ValueError(f"every ledger entry needs a status from {STATUSES}: {node!r}")
+        raise InvalidInputError(f"every ledger entry needs a status from {STATUSES}: {node!r}")
     if "catalogue_key" in node:
         v = float(catalogue.value(node["catalogue_key"]))
     elif "value" in node:
         v = float(node["value"])
     else:
-        raise ValueError(f"entry without value or catalogue_key: {node!r}")
+        raise InvalidInputError(f"entry without value or catalogue_key: {node!r}")
     if v < 0:
-        raise ValueError("ledger values must be >= 0 (the bounds need non-negative constants)")
+        raise InvalidInputError("ledger values must be >= 0 (the bounds need non-negative constants)")
     return v
 
 
@@ -54,7 +56,9 @@ class BranchConstants:
 
     @classmethod
     def load(cls, path, catalogue) -> BranchConstants:
-        import yaml
+        from pyorps.core.optional_deps import import_yaml
+
+        yaml = import_yaml()
 
         doc = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
         st = doc["station"]

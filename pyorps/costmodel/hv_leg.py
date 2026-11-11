@@ -24,6 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError
 from pyorps.costmodel.losses import annuity_factor, loss_coef
 
 __all__ = ["FORBIDDEN", "HvLegConstraints"]
@@ -75,7 +76,9 @@ class HvLegConstraints:
              certified: bool = False) -> HvLegConstraints:
         """Resolve the file against the catalogue, the collector inputs and the loss table. Refuses a bad status,
         more than one circuit, and (``certified``) any remaining assumption."""
-        import yaml
+        from pyorps.core.optional_deps import import_yaml
+
+        yaml = import_yaml()
 
         raw = Path(path).read_bytes()
         d = yaml.safe_load(raw.decode("utf-8"))
@@ -83,12 +86,12 @@ class HvLegConstraints:
         _walk_status(d, "", st)
         bad = [f"{k}: {s!r}" for k, s in st.items() if s not in STATUSES]
         if bad:
-            raise ValueError(f"{path}: invalid status in " + "; ".join(bad))
+            raise InvalidInputError(f"{path}: invalid status in " + "; ".join(bad))
         assumed = sorted(k for k, s in st.items() if s == "assumption")
         if certified and assumed:
-            raise ValueError("a certified build needs sourced inputs; assumptions remain: " + ", ".join(assumed))
+            raise InvalidInputError("a certified build needs sourced inputs; assumptions remain: " + ", ".join(assumed))
         if int(d["route"]["circuits"]["value"]) != 1:
-            raise ValueError("only one circuit is modelled: there is no trench sharing on the 110 kV side")
+            raise InvalidInputError("only one circuit is modelled: there is no trench sharing on the 110 kV side")
 
         def val(node):
             return catalogue.value(node["catalogue_key"]) if "catalogue_key" in node else node["value"]

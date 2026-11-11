@@ -37,6 +37,8 @@ from typing import Any
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError
+
 __all__ = [
     "Footprint",
     "ScreenResult",
@@ -65,9 +67,9 @@ class Footprint:
 
     def __post_init__(self):
         if self.length_m <= 0 or self.width_m <= 0:
-            raise ValueError("footprint sides must be positive")
+            raise InvalidInputError("footprint sides must be positive")
         if self.rotation_step_deg <= 0:
-            raise ValueError("rotation_step_deg must be positive")
+            raise InvalidInputError("rotation_step_deg must be positive")
 
     @property
     def thetas(self) -> np.ndarray:
@@ -192,7 +194,7 @@ def screen_footprints(cost, blocked, *, footprint: Footprint,
     cost = np.asarray(cost, dtype=np.float32)
     blocked = np.asarray(blocked, dtype=np.float32)
     if cost.shape != blocked.shape:
-        raise ValueError(
+        raise InvalidInputError(
             f"cost {cost.shape} and blocked {blocked.shape} must match")
     rows, cols = cost.shape
     pad = int(2 * math.ceil(math.hypot(
@@ -273,7 +275,7 @@ def verify_exact(cost, blocked, screen: ScreenResult, rows_cols, *,
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if mode not in ("pixels", "coverage"):
-        raise ValueError(
+        raise InvalidInputError(
             f"mode must be 'pixels' or 'coverage', got {mode!r}")
     cost = np.asarray(cost, dtype=np.float64)
     blocked = np.asarray(blocked, dtype=np.float64)

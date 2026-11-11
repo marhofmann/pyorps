@@ -22,6 +22,8 @@ from pathlib import Path
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError
+
 __all__ = ["FORBIDDEN", "AccessConstraints", "band_multiplier", "block_cost", "class_cost", "clearance",
            "slope_multiplier", "slope_percent"]
 
@@ -79,7 +81,9 @@ class AccessConstraints:
     def load(cls, path, catalogue, *, certified: bool = False) -> AccessConstraints:
         """Read the file and the catalogue prices; refuse a bad status, a bad rule or band, and (when
         ``certified``) any remaining assumption."""
-        import yaml
+        from pyorps.core.optional_deps import import_yaml
+
+        yaml = import_yaml()
 
         raw = Path(path).read_bytes()
         d = yaml.safe_load(raw.decode("utf-8"))
@@ -87,10 +91,10 @@ class AccessConstraints:
         _walk_status(d, "", st)
         bad = [f"{k}: {s!r}" for k, s in st.items() if s not in STATUSES]
         if bad:
-            raise ValueError(f"{path}: invalid status in " + "; ".join(bad))
+            raise InvalidInputError(f"{path}: invalid status in " + "; ".join(bad))
         assumed = sorted(k for k, s in st.items() if s == "assumption")
         if certified and assumed:
-            raise ValueError("a certified build needs sourced inputs; assumptions remain: " + ", ".join(assumed))
+            raise InvalidInputError("a certified build needs sourced inputs; assumptions remain: " + ", ".join(assumed))
 
         def val(node):
             return catalogue.value(node["catalogue_key"]) if "catalogue_key" in node else node["value"]
@@ -103,16 +107,16 @@ class AccessConstraints:
         edges_ok = bands and bands[0][0] == 0.0 and bands[-1][1] == g_max and all(
             bands[i][1] == bands[i + 1][0] for i in range(len(bands) - 1))
         if not edges_ok:
-            raise ValueError("slope_bands must be contiguous from 0 to g_max_percent")
+            raise InvalidInputError("slope_bands must be contiguous from 0 to g_max_percent")
         rules: dict[tuple[str, str], str] = {}
         for rule, pairs in d["classes"].items():
             if rule == "status":
                 continue
             if rule not in RULE_NAMES:
-                raise ValueError(f"unknown class rule {rule!r}")
+                raise InvalidInputError(f"unknown class rule {rule!r}")
             for nutzart, bez in pairs:
                 if (nutzart, bez) in rules:
-                    raise ValueError(f"class {(nutzart, bez)} is listed twice")
+                    raise InvalidInputError(f"class {(nutzart, bez)} is listed twice")
                 rules[(nutzart, bez)] = rule
         return cls(path=Path(path), sha256=hashlib.sha256(raw).hexdigest(),
                    width_m=float(val(r["width_m"])), new_eur_m=new, simple_eur_m=simple,
@@ -144,7 +148,7 @@ class AccessConstraints:
         table = {n: {b: self.rule_cost(self.rule_of(n, b)) for b in sub} for n, sub in recipe.items()}
         others = [c for sub in table.values() for c in sub.values() if c not in (self.public_eur_m, FORBIDDEN)]
         if others and min(others) <= self.public_eur_m:
-            raise ValueError("public_road_eur_per_m must be below every other class cost")
+            raise InvalidInputError("public_road_eur_per_m must be below every other class cost")
         return table
 
     def gradient_options(self):

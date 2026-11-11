@@ -19,6 +19,8 @@ import random
 import numpy as np
 import pytest
 
+pytest.importorskip("yaml")
+
 from pyorps.collector import CollectorGraph, solve_collector
 from pyorps.collector.voltage import (
     Branch,

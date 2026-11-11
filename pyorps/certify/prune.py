@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from pyorps.core.exceptions import ConsistencyCheckError, InvalidInputError
+
 __all__ = ["BoundAndPruneResult", "branch_lower_bound", "bound_and_prune", "prune_mask"]
 
 
@@ -28,11 +30,11 @@ def branch_lower_bound(constant: float, terms) -> np.ndarray:
     """
     arrs = [np.asarray(t, dtype=np.float64) for t in terms]
     if not arrs:
-        raise ValueError("at least one term bound is needed")
+        raise InvalidInputError("at least one term bound is needed")
     if any(np.isnan(a).any() for a in arrs):
-        raise ValueError("a term bound contains NaN")
+        raise InvalidInputError("a term bound contains NaN")
     if any((a < 0).any() for a in arrs):
-        raise ValueError("every term bound must be non-negative (the admissibility argument needs it)")
+        raise InvalidInputError("every term bound must be non-negative (the admissibility argument needs it)")
     out = np.full(arrs[0].shape, float(constant), dtype=np.float64)
     for a in arrs:
         out += a
@@ -42,10 +44,10 @@ def branch_lower_bound(constant: float, terms) -> np.ndarray:
 def prune_mask(lb: np.ndarray, z_ub: float, eps_adm: float) -> np.ndarray:
     """True where the position is KEPT: not ``LB - eps_adm > Z_UB`` (M4, eq. 4.3)."""
     if eps_adm < 0 or math.isnan(z_ub) or math.isnan(eps_adm):
-        raise ValueError("eps_adm must be >= 0 and Z_UB a number")
+        raise InvalidInputError("eps_adm must be >= 0 and Z_UB a number")
     lb = np.asarray(lb, dtype=np.float64)
     if np.isnan(lb).any():
-        raise ValueError("lower bound contains NaN")
+        raise InvalidInputError("lower bound contains NaN")
     return ~(lb - eps_adm > z_ub)
 
 
@@ -105,8 +107,8 @@ def bound_and_prune(lb: Mapping, exact: Callable[[object, np.ndarray], np.ndarra
             vals = np.asarray(exact(b, np.asarray(need, dtype=np.int64)), dtype=np.float64)
             for i, v in zip(need, vals.tolist()):
                 if flat[b][i] - eps_adm > v:
-                    raise AssertionError(f"lower bound not admissible at branch {b!r}, position {i}: "
-                                         f"LB - eps_adm = {flat[b][i] - eps_adm} > exact {v}")
+                    raise ConsistencyCheckError(f"lower bound not admissible at branch {b!r}, position {i}: "
+                                                f"LB - eps_adm = {flat[b][i] - eps_adm} > exact {v}")
                 cache[(b, i)] = v
         return np.asarray([cache[(b, i)] for i in idx.tolist()])
 

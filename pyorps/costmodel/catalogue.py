@@ -28,6 +28,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from pyorps.core.exceptions import InvalidInputError, MissingKeyError
+from pyorps.core.optional_deps import import_yaml
+
 __all__ = ["CONFIDENCE_TOLERANCE", "CostCatalogue", "CostItem"]
 
 #: Plan C acceptance: relative tolerance of a derived term per tier.
@@ -63,8 +66,8 @@ class CostItem:
         if "low" in self.numbers and "high" in self.numbers:
             return 0.5 * (float(self.numbers["low"])
                           + float(self.numbers["high"]))
-        raise KeyError(f"{self.key} has no central value "
-                       f"(fields {sorted(self.numbers)})")
+        raise MissingKeyError(f"{self.key} has no central value "
+                              f"(fields {sorted(self.numbers)})")
 
     @property
     def band(self) -> tuple[float, float]:
@@ -95,16 +98,11 @@ class CostCatalogue:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Read and validate a catalogue YAML."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-        try:
-            import yaml
-        except ImportError as exc:                      # pragma: no cover
-            raise ImportError(
-                "reading the cost catalogue needs PyYAML "
-                "(pip install pyyaml)") from exc
+        yaml = import_yaml()
         raw = Path(path).read_bytes()
         doc = yaml.safe_load(raw.decode("utf-8"))
         if not isinstance(doc, Mapping):
-            raise ValueError(f"{path}: not a mapping at top level")
+            raise InvalidInputError(f"{path}: not a mapping at top level")
         refs = dict(doc.get("references") or {})
         items: dict[str, CostItem] = {}
         problems: list[str] = []
@@ -117,8 +115,8 @@ class CostCatalogue:
                 if s not in refs:
                     problems.append(f"{it.key}: unknown source {s!r}")
         if problems:
-            raise ValueError(f"{path}: {len(problems)} problem(s):\n  "
-                             + "\n  ".join(problems[:30]))
+            raise InvalidInputError(f"{path}: {len(problems)} problem(s):\n  "
+                                    + "\n  ".join(problems[:30]))
         return cls(items=items, references=refs, meta=dict(doc.get("meta") or {}),
                    sha256=hashlib.sha256(raw).hexdigest(), path=str(path))
 
@@ -127,8 +125,8 @@ class CostCatalogue:
             return self.items[key]
         except KeyError:
             near = [k for k in self.items if k.startswith(key.split(".")[0])]
-            raise KeyError(f"{key!r} not in the catalogue; "
-                           f"same section: {near[:8]}") from None
+            raise MissingKeyError(f"{key!r} not in the catalogue; "
+                                  f"same section: {near[:8]}") from None
 
     def value(self, key: str) -> float:
         """The central value of an item."""
@@ -163,7 +161,7 @@ class CostCatalogue:
         anchor = it.central
         rel = abs(derived - anchor) / abs(anchor) if anchor else abs(derived)
         if rel > it.tolerance:
-            raise ValueError(
+            raise InvalidInputError(
                 f"{key}: derived {derived:.6g} is {rel:.1%} from the anchor "
                 f"{anchor:.6g}; a {it.confidence} item allows "
                 f"{it.tolerance:.0%}")

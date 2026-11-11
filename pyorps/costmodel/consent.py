@@ -26,6 +26,7 @@ from pathlib import Path
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError
 from pyorps.costmodel.catalogue import CostCatalogue
 
 __all__ = ["ConsentClass", "ConsentTable", "FORBIDDEN", "PRICE_CAP"]
@@ -75,7 +76,9 @@ class ConsentTable:
     @classmethod
     def load(cls, path, catalogue: CostCatalogue) -> ConsentTable:
         """Read the table; ``use: hdd_multiplier`` entries are resolved from the catalogue."""
-        import yaml
+        from pyorps.core.optional_deps import import_yaml
+
+        yaml = import_yaml()
 
         raw = Path(path).read_bytes()
         doc = yaml.safe_load(raw.decode("utf-8"))
@@ -84,13 +87,13 @@ class ConsentTable:
         classes: dict[str, ConsentClass] = {}
         for name, body in doc["classes"].items():
             if body.get("treatment") != "priced":
-                raise ValueError(f"{name}: only priced classes are supported (owner decision, 2026-10-05)")
+                raise InvalidInputError(f"{name}: only priced classes are supported (owner decision, 2026-10-05)")
             mult_node = body["per_metre_multiplier"]
             mult = hdd if mult_node.get("use") == "hdd_multiplier" else float(mult_node["value"])
             one = body["one_off_eur"]
             lo, hi = float(one["low"]), float(one["high"])
             if not (0.0 <= lo <= hi) or mult < 1.0 or float(body["delay_months"]["value"]) < 0:
-                raise ValueError(f"{name}: need 0 <= low <= high, multiplier >= 1, delay >= 0")
+                raise InvalidInputError(f"{name}: need 0 <= low <= high, multiplier >= 1, delay >= 0")
             for key in ("per_metre_multiplier", "one_off_eur", "delay_months"):
                 statuses[f"{name}.{key}"] = body[key]["status"]
             classes[name] = ConsentClass(
@@ -98,17 +101,17 @@ class ConsentTable:
                 one_off_range=(lo, hi), delay_months=float(body["delay_months"]["value"]),
                 confidence=str(body.get("confidence", "LOW")))
         if len({c.bit for c in classes.values()}) != len(classes):
-            raise ValueError("two classes share a flag bit")
+            raise InvalidInputError("two classes share a flag bit")
         wz = doc["water_zones"]["per_metre_multiplier"]
         statuses["water_zones.per_metre_multiplier"] = wz["status"]
         water = {int(k): float(v) for k, v in wz.items() if str(k).isdigit()}
         if any(v < 1.0 for v in water.values()):
-            raise ValueError("water zone multipliers must be >= 1")
+            raise InvalidInputError("water zone multipliers must be >= 1")
         dc = doc["delay_cost"]
         statuses["delay_cost"] = dc["status"]
         bad = {k: s for k, s in statuses.items() if s not in _STATUSES}
         if bad:
-            raise ValueError(f"invalid status in {bad}")
+            raise InvalidInputError(f"invalid status in {bad}")
         return cls(classes=classes, water_multipliers=water,
                    delay_cost_eur_per_month=float(dc["value_eur_per_month"]), statuses=statuses,
                    sha256=hashlib.sha256(raw).hexdigest())
