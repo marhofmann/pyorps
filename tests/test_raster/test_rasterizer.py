@@ -1,16 +1,17 @@
-import unittest
-from unittest.mock import patch, MagicMock
 import os
 import tempfile
-import numpy as np
-import geopandas as gpd
-import pandas as pd
-from shapely.geometry import Polygon, box
-from rasterio.transform import from_origin
+import unittest
+from unittest.mock import MagicMock, patch
 
-from pyorps.raster.rasterizer import GeoRasterizer
-from pyorps.io.geo_dataset import InMemoryRasterDataset, InMemoryVectorDataset
+import geopandas as gpd
+import numpy as np
+import pandas as pd
+from rasterio.transform import from_origin
+from shapely.geometry import Polygon, box
+
 from pyorps.core.cost_assumptions import CostAssumptions
+from pyorps.io.geo_dataset import InMemoryRasterDataset, InMemoryVectorDataset
+from pyorps.raster.rasterizer import GeoRasterizer
 
 
 class TestGeoRasterizer(unittest.TestCase):
@@ -347,7 +348,7 @@ class TestGeoRasterizer(unittest.TestCase):
                     mock_modify.return_value = rasterizer.raster
 
                     # Test modify_raster_from_dataset with a number value
-                    result = rasterizer.modify_raster_from_dataset(
+                    rasterizer.modify_raster_from_dataset(
                         'test_file.shp',
                         cost_assumptions=20
                     )

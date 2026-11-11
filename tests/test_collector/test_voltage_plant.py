@@ -7,9 +7,9 @@
   turbines cannot reach is a reported deficit (compensation needed);
 * the tap changer rests only where the MV busbar is within its band; a
   range that cannot reach the band is a violation;
-* the no-load reactive limit (Syna: 0.02 P_b,inst over-excited) asks for a
+* the no-load reactive limit (operator A: 0.02 P_b,inst over-excited) asks for a
   reactor behind a 110 kV cable, not behind an overhead line;
-* Syna's no-FRT criterion (1.08 U_NS) binds when the setpoint is high;
+* Operator A's no-FRT criterion (1.08 U_NS) binds when the setpoint is high;
 * the operators' rules come from ``voltage_2026.yaml`` as the TABs state
   them.
 """
@@ -164,7 +164,7 @@ def test_the_tap_changer_rests_only_inside_its_band():
 
 def test_no_load_reactive_power_needs_a_reactor_behind_a_cable():
     vm, tree = _collector()
-    rules = grid_rules_from_yaml(YAML, "syna")
+    rules = grid_rules_from_yaml(YAML, "operator_a")
     only_n0 = dataclasses.replace(
         rules, corners=tuple(c for c in rules.corners if c.name == "N0"))
     cable = check_plant_tree(tree, vm,
@@ -185,9 +185,28 @@ def test_no_load_reactive_power_needs_a_reactor_behind_a_cable():
     assert ohl.reactor_mvar == 0.0
 
 
-def test_syna_frt_criterion_binds():
+def test_converters_at_zero_wind_take_the_cable_charging_up_to_their_rating():
     vm, tree = _collector()
-    rules = grid_rules_from_yaml(YAML, "syna")
+    rules = grid_rules_from_yaml(YAML, "operator_a")
+    only_n0 = dataclasses.replace(
+        rules, corners=tuple(c for c in rules.corners if c.name == "N0"))
+    leg = HVLeg.from_type(**CABLE, length_km=5.0)
+    allowance = 0.02 * 47.6
+    none = check_plant_tree(tree, vm, _plant(vm, leg), only_n0)
+    big = check_plant_tree(tree, vm, _plant(vm, leg, q_zero_power_mvar=7.778), only_n0)
+    small = check_plant_tree(tree, vm, _plant(vm, leg, q_zero_power_mvar=0.2), only_n0)
+    assert none.reactor_mvar > 0 and not none.reactive_ok            # conservative: nothing at zero wind
+    assert big.reactive_ok and big.voltage_ok and big.reactor_mvar == 0.0
+    assert big.no_load_q_mvar == pytest.approx(allowance, abs=1e-6)  # just enough, no more
+    x = next(iter(big.as_record()["corners"]["N0"]["turbine_q_mvar_at_zero_wind"].values()))
+    assert -7.778 < x < 0                                            # absorbs, below the rating
+    # a rating too small to cover it is used in full and the rest stays a shortfall
+    assert small.reactor_mvar == pytest.approx(none.reactor_mvar - 7 * 0.2, rel=0.05)
+    assert small.reactor_mvar < none.reactor_mvar
+
+def test_operator_a_frt_criterion_binds():
+    vm, tree = _collector()
+    rules = grid_rules_from_yaml(YAML, "operator_a")
     s3 = dataclasses.replace(
         rules, corners=tuple(c for c in rules.corners if c.name == "S3"))
     ok = check_plant_tree(tree, vm, _plant(vm), s3)
@@ -206,11 +225,11 @@ def test_syna_frt_criterion_binds():
 
 
 def test_operator_rules_from_the_yaml():
-    syna = grid_rules_from_yaml(YAML, "syna")
-    names = [c.name for c in syna.corners]
+    op_a = grid_rules_from_yaml(YAML, "operator_a")
+    names = [c.name for c in op_a.corners]
     assert names == ["Qover_lo", "Qover_hi", "Qunder_lo", "Qunder_hi",
                      "S1a", "S1b", "S1c", "S1d", "S3", "N0"]
-    c = {c.name: c for c in syna.corners}
+    c = {c.name: c for c in op_a.corners}
     assert c["Qover_lo"].q_nap == 0.41 and c["Qunder_hi"].q_nap == -0.33
     assert c["Qover_lo"].u_nap_pu == pytest.approx(96 / 110)
     assert c["Qunder_hi"].u_nap_pu == pytest.approx(123 / 110)
@@ -218,14 +237,14 @@ def test_operator_rules_from_the_yaml():
     assert c["S1d"].q_nap == -0.33 and "no_trip" in c["S1d"].checks
     assert c["S3"].u_nap_pu == 1.05 and "no_frt" in c["S3"].checks
     assert c["N0"].p_frac == 0.0 and c["N0"].q_nap is None
-    assert syna.no_load_q == (0.05, 0.02)
-    assert syna.trip_ns == (0.80, 1.25) and syna.mv_upper_ms == 1.10
-    ava = grid_rules_from_yaml(YAML, "avacon")
-    ca = {c.name: c for c in ava.corners}
+    assert op_a.no_load_q == (0.05, 0.02)
+    assert op_a.trip_ns == (0.80, 1.25) and op_a.mv_upper_ms == 1.10
+    op_b = grid_rules_from_yaml(YAML, "operator_b")
+    ca = {c.name: c for c in op_b.corners}
     assert ca["Qover_lo"].q_nap == 0.48 and ca["Qunder_lo"].q_nap == -0.41
     assert "no_trip" in ca["Qover_hi"].checks and "S3" not in ca
-    assert ava.no_load_q == (0.05, 0.0)
-    assert len(syna.meta["sha256"]) == 64
+    assert op_b.no_load_q == (0.05, 0.0)
+    assert len(op_a.meta["sha256"]) == 64
 
 
 def test_the_whole_check_on_a_traced_design_is_recorded():
@@ -240,7 +259,20 @@ def test_the_whole_check_on_a_traced_design_is_recorded():
     plant = PlantModel(UWTransformer(63, 115, 21, 0.125, 0.0032, 22, 0.0004),
                        (2.0, 3.4, 6.8), 0.54, 0.484)
     chk = check_plant(res.design(g), G, turb, model, vm, plant,
-                      grid_rules_from_yaml(YAML, "syna"))
+                      grid_rules_from_yaml(YAML, "operator_a"))
     rec = json.loads(json.dumps(chk.as_record()))
-    assert rec["rules"] == "syna" and set(rec["corners"]) >= {"S3", "N0"}
+    assert rec["rules"] == "operator_a" and set(rec["corners"]) >= {"S3", "N0"}
     assert isinstance(chk.passed, bool)
+
+
+def test_plant_follows_the_lv_reference_of_the_limits():
+    mv = plant_model_from_yaml(
+        YAML, voltage_model_from_yaml(YAML, u_kv=20, cable_mm2=[240],
+                                      n_turbines=7))
+    lv = plant_model_from_yaml(
+        YAML, voltage_model_from_yaml(YAML, u_kv=20, cable_mm2=[240],
+                                      n_turbines=7, q_reference="lv"))
+    assert (mv.q_over_p, mv.q_under_p) == (0.540, 0.484)
+    assert lv.q_over_p < mv.q_over_p and lv.q_under_p > mv.q_under_p
+    # about 4.7-4.8 Mvar less over-excited range for the whole farm
+    assert 4.5 < sum(lv.p_rated_mw) * (mv.q_over_p - lv.q_over_p) < 5.0

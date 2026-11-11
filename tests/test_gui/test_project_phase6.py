@@ -3,13 +3,12 @@ import json
 
 import geopandas as gpd
 import pytest
-from shapely.geometry import LineString, Polygon
+from conftest import SOURCE, TARGET, invoke
+from shapely.geometry import Polygon
+from test_routes_phase4 import _draft
 
 from pyorps.gui import ids
 from pyorps.gui.services import project_io
-
-from conftest import SOURCE, TARGET, invoke
-from test_routes_phase4 import _draft
 
 
 @pytest.fixture()
@@ -28,8 +27,7 @@ def rich_state(app, state, raster_path):
     raster_layer = state.layers_of_kind("raster")[0]
     invoke(app, (f"{ids.ROUTING_STATUS}.children", ids.RUN_ROUTING_BTN),
            1, False, _draft({"source": [SOURCE], "target": [TARGET]}),
-           raster_layer.id, "dijkstra", "cpu", "r1", 80, True, False,
-           False, 1.0, 100, 0, False, [], [],
+           raster_layer.id, "dijkstra", None, 1, 80, False, True, False, False, 1.0, 100, 0, None, [], [],
            triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
     state.study_area = {"type": "Feature", "properties": {},
                         "geometry": {"type": "Polygon", "coordinates": [[
@@ -52,8 +50,12 @@ def test_export_route_formats(rich_state, tmp_path, ext):
     else:
         back = gpd.read_file(path)
         assert back.iloc[0]["origin"] == "built"
-        assert json.loads(back.iloc[0]["control_points"])[0] == \
-            pytest.approx(list(SOURCE))
+        # GDAL 3.8+ writes a JSON-looking string as a real JSON array into GeoJSON, and pyogrio 0.12+ reads that
+        # back as a list; older versions (and GeoPackage) round-trip the string.
+        points = back.iloc[0]["control_points"]
+        if isinstance(points, str):
+            points = json.loads(points)
+        assert [float(v) for v in points[0]] == pytest.approx(list(SOURCE))
 
 
 def test_export_route_bad_format(rich_state, tmp_path):
@@ -105,7 +107,7 @@ def test_project_roundtrip(rich_state, tmp_path):
     route_meta = rich_state.layers_of_kind("route")[0].meta
 
     # restore into the same (cleared) state
-    back = project_io.load_project(rich_state, manifest_path)
+    project_io.load_project(rich_state, manifest_path)
     assert len(rich_state.layers) == n_layers
     assert rich_state.study_area is not None
     restored_route = rich_state.layers_of_kind("route")[0]
@@ -122,24 +124,24 @@ def test_project_roundtrip(rich_state, tmp_path):
 def test_save_open_new_project_callbacks(app, rich_state, tmp_path):
     target = tmp_path / "session"
     resp = invoke(app, (f"{ids.PROJECT_STATUS}.children",
-                        ids.PROJECT_SAVE_BTN),
+                        ids.GO_SAVE_PROJECT),
                   1, str(target), ["raster", "vector", "cost_table"],
                   [{"use": "forest", "cost": 10, "forbidden": False}],
                   {"feature_keys": ["use"], "dataset_id": None}, [], [],
-                  triggered=[f"{ids.PROJECT_SAVE_BTN}.n_clicks"])
+                  triggered=[f"{ids.GO_SAVE_PROJECT}.data"])
     assert "saved" in resp[ids.PROJECT_STATUS]["children"]
     manifest_path = target / "project.json"
     assert manifest_path.exists()
 
     # new project clears everything
-    resp = invoke(app, ("layers-view.data", ids.PROJECT_NEW_BTN), 1, [],
-                  triggered=[f"{ids.PROJECT_NEW_BTN}.n_clicks"])
+    resp = invoke(app, ("layers-view.data", ids.GO_NEW_PROJECT), 1, [],
+                  triggered=[f"{ids.GO_NEW_PROJECT}.data"])
     assert rich_state.layers == {}
 
     # open restores layers + the cost table into the client stores
-    resp = invoke(app, ("layers-view.data", ids.PROJECT_OPEN_BTN),
+    resp = invoke(app, ("layers-view.data", ids.GO_OPEN_PROJECT),
                   1, str(manifest_path), [],
-                  triggered=[f"{ids.PROJECT_OPEN_BTN}.n_clicks"])
+                  triggered=[f"{ids.GO_OPEN_PROJECT}.data"])
     assert len(rich_state.layers) == 3
     assert resp[ids.COST_GRID]["rowData"][0]["use"] == "forest"
     assert resp[ids.COST_GRID_STATE]["data"]["feature_keys"] == ["use"]

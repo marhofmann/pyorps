@@ -2,7 +2,6 @@
 
 import math
 from dataclasses import dataclass, field
-from typing import Optional
 
 import geopandas as gpd
 import numpy as np
@@ -23,11 +22,11 @@ class Tower:
     angle_cost: float
     total_cost: float
     span_to_previous_m: float
-    span_to_next_m: Optional[float]
+    span_to_next_m: float | None
     tower_id: int
-    height_m: Optional[float] = None
-    bisector_angle_rad: Optional[float] = None
-    ground_area_m2: Optional[float] = None
+    height_m: float | None = None
+    bisector_angle_rad: float | None = None
+    ground_area_m2: float | None = None
 
 
 @dataclass

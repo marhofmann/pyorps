@@ -33,12 +33,10 @@ pytest --cov=pyorps
 (contributing-code-style)=
 ## Code Style
 
-PYORPS follows PEP 8 with a maximum line length of 88 (Black convention).
+PYORPS follows PEP 8 with a maximum line length of 120, checked by ruff (rules in `pyproject.toml`).
 
 ```bash
-black pyorps/
-isort pyorps/
-flake8 pyorps/
+python -m ruff check .
 ```
 
 (contributing-commit-format)=

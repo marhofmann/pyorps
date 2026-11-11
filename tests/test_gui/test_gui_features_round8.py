@@ -12,11 +12,9 @@ Round-8 GUI fixes (2026-07-16, live testing):
 """
 import warnings
 
-import pytest
+from conftest import invoke
 
 from pyorps.gui import ids
-
-from conftest import invoke
 
 
 # ---------------------------------------------------------- 58 warning filter
@@ -105,7 +103,7 @@ def test_manual_remove_selected_polygon(app, state):
     drawn = {"type": "FeatureCollection", "features": [_COST_A, _COST_B]}
     resp = invoke(app, ("layers-view.data", ids.MANUAL_DEL_BTN),
                   1, drawn, rows, [rows[0]], "Manual costs", 42, "override",
-                  triggered=[f"{ids.MANUAL_DEL_BTN}.n_clicks"])
+                  [], triggered=[f"{ids.MANUAL_DEL_BTN}.n_clicks"])
     new_rows = resp[ids.MANUAL_GRID]["rowData"]
     assert len(new_rows) == 1
     assert len(state.get(manual_cost.MANUAL_LAYER_ID).gdf) == 1

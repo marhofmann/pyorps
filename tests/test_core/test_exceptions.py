@@ -1,11 +1,22 @@
 import unittest
+
 from pyorps.core.exceptions import (
+    AlgorithmNotImplementedError,
+    ColumnAnalysisError,
+    CostAssumptionsError,
+    FeatureColumnError,
+    FileLoadError,
+    FormatError,
+    InvalidSourceError,
+    NoPathFoundError,
+    NoSuitableColumnsError,
+    PairwiseError,
     PyorpsError,
-    CostAssumptionsError, FileLoadError, InvalidSourceError, FormatError,
-    FeatureColumnError, NoSuitableColumnsError, ColumnAnalysisError,
-    WFSError, WFSConnectionError, WFSResponseParsingError, WFSLayerNotFoundError,
-    RasterShapeError, NoPathFoundError, AlgorithmNotImplementedError,
-    PairwiseError
+    RasterShapeError,
+    WFSConnectionError,
+    WFSError,
+    WFSLayerNotFoundError,
+    WFSResponseParsingError,
 )
 
 

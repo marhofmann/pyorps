@@ -6,15 +6,13 @@ pin the fast paths.
 """
 import geopandas as gpd
 import pytest
-from shapely.geometry import box
+from conftest import invoke
 from dash.exceptions import PreventUpdate
+from shapely.geometry import box
 
 from pyorps.gui import ids
+from pyorps.gui.callbacks.layers import _rows_from_gdf, host_signature
 from pyorps.gui.services import geo
-from pyorps.gui.callbacks.layers import (host_signature, render_layer_host,
-                                         _rows_from_gdf)
-
-from conftest import invoke
 
 
 def _vec(state, name, n=3):
@@ -67,11 +65,11 @@ def test_host_signature_stable_when_nothing_changes(state):
 def test_opacity_not_in_layers_view_path(state):
     """A raster's opacity lives on the tile signature, so changing it via the
     slider path never invalidates the (heavy) vector layers' render."""
-    layer = _vec(state, "V")
+    _vec(state, "V")
     sig_before = host_signature(state)
     # bumping a raster's opacity would change only raster tuples, never a vector
-    layer2 = state.add_layer("R", "raster", crs="EPSG:25832",
-                             meta={}, tile=None)
+    state.add_layer("R", "raster", crs="EPSG:25832",
+                    meta={}, tile=None)
     sig_with_raster = host_signature(state)
     assert sig_with_raster != sig_before
     # the vector tuple is unchanged across the two signatures
@@ -97,7 +95,7 @@ def test_rows_from_gdf_respects_limit():
 
 
 def test_attr_table_caps_large_layers(state):
-    from pyorps.gui.callbacks.layers import _attr_table_payload, MAX_TABLE_ROWS
+    from pyorps.gui.callbacks.layers import MAX_TABLE_ROWS, _attr_table_payload
 
     n = MAX_TABLE_ROWS + 250
     gdf = gpd.GeoDataFrame(
@@ -138,7 +136,7 @@ def test_geojson_rev_bumps_on_reassign(state):
 
 
 def test_render_layer_urls_large_inlines_small(state):
-    from pyorps.gui.callbacks.layers import render_layer, URL_GEOJSON_THRESHOLD
+    from pyorps.gui.callbacks.layers import URL_GEOJSON_THRESHOLD, render_layer
 
     small = _vec(state, "small", n=3)
     big = _big_vec(state, "big", URL_GEOJSON_THRESHOLD + 20)

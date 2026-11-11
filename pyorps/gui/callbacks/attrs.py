@@ -14,7 +14,6 @@ from dash.exceptions import PreventUpdate
 
 from .. import ids
 
-
 #: technical column name -> human-readable label (routes carry the metric
 #: columns; anything not listed keeps its own name)
 FIELD_LABELS = {

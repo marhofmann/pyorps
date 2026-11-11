@@ -214,9 +214,9 @@ def site_field(price_cents: np.ndarray, forbidden: np.ndarray, *,
         shape = (wr1 - wr0, wc1 - wc0)
         fshape = _fft_shape(shape, (ksz, ksz))
 
-        def window(a, fill):
-            w = np.full(shape, fill, dtype=np.float64)  # pylint: disable=cell-var-from-loop
-            w[ir0 - wr0:ir1 - wr0, ic0 - wc0:ic1 - wc0] = a[ir0:ir1, ic0:ic1]  # pylint: disable=cell-var-from-loop
+        def window(a, fill, shape=shape, ir0=ir0, ir1=ir1, ic0=ic0, ic1=ic1, wr0=wr0, wc0=wc0):
+            w = np.full(shape, fill, dtype=np.float64)
+            w[ir0 - wr0:ir1 - wr0, ic0 - wc0:ic1 - wc0] = a[ir0:ir1, ic0:ic1]
             return w
 
         # outside the grid counts as forbidden, so a pad that leaves the

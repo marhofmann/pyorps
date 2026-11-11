@@ -8,15 +8,16 @@ Reference:
 """
 from typing import Any
 
-from matplotlib import colors
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import gridspec
+from matplotlib import colors, gridspec
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 from rasterio.windows import bounds as window_bounds
+
+from pyorps.core.exceptions import InvalidInputError
 
 from ..core.path import Path, PathCollection
 
@@ -96,7 +97,7 @@ class PathPlotter:
         """
         # Check if we have any paths
         if not self.paths:
-            raise ValueError("No paths found in PathCollection.")
+            raise InvalidInputError("No paths found in PathCollection.")
 
         # Setup path colors and determine which paths to plot
         path_colors = self._setup_path_colors(path_colors, plot_all)
@@ -206,7 +207,7 @@ class PathPlotter:
                 # Find specific path by ID
                 path = self.paths.get(path_id=path_id)
                 if path is None:
-                    raise ValueError(f"No path found with ID {path_id}")
+                    raise InvalidInputError(f"No path found with ID {path_id}")
                 return [path]
             return [self.paths.get(path_id=pid) for pid in path_id]
         # Default to the last path if no specific path is requested

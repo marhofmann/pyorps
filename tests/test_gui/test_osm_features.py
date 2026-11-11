@@ -2,13 +2,11 @@
 OpenStreetMap features via the Overpass API (2026-07-15) — the "edit base" /
 cost source the basemap tiles couldn't provide. Network is always mocked.
 """
-import geopandas as gpd
 import pytest
+from conftest import invoke
 
 from pyorps.gui import ids
 from pyorps.gui.services import osm
-
-from conftest import invoke
 
 ELEMENTS = [
     {"type": "node", "id": 1, "lat": 50.05, "lon": 8.1,

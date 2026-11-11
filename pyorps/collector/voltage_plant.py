@@ -1,9 +1,9 @@
 """The voltage limit at the connection point: the whole plant (C5 with C6).
 
 The grid code states its requirements at the 110 kV connection point (NAP):
-a reactive range (Syna: variant 2, 0.41 over- / 0.33 under-excited Q/P_b,inst,
+a reactive range (operator A: variant 2, 0.41 over- / 0.33 under-excited Q/P_b,inst,
 TAB Hochspannung 2026 p. 14) at a NAP voltage, plus the operator's planning
-checks (Syna TAB, Anhang K). To check them, the collector of a traced
+checks (operator A TAB, Anhang K). To check them, the collector of a traced
 design is extended into the plant:
 
     NAP (slack) --HV leg-- UW HV --[ideal ratio n(tap)]--Z_T-- MV busbar
@@ -25,7 +25,7 @@ output), for every tap of the on-load tap changer:
 * the tap changer holds the MV busbar within ``U_MS (1 +/- B)``: the taps
   whose busbar voltage lies in that band are the ones the controller may
   rest on, and each of them must pass; if none does, the range is exhausted
-  and the tap nearest to the band is used; that is a violation (Avacon's
+  and the tap nearest to the band is used; that is a violation (operator B's
   TAB: the transformer must regulate the whole HV voltage band).
 
 Checks per corner (the operator's rules, :class:`GridRules`):
@@ -36,10 +36,10 @@ Checks per corner (the operator's rules, :class:`GridRules`):
   (E.7), with ``U_NS = U_MS / ue`` -- the turbine's LV voltage referred to
   the MV side, divided by ``U_MS``, so independent of the turbine's tap;
 * ``no_frt``: ``U_LV / U_NS < 1.08`` (and ``> 0.92``) -- no switch into
-  fault-ride-through mode in undisturbed operation (Syna Anhang K);
+  fault-ride-through mode in undisturbed operation (operator A, Anhang K);
 * ``mv_upper``: the MV busbar below ``1.10 U_MS`` (E.7, U> at the MV side);
 * ``no_load_q``: all turbines idle, the NAP reactive power within
-  ``[-0.05, +0.02] P_b,inst`` (Syna Anhang K);
+  ``[-0.05, +0.02] P_b,inst`` (operator A, Anhang K);
 * always: ``U_m`` at every MV node and the reactive target met.
 
 The voltage rules are hard (:attr:`PlantCheck.voltage_ok`); a reactive
@@ -215,6 +215,7 @@ class PlantModel:
     deadband: float = 0.0107
     p_b_inst_mw: float | None = None
     tol_q_mvar: float = 1e-7
+    q_zero_power_mvar: float = 0.0     # per turbine, +/- at zero wind (converter as STATCOM); 0 = none (conservative)
     meta: dict = field(default_factory=dict, compare=False)
 
     @property
@@ -233,6 +234,7 @@ class PlantModel:
                 "q_over_p": self.q_over_p, "q_under_p": self.q_under_p,
                 "u_nap_kv": self.u_nap_kv, "u_ms_pu": self.u_ms_pu,
                 "deadband": self.deadband, "p_b_inst_mw": self.p_b_inst,
+                "q_zero_power_mvar": self.q_zero_power_mvar,
                 "meta": dict(self.meta)}
 
 
@@ -281,9 +283,10 @@ class _TapRun:
     v: list
     v_mv: float
     error: str = ""
+    x_abs: float = 0.0          # per-turbine reactive power at zero wind (Mvar, + = over-excited)
 
 
-def _solve_tap(ptree, plant, vmodel, corner, tap, kappa0=None) -> _TapRun:  # pylint: disable=unused-argument
+def _solve_tap(ptree, plant, vmodel, corner, tap, kappa0=None, q_band=None) -> _TapRun:  # pylint: disable=unused-argument
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """The controller's reactive share at one tap (false position)."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
@@ -291,11 +294,12 @@ def _solve_tap(ptree, plant, vmodel, corner, tap, kappa0=None) -> _TapRun:  # py
     v_root = corner.u_nap_pu * plant.u_nap_kv / n / ptree.u_kv
     p = [corner.p_frac * pr for pr in plant.p_rated_mw]
     tn = [ptree.turbine_node[t] for t in range(len(p))]
+    x_abs = 0.0
 
-    def run(kappa):
+    def run(kappa, x_abs=0.0):
         s = [0j] * ptree.n_nodes
         for t, k in enumerate(tn):
-            s[k] = complex(p[t], kappa * plant.p_rated_mw[t])
+            s[k] = complex(p[t], kappa * plant.p_rated_mw[t] + x_abs)
         lf = load_flow(ptree, s, v_root, s_base_mva=vmodel.s_base_mva,
                        tol_pu=vmodel.tol_pu, max_iter=vmodel.max_iter)
         return lf.s_root_mva.imag, lf
@@ -304,6 +308,28 @@ def _solve_tap(ptree, plant, vmodel, corner, tap, kappa0=None) -> _TapRun:  # py
         if corner.q_nap is None or corner.p_frac == 0:
             q, lf = run(0.0)
             kappa, deficit = 0.0, 0.0
+            x_abs = 0.0
+            cap = plant.q_zero_power_mvar
+            if cap > 0 and q_band is not None and not q_band[0] <= q <= q_band[1]:
+                # converters as STATCOM: the smallest common Q per turbine (<= cap) that brings the NAP into the band
+                goal = q_band[1] if q > q_band[1] else q_band[0]
+                x_lim = -cap if q > goal else cap
+                q_lim, lf_lim = run(0.0, x_lim)
+                sign0 = 1.0 if q > goal else -1.0
+                if (q_lim - goal) * sign0 > 0:                       # the cap is not enough: use all of it
+                    x_abs, q, lf = x_lim, q_lim, lf_lim
+                else:
+                    a_x, b_x = 0.0, x_lim
+                    for _ in range(60):
+                        mid = 0.5 * (a_x + b_x)
+                        q_m, lf_m = run(0.0, mid)
+                        if abs(q_m - goal) <= plant.tol_q_mvar:
+                            break
+                        if (q_m - goal) * sign0 > 0:
+                            a_x = mid
+                        else:
+                            b_x = mid
+                    x_abs, q, lf = mid, q_m, lf_m
         else:
             target = corner.q_nap * plant.p_b_inst
             a, b = -plant.q_under_p, plant.q_over_p
@@ -339,7 +365,7 @@ def _solve_tap(ptree, plant, vmodel, corner, tap, kappa0=None) -> _TapRun:  # py
     except LoadFlowError as exc:
         return _TapRun(tap, math.nan, math.nan, math.nan, [], math.nan,
                        error=str(exc))
-    return _TapRun(tap, kappa, deficit, q, lf.v_pu, abs(lf.v_pu[MV_BUS]))
+    return _TapRun(tap, kappa, deficit, q, lf.v_pu, abs(lf.v_pu[MV_BUS]), x_abs=x_abs)
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
 
 
@@ -378,6 +404,7 @@ class PlantCornerResult:
     max_hv_kv: float = math.nan
     margin: np.ndarray | None = field(default=None, repr=False)
     v_by_tap: dict = field(default_factory=dict, repr=False)
+    x_abs_mvar: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -436,6 +463,7 @@ class PlantCheck:
                                  "max_v_pu": c.max_v_pu,
                                  "max_ns": c.max_ns, "min_ns": c.min_ns,
                                  "max_hv_kv": c.max_hv_kv,
+                                 "turbine_q_mvar_at_zero_wind": {str(k): v for k, v in c.x_abs_mvar.items()},
                                  "errors": c.errors}
                         for c in self.corners.values()},
             "violations": list(self.violations),
@@ -478,7 +506,9 @@ def check_plant_tree(tree: ElectricalTree, vmodel: VoltageModel,
     tn = [ptrees[0].turbine_node[t] for t in range(n)]
     mv_nodes = list(range(MV_BUS, ptrees[0].n_nodes))
     for corner in rules.corners:
-        runs = [_solve_tap(ptrees[tap], plant, vmodel, corner, tap)
+        qb = ((-rules.no_load_q[0] * plant.p_b_inst, rules.no_load_q[1] * plant.p_b_inst)
+              if "no_load_q" in corner.checks else None)
+        runs = [_solve_tap(ptrees[tap], plant, vmodel, corner, tap, q_band=qb)
                 for tap in plant.transformer.taps]
         ok = [r for r in runs if not r.error]
         errors = [f"tap {r.tap}: {r.error}" for r in runs if r.error]
@@ -545,7 +575,7 @@ def check_plant_tree(tree: ElectricalTree, vmodel: VoltageModel,
                         f"{lo_q:.3f} Mvar (under-excited)")
             # per turbine and turbine tap
             vt = v[tn]
-            st = s_t + 1j * r.kappa * np.asarray(plant.p_rated_mw)
+            st = s_t + 1j * (r.kappa * np.asarray(plant.p_rated_mw) + r.x_abs)
             s_pu = st / vmodel.s_base_mva
             with np.errstate(divide="ignore", invalid="ignore"):
                 cur = np.where(s_pu == 0, 0.0, np.conj(s_pu / vt))
@@ -573,7 +603,8 @@ def check_plant_tree(tree: ElectricalTree, vmodel: VoltageModel,
             v_mv_pu={r.tap: r.v_mv for r in inside},
             max_v_pu=max_v, max_ns=math.nan, min_ns=math.nan, errors=errors,
             max_hv_kv=max_hv,
-            margin=cm, v_by_tap={r.tap: r.v for r in inside})
+            margin=cm, v_by_tap={r.tap: r.v for r in inside},
+            x_abs_mvar={r.tap: r.x_abs for r in inside})
         ns_by_corner[corner.name] = (ns_hi, ns_lo)
     if um_margin < 0:
         violations.append(f"an MV node exceeds U_m = {vmodel.u_m_kv} kV")
@@ -625,13 +656,13 @@ def check_plant(design, graph, turbines, model, vmodel: VoltageModel,
 
 def grid_rules_from_yaml(path, operator: str) -> GridRules:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    """The rules of ``"syna"`` or ``"avacon"`` from ``voltage_2026.yaml``.
+    """The rules of ``"operator_a"`` or ``"operator_b"`` from ``voltage_2026.yaml``.
 
-    Syna (TAB Hochspannung 2026): variant 2 at the ends of the NAP voltage
+    Operator A (TAB Hochspannung 2026): variant 2 at the ends of the NAP voltage
     ranges in which the full reactive power is due (over-excited 96-120 kV,
     under-excited 103-123 kV, continuous), the planning checks of Anhang K
     (stability 1: no trip; stability 3: no FRT entry) and the no-load
-    reactive limit. Avacon (NT-10-32): its TAB fixes no variant, so the
+    reactive limit. Operator B (NT-10-32): its TAB fixes no variant, so the
     envelope of variants 1-3 (0.48 over-, 0.41 under-excited) at the same
     voltages, no trip there, and the rev. 5 plan's no-load reading of
     VDE-AR-N 4120.
@@ -654,7 +685,7 @@ def grid_rules_from_yaml(path, operator: str) -> GridRules:
     u_lo = env["full_under_excited"]["value"][0] / un
     u_hi = min(env["full_under_excited"]["value"][1], cont[1]) / un
     steady = {"band", "mv_upper"}
-    if operator == "syna":
+    if operator == "operator_a":
         vv = var[f"variant_{op['q_variant']['value']}"]
         over, under = vv["over_excited"], vv["under_excited"]
         steady_checks = frozenset(steady)
@@ -675,7 +706,7 @@ def grid_rules_from_yaml(path, operator: str) -> GridRules:
     if prot:
         trip = (float(prot["U<"][0]), float(prot["U>>"][0]))
     frt = (0.92, 1.08)
-    if operator == "syna":
+    if operator == "operator_a":
         pc = op["planning_checks"]
         for i, (u, q) in enumerate(pc["stability_1"]["value"]):
             corners.append(NapCorner(f"S1{'abcd'[i]}", float(u), float(q),

@@ -6,19 +6,25 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
+import math
+import os
 import warnings
 from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from geopandas import GeoDataFrame
+from pyproj import CRS as PyprojCRS
+from pyproj.exceptions import CRSError as PyprojCRSError
 from rasterio import open as rio_open
 from rasterio.features import geometry_mask, rasterize
 from rasterio.transform import Affine, from_bounds
 from shapely.geometry import Polygon, box
 
 from pyorps.core.cost_assumptions import CostAssumptions
+from pyorps.core.exceptions import FormatError, InvalidInputError, InvalidTypeError
 from pyorps.core.metric_stack import MetricStack
 from pyorps.core.types import (
     IMPASSABLE_CELL_COST,
@@ -29,6 +35,7 @@ from pyorps.core.types import (
 )
 
 # Changed to relative imports from other modules
+from pyorps.core.warning_types import CrsReprojectionWarning
 from pyorps.io.geo_dataset import (
     GeoDataset,
     InMemoryRasterDataset,
@@ -58,7 +65,7 @@ class GeoRasterizer:
 
     def __init__(
             self,
-            input_data: GeoDataset,
+            input_data: GeoDataset | InputDataType | os.PathLike,
             cost_assumptions: CostAssumptionsType,
             bbox: BboxType | None = None,
             mask: GeometryMaskType | None = None,
@@ -69,16 +76,34 @@ class GeoRasterizer:
         Initialize the GeoRasterizer with a base dataset and optional parameters.
 
         Parameters:
-            input_data: The base dataset to rasterize (file path, GeoDataFrame, dict
-                with web params, or GeoDataset)
-            mask: Window or polygon mask to limit data reading
+            input_data: The base data. Either a GeoDataset (as returned by
+                ``initialize_geo_dataset``; loaded here if it is not loaded yet)
+                or a source that ``initialize_geo_dataset`` understands: the path
+                of a vector or raster file (str or ``os.PathLike``), a
+                GeoDataFrame, or a WFS request dict with the keys "url" and
+                "layer". A GeoDataFrame is used in place, so ``rasterize`` adds
+                its 'cost' column to the frame that was passed. A numpy array
+                has no georeference of its own: wrap it in an
+                ``InMemoryRasterDataset`` (with its CRS and transform) first.
             cost_assumptions: Cost values for rasterization (dict, file path, or
                 CostAssumptions object)
-            default_crs: Default coordinate reference system to use
-            **kwargs: Additional parameters passed to load function of the GeoDataset
-                if base_dataset is not a GeoDataset
+            bbox: Bounding box that limits the vector data when it is LOADED
+                here, i.e. for a source or a GeoDataset that is not loaded yet
+                and carries no bbox of its own. It is not applied to a dataset
+                that is already loaded, nor to raster data; a warning says so.
+                Use ``clip_to_area`` to cut loaded data.
+            mask: Polygon mask that limits the vector data when it is loaded
+                here (same rule as ``bbox``). It is also the default mask for
+                the datasets read by ``modify_raster_from_dataset``.
+            default_crs: CRS the vector data is brought into when it is loaded
+                here: data in another CRS is reprojected to it. It is not
+                applied to a dataset that is already loaded or that names a CRS
+                itself, nor to raster data; a warning says so.
+            **kwargs: Additional parameters passed to the load function of the
+                GeoDataset when the data is loaded here
         """
-        self.base_dataset = input_data
+        self.base_dataset = self._resolve_base_dataset(input_data, bbox, mask,
+                                                       default_crs)
         self.additional_datasets = []
         self.default_crs = default_crs
         self.bbox = bbox
@@ -108,6 +133,73 @@ class GeoRasterizer:
             self.transform = None
             self.raster_dataset = None
 
+    @staticmethod
+    def _same_crs(first, second) -> bool:
+        """True when two CRS descriptions (string, EPSG code, CRS object) agree."""
+        if first is None or second is None:
+            return first is second
+        try:
+            return PyprojCRS.from_user_input(first) == PyprojCRS.from_user_input(second)
+        except (PyprojCRSError, TypeError, ValueError):
+            return str(first) == str(second)
+
+    @classmethod
+    def _resolve_base_dataset(cls, input_data, bbox, mask, default_crs):
+        """Turn the constructor's ``input_data`` into a GeoDataset.
+
+        A source that is not a dataset yet is handed to
+        ``initialize_geo_dataset`` together with ``default_crs``, ``bbox`` and
+        ``mask``. A dataset that is not loaded yet adopts the three settings it
+        does not carry itself. Whatever cannot take effect is named in ONE
+        warning, with the way to get it applied, instead of being dropped.
+        """
+        if isinstance(input_data, os.PathLike):
+            input_data = os.fspath(input_data)
+        # Duck-typed on purpose: anything that can load itself is a dataset.
+        is_dataset = (isinstance(input_data, GeoDataset)
+                      or hasattr(input_data, 'load_data'))
+        if is_dataset:
+            dataset = input_data
+        else:
+            dataset = initialize_geo_dataset(input_data, default_crs, bbox, mask)
+
+        is_vector = isinstance(dataset, VectorDataset)
+        loaded = dataset.data is not None
+        ignored = []
+        if bbox is not None:
+            if is_vector and not loaded and dataset.bbox is None:
+                dataset.bbox = bbox
+            else:
+                same = is_vector and (dataset.bbox is bbox or (
+                    isinstance(bbox, tuple) and isinstance(dataset.bbox, tuple)
+                    and dataset.bbox == bbox))
+                if not same:
+                    ignored.append('bbox')
+        if mask is not None and is_vector and not loaded and dataset.mask is None:
+            dataset.mask = mask
+        if default_crs is not None:
+            if is_vector and not loaded and dataset.crs is None:
+                dataset.crs = default_crs
+            elif not ((is_vector or loaded)
+                      and cls._same_crs(dataset.crs, default_crs)):
+                # A raster file brings its own CRS when it is read, so only a
+                # loaded raster can be said to agree with default_crs.
+                ignored.append('default_crs')
+        if ignored:
+            if not is_vector:
+                reason = "raster data is read in its own extent and CRS"
+            elif loaded:
+                reason = "the dataset is already loaded"
+            else:
+                reason = "the dataset carries its own setting"
+            warnings.warn(
+                f"GeoRasterizer ignores {' and '.join(ignored)}: {reason}. "
+                "Pass bbox and crs to initialize_geo_dataset() before loading, "
+                "cut loaded data with clip_to_area(), or reproject it with "
+                "GeoDataFrame.to_crs().",
+                UserWarning, stacklevel=3)
+        return dataset
+
     @property
     def base_data(self) -> GeoDataFrame:
         """
@@ -132,7 +224,7 @@ class GeoRasterizer:
             The clipped base dataset
         """
         if self.base_data is None:
-            raise ValueError("No base data loaded to clip")
+            raise InvalidInputError("No base data loaded to clip")
 
         self.base_dataset.data = self.base_data.clip(clip_geometry)
         self.invalidate_class_cache()
@@ -161,7 +253,7 @@ class GeoRasterizer:
             data = dataset
 
         if data is None:
-            raise ValueError("Dataset has no data to buffer")
+            raise InvalidInputError("Dataset has no data to buffer")
 
         if geometry_buffer_m <= 0:
             return dataset if isinstance(dataset, VectorDataset) else data
@@ -193,7 +285,7 @@ class GeoRasterizer:
             A new GeoDataFrame containing the bounds of the base data
         """
         if self.base_dataset is None or self.base_dataset.data is None:
-            raise ValueError("No base data loaded to create bounds from")
+            raise InvalidInputError("No base data loaded to create bounds from")
 
         # Calculate the bounds of the source GeoDataFrame
         minx, miny, maxx, maxy = self.base_dataset.data.total_bounds
@@ -215,8 +307,13 @@ class GeoRasterizer:
         """
         Passing crs property of base_dataset.
 
+        This is the CRS of the raster and of every route: the CRS of the
+        input data, or the local UTM zone when geographic (degree) data was
+        reprojected by :meth:`rasterize` (see ``CrsReprojectionWarning``).
+        Source and target coordinates must be given in it.
+
         Returns:
-            The desired CRS of the base dataset
+            The CRS of the base dataset
         """
         return self.base_dataset.crs
 
@@ -244,7 +341,7 @@ class GeoRasterizer:
             return "uint16"
         if n_ids <= np.iinfo(np.uint32).max:
             return "uint32"
-        raise ValueError(
+        raise InvalidInputError(
             f"{n_ids} burn ids exceed the uint32 index band capacity.")
 
     @classmethod
@@ -482,7 +579,7 @@ class GeoRasterizer:
         if on_thin_features not in ("warn", "raise", "ignore"):
             # Validated even when nothing is forbidden, so a typo cannot lurk
             # until the day a cost table first marks something impassable.
-            raise ValueError(
+            raise InvalidInputError(
                 "on_thin_features must be 'warn', 'raise' or 'ignore', got "
                 f"{on_thin_features!r}")
         forbidden = self._forbidden_rows(data[field_name].to_numpy())
@@ -543,6 +640,217 @@ class GeoRasterizer:
         key can only see the GeoDataFrame's identity, length and bounds.
         """
         self._class_band_cache = None
+
+    # ------------------------------------------------------------------
+    # Input validation shared by rasterize() and rasterize_metrics()
+    # ------------------------------------------------------------------
+
+    #: How many offending classes an error or warning names before it counts.
+    _MAX_NAMED_KEYS = 5
+
+    @staticmethod
+    def _check_resolution(resolution_in_m) -> None:
+        """Reject a cell size that is not a finite number above zero."""
+        try:
+            if isinstance(resolution_in_m, (str, bytes)):
+                raise TypeError
+            value = float(resolution_in_m)
+        except (TypeError, ValueError):
+            raise InvalidTypeError(
+                "resolution_in_m must be a number (cell size in metres), got "
+                f"{type(resolution_in_m).__name__} {resolution_in_m!r}") from None
+        if not math.isfinite(value) or value <= 0:
+            raise InvalidInputError(
+                "resolution_in_m must be a finite number greater than 0 (cell "
+                f"size in metres), got {resolution_in_m!r}")
+
+    def _check_metric_crs(self) -> None:
+        """Reproject base data in a geographic (degree) CRS to the local UTM zone.
+
+        Cell size, buffers and bounding boxes are metres, so degree
+        coordinates cannot be rasterized as they are. The data is reprojected
+        to ``estimate_utm_crs()`` (on a copy: the caller's GeoDataFrame is not
+        changed), the base dataset and :attr:`crs` switch to that CRS, and one
+        :class:`~pyorps.core.warning_types.CrsReprojectionWarning` says which
+        CRS the raster and every route are in. Data without a CRS is left
+        alone (its coordinates are not guessed).
+        """
+        crs = getattr(self.base_data, 'crs', None)
+        if crs is None or not crs.is_geographic:
+            return
+        gdf = self.base_data
+        try:
+            utm_crs = gdf.estimate_utm_crs()
+        except Exception as error:  # pyproj raises several types here
+            utm_crs = None
+            reason = f" ({error})"
+        else:
+            reason = ""
+        if utm_crs is None:
+            raise InvalidInputError(
+                f"Cannot rasterize data in the geographic CRS {crs}: no UTM "
+                f"zone could be estimated for its extent{reason}. Reproject "
+                "the data to a projected, metric CRS first, e.g. "
+                "gdf.to_crs('EPSG:32632').")
+        minx, _, maxx, _ = gdf.total_bounds
+        span = float(maxx - minx)
+        projected = gdf.to_crs(utm_crs)
+        self.base_dataset.data = projected
+        self.base_dataset.crs = projected.crs
+        epsg = utm_crs.to_authority()
+        shown = f"{epsg[0]}:{epsg[1]}" if epsg else utm_crs.to_string()
+        source = crs.to_string()
+        wide = ""
+        if span > 6.0:
+            wide = (f" The data spans {span:.1f} degrees of longitude, more "
+                    "than one UTM zone (6 degrees): it was reprojected to the "
+                    "zone of its centre, and distances far from that zone "
+                    "are distorted.")
+        warnings.warn(
+            f"The input data is in {source} (degrees). It was reprojected to "
+            f"{shown} (UTM, metres). The raster and every route are in "
+            f"{shown}: give source and target coordinates in that system, "
+            f"e.g. geopandas.GeoSeries([Point(lon, lat)], crs='{source}')"
+            f".to_crs('{shown}').{wide}",
+            CrsReprojectionWarning, stacklevel=3)
+
+    @classmethod
+    def _join_keys(cls, keys: list, formatter=repr) -> str:
+        """The first few keys, and how many more there are."""
+        text = ", ".join(formatter(key) for key in keys[:cls._MAX_NAMED_KEYS])
+        if len(keys) > cls._MAX_NAMED_KEYS:
+            text += f" and {len(keys) - cls._MAX_NAMED_KEYS} more"
+        return text
+
+    def _check_cost_table(self) -> None:
+        """Reject cost-table entries without a number (NaN or None).
+
+        Such an entry used to become forbidden without a word, exactly like a
+        class that is missing from the table. The documented way to forbid a
+        class is the value 65535, so an empty cost is an error in the table.
+        """
+        table = self.cost_manager.cost_assumptions
+        if not isinstance(table, dict):
+            return
+
+        def undefined(value) -> bool:
+            if value is None:
+                return True
+            try:
+                return math.isnan(value)
+            except TypeError:
+                return False
+
+        keys = []
+        for key, value in table.items():
+            if isinstance(value, dict):
+                keys.extend((key, sub_key) for sub_key, leaf in value.items()
+                            if undefined(leaf))
+            elif undefined(value):
+                keys.append(key)
+        if keys:
+            raise FormatError(
+                f"The cost table has no number (NaN or empty) for {len(keys)} "
+                f"entr{'y' if len(keys) == 1 else 'ies'}: {self._join_keys(keys)}. "
+                f"Give each one a cost; use {IMPASSABLE_CELL_COST} to forbid a "
+                "class.")
+
+    def _flagged_classes(self, rows: np.ndarray, field_name: str) -> list:
+        """``(class key, row position)`` of each distinct class in ``rows``.
+
+        The key is the main feature (plus side features) of the cost table and
+        the position is the first flagged row of that class. For a field that
+        is not derived from the cost table, or when the feature columns are
+        absent, every flagged row stands for itself under its row label.
+        """
+        data = self.base_data
+        positions = np.flatnonzero(rows)
+        columns = self._class_key_columns(data) if field_name == 'cost' else []
+        if not columns:
+            return [(data.index[position], position) for position in positions]
+        frame = pd.DataFrame(
+            {column: data[column].to_numpy()[positions] for column in columns})
+        try:
+            frame = frame.drop_duplicates()
+        except TypeError:
+            # Unhashable feature values (lists from JSON attributes, ...).
+            frame = frame.loc[~frame.astype(str).duplicated()]
+        if len(columns) == 1:
+            keys = frame[columns[0]].tolist()
+        else:
+            keys = list(frame.itertuples(index=False, name=None))
+        return list(zip(keys, positions[frame.index.to_numpy()]))
+
+    def _check_values_fit_dtype(self, field_name: str, dtype) -> None:
+        """Reject values the raster dtype cannot hold, BEFORE the cast.
+
+        ``astype`` on an integer dtype wraps: -5 becomes 65531 in uint16 (a
+        nearly forbidden cell) and 70000 becomes 4464 (a cheap one). Rows
+        without a value are skipped here; they receive ``fill_value`` next.
+        Values are compared after rounding, as they are burned. A float
+        raster holds any sign and inf, so only a finite value beyond the
+        float range is reported there.
+        """
+        target = np.dtype(dtype)
+        values = self.base_data[field_name].to_numpy()
+        if values.dtype.kind not in 'iuf' or target.kind not in 'iuf':
+            return
+        numbers = values.astype(np.float64)
+        present = ~np.isnan(numbers)
+        if target.kind == 'f':
+            limits = np.finfo(target)
+            low, high = float(limits.min), float(limits.max)
+            bad = present & np.isfinite(numbers) & ((numbers < low) | (numbers > high))
+            allowed = f"{low:g} to {high:g}"
+        else:
+            limits = np.iinfo(target)
+            low, high = int(limits.min), int(limits.max)
+            burned = np.round(numbers)
+            bad = present & ~((burned >= low) & (burned <= high))
+            allowed = f"{low} to {high}"
+            if field_name == 'cost' and low <= IMPASSABLE_CELL_COST <= high:
+                allowed += (f", where {IMPASSABLE_CELL_COST} marks a forbidden "
+                            "cell")
+        if not bad.any():
+            return
+        classes = self._flagged_classes(bad, field_name)
+        named = self._join_keys(
+            classes, lambda item: f"{item[0]!r}: {numbers[item[1]]:g}")
+        if field_name == 'cost':
+            what, unit = "Cost", "class(es)"
+        else:
+            what, unit = f"Field '{field_name}'", "row(s)"
+        raise FormatError(
+            f"{what} value(s) outside the range of the {target.name} raster for "
+            f"{len(classes)} {unit}: {named}. Allowed range: {allowed}. A value "
+            "outside it would wrap around silently, so correct or rescale the "
+            "values.")
+
+    def _warn_missing_costs(self, fill_value, stacklevel: int) -> None:
+        """Warn ONCE about the classes the cost table does not cover.
+
+        Their rows have no cost after the table was applied and receive
+        ``fill_value`` next, which by default forbids them. The result is
+        unchanged; a typo in one class name is just no longer silent.
+        """
+        missing = self.base_data['cost'].isna().to_numpy()
+        if not missing.any():
+            return
+        classes = self._flagged_classes(missing, 'cost')
+        columns = self._class_key_columns(self.base_data)
+        feature = " / ".join(map(repr, columns)) or "the feature column"
+        if fill_value == IMPASSABLE_CELL_COST:
+            effect = f"were treated as forbidden (cost {IMPASSABLE_CELL_COST})"
+        else:
+            effect = f"received fill_value={fill_value!r}"
+        warnings.warn(
+            f"{len(classes)} class(es) of {feature} "
+            f"({int(missing.sum())} feature(s)) are missing from the cost "
+            f"table and {effect}: "
+            f"{self._join_keys([key for key, _ in classes])}. Add them to the "
+            f"cost table; give a class {IMPASSABLE_CELL_COST} to forbid it on "
+            "purpose.",
+            UserWarning, stacklevel=stacklevel)
 
     def rasterize(
             self,
@@ -627,29 +935,60 @@ class GeoRasterizer:
                 bit-identical to a plain GDAL burn and only the first check can
                 fire.
         Returns:
-            tuple of (raster_data, transform)
+            The rasterized dataset (also stored as ``self.raster_dataset``)
+
+        Raises:
+            TypeError: ``resolution_in_m`` is not a number.
+            ValueError: ``resolution_in_m`` is not finite or not above zero;
+                the base data is empty; or the base data is in a geographic
+                CRS for which no UTM zone can be estimated.
+            FormatError: a cost-table entry is NaN or empty, or a value does
+                not fit the raster ``dtype`` (uint16: 0 to 65535, where 65535
+                marks a forbidden cell). An integer raster rejects inf as well.
+
+        Warns:
+            CrsReprojectionWarning: once, when the base data is in a geographic
+                CRS (degrees). It is reprojected to the local UTM zone (on a
+                copy; the caller's GeoDataFrame is not changed). The raster
+                and every route are then in that CRS, readable as ``crs``;
+                give source and target coordinates in it. Data without a CRS
+                is not reprojected.
+            UserWarning: once per call, naming the feature classes that are
+                missing from the cost table. They receive ``fill_value``, which
+                by default forbids them.
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        self._check_resolution(resolution_in_m)
+
         if self.base_data.shape[0] == 0:
-            raise ValueError("Base data is empty - nothing to rasterize!")
+            raise InvalidInputError("Base data is empty - nothing to rasterize!")
 
         if self.base_dataset is None or self.base_dataset.data is None:
-            raise ValueError("No base dataset loaded to rasterize")
+            raise InvalidInputError("No base dataset loaded to rasterize")
 
         if preprocessing_function is not None:
             if preprocessing_kwargs is None:
                 preprocessing_kwargs = {}
             preprocessing_function(self.base_dataset.data, **preprocessing_kwargs)
 
+        # After the hook, which may reproject the frame in place.
+        self._check_metric_crs()
+
         # Add cost field
         if field_name == 'cost':
+            self._check_cost_table()
             self.cost_manager.apply_to_geodataframe(self.base_data)
 
         # Fill NA values in the field
         if field_name not in self.base_data.columns:
-            raise ValueError(f"Field '{field_name}' not found in the dataset")
+            raise InvalidInputError(f"Field '{field_name}' not found in the dataset")
+
+        # Before the cast below, which would wrap an out-of-range value.
+        self._check_values_fit_dtype(field_name, dtype)
 
         if self.base_data[field_name].isna().any():
+            if field_name == 'cost':
+                self._warn_missing_costs(fill_value, stacklevel=3)
             self.base_data[field_name] = self.base_data[field_name].fillna(fill_value)
 
         # Round the values in the specified field and convert to the desired data type
@@ -693,7 +1032,7 @@ class GeoRasterizer:
             # rasterio.features.rasterize refuses a degenerate output; the
             # dropped bbox pre-burn (item 2.7b) used to raise this for us.
             if min(out_shape) == 0:
-                raise ValueError("width and height must be > 0")
+                raise InvalidInputError("width and height must be > 0")
 
         # Option C. Strictly AFTER out_shape/self.transform above: widening
         # a forbidden feature on the outer edge would otherwise enlarge
@@ -972,26 +1311,33 @@ class GeoRasterizer:
             ``self.metric_stack``).
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        self._check_resolution(resolution_in_m)
+
         if self.base_dataset is None or self.base_dataset.data is None:
-            raise ValueError("No base dataset loaded to rasterize")
+            raise InvalidInputError("No base dataset loaded to rasterize")
         if self.base_data.shape[0] == 0:
-            raise ValueError("Base data is empty - nothing to rasterize!")
+            raise InvalidInputError("Base data is empty - nothing to rasterize!")
 
         if preprocessing_function is not None:
             preprocessing_function(self.base_dataset.data,
                                    **(preprocessing_kwargs or {}))
 
+        # After the hook, which may reproject the frame in place.
+        self._check_metric_crs()
+
         # Apply cost assumptions: one column per metric ('cost' first)
+        self._check_cost_table()
         self.cost_manager.apply_to_geodataframe(self.base_data)
         metric_names = self.cost_manager.metric_names
         missing = [m for m in metric_names if m not in self.base_data.columns]
         if missing:
-            raise ValueError(
+            raise InvalidInputError(
                 f"Cost manager did not produce metric column(s) {missing}")
 
         data = self.base_data
         # Unmatched features: forbidden in cost => forbidden in the stack;
         # other metrics default to 0 (their forbidden state rides the mask).
+        self._warn_missing_costs(IMPASSABLE_CELL_COST, stacklevel=3)
         data['cost'] = data['cost'].fillna(IMPASSABLE_CELL_COST)
         for name in metric_names:
             if name != 'cost':
@@ -1107,7 +1453,7 @@ class GeoRasterizer:
 
         unique_keys = list(dict.fromkeys(keys))
         if len(unique_keys) > 65534:
-            raise ValueError(
+            raise InvalidInputError(
                 f"{len(unique_keys)} feature classes exceed the uint16 "
                 f"category band capacity (65534).")
         id_by_key = {key: i + 1 for i, key in enumerate(unique_keys)}
@@ -1201,6 +1547,7 @@ class GeoRasterizer:
         Returns:
             tuple of (rows, columns)
         """
+        GeoRasterizer._check_resolution(resolution_in_m)
         # Calculate the aspect ratio
         aspect_ratio = width / height if height != 0 else 1.0
         # Calculate the area of each pixel (linear resolution squared)
@@ -1241,7 +1588,7 @@ class GeoRasterizer:
             The modified raster
         """
         if self.raster is None or self.transform is None:
-            raise ValueError("No raster data available to modify")
+            raise InvalidInputError("No raster data available to modify")
 
         # Create a mask from the geometries in the GeoDataFrame.
         # ``geometry_mask`` takes BARE geometries (no (geom, value) tuples),
@@ -1327,7 +1674,7 @@ class GeoRasterizer:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if self.raster is None or self.transform is None:
             msg = "No raster data available to modify. Call rasterize() first."
-            raise ValueError(msg)
+            raise InvalidInputError(msg)
 
         # Create bounds for data reading
         if bbox is None:
@@ -1551,7 +1898,7 @@ class GeoRasterizer:
         """
         if self.raster is None or self.transform is None:
             msg = "No raster data available to save. Call rasterize() first."
-            raise ValueError(msg)
+            raise InvalidInputError(msg)
 
         with rio_open(
                 save_path,
@@ -1586,7 +1933,7 @@ class GeoRasterizer:
         """
         if self.raster is None:
             msg = "No raster data available to shrink. Call rasterize() first."
-            raise ValueError(msg)
+            raise InvalidInputError(msg)
 
         # Create a mask where the raster does not equal the exclude_value
         mask = self.raster != exclude_value

@@ -8,9 +8,8 @@ Uses the existing raster files from the distribution grid planning example:
 import os
 import sys
 
-import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-import numpy as np
+import matplotlib.pyplot as plt
 import rasterio
 from rasterio.windows import from_bounds
 

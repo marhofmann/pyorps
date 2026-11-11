@@ -2,11 +2,10 @@
 import geopandas as gpd
 import pandas as pd
 import pytest
+from conftest import SOURCE, TEST_CRS
 from shapely.geometry import LineString, Point
 
 from pyorps.gui.services import geo
-
-from conftest import SOURCE, TEST_CRS
 
 
 def test_gdf_wgs84_roundtrip(finder):

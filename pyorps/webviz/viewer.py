@@ -94,7 +94,7 @@ class RouteViewer:
         return layer
 
     def add_paths(self, paths: Any, *, crs: Any = None,
-                  name: str = "Routes") -> "RouteViewer":  # pylint: disable=unused-argument
+                  name: str = "Routes") -> RouteViewer:  # pylint: disable=unused-argument
         """Add result routes (PathCollection, Path, list of Path, or GeoDataFrame)."""
         gdf, endpoints = self._paths_to_gdf(paths, crs)
         if gdf.crs is None:
@@ -117,7 +117,7 @@ class RouteViewer:
         return self
 
     def add_shapes(self, shapes: Any, *, name: str = "Shapes", crs: Any = None,
-                   color: str = "#ff7800") -> "RouteViewer":
+                   color: str = "#ff7800") -> RouteViewer:
         """Add input vector shapes (GeoDataFrame, file path, or VectorDataset)."""
         gdf = self._to_gdf(shapes, crs)
         if gdf.crs is None:
@@ -127,7 +127,7 @@ class RouteViewer:
         return self
 
     def add_route_geometries(self, lines: list, properties: list | None = None,
-                             crs: Any = None) -> "RouteViewer":
+                             crs: Any = None) -> RouteViewer:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Append routed LineStrings (routing CRS) to the editable route set.
 
@@ -180,7 +180,7 @@ class RouteViewer:
         endpoints = gpd.GeoDataFrame(endpoint_rows, geometry="geometry", crs=gdf.crs)
         self.endpoints_geojson = geo.gdf_to_wgs84_geojson(endpoints)
 
-    def attach_path_finder(self, finder: Any) -> "RouteViewer":
+    def attach_path_finder(self, finder: Any) -> RouteViewer:
         """Attach a PathFinder to enable waypoint re-routing and live cost."""
         self.path_finder = finder
         if self.cost_handler is None:
@@ -189,7 +189,7 @@ class RouteViewer:
 
     @classmethod
     def from_path_finder(cls, finder: Any, *, add_raster: bool = True,
-                         colormap: str = "viridis", **kwargs) -> "RouteViewer":
+                         colormap: str = "viridis", **kwargs) -> RouteViewer:
         """Build a viewer pre-populated from a PathFinder (raster + routes)."""
         viewer = cls(colormap=colormap, **kwargs)
         if add_raster and getattr(finder, "raster_handler", None) is not None:

@@ -13,10 +13,21 @@ api:
   - pyorps.PairwiseError
   - pyorps.CostAssumptionsError
   - pyorps.WFSError
+  - pyorps.InvalidInputError
+  - pyorps.InvalidTypeError
+  - pyorps.MissingKeyError
+  - pyorps.MissingDependencyError
+  - pyorps.FeatureNotImplementedError
+  - pyorps.PyorpsRuntimeError
+  - pyorps.InsufficientMemoryError
+  - pyorps.InputFileNotFoundError
+  - pyorps.PyorpsWarning
 ---
 # Exceptions
 
 All PYORPS errors derive from `PyorpsError`, so `except PyorpsError` catches every library error.
+
+Catch `PyorpsError` for anything the library reports. The classes that replace a builtin exception (`ValueError`, `TypeError`, `KeyError`, `ImportError`, `NotImplementedError`, `RuntimeError`, `MemoryError`, `FileNotFoundError`) also derive from that builtin, so code that catches `ValueError` keeps working. Every class pickles, so an error survives a trip between processes.
 
 (exceptions-tree)=
 ## Hierarchy
@@ -29,11 +40,21 @@ All PYORPS errors derive from `PyorpsError`, so `except PyorpsError` catches eve
 | `AlgorithmNotImplementedError` | The requested algorithm is not implemented in the chosen backend or graph library, or the backend is a stub. |
 | `PairwiseError` | Pairwise computation fails; source and target lists must have the same length. |
 | `CostAssumptionsError` | A cost assumptions file or object is invalid (subclasses `FileLoadError`, `InvalidSourceError`, `FormatError`). |
-| `WFSError` | A WFS request fails (subclasses `WFSConnectionError`, `WFSResponseParsingError`, `WFSLayerNotFoundError`). |
+| `WFSError` | A WFS request fails (subclasses `WFSConnectionError`, `WFSResponseParsingError`, `WFSLayerNotFoundError`, `WFSServerError`, `WFSRequestRejectedError`). |
 | `ObjectiveError`, `MetricStackError` | An `Objective` or `MetricStack` is inconsistent. |
 | `FeatureColumnError` | Automatic feature-column detection fails (subclasses `NoSuitableColumnsError`, `ColumnAnalysisError`). |
+| `EnsembleError` | A route-ensemble operation is invalid (`pyorps.core.ensemble`). |
+| `InvalidInputError` | An argument has an unusable value: out of range, unknown name, wrong shape. Also a `ValueError`. Subclasses: `ThinForbiddenFeatureError`, `SealedOpeningError`, `ProvenanceMismatch`. |
+| `InvalidTypeError` | An argument has the wrong type, or a keyword is misspelt. Also a `TypeError`. |
+| `MissingKeyError` | A required key or label is missing (a `simplify` config without `method`, an unknown route key). Also a `KeyError`. |
+| `MissingDependencyError` | An optional package is not installed; `.extra` names the pip extra. Also an `ImportError`. |
+| `FeatureNotImplementedError` | The backend does not support this combination of settings. Also a `NotImplementedError`. |
+| `PyorpsRuntimeError` | A valid call failed at run time: use after `close()`, a solver that did not converge, a GPU failure. Also a `RuntimeError`. |
+| `InsufficientMemoryError` | The operation needs more host or GPU memory than is available or allowed. Also a `MemoryError`. |
+| `InputFileNotFoundError` | A file the caller named (raster, profile, saved field) does not exist. Also a `FileNotFoundError`. |
+| `PyorpsWarning` | Root of the warning classes (`ThinForbiddenFeatureWarning`, `SealedOpeningWarning`, `ForbiddenBurnRoutingAssessment`, `CrsReprojectionWarning`). Derives from `UserWarning`. |
 
-The thin-feature tools add their own warning and error classes; see {doc}`thin_forbidden_features`.
+The thin-feature tools add their own warning and error classes, all rooted in `PyorpsWarning` and `InvalidInputError`; see {doc}`thin_forbidden_features`.
 
 ```python
 from pyorps import PathFinder, NoPathFoundError
@@ -44,4 +65,4 @@ except NoPathFoundError:
     ...  # enlarge search_space_buffer_m or check for barriers
 ```
 
-`PyorpsError`, `NoPathFoundError`, `RasterShapeError`, `AlgorithmNotImplementedError`, `PairwiseError`, `CostAssumptionsError` and `WFSError` are exported at the top level; the other classes live in `pyorps.core.exceptions`.
+Every exception class and `PyorpsWarning` is exported at the top level (`from pyorps import PyorpsError, InvalidInputError, ...`) and from `pyorps.core`. The full tree is in the docstring of `pyorps.core.exceptions`.

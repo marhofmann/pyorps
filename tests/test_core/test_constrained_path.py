@@ -1,8 +1,9 @@
 import unittest
-import numpy as np
-from shapely.geometry import Point, LineString
 
-from pyorps.core.constrained_path import Tower, ConstrainedPath
+import numpy as np
+from shapely.geometry import LineString, Point
+
+from pyorps.core.constrained_path import ConstrainedPath, Tower
 
 
 class TestTower(unittest.TestCase):

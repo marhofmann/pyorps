@@ -82,9 +82,9 @@ References:
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple, Union
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError, PyorpsRuntimeError
 from pyorps.utils.traversal_gpu import GPU_AVAILABLE
 
 if GPU_AVAILABLE:
@@ -117,27 +117,33 @@ Q_CLAMP_DEFAULT = 2.0
 #: on the cost.
 Q_FLAT_EPS_DEFAULT = 1e-3
 
-#: Tile size defaults. The anisotropic optimum is NOT the isotropic one:
-#: the 8-simplex update needs ~64 registers against the isotropic 30, so
-#: a B=16 tile (256 threads) drops to 4 blocks/SM. Measured at 3000^2 on
-#: an RTX PRO 500 (14 SMs), random raster: B=16/n_inner=32 -> 1009 ms,
-#: B=12/n_inner=16 -> 527 ms, B=8/n_inner=12 -> 550 ms. B=12 wins on
-#: every raster class tested.
+#: Tile size defaults. The anisotropic update needs ~70 registers against
+#: the isotropic 32. On an RTX PRO 500 (14 SMs) that made B=12 the
+#: anisotropic optimum (3000^2 random: B=16/n_inner=32 -> 1009 ms,
+#: B=12/n_inner=16 -> 527 ms, B=8/n_inner=12 -> 550 ms). On an RTX 5060
+#: Ti (36 SMs, sm_120) with the division-free update and launch bounds
+#: pinning 3 blocks/SM, B=16/n_inner=24 is 10-15 % faster than
+#: B=12/n_inner=16 on random and heavy-tail rasters and equal on
+#: land-use rasters (busy machine, relative A/B, 2026-10-21), and a
+#: 256-thread block has no half-empty warp.
 TILE_DEFAULT_ISO = 16
-TILE_DEFAULT_ANISO = 12
+TILE_DEFAULT_ANISO = 16
 
 
 def _default_n_inner(tile: int, aniso: bool) -> int:
     """Relaxation sweeps per tile visit.
 
     Isotropic: 2B — information can cross the whole tile and settle.
-    Anisotropic: ~4B/3. Every 8-simplex update raises T by at least
+    Anisotropic: 3B/2. Every 8-simplex update raises T by at least
     ``c * 1`` (the chords are the edges of [-1,1]^2) against the 4-point
     diamond's ``c/sqrt(2)``, so the front crosses a tile in fewer inner
     iterations and the extra ones are wasted work — measured 2x at
-    3000^2.
+    3000^2. In the isotropic kernel the settle check runs every 8th iteration,
+    so the cap sits on a check (24 for B=16; the anisotropic kernel instead
+    exits at the first quiet iteration >= 7): at B=16 n_inner=16 costs 2.2x and
+    n_inner=32 1.4x the time of n_inner=24 (3000^2, random/heavy).
     """
-    return 2 * tile if not aniso else max(8, (4 * tile) // 3)
+    return 2 * tile if not aniso else max(8, (3 * tile) // 2)
 
 
 # ============================================================================
@@ -209,7 +215,51 @@ void eikonal_jacobi(
 # tiles), halo cells are read-only — no atomics in the cell-update path.
 # Block 0 also clears next_count for the activation kernel that follows
 # in stream order.
-_FIM_SWEEP_KERNEL = r"""
+#
+# Shared-memory layout: the tile rows are stored with stride @ST@ = 3B
+# instead of B + 2. With B = 16 a warp covers two 16-wide rows; at
+# stride 18 the two rows overlap in 2 of the 32 banks (measured: 40 %
+# of the shared-memory wavefronts were bank-conflict replays), at
+# stride 48 they land on disjoint bank halves and every stencil access
+# (sp, sp +- 1, sp +- ST) is conflict-free.
+#
+# The 4-point Godunov update is branch-free (both candidates evaluated,
+# one select): the data-dependent "b - a >= c" branch diverged inside
+# the warp and both paths were issued anyway. With @FASTSQRT@ = 0 the
+# sqrt is the IEEE sequence, but the discriminant is an FMA (fmaf(-d, d, 2c^2)),
+# so the last bit can differ from the pre-2026-10-21 expression 2c^2 - d^2; = 1 swaps the
+# IEEE sqrt sequence (MUFU.RSQ + Newton + slow-path call) for the
+# single-instruction sqrt.approx (rel. error <= 2^-23, well inside the
+# eps_rel = 1e-6 convergence tolerance and the float32 accumulation
+# along a path).
+_GODUNOV4_DEVICE = r"""
+__device__ __forceinline__ float fim_sqrt(float x)
+{
+#if @FASTSQRT@
+    float r;
+    asm("sqrt.approx.f32 %0, %1;" : "=f"(r) : "f"(x));
+    return r;
+#else
+    return sqrtf(x);
+#endif
+}
+
+// 4-point Godunov update; c2x2 = (c + c) * c hoisted by the caller.
+__device__ __forceinline__ float fim_godunov4(
+        float tw, float te, float tn, float ts, float cval, float c2x2)
+{
+    float a = fminf(tw, te);
+    float b = fminf(tn, ts);
+    float lo = fminf(a, b);
+    float hi = fmaxf(a, b);
+    float diff = hi - lo;
+    float disc = fmaf(-diff, diff, c2x2);
+    float t2 = 0.5f * (lo + hi + fim_sqrt(fmaxf(disc, 0.0f)));
+    return (diff >= cval) ? lo + cval : t2;
+}
+"""
+
+_FIM_SWEEP_KERNEL = _GODUNOV4_DEVICE + r"""
 extern "C" __global__
 void fim_sweep(
     const float* __restrict__ slowness,
@@ -229,7 +279,8 @@ void fim_sweep(
     unsigned long long* __restrict__ stats
 ) {
     const int B = @B@;
-    __shared__ float s_t[(B + 2) * (B + 2)];
+    const int ST = @ST@;
+    __shared__ float s_t[(B + 2) * ST];
     __shared__ int s_changed_iter;
     __shared__ int s_boundary;
     __shared__ int s_settle;
@@ -242,6 +293,10 @@ void fim_sweep(
 
     int count = active_count[0];
     bool on_edge = (tx == 0 || tx == B - 1 || ty == 0 || ty == B - 1);
+    // Diagnostics counters are accumulated per block (thread 0) and
+    // flushed with one atomic pair per block instead of one per tile.
+    unsigned int blk_sweeps = 0;
+    unsigned int blk_iters = 0;
 
     for (int w = blockIdx.x; w < count; w += gridDim.x) {
         int tile_id = active_list[w];
@@ -262,7 +317,7 @@ void fim_sweep(
             frz = (frozen[gidx] != 0);
         }
         float t0 = in_grid ? T[gidx] : 1e30f;
-        int sp = (ty + 1) * (B + 2) + (tx + 1);
+        int sp = (ty + 1) * ST + (tx + 1);
         s_t[sp] = t0;
 
         // Halo (edges only — the 4-point stencil needs no corners)
@@ -273,17 +328,17 @@ void fim_sweep(
         }
         if (ty == B - 1) {
             int hr = base_r + B;
-            s_t[(B + 1) * (B + 2) + tx + 1] =
+            s_t[(B + 1) * ST + tx + 1] =
                 (hr < rows && gc < cols) ? T[hr * cols + gc] : 1e30f;
         }
         if (tx == 0) {
             int hc = base_c - 1;
-            s_t[(ty + 1) * (B + 2)] =
+            s_t[(ty + 1) * ST] =
                 (hc >= 0 && gr < rows) ? T[gr * cols + hc] : 1e30f;
         }
         if (tx == B - 1) {
             int hc = base_c + B;
-            s_t[(ty + 1) * (B + 2) + B + 1] =
+            s_t[(ty + 1) * ST + B + 1] =
                 (hc < cols && gr < rows) ? T[gr * cols + hc] : 1e30f;
         }
 
@@ -291,6 +346,7 @@ void fim_sweep(
         __syncthreads();
 
         bool can_update = in_grid && (cval < 1e30f) && !frz;
+        float c2x2 = (cval + cval) * cval;
 
         // Relaxation iterations need no per-iteration convergence
         // protocol: writes are monotone upper bounds, so racy reads are
@@ -317,18 +373,9 @@ void fim_sweep(
             }
             if (can_update) {
                 float t_old = s_t[sp];
-                float a = fminf(s_t[sp - 1], s_t[sp + 1]);
-                float b = fminf(s_t[sp - (B + 2)], s_t[sp + (B + 2)]);
-                if (a > b) { float tmp = a; a = b; b = tmp; }
-                float t_new;
-                if (b - a >= cval) {
-                    t_new = a + cval;
-                } else {
-                    float diff = a - b;
-                    t_new = 0.5f * (a + b +
-                        sqrtf(fmaxf(2.0f * cval * cval - diff * diff,
-                                    0.0f)));
-                }
+                float t_new = fim_godunov4(s_t[sp - 1], s_t[sp + 1],
+                                           s_t[sp - ST], s_t[sp + ST],
+                                           cval, c2x2);
                 if (t_new < t_old) {
                     s_t[sp] = t_new;
                     if (settle_check) s_settle = 1;
@@ -344,18 +391,9 @@ void fim_sweep(
         // (sub-eps drift must not re-activate neighbors forever).
         float tf = in_grid ? s_t[sp] : 1e30f;
         if (can_update) {
-            float a = fminf(s_t[sp - 1], s_t[sp + 1]);
-            float b = fminf(s_t[sp - (B + 2)], s_t[sp + (B + 2)]);
-            if (a > b) { float tmp = a; a = b; b = tmp; }
-            float t_new;
-            if (b - a >= cval) {
-                t_new = a + cval;
-            } else {
-                float diff = a - b;
-                t_new = 0.5f * (a + b +
-                    sqrtf(fmaxf(2.0f * cval * cval - diff * diff,
-                                0.0f)));
-            }
+            float t_new = fim_godunov4(s_t[sp - 1], s_t[sp + 1],
+                                       s_t[sp - ST], s_t[sp + ST],
+                                       cval, c2x2);
             if (t_new < tf - (eps_abs + eps_rel * t_new))
                 s_changed_iter = 1;
             if (on_edge && t0 - tf > eps_abs + eps_rel * tf)
@@ -372,10 +410,14 @@ void fim_sweep(
             // iterations actually run (settle checks cut them short)
             // -> the honest update-redundancy metric a la
             // Fu/Jeong/Whitaker 2011 Table 3.4.
-            atomicAdd(&stats[0], 1ULL);
-            atomicAdd(&stats[1], (unsigned long long)iters_run);
+            blk_sweeps += 1u;
+            blk_iters += (unsigned int)iters_run;
         }
         __syncthreads();   // s_t reused by the next tile of this block
+    }
+    if (tid == 0 && blk_sweeps) {
+        atomicAdd(&stats[0], (unsigned long long)blk_sweeps);
+        atomicAdd(&stats[1], (unsigned long long)blk_iters);
     }
 }
 """
@@ -387,11 +429,18 @@ void fim_sweep(
 # active list for the next pass is appended here with a tile-granular
 # atomic (one thread per tile, thousands of tiles — not the per-cell hot
 # path), which keeps the host loop free of per-pass synchronization.
+#
+# The boundary flags are double-buffered: the sweep of pass p writes
+# flags for the tiles it visited into buffer p & 1, the activation of
+# pass p reads that buffer and clears buffer (p + 1) & 1 — the one the
+# next sweep writes into — so no memset node is needed per pass and a
+# tile that is not visited carries a 0, never a stale 1.
 _FIM_ACTIVATE_KERNEL = r"""
 extern "C" __global__
 void fim_activate(
     unsigned char* __restrict__ active,
     const unsigned char* __restrict__ boundary_changed,
+    unsigned char* __restrict__ boundary_next,
     const int tiles_r,
     const int tiles_c,
     int* __restrict__ list_out,
@@ -400,6 +449,7 @@ void fim_activate(
     int t = blockIdx.x * blockDim.x + threadIdx.x;
     int n_tiles = tiles_r * tiles_c;
     if (t >= n_tiles) return;
+    boundary_next[t] = 0;
 
     if (!active[t]) {
         int tr = t / tiles_c;
@@ -583,46 +633,47 @@ void eik_metric_build(
 #
 # Branch-free: every candidate is folded with fminf under a predicated
 # select, so the 16-candidate loop is warp-uniform.
-_ANISO_UPDATE_DEVICE = r"""
+_ANISO_UPDATE_DEVICE = _GODUNOV4_DEVICE + r"""
 #define ANISO_INF 1e30f
 #define ANISO_FIN 1e29f
 
-// Isotropic 4-point Godunov — character-for-character the stage-1
-// operator of the isotropic solver, used by the flat fast path so that
-// "no slope => the isotropic answer" is structural, not a numerical
-// coincidence.
+// Isotropic 4-point Godunov — the SAME device function as the
+// isotropic solver's (fim_godunov4, one source text), used by the flat
+// fast path so that "no slope => the isotropic answer" is structural,
+// not a numerical coincidence.
 __device__ __forceinline__ float godunov_iso4(
-        float tw, float te, float tn, float ts, float cval)
+        float tw, float te, float tn, float ts, float cval, float c2x2)
 {
-    float a = fminf(tw, te);
-    float b = fminf(tn, ts);
-    if (a > b) { float tmp = a; a = b; b = tmp; }
-    if (b - a >= cval) return a + cval;
-    float diff = a - b;
-    return 0.5f * (a + b +
-        sqrtf(fmaxf(2.0f * cval * cval - diff * diff, 0.0f)));
+    return fim_godunov4(tw, te, tn, ts, cval, c2x2);
 }
 
 // Everything in the update that does NOT depend on T. The tile sweep
-// runs n_inner (default 2B = 32) relaxation iterations per visit with a
-// FIXED cost and metric per thread, so hoisting this out of the inner
-// loop removes 8 of the 16 square roots and all of the metric algebra
-// from the hot path — measured worth roughly 2x on the anisotropic
-// sweep. Kept as a struct of compile-time-indexed arrays so full
-// unrolling keeps it in registers.
+// runs n_inner relaxation iterations per visit with a FIXED cost and
+// metric per thread, so hoisting this out of the inner loop removes
+// the metric algebra and 4 of the 12 square roots from the hot path.
+// Kept as a struct of compile-time-indexed arrays so full unrolling
+// keeps it in registers.
 // Everything below has PERIOD 4 in k, because e_{k+4} = -e_k and the
 // metric is a quadratic form: mdiag, medge and m12 are invariant under
-// k -> k+4, and so is the S table. Storing 4 entries instead of 8 halves
-// the register cost of the metric, which matters: at 8 entries the
-// anisotropic sweep needed 53 registers against the isotropic 30, and
-// register count is what sets blocks/SM here.
+// k -> k+4, and so are the S-derived tables.
+//
+// The per-simplex root  T = [w1 T1 + w2 T2 + sqrt(det * disc)] / S  is
+// evaluated with the three T-independent factors precomputed:
+// w1 = m22 - m12, w2 = m11 - m12, inv_s = 1/S (S is 1 + q_r^2 or
+// 1 + q_c^2: two reciprocals per cell, never a division in the loop)
+// and c2s = c^2 S so that disc = c2s - (T1 - T2)^2 is one FMA. The
+// IEEE division of the original (fast path + slow-path CALL + branch
+// reconvergence per simplex, eight times per update) was the single
+// largest instruction sink of the anisotropic sweep.
 typedef struct {
     float medge[4];     // c * ||e_k||_M   (the edge candidate increment)
     float mdiag[4];     // e_k^T Mhat e_k
     float m12[4];       // e_k^T Mhat e_{k+1}
-    float ssq[4];       // (e_k - e_{k+1})^T Mhat (e_k - e_{k+1})
+    float w1[4];        // mdiag[k+1] - m12[k]
+    float w2[4];        // mdiag[k]   - m12[k]
+    float c2s[4];       // c^2 * S_k
+    float inv_s[4];     // 1 / S_k
     float det;          // det(Mhat) = 1 + |q|^2, shared by all 8
-    float c2;           // c^2
 } AnisoMetric;
 
 __device__ __forceinline__ void aniso_prepare(
@@ -641,14 +692,24 @@ __device__ __forceinline__ void aniso_prepare(
         // e_k . e_{k+1} == 1 for every angularly adjacent pair.
         m->m12[k] = 1.0f + qe[k] * qe[k + 1];
     }
+    #pragma unroll
+    for (int k = 0; k < 4; ++k) {
+        m->w1[k] = m->mdiag[(k + 1) & 3] - m->m12[k];
+        m->w2[k] = m->mdiag[k] - m->m12[k];
+    }
 
     // e_k - e_{k+1} is always a unit axis vector, so S is 1 + q_r^2 or
     // 1 + q_c^2 — never a difference of large numbers.
     const float s_r = 1.0f + qr * qr;
     const float s_c = 1.0f + qc * qc;
-    m->ssq[0] = s_c; m->ssq[1] = s_r; m->ssq[2] = s_r; m->ssq[3] = s_c;
+    const float c2 = cval * cval;
+    const float inv_r = 1.0f / s_r;
+    const float inv_c = 1.0f / s_c;
+    m->c2s[0] = c2 * s_c; m->c2s[1] = c2 * s_r;
+    m->c2s[2] = c2 * s_r; m->c2s[3] = c2 * s_c;
+    m->inv_s[0] = inv_c; m->inv_s[1] = inv_r;
+    m->inv_s[2] = inv_r; m->inv_s[3] = inv_c;
 
-    m->c2 = cval * cval;
     // det(Gram) = det(Mhat) * (e_k x e_{k+1})^2 and the cross product is
     // 1 for every adjacent pair, so this is exact and shared by all 8.
     m->det = 1.0f + qr * qr + qc * qc;
@@ -676,11 +737,11 @@ __device__ __forceinline__ float aniso_update8(
         float m11 = m->mdiag[k & 3];
         float m22 = m->mdiag[j & 3];
         float m12 = m->m12[k & 3];
-        float ss = m->ssq[k & 3];
         float d = t1 - t2;
-        float disc = m->c2 * ss - d * d;
-        float root = sqrtf(fmaxf(m->det * disc, 0.0f));
-        float tcand = ((m22 - m12) * t1 + (m11 - m12) * t2 + root) / ss;
+        float disc = fmaf(-d, d, m->c2s[k & 3]);
+        float root = fim_sqrt(fmaxf(m->det * disc, 0.0f));
+        float tcand = fmaf(m->w1[k & 3], t1, fmaf(m->w2[k & 3], t2, root))
+                      * m->inv_s[k & 3];
         float a = tcand - t1;
         float b = tcand - t2;
         bool ok = (t1 < ANISO_FIN) && (t2 < ANISO_FIN) && (disc >= 0.0f)
@@ -735,7 +796,7 @@ void eikonal_jacobi_aniso(
         float te = (col < cols - 1) ? t_in[idx + 1]    : ANISO_INF;
         float tnn = (r > 0)         ? t_in[idx - cols] : ANISO_INF;
         float ts = (r < rows - 1)   ? t_in[idx + cols] : ANISO_INF;
-        t_new = godunov_iso4(tw, te, tnn, ts, c);
+        t_new = godunov_iso4(tw, te, tnn, ts, c, (c + c) * c);
     } else {
         const int offr[8] = {1, 1, 0, -1, -1, -1, 0, 1};
         const int offc[8] = {0, 1, 1, 1, 0, -1, -1, -1};
@@ -772,11 +833,13 @@ void eikonal_jacobi_aniso(
 #     previous tile of the same block — sometimes large (harmless under
 #     min) and sometimes small (silently under-priced routes).
 #
-# The isotropic kernel is left untouched so that "no DEM => bit-identical
-# output" is a property of the code path, not of the arithmetic.
+# Without a DEM the isotropic kernel runs: a separate kernel, not a special case
+# of shared arithmetic. Since 2026-10-21 it shares the branch-free Godunov form and
+# the fast sqrt, so its output is no longer bit-identical to the older solver,
+# only within eps_rel (the flat-DEM test pins iso == flat-DEM at tile 16).
 _FIM_SWEEP_ANISO_KERNEL = _ANISO_UPDATE_DEVICE + r"""
-extern "C" __global__
-void fim_sweep_aniso(
+extern "C" __global__ void __launch_bounds__(@B@ * @B@, @MINB@)
+fim_sweep_aniso(
     const float* __restrict__ slowness,
     float*       __restrict__ T,
     const unsigned char* __restrict__ frozen,
@@ -797,11 +860,14 @@ void fim_sweep_aniso(
     unsigned long long* __restrict__ stats
 ) {
     const int B = @B@;
-    const int W = B + 2;
-    __shared__ float s_t[(B + 2) * (B + 2)];
+    const int W = @ST@;              // shared row stride (see fim_sweep)
+    __shared__ float s_t[(B + 2) * W];
     __shared__ int s_changed_iter;
     __shared__ int s_boundary;
-    __shared__ int s_settle;
+    // Dirty-row protocol (see the loop comment): per-row "improved in
+    // iteration k" flags, triple-buffered, halo rows 0 and B + 1 stay 0.
+    __shared__ unsigned char s_rowchg[3][B + 2];
+    __shared__ int s_any[3];
 
     int tx = threadIdx.x;
     int ty = threadIdx.y;
@@ -811,6 +877,9 @@ void fim_sweep_aniso(
 
     int count = active_count[0];
     bool on_edge = (tx == 0 || tx == B - 1 || ty == 0 || ty == B - 1);
+    const unsigned warp_mask = __activemask();
+    unsigned int blk_sweeps = 0;
+    unsigned int blk_iters = 0;
 
     // Shared-memory offsets of the eight angular neighbours.
     const int nbo[8] = { W, W + 1, 1, -W + 1,
@@ -873,60 +942,97 @@ void fim_sweep_aniso(
                        ? T[hr * cols + hc] : ANISO_INF;
         }
 
-        if (tid == 0) { s_changed_iter = 0; s_boundary = 0; }
+        if (tid == 0) { s_changed_iter = 0; s_boundary = 0; s_any[0] = 0; }
+        if (tid < B + 2) { s_rowchg[2][tid] = 1; s_rowchg[0][tid] = 0; }
         __syncthreads();
 
         bool can_update = in_grid && (cval < ANISO_INF) && !frz;
         bool flat = (fabsf(qr) < q_flat_eps) && (fabsf(qc) < q_flat_eps);
+        float c2x2 = (cval + cval) * cval;
 
         // T-independent metric algebra, hoisted out of the n_inner
-        // relaxation iterations (8 of the 16 sqrt live here).
+        // relaxation iterations (4 of the 12 sqrt live here).
         AnisoMetric met;
         if (can_update && !flat) aniso_prepare(&met, cval, qr, qc);
 
+        // Relaxation iterations: monotone writes, racy reads are valid
+        // upper bounds, one barrier per iteration (as in fim_sweep).
+        //
+        // DIRTY ROWS. A cell can only improve if a cell of its stencil
+        // rows (ty - 1 .. ty + 1; the 8-point stencil spans no more) improved
+        // in the previous iteration, so each iteration a warp first reads
+        // those three per-row flags (prev buffer) and skips the ~150
+        // instruction evaluation when none of its lanes has a dirty row
+        // (warp-uniform vote; the warp still joins the barrier).
+        // Improving cells set their row's flag in the cur buffer, and any
+        // evaluating warp sets s_any[cur]; the buffer for the NEXT
+        // iteration is cleared in this one — nothing reads or writes it
+        // in this barrier interval (triple buffering), so a flag can
+        // never be lost to its own clear. After the barrier s_any[cur]
+        // == 0 means no row was dirty: every cell is at its fixed point
+        // for the current halo (an undirty cell was evaluated against
+        // the same neighbours before) — the tile is converged and no
+        // probe is needed. The exit waits for iteration 8 so a visit
+        // always runs at least the first settle window of 8 (the empty
+        // iterations cost three byte loads, a vote and the barrier).
+        // Measured at 3000^2 (heavy-tail, hills DEM): instructions per
+        // pass 147 M -> 90 M, 1.3x over the same kernel without the
+        // skip; the isotropic kernel does not use it (0.8x there: a
+        // front moving along the rows keeps every warp dirty and the
+        // bookkeeping costs more than its 20-instruction update).
         int iters_run = 0;
+        bool converged = false;
         for (int it = 0; it < n_inner; ++it) {
             iters_run = it + 1;
-            bool settle_check = ((it & 7) == 7);
-            if (settle_check) {
-                if (tid == 0) s_settle = 0;
-                __syncthreads();
+            const int prev = (it + 2) % 3;
+            const int cur = it % 3;
+            const int nxt = (it + 1) % 3;
+            bool md = can_update && ((s_rowchg[prev][ty] | s_rowchg[prev][ty + 1]
+                                      | s_rowchg[prev][ty + 2]) != 0);
+            if (__any_sync(warp_mask, md)) {
+                if ((tid & 31) == 0) s_any[cur] = 1;
+                if (md) {
+                    float t_old = s_t[sp];
+                    float t_new;
+                    if (flat) {
+                        t_new = godunov_iso4(s_t[sp - 1], s_t[sp + 1],
+                                             s_t[sp - W], s_t[sp + W], cval,
+                                             c2x2);
+                    } else {
+                        float tn[8];
+                        #pragma unroll
+                        for (int k = 0; k < 8; ++k) tn[k] = s_t[sp + nbo[k]];
+                        t_new = aniso_update8(tn, &met);
+                    }
+                    if (t_new < t_old) {
+                        s_t[sp] = t_new;
+                        s_rowchg[cur][ty + 1] = 1;
+                    }
+                }
             }
-            if (can_update) {
-                float t_old = s_t[sp];
+            if (tid < B + 2) s_rowchg[nxt][tid] = 0;
+            if (tid == 0) s_any[nxt] = 0;
+            __syncthreads();
+            if (s_any[cur] == 0 && it >= 7) { converged = true; break; }
+        }
+
+        float tf = in_grid ? s_t[sp] : ANISO_INF;
+        if (can_update) {
+            if (!converged) {
                 float t_new;
                 if (flat) {
                     t_new = godunov_iso4(s_t[sp - 1], s_t[sp + 1],
-                                         s_t[sp - W], s_t[sp + W], cval);
+                                         s_t[sp - W], s_t[sp + W], cval,
+                                         c2x2);
                 } else {
                     float tn[8];
                     #pragma unroll
                     for (int k = 0; k < 8; ++k) tn[k] = s_t[sp + nbo[k]];
                     t_new = aniso_update8(tn, &met);
                 }
-                if (t_new < t_old) {
-                    s_t[sp] = t_new;
-                    if (settle_check) s_settle = 1;
-                }
+                if (t_new < tf - (eps_abs + eps_rel * t_new))
+                    s_changed_iter = 1;
             }
-            __syncthreads();
-            if (settle_check && s_settle == 0) break;
-        }
-
-        float tf = in_grid ? s_t[sp] : ANISO_INF;
-        if (can_update) {
-            float t_new;
-            if (flat) {
-                t_new = godunov_iso4(s_t[sp - 1], s_t[sp + 1],
-                                     s_t[sp - W], s_t[sp + W], cval);
-            } else {
-                float tn[8];
-                #pragma unroll
-                for (int k = 0; k < 8; ++k) tn[k] = s_t[sp + nbo[k]];
-                t_new = aniso_update8(tn, &met);
-            }
-            if (t_new < tf - (eps_abs + eps_rel * t_new))
-                s_changed_iter = 1;
             if (on_edge && t0 - tf > eps_abs + eps_rel * tf)
                 s_boundary = 1;
         }
@@ -936,10 +1042,14 @@ void fim_sweep_aniso(
         if (tid == 0) {
             active[tile_id] = (s_changed_iter != 0) ? 1 : 0;
             boundary_changed[tile_id] = (s_boundary != 0) ? 1 : 0;
-            atomicAdd(&stats[0], 1ULL);
-            atomicAdd(&stats[1], (unsigned long long)iters_run);
+            blk_sweeps += 1u;
+            blk_iters += (unsigned int)iters_run;
         }
         __syncthreads();   // s_t reused by the next tile of this block
+    }
+    if (tid == 0 && blk_sweeps) {
+        atomicAdd(&stats[0], (unsigned long long)blk_sweeps);
+        atomicAdd(&stats[1], (unsigned long long)blk_iters);
     }
 }
 """
@@ -1839,28 +1949,62 @@ eikonal_trace(
 
 _eik_kernel_cache = {}
 
+#: Tile sweep kernels use the single-instruction sqrt.approx (relative
+#: error <= 2^-23) instead of the IEEE sqrt sequence. The Jacobi oracles
+#: always use the IEEE sqrt. Module-level so an A/B harness can flip it.
+_FIM_FAST_SQRT = True
+
+
+def _sweep_shared_stride(tile: int) -> int:
+    """Shared-memory row stride of the tile kernels: 3B is bank-conflict
+    free for the warp's two 16-wide rows (B = 16) and never worse than
+    B + 2 for the other sizes."""
+    return 3 * tile
+
 
 def _get_eik_kernel(name: str, source: str):
     """Get a compiled CuPy RawKernel, compiling lazily on first use."""
     if name not in _eik_kernel_cache:
+        source = source.replace("@FASTSQRT@", "0")      # oracles: IEEE sqrt
         _eik_kernel_cache[name] = cp.RawKernel(source, name)  # pylint: disable=possibly-used-before-assignment  # only reached with CuPy
     return _eik_kernel_cache[name]
 
 
 def _get_sweep_kernel(tile: int):
     """Sweep kernel variant for tile size B (compile-time constant)."""
-    name = f"fim_sweep@{tile}"
+    fast = 1 if _FIM_FAST_SQRT else 0
+    name = f"fim_sweep@{tile}@{fast}"
     if name not in _eik_kernel_cache:
-        source = _FIM_SWEEP_KERNEL.replace("@B@", str(tile))
+        source = (_FIM_SWEEP_KERNEL.replace("@B@", str(tile))
+                  .replace("@ST@", str(_sweep_shared_stride(tile)))
+                  .replace("@FASTSQRT@", str(fast)))
         _eik_kernel_cache[name] = cp.RawKernel(source, "fim_sweep")
     return _eik_kernel_cache[name]
 
 
+#: Register budget per thread behind the anisotropic sweep's launch
+#: bounds (80 -> 3 blocks/SM at B = 16 without spills; 64 would allow 4
+#: blocks but spills). Module-level so an A/B harness can flip it.
+_FIM_ANISO_REG_BUDGET = 80
+
+
+def _aniso_min_blocks(tile: int) -> int:
+    """``__launch_bounds__`` minimum resident blocks per SM for the
+    anisotropic sweep: caps the register count at ~70 (no spills, 3
+    blocks/SM at B = 16, 5 at B = 12) — left to itself ptxas takes 95
+    registers for the division-free update and halves the occupancy."""
+    return max(1, 65536 // (tile * tile * int(_FIM_ANISO_REG_BUDGET)))
+
+
 def _get_sweep_aniso_kernel(tile: int):
     """Tier A anisotropic sweep kernel variant for tile size B."""
-    name = f"fim_sweep_aniso@{tile}"
+    fast = 1 if _FIM_FAST_SQRT else 0
+    name = f"fim_sweep_aniso@{tile}@{fast}"
     if name not in _eik_kernel_cache:
-        source = _FIM_SWEEP_ANISO_KERNEL.replace("@B@", str(tile))
+        source = (_FIM_SWEEP_ANISO_KERNEL.replace("@B@", str(tile))
+                  .replace("@ST@", str(_sweep_shared_stride(tile)))
+                  .replace("@MINB@", str(_aniso_min_blocks(tile)))
+                  .replace("@FASTSQRT@", str(fast)))
         _eik_kernel_cache[name] = cp.RawKernel(source, "fim_sweep_aniso")
     return _eik_kernel_cache[name]
 
@@ -1923,13 +2067,13 @@ def _slowness_field(raster: np.ndarray, ignore_max: bool) -> np.ndarray:
     ``_float_raster_source``).
     """
     if raster.ndim != 2:
-        raise ValueError(f"raster must be 2D, got shape {raster.shape}")
+        raise InvalidInputError(f"raster must be 2D, got shape {raster.shape}")
     if np.issubdtype(raster.dtype, np.floating):
         c = np.ascontiguousarray(raster, dtype=np.float32).copy()
         bad = ~np.isfinite(c) | (c >= FINITE_LIMIT)
         c[bad] = UNREACHED
         if (c[~bad] < 0).any():
-            raise ValueError("negative cost values are not supported")
+            raise InvalidInputError("negative cost values are not supported")
         return c
     c = raster.astype(np.float32)
     if ignore_max:
@@ -1937,15 +2081,15 @@ def _slowness_field(raster: np.ndarray, ignore_max: bool) -> np.ndarray:
     return np.ascontiguousarray(c)
 
 
-def _resolve_eps(eps_rel: float, eps_abs: Optional[float],
-                 slowness: np.ndarray) -> Tuple[float, float]:
+def _resolve_eps(eps_rel: float, eps_abs: float | None,
+                 slowness: np.ndarray) -> tuple[float, float]:
     """Default eps_abs to 1e-6 * mean passable cell value (plan 3.2)."""
     if eps_abs is None:
         valid = slowness[slowness < FINITE_LIMIT]
         c_mean = float(valid.mean()) if valid.size else 1.0
         eps_abs = 1e-6 * max(c_mean, 1.0)
     if eps_rel < 0 or eps_abs < 0:
-        raise ValueError("eps_rel and eps_abs must be >= 0")
+        raise InvalidInputError("eps_rel and eps_abs must be >= 0")
     return float(eps_rel), float(eps_abs)
 
 
@@ -1962,7 +2106,7 @@ def _device_slowness(raster: np.ndarray, ignore_max: bool):
             np.ascontiguousarray(raster, dtype=np.float32)).ravel()
         bad = ~cp.isfinite(d_raw) | (d_raw >= FINITE_LIMIT)
         if bool(((d_raw < 0) & ~bad).any()):
-            raise ValueError("negative cost values are not supported")
+            raise InvalidInputError("negative cost values are not supported")
         return cp.where(bad, cp.float32(UNREACHED), d_raw)
     d_raw = cp.asarray(np.ascontiguousarray(raster)).ravel()
     d_c = d_raw.astype(cp.float32)
@@ -1971,8 +2115,8 @@ def _device_slowness(raster: np.ndarray, ignore_max: bool):
     return d_c
 
 
-def _resolve_eps_device(eps_rel: float, eps_abs: Optional[float],
-                        d_c) -> Tuple[float, float]:
+def _resolve_eps_device(eps_rel: float, eps_abs: float | None,
+                        d_c) -> tuple[float, float]:
     """Device-reduction twin of :func:`_resolve_eps`."""
     if eps_abs is None:
         mask = d_c < FINITE_LIMIT
@@ -1981,7 +2125,7 @@ def _resolve_eps_device(eps_rel: float, eps_abs: Optional[float],
                   if n else 1.0)
         eps_abs = 1e-6 * max(c_mean, 1.0)
     if eps_rel < 0 or eps_abs < 0:
-        raise ValueError("eps_rel and eps_abs must be >= 0")
+        raise InvalidInputError("eps_rel and eps_abs must be >= 0")
     return float(eps_rel), float(eps_abs)
 
 
@@ -1989,9 +2133,9 @@ def _check_q_clamp(q_clamp: float) -> float:
     """Guard the 8-simplex acuteness threshold (plan section 2.4)."""
     q_clamp = float(q_clamp)
     if q_clamp <= 0 or not np.isfinite(q_clamp):
-        raise ValueError(f"q_clamp must be finite and > 0, got {q_clamp}")
+        raise InvalidInputError(f"q_clamp must be finite and > 0, got {q_clamp}")
     if q_clamp > Q_ACUTE_LIMIT:
-        raise ValueError(
+        raise InvalidInputError(
             f"q_clamp = {q_clamp:.4f} (s_max_pct = {q_clamp * 100:.1f} %) "
             f"exceeds the 8-simplex acuteness threshold "
             f"{Q_ACUTE_LIMIT:.5f} (s_max_pct = 219.74 %, anisotropy ratio "
@@ -2012,7 +2156,7 @@ def metric_from_dem(
         cell_size: float,
         q_clamp: float = Q_CLAMP_DEFAULT,
         slope_stencil: str = "central",
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Host reference twin of the q-build kernel (pure numpy, no GPU).
 
     Returns ``(q_r, q_c, bad)``: the dimensionless elevation gradient in
@@ -2035,17 +2179,17 @@ def metric_from_dem(
     bin at ``s_max_pct``.
     """
     if slope_stencil not in ("central", "horn"):
-        raise ValueError(
+        raise InvalidInputError(
             f"slope_stencil must be 'central' or 'horn', "
             f"got {slope_stencil!r}")
     if not np.isfinite(cell_size) or cell_size <= 0:
-        raise ValueError(
+        raise InvalidInputError(
             f"cell_size must be finite and > 0, got {cell_size}")
     q_clamp = _check_q_clamp(q_clamp)
 
     z = np.asarray(dem, dtype=np.float64)
     if z.ndim != 2:
-        raise ValueError(f"dem must be 2D, got shape {z.shape}")
+        raise InvalidInputError(f"dem must be 2D, got shape {z.shape}")
     finite = np.isfinite(z)
     # Reference elevation: float32 resolves ~6e-5 m at 1e3 m absolute, so
     # a 0.1 m difference would carry ~1e-3 relative error. Subtracting a
@@ -2110,12 +2254,12 @@ def _device_metric(dem: np.ndarray, cell_size: float,
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if dem.ndim != 2:
-        raise ValueError(f"dem must be 2D, got shape {dem.shape}")
+        raise InvalidInputError(f"dem must be 2D, got shape {dem.shape}")
     if not np.isfinite(cell_size) or cell_size <= 0:
-        raise ValueError(
+        raise InvalidInputError(
             f"cell_size must be finite and > 0, got {cell_size}")
     if slope_stencil not in ("central", "horn"):
-        raise ValueError(
+        raise InvalidInputError(
             f"slope_stencil must be 'central' or 'horn', "
             f"got {slope_stencil!r}")
     q_clamp = _check_q_clamp(q_clamp)
@@ -2142,7 +2286,7 @@ def _device_metric(dem: np.ndarray, cell_size: float,
                        if finite.any() else 0.0)
     del sample, finite
     if abs(float(z_ref)) > 1e7:
-        raise ValueError(
+        raise InvalidInputError(
             f"DEM mean elevation {float(z_ref):.4g} m is implausible — "
             f"check the DEM units/nodata handling before routing on it.")
 
@@ -2182,9 +2326,9 @@ def _validate_sources(source_indices, raster: np.ndarray,
     src = np.atleast_1d(np.asarray(source_indices)).astype(np.int64)
     n_pixels = raster.size
     if src.size == 0:
-        raise ValueError("source_indices must not be empty")
+        raise InvalidInputError("source_indices must not be empty")
     if (src < 0).any() or (src >= n_pixels).any():
-        raise ValueError(
+        raise InvalidInputError(
             f"source index out of range [0, {n_pixels}): "
             f"{src[(src < 0) | (src >= n_pixels)].tolist()}")
     vals = raster.ravel()[src]
@@ -2203,7 +2347,7 @@ def _disk_init_values(
         ignore_max: bool = True,
         r0: float = 3.0,
         q_fields=None,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Analytic disk initialization around point sources (plan 3.3).
 
@@ -2313,7 +2457,7 @@ def _setup_solve(raster, source_indices, ignore_max, eps_rel, eps_abs,
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if raster.ndim != 2:
-        raise ValueError(f"raster must be 2D, got shape {raster.shape}")
+        raise InvalidInputError(f"raster must be 2D, got shape {raster.shape}")
     rows, cols = raster.shape
     sources = _validate_sources(source_indices, raster, ignore_max)
     if sources.size == 0:
@@ -2325,14 +2469,14 @@ def _setup_solve(raster, source_indices, ignore_max, eps_rel, eps_abs,
     metric_diag = {}
     if dem is not None:
         if cell_size is None:
-            raise ValueError(
+            raise InvalidInputError(
                 "a DEM needs cell_size (metres per cell): the Tier A "
                 "metric M = c^2 (I + grad_z grad_z^T) is built from an "
                 "elevation gradient in metres of rise per metre of run, "
                 "so without it the anisotropy is wrong by a factor of "
                 "the cell size.")
         if np.shape(dem) != (rows, cols):
-            raise ValueError(
+            raise InvalidInputError(
                 f"dem shape {np.shape(dem)} does not match the raster "
                 f"{(rows, cols)}")
         d_qr, d_qc, d_bad, metric_diag = _device_metric(
@@ -2345,7 +2489,7 @@ def _setup_solve(raster, source_indices, ignore_max, eps_rel, eps_abs,
         forb = np.atleast_1d(np.asarray(forbidden_indices)).astype(np.int64)
         if forb.size:
             if (forb < 0).any() or (forb >= rows * cols).any():
-                raise ValueError(
+                raise InvalidInputError(
                     "forbidden_indices outside the raster")
             d_c[cp.asarray(forb)] = cp.float32(UNREACHED)
 
@@ -2414,18 +2558,18 @@ def eikonal_raster_gpu_naive(
         source_indices,
         ignore_max: bool = True,
         eps_rel: float = 1e-6,
-        eps_abs: Optional[float] = None,
-        max_iterations: Optional[int] = None,
+        eps_abs: float | None = None,
+        max_iterations: int | None = None,
         disk_init: bool = True,
         disk_radius: float = 3.0,
         return_iterations: bool = False,
-        dem: Optional[np.ndarray] = None,
-        cell_size: Optional[float] = None,
+        dem: np.ndarray | None = None,
+        cell_size: float | None = None,
         q_clamp: float = Q_CLAMP_DEFAULT,
         q_flat_eps: float = Q_FLAT_EPS_DEFAULT,
         slope_stencil: str = "central",
         forbidden_indices=None,
-) -> Union[np.ndarray, Tuple[np.ndarray, int]]:
+) -> np.ndarray | tuple[np.ndarray, int]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Naive full-grid Jacobi eikonal solver (reference implementation).
 
@@ -2442,7 +2586,7 @@ def eikonal_raster_gpu_naive(
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if not GPU_AVAILABLE:
-        raise RuntimeError(
+        raise PyorpsRuntimeError(
             "CUDA GPU not available. Install cupy with CUDA support: "
             "pip install cupy-cuda12x")
 
@@ -2473,7 +2617,7 @@ def eikonal_raster_gpu_naive(
     iterations = 0
     while True:
         if iterations >= max_iterations:
-            raise RuntimeError(
+            raise PyorpsRuntimeError(
                 f"naive eikonal solver hit the iteration cap "
                 f"({max_iterations}) without converging — raster cost "
                 f"contrast too extreme or paths longer than the cap "
@@ -2506,30 +2650,29 @@ def eikonal_raster_gpu(
         raster: np.ndarray,
         source_indices,
         ignore_max: bool = True,
-        tile: Optional[int] = None,
-        n_inner: Optional[int] = None,
+        tile: int | None = None,
+        n_inner: int | None = None,
         eps_rel: float = 1e-6,
-        eps_abs: Optional[float] = None,
-        max_outer_iterations: Optional[int] = None,
+        eps_abs: float | None = None,
+        max_outer_iterations: int | None = None,
         disk_init: bool = True,
         disk_radius: float = 3.0,
-        sweep_blocks: Optional[int] = None,
+        sweep_blocks: int | None = None,
         return_iterations: bool = False,
         return_stats: bool = False,
         return_device: bool = False,
-        target_index: Optional[int] = None,
+        target_index: int | None = None,
         order: int = 1,
         return_trace_field: bool = False,
         download: bool = True,
-        dem: Optional[np.ndarray] = None,
-        cell_size: Optional[float] = None,
+        dem: np.ndarray | None = None,
+        cell_size: float | None = None,
         q_clamp: float = Q_CLAMP_DEFAULT,
         q_flat_eps: float = Q_FLAT_EPS_DEFAULT,
         slope_stencil: str = "central",
         forbidden_indices=None,
         return_metric: bool = False,
-) -> Union[np.ndarray, Tuple[np.ndarray, int],
-           Tuple[np.ndarray, dict]]:
+) -> np.ndarray | tuple[np.ndarray, int] | tuple[np.ndarray, dict]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Block-FIM eikonal solve on the GPU (plan section 3.2).
 
@@ -2541,11 +2684,9 @@ def eikonal_raster_gpu(
         ignore_max: uint16 sentinel handling (float rasters always use the
             >= 1e30 forbidden convention).
         tile: Tile edge length B (block = B x B threads). Default 16
-            isotropic, 12 with a DEM — the 8-simplex update needs about
-            twice the registers, so a 256-thread tile halves blocks/SM
-            (measured 2x at 3000^2).
+            (isotropic and with a DEM; see ``TILE_DEFAULT_ANISO``).
         n_inner: Relaxation sweeps per tile per pass (default: 2*B
-            isotropic, 4*B/3 with a DEM —
+            isotropic, 3*B/2 with a DEM —
             information can cross the whole tile and settle; measured
             ~30%% fewer outer passes than n_inner=B at equal accuracy).
         eps_rel / eps_abs: Convergence threshold — a cell counts as changed
@@ -2566,7 +2707,8 @@ def eikonal_raster_gpu(
         return_iterations: Also return the number of outer passes.
         return_stats: Return ``(T, stats)`` instead, where stats holds
             outer_passes, tile_sweeps, cell_updates (= sweeps * tile^2 *
-            n_inner) and updates_per_cell — the update-redundancy metric
+            n_inner; an upper bound for Tier A, where warps without a dirty
+            stencil row skip their update) and updates_per_cell — the update-redundancy metric
             of value iteration vs ordered methods (cf. Fu et al. 2011,
             Table 3.4). Supersedes return_iterations.
         return_device: Additionally return the flat float32 device
@@ -2649,16 +2791,16 @@ def eikonal_raster_gpu(
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if not GPU_AVAILABLE:
-        raise RuntimeError(
+        raise PyorpsRuntimeError(
             "CUDA GPU not available. Install cupy with CUDA support: "
             "pip install cupy-cuda12x")
     if tile is None:
         tile = (TILE_DEFAULT_ANISO if dem is not None
                 else TILE_DEFAULT_ISO)
     if tile < 4 or tile > 32:
-        raise ValueError(f"tile must be in [4, 32], got {tile}")
+        raise InvalidInputError(f"tile must be in [4, 32], got {tile}")
     if order not in (1, 2):
-        raise ValueError(f"order must be 1 or 2, got {order}")
+        raise InvalidInputError(f"order must be 1 or 2, got {order}")
     if order == 2 and dem is not None:
         # The stage-2 operator is a per-axis one-sided second difference
         # with a frozen upwind code byte; there is no simplex analogue,
@@ -2668,7 +2810,7 @@ def eikonal_raster_gpu(
         # first-order field under an order=2 request is exactly the
         # "solved a different problem" failure this increment is built to
         # avoid.
-        raise ValueError(
+        raise InvalidInputError(
             "order=2 is not supported together with a DEM (Tier A): the "
             "second-order refinement is a per-axis one-sided difference "
             "and has no anisotropic simplex analogue. Use order=1 with "
@@ -2715,7 +2857,10 @@ def eikonal_raster_gpu(
                            + (seed_idx % cols) // tile)
     d_active = cp.zeros(n_tiles, dtype=cp.uint8)
     d_active[cp.asarray(seed_tiles)] = 1
-    d_boundary = cp.zeros(n_tiles, dtype=cp.uint8)
+    # Double-buffered boundary flags (see fim_activate): the activation
+    # of pass p clears the buffer the sweep of pass p + 1 writes into.
+    d_boundary_a = cp.zeros(n_tiles, dtype=cp.uint8)
+    d_boundary_b = cp.zeros(n_tiles, dtype=cp.uint8)
 
     # Ping-pong active lists, built on-device by the activate kernel: the
     # host only reads the count every `sync_every` passes (sweeps with an
@@ -2743,7 +2888,7 @@ def eikonal_raster_gpu(
     if target_index is not None:
         target_index = int(target_index)
         if not 0 <= target_index < rows * cols:
-            raise ValueError(
+            raise InvalidInputError(
                 f"target_index {target_index} outside the raster "
                 f"({rows}x{cols})")
         target_tile = ((target_index // cols) // tile * tiles_c
@@ -2773,8 +2918,8 @@ def eikonal_raster_gpu(
             min_active = float(res[:1].view(np.float32)[0])
             return min_active >= t_tgt
 
-    def issue_pass(list_in, count_in, list_out, count_out):
-        d_boundary.fill(0)
+    def issue_pass(list_in, count_in, list_out, count_out,
+                   bnd_cur, bnd_next):
         if aniso:
             sweep((sweep_blocks,), (tile, tile),
                   (d_c, d_t, d_frozen, d_qr, d_qc, list_in, count_in,
@@ -2782,16 +2927,16 @@ def eikonal_raster_gpu(
                    np.int32(n_inner),
                    np.float32(eps_abs), np.float32(eps_rel),
                    np.float32(q_flat_eps),
-                   d_active, d_boundary, count_out, d_stats))
+                   d_active, bnd_cur, count_out, d_stats))
         else:
             sweep((sweep_blocks,), (tile, tile),
                   (d_c, d_t, d_frozen, list_in, count_in,
                    np.int32(rows), np.int32(cols), np.int32(tiles_c),
                    np.int32(n_inner),
                    np.float32(eps_abs), np.float32(eps_rel),
-                   d_active, d_boundary, count_out, d_stats))
+                   d_active, bnd_cur, count_out, d_stats))
         activate((act_blocks,), (act_tpb,),
-                 (d_active, d_boundary, np.int32(tiles_r),
+                 (d_active, bnd_cur, bnd_next, np.int32(tiles_r),
                   np.int32(tiles_c), list_out, count_out))
 
     def raise_cap(n_outer, n_active):
@@ -2799,7 +2944,7 @@ def eikonal_raster_gpu(
         contrast = (float(c_valid.max()) / max(float(c_valid.min()),
                                                1e-12)
                     if c_valid.size else float("nan"))
-        raise RuntimeError(
+        raise PyorpsRuntimeError(
             f"block-FIM hit the outer-iteration cap "
             f"({max_outer_iterations}, ran {n_outer}) with {n_active} "
             f"tiles still active — raster cost contrast (max/min ~ "
@@ -2821,10 +2966,12 @@ def eikonal_raster_gpu(
                 capture_stream.begin_capture()
                 la, ca = d_list_a, d_count_a
                 lb, cb = d_list_b, d_count_b
+                ba, bb = d_boundary_a, d_boundary_b
                 for _ in range(sync_every):
-                    issue_pass(la, ca, lb, cb)
+                    issue_pass(la, ca, lb, cb, ba, bb)
                     la, lb = lb, la
                     ca, cb = cb, ca
+                    ba, bb = bb, ba
                 graph = capture_stream.end_capture()
         except Exception:  # pylint: disable=broad-exception-caught  # CUDA graph capture is optional
             graph = None   # fall back to the plain loop
@@ -2843,9 +2990,11 @@ def eikonal_raster_gpu(
                 raise_cap(n_outer, n_active)
     else:
         while True:
-            issue_pass(d_list_a, d_count_a, d_list_b, d_count_b)
+            issue_pass(d_list_a, d_count_a, d_list_b, d_count_b,
+                       d_boundary_a, d_boundary_b)
             d_list_a, d_list_b = d_list_b, d_list_a
             d_count_a, d_count_b = d_count_b, d_count_a
+            d_boundary_a, d_boundary_b = d_boundary_b, d_boundary_a
             n_outer += 1
             if (n_outer % sync_every == 0
                     or n_outer >= max_outer_iterations):
@@ -2928,9 +3077,11 @@ def eikonal_raster_gpu(
         d_list_a[:n_tiles] = cp.arange(n_tiles, dtype=cp.int32)
         d_count_a[0] = np.int32(n_tiles)
 
+        d_boundary_a.fill(0)           # stage 1 left stale flags behind
+        d_boundary_b.fill(0)
+
         def issue_pass2(t_in, t_out, list_in, count_in,
-                        list_out, count_out):
-            d_boundary.fill(0)
+                        list_out, count_out, bnd_cur, bnd_next):
             cp.copyto(t_out, t_in)     # inactive tiles stay intact
             sweep2((sweep_blocks,), (tile, tile),
                    (d_c, t_in, t_out, d_frozen, d_codes,
@@ -2938,9 +3089,9 @@ def eikonal_raster_gpu(
                     np.int32(rows), np.int32(cols), np.int32(tiles_c),
                     np.int32(n_inner2),
                     np.float32(eps_abs), np.float32(eps2_rel),
-                    d_active, d_boundary, count_out, d_stats))
+                    d_active, bnd_cur, count_out, d_stats))
             activate((act_blocks,), (act_tpb,),
-                     (d_active, d_boundary, np.int32(tiles_r),
+                     (d_active, bnd_cur, bnd_next, np.int32(tiles_r),
                       np.int32(tiles_c), list_out, count_out))
 
         def budget_exhausted(n_outer2, n_active):
@@ -2996,11 +3147,13 @@ def eikonal_raster_gpu(
                     ta, tb = d_t, d_t2
                     la, ca = d_list_a, d_count_a
                     lb, cb = d_list_b, d_count_b
+                    ba, bb = d_boundary_a, d_boundary_b
                     for _ in range(sync_every):
-                        issue_pass2(ta, tb, la, ca, lb, cb)
+                        issue_pass2(ta, tb, la, ca, lb, cb, ba, bb)
                         ta, tb = tb, ta
                         la, lb = lb, la
                         ca, cb = cb, ca
+                        ba, bb = bb, ba
                     graph2 = capture_stream.end_capture()
             except Exception:  # pylint: disable=broad-exception-caught  # CUDA graph capture is optional
                 graph2 = None
@@ -3022,10 +3175,12 @@ def eikonal_raster_gpu(
             cur_in, cur_out = d_t, d_t2
             while True:
                 issue_pass2(cur_in, cur_out, d_list_a, d_count_a,
-                            d_list_b, d_count_b)
+                            d_list_b, d_count_b,
+                            d_boundary_a, d_boundary_b)
                 cur_in, cur_out = cur_out, cur_in
                 d_list_a, d_list_b = d_list_b, d_list_a
                 d_count_a, d_count_b = d_count_b, d_count_a
+                d_boundary_a, d_boundary_b = d_boundary_b, d_boundary_a
                 n_outer2 += 1
                 if (n_outer2 % sync_every == 0
                         or n_outer2 >= budget2):
@@ -3085,7 +3240,7 @@ def _unreachable_result(rows, cols, return_iterations):
 # Path extraction (pure numpy — testable without a GPU)
 # ============================================================================
 
-def _masked_gradient(t_field: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def _masked_gradient(t_field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Cell-centered gradient with non-finite neighbors masked.
 
     Central differences where both neighbors are finite, one-sided where
@@ -3174,7 +3329,7 @@ def _sample_bilinear(field: np.ndarray, r: float, c: float) -> float:
 
 
 def _descent_direction(gr, gc, r, c,
-                       q_r=None, q_c=None) -> Optional[Tuple[float, float]]:
+                       q_r=None, q_c=None) -> tuple[float, float] | None:
     """Unit descent direction at (r, c), or None.
 
     Isotropic: ``-grad T / |grad T|``. Under the Tier A metric the
@@ -3214,7 +3369,7 @@ def _descent_direction(gr, gc, r, c,
 _PLATEAU_BFS_CAP = 100_000
 
 
-def _discrete_descent_step(t_field, r, c) -> List[Tuple[float, float]]:
+def _discrete_descent_step(t_field, r, c) -> list[tuple[float, float]]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Discrete descent when the gradient is degenerate (plan section 4).
 
@@ -3285,7 +3440,7 @@ def _discrete_descent_step(t_field, r, c) -> List[Tuple[float, float]]:
                     parent[(nr, nc)] = cur
                     queue.append((nr, nc))
 
-    raise RuntimeError(
+    raise PyorpsRuntimeError(
         f"path tracer stuck at cell ({ri}, {ci}): no admissible descent "
         f"from the plateau at T = {t_here:.6g} (searched {len(seen)} "
         f"cells). The T field looks unconverged or disconnected — re-run "
@@ -3319,10 +3474,10 @@ def trace_path(
         target_idx: int,
         source_indices,
         step_size: float = 0.5,
-        max_steps: Optional[int] = None,
+        max_steps: int | None = None,
         _fields=None,
         q_fields=None,
-) -> Optional[np.ndarray]:
+) -> np.ndarray | None:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Steepest-descent path from ``target_idx`` down to the nearest source.
 
@@ -3436,7 +3591,7 @@ def trace_path(
         else:
             stall += 1
 
-    raise RuntimeError(
+    raise PyorpsRuntimeError(
         f"path tracer exceeded max_steps = {max_steps} without reaching "
         f"a source — the T field looks broken (unconverged or "
         f"inconsistent). Re-run the solve or use a discrete backend.")
@@ -3448,9 +3603,9 @@ def trace_paths(
         source_indices,
         target_indices,
         step_size: float = 0.5,
-        max_steps: Optional[int] = None,
+        max_steps: int | None = None,
         q_fields=None,
-) -> List[Optional[np.ndarray]]:
+) -> list[np.ndarray | None]:
     """Trace one descent polyline per target (None where unreachable).
 
     Gradient and sampling fields are computed once, shared across
@@ -3470,16 +3625,16 @@ _TRACE_BATCH_BYTES = 256 << 20
 
 
 def trace_paths_gpu(
-        t_field: Optional[np.ndarray],
+        t_field: np.ndarray | None,
         source_indices,
         target_indices,
         step_size: float = 0.5,
-        max_steps: Optional[int] = None,
+        max_steps: int | None = None,
         t_device=None,
-        shape: Optional[Tuple[int, int]] = None,
+        shape: tuple[int, int] | None = None,
         q_device=None,
         q_fields=None,
-) -> List[Optional[np.ndarray]]:
+) -> list[np.ndarray | None]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Device-side tracer — drop-in for :func:`trace_paths`.
 
@@ -3513,7 +3668,7 @@ def trace_paths_gpu(
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if t_field is None and (t_device is None or shape is None):
-        raise ValueError(
+        raise InvalidInputError(
             "device-only tracing needs t_device and shape")
     aniso = q_device is not None and q_device[0] is not None
     if not GPU_AVAILABLE:
@@ -3541,8 +3696,8 @@ def trace_paths_gpu(
     per_target = max_pts * 2 * 8
     batch = max(1, min(targets.size, _TRACE_BATCH_BYTES // per_target))
 
-    results: List[Optional[np.ndarray]] = [None] * targets.size
-    fallback: List[int] = []
+    results: list[np.ndarray | None] = [None] * targets.size
+    fallback: list[int] = []
     tpb = 64
     for lo in range(0, targets.size, batch):
         chunk = targets[lo:lo + batch]
@@ -3586,8 +3741,8 @@ def trace_paths_gpu(
 
 
 def polyline_to_cells(polyline: np.ndarray, rows: int, cols: int,
-                      forbidden_mask: Optional[np.ndarray] = None
-                      ) -> List[int]:
+                      forbidden_mask: np.ndarray | None = None
+                      ) -> list[int]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Rasterize a (row, col) polyline into a deduplicated cell path.
 
@@ -3639,7 +3794,7 @@ def polyline_to_cells(polyline: np.ndarray, rows: int, cols: int,
     np.not_equal(idxs[1:], idxs[:-1], out=keep[1:])
     idxs = idxs[keep]
 
-    cells: List[int] = []
+    cells: list[int] = []
     for idx in idxs.tolist():
         if cells and idx == cells[-1]:
             continue

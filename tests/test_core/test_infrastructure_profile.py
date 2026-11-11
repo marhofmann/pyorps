@@ -1,15 +1,16 @@
-import unittest
-import numpy as np
-import tempfile
-import os
 import json
 import math
+import os
+import tempfile
+import unittest
 
-from pyorps.core.infrastructure_profile import InfrastructureProfile
+import numpy as np
+
 from pyorps.core.constrained_path import ConstrainedPath
+from pyorps.core.infrastructure_profile import InfrastructureProfile
 
 try:
-    import cupy as cp
+    import cupy as cp  # noqa: F401
     HAS_CUPY = True
 except ImportError:
     HAS_CUPY = False

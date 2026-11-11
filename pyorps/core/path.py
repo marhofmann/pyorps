@@ -9,7 +9,7 @@ Reference:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from numpy import ndarray
 from shapely.geometry import LineString
@@ -79,9 +79,9 @@ class Path:
         return {}
 
     # Simplification metadata (populated when find_route(simplify=...) is used)
-    simplification_method: Optional[str] = None
-    simplification_tolerance: Optional[float] = None
-    original_path_geometry: Optional[LineString] = field(default=None, repr=False)
+    simplification_method: str | None = None
+    simplification_tolerance: float | None = None
+    original_path_geometry: LineString | None = field(default=None, repr=False)
 
     def analyze(
             self,

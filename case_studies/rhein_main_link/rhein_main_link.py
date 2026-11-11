@@ -1,5 +1,6 @@
 
-from os.path import join, exists
+from os.path import exists, join
+
 import geopandas as gpd
 
 from pyorps import PathFinder

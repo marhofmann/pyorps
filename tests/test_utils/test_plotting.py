@@ -1,12 +1,12 @@
 import unittest
 from unittest.mock import MagicMock, patch
+
 import numpy as np
-import matplotlib.pyplot as plt
 from shapely.geometry import LineString
 
-from pyorps.utils.plotting import RasterVizData, PathPlotter
 from pyorps.core.path import Path, PathCollection
 from pyorps.raster.handler import RasterHandler
+from pyorps.utils.plotting import PathPlotter, RasterVizData
 
 
 class TestRasterVizData(unittest.TestCase):

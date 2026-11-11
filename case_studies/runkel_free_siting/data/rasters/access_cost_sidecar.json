@@ -1,0 +1,60 @@
+{
+ "constraints": {
+  "file": "access_constraints_2026.yaml",
+  "sha256": "c4b11ffb5471a31970aff13a8c0f1f24a69eeab74b0021e450e80e663bc1450c",
+  "catalogue_sha256": "7ed3f86a72f692d897bbb1f0f671cd52c53ee91b8cc709452cd0a63edfca413b",
+  "width_m": 5.0,
+  "new_eur_per_m": 225.0,
+  "upgrade_eur_per_m": 155.0,
+  "forest_multiplier": 1.5,
+  "public_road_eur_per_m": 1,
+  "g_max_percent": 10.0,
+  "cross_slope_max_percent": 30.0,
+  "slope_half_window_cells": 2,
+  "slope_bands": [
+   [
+    0.0,
+    3.0,
+    1.0
+   ],
+   [
+    3.0,
+    6.0,
+    1.15
+   ],
+   [
+    6.0,
+    10.0,
+    1.4
+   ]
+  ],
+  "assumptions": [
+   "classes",
+   "road.public_road_eur_per_m",
+   "road.width_m",
+   "terrain.cross_slope_max_percent",
+   "terrain.g_max_percent",
+   "terrain.slope_bands",
+   "terrain.slope_half_window_cells"
+  ]
+ },
+ "grid_epsg25832": [
+  431373,
+  5582217,
+  454875,
+  5593379
+ ],
+ "cells": 262329324,
+ "forbidden_share": 0.28913851430501913,
+ "entry_cells": 8227889,
+ "closure_note": "closure check passed (0 cells kept as public road); forbidden 28.91%; entry cells 8227889; free-cell cost min 1, max 338",
+ "limits": [
+  "protected areas are not priced for the road (the cable raster prices them)",
+  "curve radius is not modelled",
+  "the slope rule is a cell rule, not along the route"
+ ],
+ "inputs_sha256_prefix": {
+  "alkis_land_use": "95d5e973f4ae9c90",
+  "dem": "782149e5ccc2e353"
+ }
+}

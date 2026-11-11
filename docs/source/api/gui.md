@@ -32,7 +32,7 @@ launch(host="127.0.0.1", port=8050, debug=False, desktop=False)
 app = build_app()   # a Dash app, for embedding or testing
 ```
 
-`launch(state=None, *, host='127.0.0.1', port=8050, debug=False, desktop=False)` runs the server. `build_app(state=None, *, compress=None, **dash_kwargs)` returns the Dash app; response compression is on whenever `flask-compress` is installed.
+`launch(...)` runs the server; every setting is also a command-line option (`python -m pyorps.gui --help`): `--desktop`, `--host` (default 127.0.0.1), `--port` (8050), `--allow-remote`, `--threads` (8), `--work-dir`, `--compress`/`--no-compress` and `--debug`. A host other than the local machine is refused unless `--allow-remote` is given, because the server has no authentication and its path fields read and write files on the machine it runs on. `build_app(state=None, *, compress=None, **dash_kwargs)` returns the Dash app; response compression is on whenever `flask-compress` is installed.
 
 (gui-notes)=
 ## Notes

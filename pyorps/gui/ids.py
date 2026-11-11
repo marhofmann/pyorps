@@ -25,11 +25,9 @@ UI_STATE = "ui-state"                     # {active_tab, click_mode, active_rout
 LAYERS_VIEW = "layers-view"               # ordered [{id,name,kind,visible,z}]
 MAP_VIEW = "map-view"                     # {"fit_bounds": [[s,w],[n,e]], "seq": n}
 NOTICES = "notices"                       # [notice dict, ...] (services.errors.Notice)
-DRAG_EVENT = "drag-event"                 # drag-shim events (optional, Phase 8)
 ROUTE_DRAFT = "route-draft"               # {"sources":[], "targets":[], "waypoints":[]}
 EDIT_REQUEST = "edit-request"             # {"action","lat","lng","seq"} from dispatcher
 COST_GRID_STATE = "cost-grid-state"       # {dataset_id, feature_keys}
-RECOMPUTE_FLASH = "recompute-flash"       # bumps when a recompute starts (dash feedback)
 FOCUS_FLASH = "focus-flash"               # {"control": id, "seq": n} -> scroll+flash
 
 # --------------------------------------------------------------- notifications
@@ -73,6 +71,7 @@ WFS_CAPS_BTN = "wfs-caps-btn"            # list feature types (GetCapabilities)
 WFS_LAYER_SELECT = "wfs-layer-select"    # discovered feature types dropdown
 WFS_LOAD_BTN = "wfs-load-btn"
 WFS_LOAD_STATUS = "wfs-load-status"      # spinner target while loading
+WFS_WHOLE_LAYER = "wfs-whole-layer"      # checkbox: load every feature (no study area)
 CLIP_TO_AREA = "clip-to-area"
 DATASET_LIST = "dataset-list"
 # WMS overlays + DEM (BKG / topographic / infrastructure services)
@@ -143,7 +142,6 @@ MANUAL_CREATE_BTN = "manual-cost-create-btn"
 MANUAL_DEL_BTN = "manual-cost-del-btn"    # remove selected polygon(s) from the list
 MANUAL_STATUS = "manual-cost-status"
 DRAW_TARGET = "draw-target"               # store: "area" | "cost" (by tab)
-DRAW_TARGET_RADIO = "draw-target-radio"   # (retired) legacy manual toggle
 MANUAL_GRID = "manual-cost-grid"          # per-polygon name/cost editor
 
 # ----------------------------------------------------------------- raster tab
@@ -156,6 +154,12 @@ RASTER_SIZE_INFO = "raster-size-info"
 FILL_VALUE = "raster-fill-value"
 RASTER_DTYPE = "raster-dtype"
 GEOM_BUFFER = "raster-geom-buffer"
+# thin-feature burn controls + the border crop (card "Rasterization" > Advanced)
+WIDEN_THIN = "raster-widen-thin"          # switch: widen_thin_forbidden
+ALL_TOUCHED = "raster-all-touched"        # switch: all_touched
+ON_THIN = "raster-on-thin"                # dropdown: warn | raise | ignore
+CROP_BORDER = "raster-crop-border"        # switch: shrink_raster after the burn
+RASTER_SETTINGS = "raster-settings"       # store: mirror of the rasterize controls
 RASTER_SAVE_PATH = "raster-save-path"
 RASTERIZE_BTN = "rasterize-btn"
 RASTERIZE_LOG = "rasterize-log"
@@ -180,19 +184,38 @@ RASTER_COMBINE_STATUS = "raster-combine-status"
 BUILD_MODE = "build-mode"                 # radio: off / +source / +target / +waypoint
 BUILD_POINTS_TABLE = "build-points-table"
 BUILD_CLEAR_BTN = "build-clear-btn"
-NEIGHBORHOOD = "route-neighborhood"
+NEIGHBORHOOD = "route-neighborhood"       # number input: the order k of "rK"
 ALGORITHM = "route-algorithm"
-HARDWARE = "route-hardware"               # radio cpu / gpu
-GRAPH_API = "route-graph-api"
+GRAPH_API = "route-graph-api"             # dropdown "Backend"
 SEARCH_BUFFER = "route-search-buffer"
 SEARCH_BUFFER_INFO = "route-search-buffer-info"
+FULL_WINDOW = "route-full-window"         # switch: the whole raster is the window
+DELTA = "route-delta"
+NUM_THREADS = "route-num-threads"
+MARGIN = "route-margin"                   # delta-stepping termination margin
+# wrapper divs carrying the tooltip of the three delta-stepping settings (the
+# dbc inputs take no ``title``); the tooltip says why a field is switched off
+DELTA_WRAP = "route-delta-wrap"
+THREADS_WRAP = "route-num-threads-wrap"
+MARGIN_WRAP = "route-margin-wrap"
 IGNORE_MAX_COST = "route-ignore-max-cost"
 PAIRWISE = "route-pairwise"
 SIMPLIFY = "route-simplify"
 SIMPLIFY_TOL = "route-simplify-tol"
 ROUTE_RASTER = "route-raster"             # dropdown: which raster layer to route on
 RUN_ROUTING_BTN = "run-routing-btn"
+# busy flags of the three gated buttons: flipped by running= on their callback,
+# read by the workflow gating callback (callbacks/guide.py) so gating always wins
+RASTERIZE_BUSY = "rasterize-busy"
+RUN_ROUTING_BUSY = "run-routing-busy"
+# both runners listen to RUN_ROUTING_BTN; each flips its OWN flag through
+# running= (a shared one would be cleared by the runner that ends at once) and
+# a small callback ORs them into RUN_ROUTING_BUSY
+RUN_PLAIN_BUSY = "run-plain-busy"
+RUN_OHL_BUSY = "run-ohl-busy"
+RASTER_COMBINE_BUSY = "raster-combine-busy"
 ROUTING_STATUS = "routing-status"
+ROUTING_SETTINGS = "routing-settings"     # store: mirror of the routing controls
 # heavy-run confirmation + background job control (accept waiting / stop)
 ROUTING_CONFIRM_MODAL = "routing-confirm-modal"
 ROUTING_CONFIRM_BODY = "routing-confirm-body"
@@ -221,13 +244,13 @@ OHL_STATUS = "ohl-status"
 # ---------------------------------------------- route selection & editing
 EDIT_ROUTE_SELECT = "edit-route-select"
 EDIT_ENABLE = "edit-enable"               # switch: map clicks edit the selected route
-EDIT_MODE = "edit-mode"                   # (retired) legacy edit-mode radio id
 POINTS_APPLY_BTN = "points-apply-btn"     # grid rows -> variant / draft
 POINTS_REMOVE_BTN = "points-remove-btn"   # delete selected grid rows
 NEW_ROUTE_BTN = "new-route-btn"           # deselect -> grid shows the draft
 EDIT_COST_READOUT = "edit-cost-readout"
 AUTO_REFRESH = "edit-auto-refresh"        # recompute on every edit (default on)
 REFRESH_ROUTES_BTN = "refresh-routes-btn" # recompute the staged/edited routes
+EDIT_UNDO_BTN = "edit-undo-btn"           # bring back the route before the last edit
 EDIT_SIMPLIFY_TOL = "edit-simplify-tol"
 EDIT_SIMPLIFY_BTN = "edit-simplify-btn"
 TYPE_DATASET_REFRESH = "dataset-refresh"  # {"type": ..., "index": layer id}
@@ -257,7 +280,6 @@ LAYER_VIEW_BTN = "layer-view-btn"           # open the selected layer's table
 LAYER_TABLE_OFFCANVAS = "layer-table-offcanvas"
 LAYER_TABLE_GRID = "layer-table-grid"       # full attribute table (excel-like)
 LAYER_TABLE_TITLE = "layer-table-title"
-LAYER_TABLE_HEIGHT = "layer-table-height"   # (retired) legacy resize slider
 # background map controls (z-order editable alongside overlays)
 BASEMAP_SELECT = "basemap-select"
 BASEMAP_OPACITY = "basemap-opacity"
@@ -289,3 +311,30 @@ PROJECT_OPEN_PATH = "project-open-path"
 PROJECT_OPEN_BTN = "project-open-btn"
 PROJECT_NEW_BTN = "project-new-btn"
 PROJECT_STATUS = "project-status"
+
+# ---------------------------------------------------- confirm before destroying
+# ONE modal (title / text / confirm label) and a small store that holds the
+# action waiting for the answer. Every destructive button feeds a gate callback
+# (callbacks/confirm.py): it asks, or - when nothing would be lost - goes ahead
+# at once by writing the action's GO store; the action callback listens on that
+# store (a counter) and never on the button itself.
+CONFIRM_MODAL = "confirm-modal"
+CONFIRM_TITLE = "confirm-title"
+CONFIRM_BODY = "confirm-body"
+CONFIRM_OK = "confirm-ok"
+CONFIRM_CANCEL = "confirm-cancel"
+CONFIRM_PENDING = "confirm-pending"       # store: {"action", "label"} or None
+GO_NEW_PROJECT = "go-new-project"
+GO_OPEN_PROJECT = "go-open-project"
+GO_SAVE_PROJECT = "go-save-project"
+GO_REMOVE_LAYERS = "go-remove-layers"
+GO_DELETE_GROUP = "go-delete-group"
+GO_DELETE_VARIANT = "go-delete-variant"
+GO_EXPORT_ROUTE = "go-export-route"
+GO_RASTERIZE = "go-rasterize"
+GO_EXPORT_COSTS = "go-export-costs"
+GO_SAVE_PROFILE = "go-save-profile"
+# every GO store, in the order of callbacks/confirm.py's gate table
+GO_STORES = (GO_NEW_PROJECT, GO_OPEN_PROJECT, GO_SAVE_PROJECT, GO_REMOVE_LAYERS,
+             GO_DELETE_GROUP, GO_DELETE_VARIANT, GO_EXPORT_ROUTE, GO_RASTERIZE,
+             GO_EXPORT_COSTS, GO_SAVE_PROFILE)

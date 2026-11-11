@@ -9,12 +9,11 @@ Germany-wide map-service catalog (2026-07-15):
 import numpy as np
 import pytest
 import rasterio
+from conftest import invoke
 from rasterio.transform import from_origin
 
 from pyorps.gui import ids, presets
 from pyorps.gui.services import catalog
-
-from conftest import invoke
 
 WFS_CAPS = b"""<wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0">
 <wfs:FeatureTypeList>
@@ -79,7 +78,7 @@ def test_wfs_feature_types_errors_are_friendly(monkeypatch):
 def test_wms_layers_and_descriptor(monkeypatch):
     monkeypatch.setattr(catalog, "_fetch", lambda url, timeout: WMS_CAPS)
     layers = catalog.wms_layers("http://x/wms")
-    assert {l["name"] for l in layers} == {"web", "web_grau"}
+    assert {layer["name"] for layer in layers} == {"web", "web_grau"}
     d = catalog.wms_tile_url("http://x/wms", "web")
     assert d["layers"] == "web" and d["transparent"] is True
 
@@ -219,8 +218,8 @@ def test_load_dem_callback(app, state, monkeypatch, tmp_path):
                         "geometry": {"type": "Polygon", "coordinates": [[
                             [9.0, 50.5], [9.05, 50.5], [9.05, 50.55],
                             [9.0, 50.55], [9.0, 50.5]]]}}
-    resp = invoke(app, ("layers-view.data", ids.DEM_LOAD_BTN), 1, None, [],
-                  triggered=[f"{ids.DEM_LOAD_BTN}.n_clicks"])
+    invoke(app, ("layers-view.data", ids.DEM_LOAD_BTN), 1, None, [],
+           triggered=[f"{ids.DEM_LOAD_BTN}.n_clicks"])
     rasters = state.layers_of_kind("raster")
     assert any(r.name == "DEM (DGM)" for r in rasters)
 

@@ -4,13 +4,12 @@ import random
 
 import numpy as np
 import pytest
+from test_collector.test_engine_vs_oracle_v2 import _model
 
 from pyorps.certify import certify_tree_field, ellipse_window
 from pyorps.collector.bounds import mu_star
 from pyorps.collector.raster import RasterCollector
 from pyorps.utils.neighborhood import get_neighborhood_steps
-
-from test_collector.test_engine_vs_oracle_v2 import _model
 
 
 def _instance(seed):

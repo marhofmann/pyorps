@@ -6,6 +6,7 @@ Reference:
     Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
     Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
+import os
 import warnings
 from abc import ABC, abstractmethod
 from os.path import isfile, splitext
@@ -14,15 +15,18 @@ from typing import Any
 import geopandas as gpd
 from numpy import dtype, empty, ndarray
 from rasterio import open as rio_open
+from rasterio.crs import CRS
+from rasterio.errors import CRSError
 from rasterio.transform import Affine
 from rasterio.windows import Window
 from rasterio.windows import transform as window_transform
 
 # Changed to relative import from the core module
+from ..core.exceptions import InputFileNotFoundError, InvalidInputError, WFSResponseParsingError
 from ..core.types import BboxType, GeometryMaskType, InputDataType
 
 # Changed from flat import to relative import from the same io module
-from .vector_loader import load_from_wfs
+from .vector_loader import _get_bbox_from_mask, load_from_wfs
 
 
 class GeoDataset(ABC):
@@ -141,22 +145,73 @@ class LocalVectorDataset(InMemoryVectorDataset):
 
 
 class WFSVectorDataset(LocalVectorDataset):
+    """A vector layer served by a WFS (``{"url": ..., "layer": ...}``).
+
+    Besides the usual ``crs``/``bbox``/``mask`` this dataset has three request
+    options. Each can also be given to :meth:`load_data` as a keyword, which wins
+    over the constructor value. The defaults reproduce the request made before
+    the options existed.
+
+    Args:
+        request_crs: CRS the WFS request is made in (SRSNAME and BBOX). ``None``
+            (default) means ``EPSG:25832``. This is independent of ``crs``, which
+            is the CRS the loaded data is converted to.
+        max_workers: Parallel threads for the chunked download (default 4).
+        allow_partial: ``False`` (default): an incomplete chunked download raises a
+            WFS error. ``True``: return what was received and emit a warning.
+        mask / bbox: ``bbox`` is a (minx, miny, maxx, maxy) tuple (or a
+            GeoDataFrame, GeoSeries or shapely geometry, whose bounds are used);
+            ``mask`` is a shapely geometry, GeoDataFrame or GeoSeries, and when no
+            ``bbox`` is given its bounds become the request bbox. The features
+            are then clipped to ``mask``.
+    """
+
+    def __init__(self,
+                 file_source: Any,
+                 crs: str | None = None,
+                 bbox: BboxType | None = None,
+                 mask: GeometryMaskType | None = None,
+                 *,
+                 request_crs: str | None = None,
+                 max_workers: int = 4,
+                 allow_partial: bool = False):
+        super().__init__(file_source, crs, bbox=bbox, mask=mask)
+        self.request_crs = request_crs
+        self.max_workers = max_workers
+        self.allow_partial = allow_partial
+
     def load_data(self, **kwargs):
-        if "url" not in self.file_source or "layer" not in self.file_source:
-            raise ValueError(f"Unsupported dataset source for WFSVectorDataset: "
+        if (not isinstance(self.file_source, dict) or "url" not in self.file_source
+                or "layer" not in self.file_source):
+            raise InvalidInputError(f"Unsupported dataset source for WFSVectorDataset: "
                              f"{self.file_source}!"
                              f"\nPlease provide a dictionary with a valid 'url' and "
                              f"'layer' key-value pairs!")
-        if self.bbox is None and self.mask is not None:
-            bounds = self.mask.total_bounds
-            self.bbox = (bounds[0], bounds[1], bounds[2], bounds[3])
+        request_bbox = self.bbox
+        if request_bbox is None and self.mask is not None:
+            # a shapely geometry, GeoSeries, GeoDataFrame or list of geometries
+            request_bbox = _get_bbox_from_mask(self.mask)
+            self.bbox = request_bbox
+        elif (request_bbox is not None and not isinstance(request_bbox, tuple)
+              and not hasattr(request_bbox, "total_bounds")):
+            # a shapely geometry used as bbox: its bounds are the request bbox
+            request_bbox = _get_bbox_from_mask(request_bbox)
+        url, layer = self.file_source["url"], self.file_source["layer"]
         self.data = load_from_wfs(
-            url=self.file_source["url"],
-            layer=self.file_source["layer"],
-            bbox=self.bbox,
+            url=url,
+            layer=layer,
+            bbox=request_bbox,
             filter_params=kwargs.get("filter_params"),
-            auto_match=kwargs.get("auto_match", True)
+            auto_match=kwargs.get("auto_match", True),
+            crs=kwargs.get("request_crs", self.request_crs),
+            max_workers=kwargs.get("max_workers", self.max_workers),
+            allow_partial=kwargs.get("allow_partial", self.allow_partial)
         )
+        if self.data is None:
+            raise WFSResponseParsingError(
+                f"The WFS returned no data for layer '{layer}' at {url} "
+                f"(bbox {request_bbox}). The layer may not cover the requested "
+                f"area, or the layer name is wrong.")
         self.post_loading()
 
     # noinspection PyUnresolvedReferences
@@ -200,6 +255,33 @@ class LocalRasterDataset(RasterDataset):
     file_shape: tuple[int, int] | None = None
     nodata: Any | None = None
 
+    def __init__(self, file_source: Any, crs: str | None = None):
+        super().__init__(file_source, crs)
+        #: The CRS the caller asked for. ``crs`` itself becomes the file's CRS
+        #: on loading; a raster file is never reprojected here.
+        self.requested_crs = crs
+        self._crs_mismatch_reported = False
+
+    def _warn_if_crs_differs(self, file_crs) -> None:
+        """Warn (once) when the CRS asked for is not the CRS of the file.
+
+        The file's CRS is what the dataset uses; asking for another one cannot
+        reproject the raster, so the request would otherwise be dropped silently.
+        """
+        if self.requested_crs is None or file_crs is None or self._crs_mismatch_reported:
+            return
+        try:
+            same = CRS.from_user_input(self.requested_crs) == file_crs
+        except (CRSError, ValueError, TypeError):
+            same = False
+        if not same:
+            self._crs_mismatch_reported = True
+            warnings.warn(
+                f"crs={self.requested_crs!r} was requested for the raster file "
+                f"{str(self.file_source)!r}, but the file's CRS is "
+                f"{file_crs}. Raster files are not reprojected on loading, so "
+                f"the file's CRS is used.", UserWarning, stacklevel=3)
+
     def load_metadata(self) -> "LocalRasterDataset":
         """Populate crs/transform/shape/count/dtype from the header only.
 
@@ -207,6 +289,7 @@ class LocalRasterDataset(RasterDataset):
         is all that is needed to compute a search window.
         """
         with rio_open(self.file_source) as src:
+            self._warn_if_crs_differs(src.crs)
             self.crs = src.crs
             self.transform = src.transform
             self.shape = (src.height, src.width)
@@ -254,6 +337,7 @@ class LocalRasterDataset(RasterDataset):
                                       dtype=dtype(src.dtypes[0]))
                 else:
                     self.data = src.read(window=window, **kwargs)
+            self._warn_if_crs_differs(src.crs)
             self.crs = src.crs
             self.nodata = src.nodata
             self.file_transform = src.transform
@@ -304,14 +388,36 @@ def initialize_geo_dataset(file_source: InputDataType,
     provided input.
 
     Args:
-        file_source: Source data (file path, GeoDataFrame, URL dict, numpy array, etc.)
-        crs: Coordinate reference system
-        bbox: Bounding box for vector datasets
-        mask: Mask for vector datasets
-        transform: Affine transform for in-memory raster datasets
+        file_source: Source data. Accepted forms:
+
+            * a file path (``str`` or any ``os.PathLike``, e.g. ``pathlib.Path``)
+              with one of the extensions in ``_VECTOR_EXTENSIONS`` or
+              ``_RASTER_EXTENSIONS``,
+            * a GeoDataFrame or GeoSeries,
+            * a numpy array (needs ``transform``),
+            * a tuple ``(data_array, crs, transform)``; explicit ``crs`` and
+              ``transform`` arguments override the tuple's values,
+            * a dict with ``"url"`` and ``"layer"`` keys (WFS),
+            * a GeoDataset, which is returned as it is (the other arguments are
+              not applied to an existing dataset).
+        crs: Coordinate reference system. For vector data the data is converted
+            to it. For an in-memory raster it is the CRS of the array. For a
+            raster file it cannot reproject: the file's CRS is used and a
+            ``UserWarning`` is issued when the two differ.
+        bbox: Bounding box for vector datasets. Rasters are not clipped on
+            loading: for a raster source it is ignored with a ``UserWarning``.
+        mask: Mask for vector datasets. Ignored with a ``UserWarning`` for a
+            raster source, like ``bbox``.
+        transform: Affine transform for in-memory raster datasets (an array or
+            the tuple form). A raster file carries its own transform.
 
     Returns:
         An appropriate GeoDataset subclass instance
+
+    Raises:
+        FileNotFoundError: If a file path does not exist.
+        ValueError: If the source is of an unsupported form. The message names
+            the type received and lists the accepted forms.
 
     Examples:
         # From local vector file
@@ -330,7 +436,14 @@ def initialize_geo_dataset(file_source: InputDataType,
         # From numpy array
         raster_dataset = create_geo_dataset(array_data, transform=transform,
                                             crs="EPSG:4326")
+
+        # From a (data_array, crs, transform) tuple
+        raster_dataset = create_geo_dataset((array_data, "EPSG:4326", transform))
     """
+    # An existing dataset needs no factory
+    if isinstance(file_source, GeoDataset):
+        return file_source
+
     # Determine data type (vector or raster)
     data_type = _determine_data_type(file_source)
 
@@ -339,14 +452,52 @@ def initialize_geo_dataset(file_source: InputDataType,
         geodataset = _create_vector_dataset(file_source, crs, bbox, mask)
     elif data_type == "raster":
         geodataset = _create_raster_dataset(file_source, crs, transform)
+        _warn_ignored_raster_options(bbox, mask)
     else:
-        raise ValueError(f"Unable to determine appropriate dataset type for: "
-                         f"{file_source}")
+        raise _unsupported_source_error(file_source)
     return geodataset
 
 
 _VECTOR_EXTENSIONS = {".shp", ".geojson", ".json", ".gpkg", ".gml", ".kml"}
 _RASTER_EXTENSIONS = {".tif", ".tiff", ".jp2", ".img", ".bil", ".dem"}
+
+
+def _unsupported_source_error(file_source: Any, kind: str = "dataset_source") -> ValueError:
+    """ValueError for an unusable source: names the TYPE received, never the data."""
+    if isinstance(file_source, (str, os.PathLike)):
+        path = os.fsdecode(file_source)
+        received = f"a file with the extension {splitext(path)[1].lower()!r} ({path})"
+    elif isinstance(file_source, dict):
+        received = f"a dict with the keys {sorted(map(str, file_source))}"
+    elif isinstance(file_source, tuple):
+        received = f"a tuple of length {len(file_source)}"
+    else:
+        received = f"an object of type {type(file_source).__name__}"
+    accepted = (
+        f"a file path (str or os.PathLike) with one of the extensions "
+        f"{sorted(_VECTOR_EXTENSIONS | _RASTER_EXTENSIONS)}, a GeoDataFrame or "
+        f"GeoSeries, a numpy array (with transform=), a (data_array, crs, "
+        f"transform) tuple, a dict with 'url' and 'layer' keys (WFS), or a "
+        f"GeoDataset")
+    return ValueError(f"Unsupported {kind}: received {received}. Accepted: {accepted}.")
+
+
+def _is_raster_tuple(file_source: Any) -> bool:
+    """True for the documented ``(data_array, crs, transform)`` form."""
+    return (isinstance(file_source, tuple) and len(file_source) == 3
+            and isinstance(file_source[0], ndarray))
+
+
+def _warn_ignored_raster_options(bbox: Any, mask: Any) -> None:
+    """Say so when ``bbox``/``mask`` reach a raster source, where they do nothing."""
+    ignored = [name for name, value in (("bbox", bbox), ("mask", mask))
+               if value is not None]
+    if ignored:
+        warnings.warn(
+            f"{' and '.join(ignored)} ignored for a raster dataset_source: "
+            f"rasters are not clipped on loading (the search window follows from "
+            f"the source/target coordinates and search_space_buffer_m). Clip the "
+            f"raster beforehand to restrict the area.", UserWarning, stacklevel=3)
 
 
 def _determine_data_type(file_source: Any) -> str:
@@ -364,7 +515,7 @@ def _determine_data_type(file_source: Any) -> str:
         return "vector"
 
     # Check for in-memory raster data
-    if isinstance(file_source, ndarray):
+    if isinstance(file_source, ndarray) or _is_raster_tuple(file_source):
         return "raster"
 
     # Check for WFS data
@@ -373,10 +524,11 @@ def _determine_data_type(file_source: Any) -> str:
         return "vector"
 
     # Check file extension for local files
-    if isinstance(file_source, str):
-        if not isfile(file_source):
-            raise FileNotFoundError(f"File {file_source} not found.")
-        ext = splitext(file_source)[1].lower()
+    if isinstance(file_source, (str, os.PathLike)):
+        path = os.fsdecode(file_source)
+        if not isfile(path):
+            raise InputFileNotFoundError(f"File {path} not found.")
+        ext = splitext(path)[1].lower()
         if ext in _VECTOR_EXTENSIONS:
             return "vector"
         if ext in _RASTER_EXTENSIONS:
@@ -400,10 +552,10 @@ def _create_vector_dataset(file_source: Any,
         return WFSVectorDataset(file_source, crs, bbox=bbox, mask=mask)
 
     # Local file
-    if isinstance(file_source, str):
-        return LocalVectorDataset(file_source, crs, bbox=bbox, mask=mask)
+    if isinstance(file_source, (str, os.PathLike)):
+        return LocalVectorDataset(os.fsdecode(file_source), crs, bbox=bbox, mask=mask)
 
-    raise ValueError(f"Unsupported vector data source: {file_source}")
+    raise _unsupported_source_error(file_source, "vector dataset_source")
 
 
 def _create_raster_dataset(file_source: Any,
@@ -411,15 +563,21 @@ def _create_raster_dataset(file_source: Any,
                            transform: Affine | None = None
                            ) -> RasterDataset:
     """Create the appropriate raster dataset based on the input type."""
+    # (data_array, crs, transform): explicit arguments override the tuple
+    if _is_raster_tuple(file_source):
+        file_source, tuple_crs, tuple_transform = file_source
+        crs = tuple_crs if crs is None else crs
+        transform = tuple_transform if transform is None else transform
+
     # In-memory numpy array
     if isinstance(file_source, ndarray):
         if not transform or not isinstance(transform, Affine):
-            raise ValueError("A valid 'transform' of type Affine is required for "
+            raise InvalidInputError("A valid 'transform' of type Affine is required for "
                              "InMemoryRasterDataset")
         return InMemoryRasterDataset(file_source, crs, transform=transform)
 
     # Local file
-    if isinstance(file_source, str):
-        return LocalRasterDataset(file_source, crs)
+    if isinstance(file_source, (str, os.PathLike)):
+        return LocalRasterDataset(os.fsdecode(file_source), crs)
 
-    raise ValueError(f"Unsupported raster data source: {file_source}")
+    raise _unsupported_source_error(file_source, "raster dataset_source")

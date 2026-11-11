@@ -13,12 +13,14 @@ from numpy import max as np_max
 from numpy import ndarray
 
 # Project files
-from pyorps.core.exceptions import AlgorithmNotImplementedError, NoPathFoundError
+from pyorps.core.exceptions import NoPathFoundError
 from pyorps.core.types import Node, NodeList, NodePathList
 from pyorps.graph.api.graph_library_api import GraphLibraryAPI
 
 
 class RustworkxAPI(GraphLibraryAPI):
+    #: Algorithm names shortest_path accepts (any letter case).
+    ALGORITHMS = ("dijkstra", "astar", "bellman_ford")
 
     def create_graph(
             self,
@@ -106,6 +108,17 @@ class RustworkxAPI(GraphLibraryAPI):
         ]
         self.graph.remove_nodes_from(isolated_nodes)
 
+    @staticmethod
+    def _path_from_mapping(paths, source: Node, target: Node) -> NodeList:
+        """Return the path to ``target`` from a rustworkx path mapping.
+
+        rustworkx answers an unreachable target with a mapping that lacks it (it does not raise), so
+        indexing the mapping would fail with an unrelated IndexError.
+        """
+        if target not in paths:
+            raise NoPathFoundError(source=source, target=target)
+        return list(paths[target])
+
     def _compute_single_path(
             self,
             source: Node,
@@ -130,9 +143,9 @@ class RustworkxAPI(GraphLibraryAPI):
 
         try:
             if algorithm == "dijkstra":
-                path = rx.dijkstra_shortest_paths(self.graph, source, target,
-                                                  weight_fn=weight_fn)
-                path = list(path[target])
+                paths = rx.dijkstra_shortest_paths(self.graph, source, target,
+                                                   weight_fn=weight_fn)
+                path = self._path_from_mapping(paths, source, target)
             elif algorithm == "astar":
                 # Get heuristic function or use default as heuristic
                 heuristic_function = kwargs.get('heuristic', kwargs.get('heu'))
@@ -155,11 +168,11 @@ class RustworkxAPI(GraphLibraryAPI):
                                               estimate_cost_fn=heuristic_function)
                 path = list(path)
             elif algorithm == "bellman_ford":
-                path = rx.bellman_ford_shortest_paths(self.graph, source, target=target,
-                                                      weight_fn=weight_fn)
-                path = list(path[target])
+                paths = rx.bellman_ford_shortest_paths(self.graph, source, target=target,
+                                                       weight_fn=weight_fn)
+                path = self._path_from_mapping(paths, source, target)
             else:
-                raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
+                raise self.unsupported_algorithm(algorithm)
 
             return self._ensure_path_endpoints(path, source, target)
         except rx.NoPathFound:

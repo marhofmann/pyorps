@@ -7,12 +7,11 @@ import json
 
 import geopandas as gpd
 import pytest
+from conftest import invoke
 from shapely.geometry import LineString, Point, Polygon
 
 from pyorps.gui import ids, presets
 from pyorps.gui.services import data_io, osm
-
-from conftest import invoke
 
 CRS = "EPSG:32632"
 
@@ -345,9 +344,9 @@ def test_multi_select_move_and_remove(app, state):
         [c.id, a.id, b.id]
     # removing a group row removes every route in the group
     routes = _routes_with_groups(state)
-    resp = invoke(app, ("layers-view.data", ids.LAYER_REMOVE_BTN),
+    resp = invoke(app, ("layers-view.data", ids.GO_REMOVE_LAYERS),
                   1, [{"id": "group::G1"}],
-                  triggered=[f"{ids.LAYER_REMOVE_BTN}.n_clicks"])
+                  triggered=[f"{ids.GO_REMOVE_LAYERS}.data"])
     assert state.get(routes[0].id) is None
     assert state.get(routes[1].id) is None
     assert state.get(routes[2].id) is not None       # ungrouped survives
@@ -494,8 +493,7 @@ def test_map_click_selects_route(app, state):
 
 # ------------------------------------------------------ pretty attributes
 def test_attribute_labels_and_rounding():
-    from pyorps.gui.callbacks.attrs import (field_label, format_value,
-                                            properties_table)
+    from pyorps.gui.callbacks.attrs import field_label, format_value, properties_table
 
     assert field_label("total_length_m") == "Total Length (in m)"
     assert field_label("unknown_col") == "unknown_col"

@@ -15,7 +15,27 @@ from dash.exceptions import PreventUpdate
 from .. import ids
 from ..services import constrained, geo, routing
 from ..services.errors import Notice, guard, success
-from .routes import add_route_layer
+from .routes import (
+    _estimate_failed_notice,
+    add_route_layer,
+    number_or_default,
+    numeric_field_problem,
+    raster_info_or_notice,
+)
+
+#: marker for "the run finished but found no path" (as opposed to a crash)
+_NO_PATH = object()
+
+
+def _run_or_no_path(*args, **kwargs):
+    """``run_constrained_path`` with its "no path" answer (None) made explicit.
+
+    ``guard`` returns None for a crash AND for a plain None result, and a crash
+    already carries its own notice; the marker tells the two cases apart so a
+    failure is never also blamed on the profile.
+    """
+    result = constrained.run_constrained_path(*args, **kwargs)
+    return _NO_PATH if result is None else result
 
 
 def _parse_profile_text(text: str) -> dict:
@@ -68,16 +88,16 @@ def register(app, state) -> None:
                               allow_unicode=True), notices
 
     @app.callback(Output(ids.NOTICES, "data", allow_duplicate=True),
-                  Input(ids.OHL_PROFILE_SAVE_BTN, "n_clicks"),
+                  Input(ids.GO_SAVE_PROFILE, "data"),
                   State(ids.OHL_PROFILE_PATH, "value"),
                   State(ids.OHL_PROFILE_TEXT, "value"),
                   State(ids.NOTICES, "data"),
                   prevent_initial_call=True)
-    def save_profile_file(n_clicks, path, text, notices):
+    def save_profile_file(go, path, text, notices):
         from ..services import project_io
 
         notices = list(notices or [])
-        if not n_clicks:
+        if not go:
             raise PreventUpdate
         config, notices = guard(_parse_profile_text, text, notices=notices)
         if config is None:
@@ -114,9 +134,10 @@ def register(app, state) -> None:
         State(ids.OHL_DSM, "value"),
         State(ids.BUILD_POINTS_TABLE, "rowData"),
         State(ids.NOTICES, "data"),
+        running=[(Output(ids.RUN_OHL_BUSY, "data"), True, False)],
         prevent_initial_call=True)
     def run_constrained(n_clicks, constrained_on, draft, raster_layer_id,
-                        profile_text, backend, experimental, neighborhood,
+                        profile_text, backend, experimental, neighborhood_k,
                         search_buffer, dem, dsm, points_rows, notices):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         notices = list(notices or [])
@@ -156,9 +177,26 @@ def register(app, state) -> None:
         if problem is not None:
             notices.append(problem.to_dict())
             return (*stop, notices)
-        import rasterio
-        with rasterio.open(raster_layer.meta.get("source_path")) as src:
-            resolution_m = abs(src.transform.a)
+        problem = numeric_field_problem(
+            neighborhood_k, "Neighbourhood k", control=ids.NEIGHBORHOOD,
+            tab=ids.TAB_ROUTES, minimum=routing.NEIGHBORHOOD_MIN,
+            maximum=routing.NEIGHBORHOOD_MAX, whole=True
+        ) or numeric_field_problem(
+            search_buffer, "Search buffer (m)", control=ids.SEARCH_BUFFER,
+            tab=ids.TAB_ROUTES, minimum=0)
+        if problem is not None:
+            notices.append(problem)
+            return (*stop, notices)
+        neighborhood = routing.neighborhood_string(neighborhood_k)
+        buffer_m = number_or_default(search_buffer, None)
+        buffer_m = (float(buffer_m)
+                    if buffer_m is not None and float(buffer_m) > 0 else None)
+        info, notices = raster_info_or_notice(
+            raster_layer.meta.get("source_path"), notices,
+            impact="No overhead-line route was computed.")
+        if info is None:
+            return (*stop, notices)
+        resolution_m = info["resolution_m"]
         perf = constrained.validate_span_bin_vs_resolution(config,
                                                            resolution_m)
         if perf is not None:
@@ -170,15 +208,17 @@ def register(app, state) -> None:
 
         # up-front effort warning (constrained runs are the heaviest; the
         # extended tower state multiplies the plain-routing estimate)
+        est = None
         try:
             est = routing.estimate_routing(
                 raster_layer.meta.get("source_path"), sources=[sources[0]],
                 targets=[targets[0]], waypoints=waypoints,
-                neighborhood=neighborhood or "r2",
-                search_buffer_m=(float(search_buffer)
-                                 if search_buffer else None))
-        except Exception:  # pylint: disable=broad-exception-caught  # estimate is optional
-            est = None
+                neighborhood=neighborhood, search_buffer_m=buffer_m)
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # an unknown effort counts as heavy (#35)
+            # there is no confirmation modal on this path (the run is
+            # synchronous); the heavy-run warning below is its stand-in
+            notices.append(_estimate_failed_notice(exc,
+                                                   what="constrained run"))
         if est is not None and routing.needs_confirmation(est):
             notices.append(Notice(
                 severity="warning", title="Heavy constrained run ahead",
@@ -192,13 +232,29 @@ def register(app, state) -> None:
                     "lower neighborhood (r1), or a GPU backend reduce "
                     "the effort.").to_dict())
 
+        if len(sources) > 1 or len(targets) > 1:
+            # one pair per run: say which points were left out, never drop
+            # them silently
+            notices.append(Notice(
+                severity="warning",
+                title="Only the first source and target are routed",
+                meaning="Constrained routing runs ONE source-target pair. "
+                        f"{len(sources) - 1} more source(s) and "
+                        f"{len(targets) - 1} more target(s) were left out.",
+                impact="Only the route from the first source to the first "
+                       "target was computed.",
+                fix="Run constrained routing once per pair, with a single "
+                    "source and target in the points list each time.",
+                focus_id=ids.TAB_ROUTES).to_dict())
+
         result, notices = guard(
-            constrained.run_constrained_path,
+            _run_or_no_path,
             raster_layer.meta.get("source_path"), points=points,
-            profile=config, backend=backend, neighborhood=neighborhood or "r2",
-            search_buffer_m=(float(search_buffer) if search_buffer else None),
-            dem=dem, dsm=dsm, notices=notices)
+            profile=config, backend=backend, neighborhood=neighborhood,
+            search_buffer_m=buffer_m, dem=dem, dsm=dsm, notices=notices)
         if result is None:
+            return (*stop, notices)       # crashed: guard already explained
+        if result is _NO_PATH:
             notices.append(Notice(
                 severity="error", title="No route could be found",
                 meaning="A constrained segment found no feasible tower-by-"
@@ -225,7 +281,7 @@ def register(app, state) -> None:
                           + [list(targets[0])])
         params = {"constrained": True, "profile": config, "backend": backend,
                   "raster_layer_id": raster_layer.id,
-                  "neighborhood": neighborhood or "r2"}
+                  "neighborhood": neighborhood}
         route_layer = add_route_layer(
             state, line=line, route_cost=route_cost, params=params,
             control_points=control_points, crs=crs,

@@ -1,20 +1,21 @@
-import unittest
-import tempfile
 import os
 import shutil
+import tempfile
+import unittest
+
 import numpy as np
 import rasterio
-from rasterio.transform import from_origin
 from rasterio.crs import CRS
+from rasterio.transform import from_origin
 
+from pyorps.io.geo_dataset import InMemoryRasterDataset
 from pyorps.io.raster_loader import (
-    read_raster_files,
     combine_rasters,
     create_combined_raster_dataset,
     find_raster_files,
+    read_raster_files,
     validate_raster_compatibility,
 )
-from pyorps.io.geo_dataset import InMemoryRasterDataset
 
 
 def _create_test_tiff(path, width=10, height=10, crs="EPSG:32632",

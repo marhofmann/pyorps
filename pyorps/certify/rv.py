@@ -162,7 +162,7 @@ def relax_and_verify(candidates: Iterable[tuple[Hashable, float]],
     enumerated = []
     log = []
     next_rel = math.inf
-    for i, (key, f_rel) in enumerate(order):  # pylint: disable=unused-variable
+    for _i, (key, f_rel) in enumerate(order):
         f_rel = float(f_rel)
         if f_rel > z_best + eps:
             next_rel = f_rel

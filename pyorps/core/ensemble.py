@@ -109,7 +109,7 @@ class RouteEnsemble:
 
         return pd.DataFrame(rows, index=list(self._variants))
 
-    def pareto_front(self, metrics: list[str]) -> "RouteEnsemble":
+    def pareto_front(self, metrics: list[str]) -> RouteEnsemble:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Non-dominated variants w.r.t. the given metrics (all minimized).
 

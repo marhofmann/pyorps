@@ -63,7 +63,7 @@ rasterizer.rasterize(resolution_in_m=1.0)
 rasterizer.rasterize(resolution_in_m=5.0)
 ```
 
-If the input CRS uses geographic coordinates (degrees), the rasterizer auto-reprojects to a suitable UTM CRS for accurate metric calculations.
+`resolution_in_m`, the geometry buffers and the bounding box are metres, so the raster is built in a projected, metric CRS. Data in a geographic CRS (degrees, for example EPSG:4326) is reprojected automatically to the local UTM zone (`gdf.estimate_utm_crs()`), on a copy: your GeoDataFrame is not changed. One `CrsReprojectionWarning` names the new CRS. The raster and every route are in that CRS, readable as `rasterizer.crs`, so give source and target coordinates in it, for example `geopandas.GeoSeries([Point(lon, lat)], crs="EPSG:4326").to_crs(rasterizer.crs)`. If the data spans more than 6 degrees of longitude (more than one UTM zone), it is still reprojected to the zone of its centre and the warning says so. Data without any CRS is not reprojected, and a geographic extent for which no UTM zone can be estimated raises an `InvalidInputError`. A dataset added later (for example with `modify_raster_from_dataset`) is reprojected to the raster CRS. `resolution_in_m` must be a finite number greater than 0.
 
 ---
 

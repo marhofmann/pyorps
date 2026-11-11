@@ -1,0 +1,49 @@
+# Branch constants K(b) of the all-cable scenario (paper math.md M4.8; plan 2026-09-23 section 2.3, terms 4, 5, 14).
+#
+# The position-dependent bills (pad site, access road, 110 kV leg, collector) are fields. What does not depend on the
+# position but on the branch b = (u, j, m, c) is added here, so that bounds and incumbents compare the same objective:
+#
+#   F_model = A_site + Phi_acc + Phi_HV + MV + K(b),     K(b) = K_station + K_connection(j)
+#
+# The ledger lists ONLY terms that have a catalogue or sourced value. Everything else is outside the model (see
+# ``outside_the_model``): consent and delay, end-of-life, reactive compliance, earthworks, transformer losses, turbine-side
+# constants, access-road protection pricing. A bound or incumbent computed with this ledger is for F_model, not for the
+# plan's 18-term F. Statuses as in the other configs (sourced, decided, catalogue, derived, assumption).
+
+meta:
+  date: 2026-10-20
+  note: >-
+    One source, German numbers (owner decision 2026-10-20: the paper presents a method, every price is a parameter).
+    The station is built bottom-up for the plant's 63 MVA transformer: K_station = transformer + n_bays * line bay + building,
+    the same build-up as the catalogue's own cross-check against dena's 8.5 MEUR (substations_110kv.validated_buildup_cross_check).
+    The minimal greenfield station has two bays (one line, one transformer). K_min (lower bound) takes the cheapest connection
+    branch; K_PCC (incumbent, which connects at a connection point) adds the connection-point bay. Replaces the earlier
+    40 MVA transformer times 3.0 (4.2 MEUR).
+
+station:
+  transformer_eur:
+    value: 2400000
+    status: sourced
+    source: "owner's table cost_assumptions_for_hv_mv_transformers.csv, 63 MVA 110/33 kV, midpoint, equipment only (110/20 kV: 2.3 MEUR); the MV level of the case study is 33 kV"
+  bays_in_minimal_station: {value: 2, status: decided, source: "one line bay and one transformer bay"}
+  bay_eur:
+    {catalogue_key: substations_110kv.incremental_line_bay_eur.ais, status: catalogue}
+  building_eur:
+    {value: 800000, status: catalogue, source: "midpoint of the catalogue's 0.4-1.2 MEUR for a 300-800 m2 110 kV control building (station_buildings_security.derived_building_cost_eur.full_110kv_control_building_300_800m2), LOW"}
+  # station_min_eur = transformer_eur + bays_in_minimal_station * bay_eur + building_eur  (5.8 MEUR; dena whole-station cross-check 8.5 MEUR)
+
+connection:
+  pcc_bay_eur:
+    {catalogue_key: substations_110kv.incremental_line_bay_eur.ais, status: catalogue}
+  tap_works_eur:
+    {value: 0, status: decided, source: "owner 2026-10-20: a wind farm on a 110 kV tower needs no own switchyard; it is switched off at the substation or at the tower, so a tower is a full connection point with no extra works"}
+
+outside_the_model:
+  - consent_and_delay            # plan 2.6, 3.6
+  - end_of_life_and_residual     # term 17
+  - reactive_compliance          # term 11
+  - earthworks                   # term 2
+  - transformer_losses           # term 5 (iron and copper)
+  - turbine_side_constants       # term 16 (identical for every design)
+  - access_road_protection       # decision pending
+  - hv_joints_crossbonding_easement_fibre   # priced at zero in hv_leg_constraints_2026.yaml

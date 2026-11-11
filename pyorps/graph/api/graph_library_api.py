@@ -23,17 +23,74 @@ Please see the specific interfaces to the specific graph libraries for more deta
 """
 
 from abc import abstractmethod
+from collections.abc import Iterable
+from difflib import get_close_matches
 from time import time
 from typing import Any
 from warnings import warn
 
 import numpy as np
 
-from pyorps.core.exceptions import NoPathFoundError, PairwiseError
+from pyorps.core.exceptions import (
+    AlgorithmNotImplementedError,
+    InvalidInputError,
+    InvalidTypeError,
+    NoPathFoundError,
+    PairwiseError,
+)
 from pyorps.core.types import Node, NodeList, NodePathList, SourceTargetType
 from pyorps.utils.traversal import construct_edges, construct_edges_3d
 
 from .graph_api import GraphAPI
+
+
+def reject_unknown_options(
+        given: Iterable[str],
+        allowed: Iterable[str],
+        where: str,
+        ignored: Iterable[str] = (),
+        also_suggest: Iterable[str] = (),
+        hint: str = "",
+) -> None:
+    """
+    Raise TypeError for keyword arguments (option names) that nothing reads.
+
+    A ``**kwargs`` parameter accepts every name, so a typo such as
+    ``neighbourhood_str=`` or ``detla=`` used to be dropped without a word and
+    the default was used instead. Every keyword sink of the routing API checks
+    its keys here against the names that are really consumed downstream.
+
+    Parameters:
+        given: The keyword names the caller passed.
+        allowed: The names that are consumed.
+        where: Who rejects them, for the message (e.g. "find_route()").
+        ignored: Names that are accepted although nothing reads them (an
+            explicit allow-list of legacy caller keys).
+        also_suggest: Further names offered as "did you mean" candidates
+            (e.g. the explicit parameters of the same function).
+        hint: Sentence appended to the message.
+
+    Raises:
+        TypeError: Naming each unknown key, the closest valid name
+            (difflib.get_close_matches) and the accepted names.
+    """
+    allowed = [str(name) for name in allowed]
+    skip = set(allowed) | {str(name) for name in ignored}
+    unknown = [str(key) for key in given if str(key) not in skip]
+    if not unknown:
+        return
+    candidates = allowed + [str(n) for n in also_suggest if str(n) not in allowed]
+    parts = []
+    for key in unknown:
+        close = get_close_matches(key, candidates, n=1)
+        parts.append(f"{key!r} (did you mean {close[0]!r}?)" if close else repr(key))
+    accepted = ", ".join(repr(name) for name in sorted(allowed)) or "none"
+    message = (f"{where} got unexpected keyword argument(s) {', '.join(parts)}. "
+               f"Accepted here: {accepted}.")
+    if hint:
+        message = f"{message} {hint}"
+    raise InvalidTypeError(message)
+
 
 #: Cell-count ceiling for the edge-list backends.
 #: These APIs materialise an explicit edge list preallocated at the theoretical
@@ -74,7 +131,7 @@ def check_library_backend_size(
 
     max_edges = int(n_cells) * int(n_directions)
     gigabytes = max_edges * 16 / 2 ** 30
-    raise ValueError(
+    raise InvalidInputError(
         f"{backend} builds an explicit edge list: {int(n_cells):,} cells x "
         f"{int(n_directions)} directions = {max_edges:,} edges preallocated "
         f"at 16 B/edge = {gigabytes:.1f} GiB, before the graph object itself. "
@@ -88,7 +145,8 @@ def check_library_backend_size(
         f"but 'raster_gpu' and 'raster_fim' accept float32 rasters too and "
         f"are the only float32 options that scale.\n"
         f"To route on this raster anyway (research use), pass "
-        f"allow_large_raster=True to the graph API or set "
+        f"allow_large_raster=True to the graph API (through PathFinder: "
+        f"graph_api_options={{'allow_large_raster': True}}) or set "
         f"pyorps.graph.api.graph_library_api.MAX_LIBRARY_BACKEND_CELLS = "
         f"None.")
 
@@ -105,6 +163,26 @@ class GraphLibraryAPI(GraphAPI):
     (see check_library_backend_size); pass allow_large_raster=True or set that
     module attribute to None to override.
     """
+
+    #: Algorithm names this backend's shortest_path accepts (lower case;
+    #: the caller's letter case does not matter). Empty = not declared, then
+    #: only the subclass's own raise sites check the name.
+    ALGORITHMS: tuple[str, ...] = ()
+
+    #: Keyword arguments shortest_path reads on the graph-library backends:
+    #: "pairwise" here, "heuristic"/"heu" in the A* branch of each library
+    #: API, "heu_weight" and "buffer_radius" in get_a_star_heuristic. Any
+    #: other keyword raises TypeError instead of being dropped.
+    SHORTEST_PATH_OPTIONS: tuple[str, ...] = (
+        "pairwise", "heuristic", "heu", "heu_weight", "buffer_radius")
+
+    def unsupported_algorithm(self, algorithm: str) -> AlgorithmNotImplementedError:
+        """The error for an algorithm name this backend does not offer."""
+        name = type(self).__name__
+        if self.ALGORITHMS:
+            allowed = ", ".join(repr(a) for a in self.ALGORITHMS)
+            name = f"{name} (allowed: {allowed})"
+        return AlgorithmNotImplementedError(algorithm, name)
 
     def __init__(self,
                  raster_data: np.ndarray[int],
@@ -156,7 +234,7 @@ class GraphLibraryAPI(GraphAPI):
             # takes precedence — the LUT pair defines the edge weights.
             if gradient_luts is not None:
                 if self.dem_data is None:
-                    raise ValueError(
+                    raise InvalidInputError(
                         "gradient_luts require dem_data aligned to the "
                         "raster")
                 from pyorps.utils.metric_edges import (
@@ -169,7 +247,7 @@ class GraphLibraryAPI(GraphAPI):
             # Lossless float32 weight raster (feasibility Phase 9)
             elif np.issubdtype(self.raster_data.dtype, np.floating):
                 if self.dem_data is not None:
-                    raise ValueError(
+                    raise InvalidInputError(
                         "A float weight raster with a DEM requires "
                         "gradient_luts (slope terms are mandatory with "
                         "elevation data under an objective).")
@@ -232,7 +310,7 @@ class GraphLibraryAPI(GraphAPI):
         except ImportError:
             warn("GPU edge construction unavailable "
                  "(pyorps.utils.traversal_gpu could not be imported). "
-                 "Falling back to CPU.")
+                 "Falling back to CPU.", stacklevel=2)
             return None, None, None
 
         construct_edges_gpu = getattr(traversal_gpu, "construct_edges_gpu",
@@ -242,12 +320,12 @@ class GraphLibraryAPI(GraphAPI):
                  "GPU edge construction is not implemented in pyorps "
                  "(pyorps.utils.traversal_gpu provides only the step lookup "
                  "tables). Building the edges on the CPU. For GPU routing "
-                 "use graph_api='raster_gpu' or 'raster_fim'.")
+                 "use graph_api='raster_gpu' or 'raster_fim'.", stacklevel=2)
             return None, None, None
 
         if not traversal_gpu.GPU_AVAILABLE:
             warn("GPU edge construction unavailable (no CUDA GPU detected). "
-                 "Falling back to CPU.")
+                 "Falling back to CPU.", stacklevel=2)
             return None, None, None
 
         from_nodes, to_nodes, cost = construct_edges_gpu(  # pylint: disable=not-callable  # None-checked getattr above
@@ -370,11 +448,23 @@ class GraphLibraryAPI(GraphAPI):
                 "pairwise": If True, compute pairwise shortest paths between
                 source_indices and target_indices.
                 Only allowed if len(source_indices) == len(target_indices)
+                The accepted names are SHORTEST_PATH_OPTIONS; any other
+                keyword raises TypeError naming it and the closest valid name.
 
         Returns:
             List of node indices representing the shortest path(s)
         """
+        reject_unknown_options(
+            kwargs, self.SHORTEST_PATH_OPTIONS,
+            f"{type(self).__name__}.shortest_path()")
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        # One place for all library backends: "Dijkstra" works like
+        # "dijkstra", and an unknown name lists what this backend offers.
+        if isinstance(algorithm, str):
+            algorithm = algorithm.strip().lower()
+        if self.ALGORITHMS and algorithm not in self.ALGORITHMS:
+            raise self.unsupported_algorithm(algorithm)
+
         source_has_len = hasattr(source_indices, '__len__')
         target_has_len = hasattr(target_indices, '__len__')
 
@@ -566,27 +656,17 @@ class GraphLibraryAPI(GraphAPI):
         y_square = np.power(y_target - y_nodes, 2)
         euclidean_distance = np.sqrt(x_square + y_square)
 
-        # Use localized min value between source and target
-        if source is not None:
-            buffer_radius = kwargs.get('buffer_radius', 200)
-            # Convert the source index to its 2D coordinates
-            x_source, y_source = np.unravel_index(source, self.raster_data.shape)
-
-            # Create a bounding box around the source-target line with buffer
-            min_x = max(0, min(x_source, x_target) - buffer_radius)
-            max_x = min(self.raster_data.shape[0] - 1,
-                        max(x_source, x_target) + buffer_radius)
-            min_y = max(0, min(y_source, y_target) - buffer_radius)
-            max_y = min(self.raster_data.shape[1] - 1,
-                        max(y_source, y_target) + buffer_radius)
-
-            # Extract the subset of raster data within the bounding box
-            subset_data = self.raster_data[min_x:max_x + 1, min_y:max_y + 1]
-
-            # Use minimum value in the area
-            min_value = np.min(subset_data)
-        else:
-            min_value = self.raster_data.min()
+        # The heuristic must never overestimate, or A* returns a costlier path than Dijkstra. Only the minimum
+        # cost of the WHOLE raster is a safe lower bound per unit distance: an earlier version took the minimum
+        # inside a window of ``buffer_radius`` cells around source and target, and a cheaper corridor outside
+        # that window made the result up to 86 % more expensive than the optimum (tests/test_graph/
+        # test_backend_parity.py). ``source`` is kept in the signature for callers that pass it.
+        if 'buffer_radius' in kwargs:
+            warn(
+                "buffer_radius is ignored: the A* heuristic uses the minimum cost of the whole raster, "
+                "so that A* returns the same optimal cost as Dijkstra.",
+                UserWarning, stacklevel=3)
+        min_value = self.raster_data.min()
 
         # Calculate the heuristic by scaling the Euclidean distance
         heuristic = euclidean_distance * min_value

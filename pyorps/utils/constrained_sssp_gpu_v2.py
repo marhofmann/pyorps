@@ -51,15 +51,28 @@ from __future__ import annotations
 import re
 import warnings
 from pathlib import Path
-from typing import Optional, Tuple
 
 import numpy as np
 
+from pyorps.core.exceptions import InsufficientMemoryError, InvalidInputError
+from pyorps.utils.constrained_sssp_gpu import constrained_gpu_ignored_settings
+from pyorps.utils.traversal_gpu import (
+    describe_gpu_error,
+    gpu_not_available_error,
+    gpu_out_of_memory_error,
+    gpu_probe_errors,
+    is_gpu_out_of_memory,
+)
+
+# Only a failed import means "no CuPy"; any other error while importing CuPy is a broken installation and
+# must be seen. The import error is kept so that "GPU not available" can name it.
 try:
     import cupy as cp
     GPU_AVAILABLE = True
-except (ImportError, Exception):  # pylint: disable=broad-exception-caught  # optional backend probe
+    _GPU_IMPORT_ERROR = None
+except ImportError as _import_error:
     GPU_AVAILABLE = False
+    _GPU_IMPORT_ERROR = _import_error
 
 
 # ============================================================================
@@ -154,7 +167,7 @@ def check_memory_fits(rows, cols, n_dirs, n_span_bins, n_heights,
             mode_name = "sparse"
         else:
             mode_name = "dense"
-        raise MemoryError(
+        raise InsufficientMemoryError(
             f"Constrained GPU SSSP needs {budget:.1f} GB but only "
             f"{vram_gb:.1f} GB available "
             f"({mode_name} mode). "
@@ -268,6 +281,7 @@ def _get_v2_kernel(name, cooperative=False, block_size=64):
 def _ensure_cuda_path():
     """Ensure CuPy can find cudadevrt for cooperative groups linking."""
     import os
+
     import cupy.cuda.compiler as _compiler
     if getattr(_compiler, '_cudadevrt', None) is not None:
         return
@@ -478,7 +492,7 @@ def _walk_backward_tower_chain(tower_records_cpu, cell_dir_to_records,
         # that is a proper ancestor (lower distance).
         walk_cell = current_cell
         found_tower = False
-        for step in range(1000):  # pylint: disable=unused-variable
+        for _step in range(1000):
             # Step backward
             dr = int(steps_np[current_dir, 0])
             dc = int(steps_np[current_dir, 1])
@@ -695,15 +709,24 @@ def _direction_walk_backward(target_cell, target_dir, source_cell,
 # ============================================================================
 
 _v2_available = None
+#: Why the probe answered False (the import, CUDA or compile error); None while it is True or not yet run.
+_v2_unavailable_cause = None
 
 
 def _check_v2_available():
-    """Check if v2 persistent kernel compiles on this GPU."""
-    global _v2_available  # pylint: disable=global-statement  # cached availability flag
+    """Check if v2 persistent kernel compiles on this GPU.
+
+    Only the errors of :func:`pyorps.utils.traversal_gpu.gpu_probe_errors` mean "unavailable"; the first such
+    result is announced once with a UserWarning that carries the cause, and the cause is kept in
+    ``_v2_unavailable_cause``. Out-of-memory is raised as ``MemoryError``; any other exception is a bug and
+    propagates.
+    """
+    global _v2_available, _v2_unavailable_cause  # pylint: disable=global-statement  # cached availability flag
     if _v2_available is not None:
         return _v2_available
     if not GPU_AVAILABLE:
         _v2_available = False
+        _v2_unavailable_cause = _GPU_IMPORT_ERROR
         return False
     try:
         _ensure_cuda_path()
@@ -712,8 +735,14 @@ def _check_v2_available():
             cooperative=True)
         _ = kernel.kernel  # force compilation
         _v2_available = True
-    except Exception:  # pylint: disable=broad-exception-caught  # kernel compile probe
+        _v2_unavailable_cause = None
+    except gpu_probe_errors() as err:
+        if is_gpu_out_of_memory(err):
+            raise gpu_out_of_memory_error(err, "compiling the constrained GPU v2 kernel") from err
         _v2_available = False
+        _v2_unavailable_cause = err
+        warnings.warn(
+            f"Constrained GPU v2 kernel unavailable ({describe_gpu_error(err)})", UserWarning, stacklevel=2)
     return _v2_available
 
 
@@ -733,8 +762,8 @@ def _validate_v2_inputs(raster, source_row, source_col, target_row, target_col,
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if not GPU_AVAILABLE:
-        raise RuntimeError(
-            "CUDA GPU not available. Install cupy: pip install cupy-cuda12x")
+        raise gpu_not_available_error(
+            "CUDA GPU not available. Install cupy: pip install cupy-cuda12x", _GPU_IMPORT_ERROR)
 
     rows, cols = raster.shape  # pylint: disable=unused-variable
     max_cost = int(np.iinfo(np.uint16).max)
@@ -743,10 +772,10 @@ def _validate_v2_inputs(raster, source_row, source_col, target_row, target_col,
     source_cell = source_row * cols + source_col
     target_cell = target_row * cols + target_col
     if raster[source_row, source_col] == max_cost:
-        raise ValueError(
+        raise InvalidInputError(
             f"Source cell ({source_row}, {source_col}) is forbidden (65535)")
     if raster[target_row, target_col] == max_cost:
-        raise ValueError(
+        raise InvalidInputError(
             f"Target cell ({target_row}, {target_col}) is forbidden (65535)")
 
     # Defaults
@@ -763,11 +792,11 @@ def _validate_v2_inputs(raster, source_row, source_col, target_row, target_col,
 
     # Validate non-negative costs (after inf cleanup)
     if np.any(angle_cost_lut < 0):
-        raise ValueError("angle_cost_lut must have non-negative values")
+        raise InvalidInputError("angle_cost_lut must have non-negative values")
     if np.any(tower_terrain_costs < 0):
-        raise ValueError("tower_terrain_costs must have non-negative values")
+        raise InvalidInputError("tower_terrain_costs must have non-negative values")
     if np.any(tower_angle_costs < 0):
-        raise ValueError("tower_angle_costs must have non-negative values")
+        raise InvalidInputError("tower_angle_costs must have non-negative values")
 
     # Apply exclude mask
     if exclude_mask is not None:
@@ -1340,27 +1369,27 @@ def constrained_sssp_raster_gpu_v2(
     n_span_bins: int,
     span_bin_size: float,
     min_span: float,
-    max_span: float,  # pylint: disable=unused-argument  # signature kept for callers
-    height_premiums: Optional[np.ndarray] = None,
+    max_span: float,  # only compared with the bin grid (a warning); the kernel never receives it
+    height_premiums: np.ndarray | None = None,
     n_heights: int = 1,
-    exclude_mask: Optional[np.ndarray] = None,
-    dem: Optional[np.ndarray] = None,
-    obstacle_heights: Optional[np.ndarray] = None,
+    exclude_mask: np.ndarray | None = None,
+    dem: np.ndarray | None = None,
+    obstacle_heights: np.ndarray | None = None,
     cell_size: float = 1.0,
     conductor_weight_per_m: float = 0.0,
     conductor_tension: float = 1.0,
     min_clearance: float = 0.0,
     max_gradient_pct: float = 100.0,
     gradient_scale: float = 2.0,
-    tower_heights: Optional[np.ndarray] = None,
-    area_offsets: Optional[np.ndarray] = None,
-    area_offset_starts: Optional[np.ndarray] = None,
-    area_offset_counts: Optional[np.ndarray] = None,
+    tower_heights: np.ndarray | None = None,
+    area_offsets: np.ndarray | None = None,
+    area_offset_starts: np.ndarray | None = None,
+    area_offset_counts: np.ndarray | None = None,
     threads_per_block: int = 256,
     margin: float = 1.00001,
     max_tower_records: int = 2_000_000,
     sparse: str = "auto",
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Find constrained shortest path on GPU with tower placement (v2 persistent kernel).
 
@@ -1381,7 +1410,9 @@ def constrained_sssp_raster_gpu_v2(
         n_span_bins: number of span discretization bins
         span_bin_size: physical distance per span bin (meters)
         min_span: minimum span between towers (meters)
-        max_span: maximum span between towers (meters)
+        max_span: maximum span between towers (meters). NOT passed to the
+            kernel: a span ends at ``n_span_bins * span_bin_size``. A
+            UserWarning is emitted when that is longer than ``max_span``.
         height_premiums: float32 (n_heights,) cost premium per height class.
             If None, defaults to single height with 0 premium.
             Must be sorted in same order as tower_heights (descending).
@@ -1432,6 +1463,11 @@ def constrained_sssp_raster_gpu_v2(
         MemoryError: if state space exceeds GPU VRAM
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+    # max_span never reaches the kernel: say so when the bin grid allows longer spans than the caller asked for.
+    for ignored in constrained_gpu_ignored_settings(
+            "raster_gpu", n_span_bins=n_span_bins, span_bin_size=span_bin_size, max_span=max_span):
+        warnings.warn(f"constrained_sssp_raster_gpu_v2 does not enforce {ignored}", UserWarning, stacklevel=2)
+
     # Validate inputs and apply defaults
     (source_cell, target_cell, height_premiums, n_heights,
      tower_heights, angle_cost_lut, raster) = _validate_v2_inputs(
@@ -1581,7 +1617,7 @@ def constrained_sssp_raster_gpu_v2(
     if overflow_count > 0:
         warnings.warn(
             f"GPU constrained SSSP had {overflow_count} queue overflow events. "
-            f"Results may be suboptimal. Consider increasing buf_size.")
+            f"Results may be suboptimal. Consider increasing buf_size.", stacklevel=2)
 
     n_tower_records = min(int(control_cpu[_CTL_TOWER_COUNT]), max_tower_records)
 
@@ -1592,7 +1628,7 @@ def constrained_sssp_raster_gpu_v2(
         n_span_bins, n_heights)
 
     if target_result is None:
-        warnings.warn("GPU constrained SSSP v2 found no path to target")
+        warnings.warn("GPU constrained SSSP v2 found no path to target", stacklevel=2)
         return (np.empty(0, dtype=np.uint32),
                 np.empty(0, dtype=np.uint32),
                 np.empty(0, dtype=np.float32))

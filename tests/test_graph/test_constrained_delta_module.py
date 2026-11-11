@@ -5,7 +5,6 @@ results on small grids.
 """
 
 import numpy as np
-import pytest
 
 
 def _make_inputs():

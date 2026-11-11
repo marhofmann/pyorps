@@ -18,9 +18,7 @@ Variant 'typed': systems carry a fixed conductor type (constant along the arc).
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
-from functools import lru_cache
 
 INF = float("inf")
 
@@ -194,7 +192,7 @@ def enumerate_labels(inst: Inst, allow_down=True, typed=False, node_labels=True)
     """All structurally valid labels.  Returns dict label->rate.
     node_labels=True keeps labels whose rate is INF (m > mmax or capacity): they are
     legal *node* states (between a merge and a junction) but can never grow."""
-    k, full = inst.k, inst.full
+    full = inst.full
     labs = {}
     ntypes = len(inst.types)
     for S in range(1, full + 1):

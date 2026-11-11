@@ -13,9 +13,18 @@ from __future__ import annotations
 
 import heapq
 import itertools
-from functools import lru_cache
 
-from .a_model import INF, Inst, bits, disjoint_collections, enumerate_labels, popcount, set_partitions, union, valid_label
+from .a_model import (
+    INF,
+    Inst,
+    bits,
+    disjoint_collections,
+    enumerate_labels,
+    popcount,
+    set_partitions,
+    union,
+    valid_label,
+)
 
 
 def tm(tok):
@@ -27,7 +36,8 @@ def label_ok(S, U, D):
 
 
 class ShareDP:
-    def __init__(self, inst: Inst, allow_down=True, typed=False, allow_junction=True, mmax_override=None, root_transit=False):
+    def __init__(self, inst: Inst, allow_down=True, typed=False, allow_junction=True, mmax_override=None,
+                 root_transit=False):
         self.root_transit = root_transit
         self.I = inst
         self.typed = typed

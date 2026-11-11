@@ -159,7 +159,7 @@ class MetricStack:
 
     @classmethod
     def from_single_raster(cls, raster: np.ndarray, transform: Affine,
-                           crs) -> "MetricStack":
+                           crs) -> MetricStack:
         """Zero-copy legacy alias around a single uint16 cost raster.
 
         The raster is NOT copied or converted; the float 'cost' layer and
@@ -368,7 +368,7 @@ class MetricStack:
 
     # ----------------------------------------------------------- windowing
 
-    def window(self, window: Window) -> "MetricStack":
+    def window(self, window: Window) -> MetricStack:
         """Return a stack windowed to the given rasterio Window.
 
         One slice operation applied to EVERY band — alignment can not
@@ -625,7 +625,7 @@ class MetricStack:
             dst.update_tags(**{_TAG_KEY: json.dumps(meta)})
 
     @classmethod
-    def load(cls, path: str) -> "MetricStack":
+    def load(cls, path: str) -> MetricStack:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Load a stack persisted by :meth:`save`."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

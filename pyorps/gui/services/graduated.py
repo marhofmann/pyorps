@@ -37,17 +37,22 @@ _JENKS_SAMPLE = 1000        # DP is O(k·n²) — cap the input size
 
 
 def sample_values(source_path: str, max_n: int = 200_000) -> np.ndarray:
-    """Valid raster values (nodata / non-finite masked), evenly subsampled."""
+    """Valid raster values (nodata / non-finite masked), evenly subsampled.
+
+    Reads band 1 only and DECIMATED to at most ``tiles.MAX_STATS_CELLS`` cells
+    (about 2 million), so the classification statistics (and the Jenks / quantile
+    breaks built from them) come from a decimated read, never from the whole
+    raster in RAM. The file's own nodata (``src.nodata``) is masked, as in the
+    tile range.
+    """
     import rasterio
 
+    from .tiles import read_band_decimated, valid_mask
+
     with rasterio.open(source_path) as src:
-        band = src.read(1)
+        band = read_band_decimated(src, 1)
         nodata = src.nodata
-    values = band.ravel()
-    if nodata is not None and not np.isnan(nodata):
-        values = values[values != nodata]
-    if np.issubdtype(values.dtype, np.floating):
-        values = values[np.isfinite(values)]
+    values = band[valid_mask(band, nodata)]
     if values.size > max_n:
         values = values[:: values.size // max_n]
     return values.astype(np.float64)

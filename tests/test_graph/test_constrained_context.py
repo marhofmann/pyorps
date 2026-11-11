@@ -1,6 +1,5 @@
 """Tests for pyorps.utils._constrained_context — state packing/unpacking."""
 
-import pytest
 
 
 class TestPackState:

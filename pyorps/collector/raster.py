@@ -234,6 +234,8 @@ class RasterCollector:
             the budget (``None``: 0).
         prune_eps: Added to the budget (the safe sign: it can only keep
             more).
+        node_order: ``"canonical"`` (default) or ``"full"``, as in
+            :func:`pyorps.collector.reference.solve_collector` (engine B only).
     """
     values: np.ndarray
     steps: np.ndarray
@@ -247,6 +249,7 @@ class RasterCollector:
     budget: float | None = None
     root_cost: np.ndarray | None = None
     prune_eps: float = 0.0
+    node_order: str = "canonical"
     stats: dict = field(default_factory=dict)
 
     def run(self) -> np.ndarray:
@@ -268,8 +271,10 @@ class RasterCollector:
         self._dirs = [(dr, dc) for dr, dc, _w, _ln in self._w_arr]
         model = self.model
         per_cable = self.engine == "B"
+        if self.node_order not in ("canonical", "full"):
+            raise ValueError("node_order must be 'canonical' or 'full'")
         self.alg = (_SetAlgebra if self.engine == "B" else _CountAlgebra)(
-            model, per_cable)
+            model, per_cable, canonical=self.node_order == "canonical")
         self._cell = float(self.cell_m)
         self.labels: dict = {}
         self.by_S: dict = {}
@@ -371,6 +376,8 @@ class RasterCollector:
             S2 = S ^ S1
             for b1, b2 in alg.merge_pairs(self.by_S.get(S1, ()),
                                           self.by_S.get(S2, ()), S1, S2):
+                if not alg.merge_allowed(b1, b2):
+                    continue
                 merged = alg.merge(b1, b2)
                 if not merged:
                     continue

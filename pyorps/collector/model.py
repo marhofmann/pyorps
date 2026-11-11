@@ -73,7 +73,6 @@ import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
-
 __all__ = [
     "INF",
     "CableType",

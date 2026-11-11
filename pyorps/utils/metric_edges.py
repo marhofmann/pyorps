@@ -22,6 +22,8 @@ import numba as nb
 import numpy as np
 from numba import prange
 
+from pyorps.core.exceptions import InvalidInputError
+
 __all__ = ["construct_edges_gradient", "construct_edges_weights"]
 
 
@@ -167,7 +169,7 @@ def construct_edges_gradient(weights, dem, steps, gradient_luts,
             exclude_mask = np.ones_like(weights, dtype=np.uint8)
     dem = np.ascontiguousarray(dem, dtype=np.float32)
     if dem.shape != weights.shape:
-        raise ValueError(
+        raise InvalidInputError(
             f"DEM shape {dem.shape} does not match weights "
             f"{weights.shape} — align the DEM first.")
     steps = np.ascontiguousarray(steps, dtype=np.int8)

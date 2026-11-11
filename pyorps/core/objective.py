@@ -214,7 +214,7 @@ class GradientOptions:
         }
 
     @classmethod
-    def from_dict(cls, config: dict) -> "GradientOptions":
+    def from_dict(cls, config: dict) -> GradientOptions:
         known = set(cls.__dataclass_fields__)  # pylint: disable=no-member
         filtered = {k: v for k, v in config.items() if k in known}
         for key in ("additive", "multiplier"):
@@ -375,17 +375,17 @@ class Objective:
     # ------------------------------------------------------------- presets
 
     @classmethod
-    def cheapest(cls) -> "Objective":
+    def cheapest(cls) -> Objective:
         """Minimize monetary cost — the default, today's behavior."""
         return cls({"cost": 1.0})
 
     @classmethod
-    def shortest(cls) -> "Objective":
+    def shortest(cls) -> Objective:
         """Minimize route length (3D length when a DEM is present)."""
         return cls({"length": 1.0})
 
     @classmethod
-    def gentlest(cls, length_eps: float = 0.01) -> "Objective":
+    def gentlest(cls, length_eps: float = 0.01) -> Objective:
         """Minimize gradient exposure, with a small length regularization.
 
         The length term prevents degenerate wandering across flat terrain
@@ -403,7 +403,7 @@ class Objective:
             priorities: dict[str, float],
             scales: dict[str, float],
             gradient_options: GradientOptions | dict | None = None,
-    ) -> "Objective":
+    ) -> Objective:
         """Build weights from relative priorities and per-layer scales.
 
         ``weight_k = priority_k / scale_k`` — with ``scale_k`` a typical
@@ -559,7 +559,7 @@ class Objective:
         }
 
     @classmethod
-    def from_dict(cls, config: dict) -> "Objective":
+    def from_dict(cls, config: dict) -> Objective:
         if "weights" not in config:
             raise ObjectiveError(
                 "Serialized objective must contain a 'weights' entry")

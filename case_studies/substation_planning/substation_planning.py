@@ -1,23 +1,23 @@
-import geopandas as gpd
-
-from pyorps.main import run
-from pyorps.raster_graph import RasterGraph
-from pyorps.raster.neighborhood import get_r2_neighborhood_directed
-import power_grid_model as pgm
-
-from pathlib import Path
-import numpy as np
-import pandas as pd
-
-from power_grid_model import LoadGenType, ComponentType, DatasetType, ComponentAttributeFilterOptions
-from power_grid_model import PowerGridModel, CalculationMethod, CalculationType
-from power_grid_model import initialize_array, attribute_dtype
-from power_grid_model.validation import assert_valid_input_data, validate_input_data
-from power_grid_model.utils import json_serialize
 import json
+from pathlib import Path
+
+import geopandas as gpd
+import numpy as np
 import pandapower as pp
-from pandapower.topology import create_nxgraph
 from networkx import cycle_basis
+from pandapower.topology import create_nxgraph
+from power_grid_model import (
+    CalculationType,
+    ComponentType,
+    DatasetType,
+    LoadGenType,
+    PowerGridModel,
+    initialize_array,
+)
+from power_grid_model.utils import json_serialize
+from power_grid_model.validation import assert_valid_input_data
+from pyorps.raster.neighborhood import get_r2_neighborhood_directed
+from pyorps.raster_graph import RasterGraph
 
 
 def read_and_concat_geojsons(directory):
@@ -99,8 +99,9 @@ def get_n_nearest_neighbors_generator(gdf, n):
 
 
 def create_meshed_network(raster_path, sources, targets, save_path):
-    source_coords = [tuple(geom.coords[0]) for geom in sources.geometry.values]
-    target_coords = [tuple(geom.coords[0]) for geom in targets.geometry.values]
+    # Both lists are kept for the commented-out primary-lines call below.
+    source_coords = [tuple(geom.coords[0]) for geom in sources.geometry.values]  # noqa: F841
+    target_coords = [tuple(geom.coords[0]) for geom in targets.geometry.values]  # noqa: F841
     save_path_primary_lines = f"{save_path}_primary_lines.geojson"
     steps = get_r2_neighborhood_directed()
     print("\n\nCreating meshed network - Starting with primary substation lines!")

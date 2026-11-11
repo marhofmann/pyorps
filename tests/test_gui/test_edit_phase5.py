@@ -1,10 +1,9 @@
 """Phase 5: route editing spawns lineage'd variants (R11, Section 18)."""
 import pytest
-
-from pyorps.gui import ids
-
 from conftest import SOURCE, TARGET, invoke
 from test_routes_phase4 import _draft
+
+from pyorps.gui import ids
 
 
 @pytest.fixture()
@@ -14,19 +13,25 @@ def built_route(app, state, raster_path):
            "viridis", [], triggered=[f"{ids.RASTER_LOAD_BTN}.n_clicks"])
     raster_layer = state.layers_of_kind("raster")[0]
     draft = _draft({"source": [SOURCE], "target": [TARGET]})
-    invoke(app, (f"{ids.ROUTING_STATUS}.children", ids.RUN_ROUTING_BTN),
-           1, False, draft, raster_layer.id, "dijkstra", "cpu", "r1",
-           80, True, False, False, 1.0, 100, 0, False, [], [],
-           triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
-    return state.layers_of_kind("route")[0]
+    resp = invoke(app, (f"{ids.ROUTING_STATUS}.children", ids.RUN_ROUTING_BTN),
+                  1, False, draft, raster_layer.id, "dijkstra",
+                  None, 1, 80, False, True, False, False, 1.0, 100, 0, None, [], [],
+                  triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
+    routes = state.layers_of_kind("route")
+    # seen once on a CI runner with no route and no reason: the callback's answer (status, notices) names it
+    assert routes, f"the fixture run built no route; the callback answered: {resp!r:.3000}"
+    return routes[0]
 
 
 _EMPTY_DRAFT = {"sources": [], "targets": [], "waypoints": []}
 
 
 def _select(app, state, route_id):
+    # ROUTE_DRAFT tells select_route apart from the route-options safety net
+    # (it also writes active-route.positions and reads the dropdown)
     return invoke(app, (f"{ids.ACTIVE_ROUTE}.positions",
-                        ids.EDIT_ROUTE_SELECT), route_id, _EMPTY_DRAFT,
+                        ids.EDIT_ROUTE_SELECT, ids.ROUTE_DRAFT),
+                  route_id, _EMPTY_DRAFT,
                   triggered=[f"{ids.EDIT_ROUTE_SELECT}.value"])
 
 
@@ -79,7 +84,7 @@ def test_route_group_management(app, state, built_route):
 
     # inline colour edit via the grid (cellValueChanged)
     invoke(app, ("layers-view.data", "routes-grid", "cellValueChanged"),
-           {"data": {"id": rid, "color": "#00ff00"}, "colId": "color"},
+           {"data": {"id": rid, "color": "#00ff00"}, "colId": "color"}, [],
            triggered=[f"{ids.ROUTES_GRID}.cellValueChanged"])
     assert state.get(rid).style["color"] == "#00ff00"
 
@@ -104,9 +109,9 @@ def test_route_group_management(app, state, built_route):
     assert state.get(rid).style["dashArray"] == "8 8"
 
     # delete the whole group -> the route is gone
-    invoke(app, ("layers-view.data", "group-delete-btn"),
+    invoke(app, ("layers-view.data", ids.GO_DELETE_GROUP),
            1, "MV Feeders", [],
-           triggered=[f"{ids.GROUP_DELETE_BTN}.n_clicks"])
+           triggered=[f"{ids.GO_DELETE_GROUP}.data"])
     assert state.get(rid) is None
 
 
@@ -241,8 +246,8 @@ def test_edit_without_active_route_warns(app, state, built_route):
 
 def test_delete_variant(app, state, built_route):
     _select(app, state, built_route.id)
-    resp = invoke(app, ("layers-view.data", ids.DELETE_VARIANT_BTN), 1,
-                  triggered=[f"{ids.DELETE_VARIANT_BTN}.n_clicks"])
+    invoke(app, ("layers-view.data", ids.GO_DELETE_VARIANT), 1,
+           triggered=[f"{ids.GO_DELETE_VARIANT}.data"])
     assert state.layers_of_kind("route") == []
     assert state.active_route_id is None
 
@@ -269,7 +274,7 @@ def test_posthoc_simplify_and_export(app, state, built_route, tmp_path):
     # export honors the tolerance
     target = tmp_path / "simplified.geojson"
     invoke(app, (f"{ids.EXPORT_STATUS}.children",), 1, str(target), [],
-           triggered=[f"{ids.EXPORT_ROUTE_BTN}.n_clicks"])
+           triggered=[f"{ids.GO_EXPORT_ROUTE}.data"])
     back = gpd.read_file(target)
     assert len(back.geometry.iloc[0].coords) < full_coords
 
@@ -306,7 +311,7 @@ def test_export_route(app, state, built_route, tmp_path):
     _select(app, state, built_route.id)
     target = tmp_path / "route.geojson"
     resp = invoke(app, (f"{ids.EXPORT_STATUS}.children",), 1, str(target),
-                  [], triggered=[f"{ids.EXPORT_ROUTE_BTN}.n_clicks"])
+                  [], triggered=[f"{ids.GO_EXPORT_ROUTE}.data"])
     assert "saved" in resp[ids.EXPORT_STATUS]["children"]
     back = gpd.read_file(target)
     assert back.iloc[0]["origin"] == "built"

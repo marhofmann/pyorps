@@ -1,21 +1,20 @@
 # tests/test_cython_extensions_updated.py
 import unittest
+
 import numpy as np
-import pytest
-from numpy.testing import assert_array_equal, assert_array_almost_equal
+from numpy.testing import assert_array_equal
 
 # Import the Cython extensions
 from pyorps.utils.path_algorithms import (
-    dijkstra_2d_cython,
-    dijkstra_single_source_multiple_targets,
-    dijkstra_some_pairs_shortest_paths,
-    dijkstra_multiple_sources_multiple_targets,
     delta_stepping_2d,
+    delta_stepping_multiple_sources_multiple_targets,
     delta_stepping_single_source_multiple_targets,
     delta_stepping_some_pairs_shortest_paths,
-    delta_stepping_multiple_sources_multiple_targets,
+    dijkstra_2d_cython,
+    dijkstra_multiple_sources_multiple_targets,
+    dijkstra_single_source_multiple_targets,
+    dijkstra_some_pairs_shortest_paths,
 )
-
 from pyorps.utils.path_core import create_exclude_mask
 
 
@@ -341,7 +340,7 @@ class TestCythonExtensions(unittest.TestCase):
         self.assertEqual(len(all_paths), len(sources))
 
         # Validate structure
-        for source_idx, source_paths in enumerate(all_paths):
+        for source_paths in all_paths:
             self.assertEqual(len(source_paths), len(targets))
 
         # Test returning cost matrix
@@ -834,8 +833,8 @@ class TestDeltaSteppingVsNetworkitDijkstra(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         try:
-            from networkit import Graph
-            from networkit.distance import Dijkstra as NKDijkstra
+            from networkit import Graph  # noqa: F401
+            from networkit.distance import Dijkstra as NKDijkstra  # noqa: F401
             cls.nk_available = True
         except ImportError:
             cls.nk_available = False
@@ -855,8 +854,9 @@ class TestDeltaSteppingVsNetworkitDijkstra(unittest.TestCase):
 
     def _build_networkit_graph(self, raster, steps):
         """Build a NetworkKit graph from a raster using construct_edges."""
-        from pyorps.utils.traversal import construct_edges
         from networkit import Graph as NKGraph
+
+        from pyorps.utils.traversal import construct_edges
 
         from_nodes, to_nodes, costs = construct_edges(raster, steps, True)
         n = raster.shape[0] * raster.shape[1]

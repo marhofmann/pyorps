@@ -55,16 +55,53 @@ def layer_from_drawn(features: list[dict], project_crs: Any, *,
     return gdf.to_crs(project_crs)
 
 
+def _match_previous_rows(polys, prev_rows, prev_wkts) -> list[dict]:
+    """One previous grid row (or ``{}``) per polygon in ``polys``.
+
+    Rows are matched to polygons by the polygon's WGS84 WKT first:
+    ``prev_wkts[j]`` is the shape that grid row ``j`` described (a row's own
+    ``__row`` field says which, else its position). Polygons left over fall
+    back to the row at their index, unless a geometric match already used it.
+    """
+    by_wkt: dict[str, list[int]] = {}
+    for pos, row in enumerate(prev_rows):
+        index = row.get("__row")
+        index = index if isinstance(index, int) and not isinstance(index, bool)             else pos
+        if 0 <= index < len(prev_wkts):
+            by_wkt.setdefault(prev_wkts[index], []).append(pos)
+    taken: set[int] = set()
+    matched: list[int | None] = []
+    for poly in polys:
+        candidates = by_wkt.get(poly.wkt)
+        if candidates:
+            pos = candidates.pop(0)
+            taken.add(pos)
+            matched.append(pos)
+        else:
+            matched.append(None)
+    result: list[dict] = []
+    for i, pos in enumerate(matched):
+        if pos is None and i < len(prev_rows) and i not in taken:
+            pos = i                            # edited / new shape: by index
+        result.append(prev_rows[pos] if pos is not None else {})
+    return result
+
+
 def sync_manual_layer(state, features, *, project_crs, default_cost, mode,
                       name, prev_rows=None):
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Build/update THE editable custom-cost-polygon layer from drawn shapes.
 
     Called live as the user draws / edits vertices / deletes polygons (task 33).
-    Per-polygon ``name``/``cost`` are preserved from ``prev_rows`` by index (so
-    edits survive a redraw), new polygons get ``default_cost``. Empties remove
-    the layer. Returns ``(layer_or_None, grid_rows)`` where each grid row is
-    ``{"__row", "name", "cost"}``.
+    Per-polygon ``name``/``cost`` are carried over from ``prev_rows`` by
+    GEOMETRY: the layer remembers the WGS84 WKT of every polygon in
+    ``meta["wgs84_wkts"]`` (aligned with the grid rows), so a polygon deleted in
+    the middle of the list no longer shifts the others' names and costs onto
+    the wrong shapes. A shape without a geometric match (new, or a vertex was
+    just moved) falls back to the previous row at its own index, if no other
+    shape already took that row; anything else gets ``default_cost``. Empties
+    remove the layer. Returns ``(layer_or_None, grid_rows)`` where each grid
+    row is ``{"__row", "name", "cost"}``.
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from .geo import gdf_to_wgs84_geojson
@@ -88,9 +125,13 @@ def sync_manual_layer(state, features, *, project_crs, default_cost, mode,
         state.remove_layer(MANUAL_LAYER_ID)
         return None, []
 
+    existing = state.get(MANUAL_LAYER_ID)
+    previous = _match_previous_rows(
+        polys, prev, ((existing.meta or {}).get("wgs84_wkts")
+                      if existing is not None else None) or [])
     names, costs = [], []
     for i in range(len(polys)):
-        row = prev[i] if i < len(prev) else {}
+        row = previous[i]
         names.append(str(row.get("name") or f"{name} {i + 1}"))
         raw = row.get("cost")
         costs.append(float(raw) if raw not in (None, "") else float(

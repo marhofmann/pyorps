@@ -27,7 +27,6 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-
 from exactness_referee import (
     EXACT,
     FIM_ENVELOPE,
@@ -56,7 +55,6 @@ from exactness_referee import (
     self_consistency_tolerance,
     synthetic_raster,
 )
-
 
 # ==================== FIXTURES ====================
 

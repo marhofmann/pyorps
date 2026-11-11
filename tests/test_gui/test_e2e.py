@@ -265,3 +265,66 @@ def test_cost_seed_edit_and_rasterize(page, gui_server, tmp_path):
 
 
 
+
+def test_removing_a_layer_asks_first_cancel_keeps_it_confirm_removes_it(page, gui_server):
+    """Round 13 (T5 #9): "Remove" opens the in-page confirm box; Cancel leaves
+    the layer alone, the confirm button removes it. No browser dialog is used
+    (an unexpected one would block this test)."""
+    url, _app, state = gui_server
+    throwaway = {"type": "FeatureCollection", "features": [{
+        "type": "Feature",
+        "geometry": {"type": "Polygon", "coordinates": [[
+            [8.65, 50.05], [8.7, 50.05], [8.7, 50.1], [8.65, 50.05]]]},
+        "properties": {"name": "throwaway"}}]}
+    layer = state.add_layer("E2E throwaway", "vector", geojson=throwaway)
+    dialogs = []
+
+    def on_dialog(dialog):
+        # the unsaved-work guard asks before the page is left (reload below): let it
+        # go; any other native dialog would be a confirm that should be in the page
+        if dialog.type == "beforeunload":
+            dialog.accept()
+        else:
+            dialogs.append(dialog.message)
+            dialog.dismiss()
+
+    page.on("dialog", on_dialog)
+    page.goto(url)                         # the rebuilt page lists what the server holds
+    page.wait_for_selector(".leaflet-container", timeout=30_000)
+    page.locator("#sidebar-tabs a", has_text="Layers").click()
+    row = page.locator("#layers-grid .ag-row", has_text="E2E throwaway")
+    row.wait_for(timeout=15_000)
+    modal = page.locator("#confirm-modal")
+
+    row.click()                                              # select it, then Remove
+    page.click("#layer-remove-btn")
+    modal.wait_for(state="visible", timeout=10_000)
+    assert "E2E throwaway" in modal.inner_text()
+    page.click("#confirm-cancel")                            # cancel: nothing changes
+    modal.wait_for(state="hidden", timeout=10_000)
+    assert layer.id in state.layers
+    assert page.locator("#layers-grid .ag-row", has_text="E2E throwaway").count() == 1
+
+    page.click("#layer-remove-btn")                          # again, and confirm
+    modal.wait_for(state="visible", timeout=10_000)
+    page.click("#confirm-ok")
+    page.wait_for_function(
+        "!document.getElementById('layers-grid').innerText.includes('E2E throwaway')",
+        timeout=15_000)
+    assert layer.id not in state.layers
+    assert dialogs == []                                     # never a browser dialog
+
+
+def test_every_label_points_at_a_labelable_control(page):
+    """A ``<label for>`` only helps when its target is a form control the
+    browser can label (a button, input, select or textarea): checked on the
+    real page, including the dcc.Dropdown triggers."""
+    problems = page.evaluate("""() => {
+        const ok = ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'];
+        return Array.from(document.querySelectorAll('label[for]')).map(label => {
+            const el = document.getElementById(label.htmlFor);
+            return el && ok.includes(el.tagName) ? null : label.htmlFor + ':' + (el ? el.tagName : 'missing');
+        }).filter(Boolean);
+    }""")
+    assert problems == []
+    assert page.locator("label[for='route-graph-api']").count() == 1

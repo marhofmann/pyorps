@@ -18,13 +18,7 @@ import numpy as np
 import pandas as pd
 from geopandas import GeoDataFrame, GeoSeries
 
-from .exceptions import (
-    FileLoadError,
-    FormatError,
-    InvalidSourceError,
-    NoSuitableColumnsError,
-)
-
+from .exceptions import FileLoadError, FormatError, InvalidSourceError, InvalidTypeError, NoSuitableColumnsError
 
 #: Leaf keys with special meaning in multi-metric leaves. "factor" is a
 #: modifier (weight = cost * factor), not a metric of its own.
@@ -88,7 +82,10 @@ class CostAssumptions:
         self.side_features = []
 
         if source is not None:
-            if isinstance(source, (dict, str)):
+            if isinstance(source, dict):
+                # Not through load(): a warning then points at the caller.
+                self._load_dict(source, stacklevel=3)
+            elif isinstance(source, str):
                 self.load(source)
             else:
                 raise InvalidSourceError(
@@ -113,16 +110,18 @@ class CostAssumptions:
 
         Returns:
             dictionary of cost assumptions
+
+        Raises:
+            FormatError: The dictionary is empty.
+            InvalidSourceError: The source is neither a dictionary nor the path
+                of a CSV, JSON or Excel file.
+
+        Warns:
+            UserWarning: The dictionary has more than one top-level key. Only
+                the first one is used; the warning names the ignored ones.
         """
         if isinstance(source, dict):
-            keys, costs = next(iter(source.items()))
-            if isinstance(keys, tuple):
-                self.main_feature, *self.side_features = keys
-            else:
-                self.main_feature = keys
-            self.cost_assumptions = costs
-            self._normalize_metrics()
-            return self.cost_assumptions
+            return self._load_dict(source, stacklevel=3)
 
         if isinstance(source, str) and os.path.isfile(source):
             file_ext = Path(source).suffix.lower()
@@ -142,6 +141,44 @@ class CostAssumptions:
             return self.cost_assumptions
 
         raise InvalidSourceError("Source must be a dictionary or a valid file path")
+
+    def _load_dict(self, source: dict, stacklevel: int) -> dict:
+        """Load ``{feature column(s): {feature value: cost}}``.
+
+        The dictionary has exactly ONE top-level entry: its key names the
+        feature column (or is a tuple of the main and the side feature
+        columns) and its value is the cost table.
+
+        Parameters:
+            source: The cost assumptions dictionary
+            stacklevel: ``warnings.warn`` stack level that reaches the caller
+                of the public method, counted from this method
+        """
+        if not source:
+            raise FormatError(
+                "The cost assumptions dictionary is empty. Expected one entry "
+                "{feature_column: {feature_value: cost, ...}}, for example "
+                "{'landuse': {'forest': 365, 'water': 65535}}.")
+        keys, costs = next(iter(source.items()))
+        if len(source) > 1:
+            ignored = [key for key in source if key != keys]
+            shown = ", ".join(repr(key) for key in ignored[:5])
+            if len(ignored) > 5:
+                shown += f" and {len(ignored) - 5} more"
+            warnings.warn(
+                f"The cost assumptions dictionary has {len(source)} top-level "
+                f"keys, but only the first one, {keys!r}, is used as the feature "
+                f"column. Ignored: {shown}. Use ONE top-level key; to combine "
+                "feature columns make it a tuple, for example "
+                "{('landuse', 'type'): {...}}.",
+                UserWarning, stacklevel=stacklevel)
+        if isinstance(keys, tuple):
+            self.main_feature, *self.side_features = keys
+        else:
+            self.main_feature = keys
+        self.cost_assumptions = costs
+        self._normalize_metrics()
+        return self.cost_assumptions
 
     # ------------------------------------------------------------------
     # Multi-metric normalization (feasibility model)
@@ -694,8 +731,11 @@ class CostAssumptions:
             DataFrame with properly converted numeric columns
         """
         for col in df.columns:
-            # Skip columns that are already numeric or clearly not numeric
-            if pd.api.types.is_numeric_dtype(df[col]) or df[col].dtype != object:
+            # Skip columns that are already numeric or clearly not numeric. Text arrives as
+            # object dtype in pandas 2 and as the dedicated string dtype in pandas 3.
+            if pd.api.types.is_numeric_dtype(df[col]) or not (
+                    pd.api.types.is_object_dtype(df[col])
+                    or pd.api.types.is_string_dtype(df[col])):
                 continue
 
             # Try to convert using various decimal separators
@@ -1197,7 +1237,7 @@ def save_empty_cost_assumptions(
     elif file_type == "excel":
         cost_assumptions.to_excel(save_path, **kwargs)
     else:
-        raise TypeError("Parameter file_type must be 'json', 'csv' or 'excel'!")
+        raise InvalidTypeError("Parameter file_type must be 'json', 'csv' or 'excel'!")
     return cost_assumptions.cost_assumptions
 
 

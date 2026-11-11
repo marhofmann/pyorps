@@ -641,7 +641,7 @@ class TestAnisotropicPixels:
     def test_sigma_m_refuses_to_collapse(self):
         lat = TowerLattice(cell_size_x_m=self.SX, cell_size_y_m=self.SY)
         with pytest.raises(ValueError, match="no single sigma_m"):
-            lat.sigma_m
+            _ = lat.sigma_m
         # and there is no scalar cell size either, rather than a guess
         assert lat.cell_size_m is None
 

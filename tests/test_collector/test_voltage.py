@@ -405,6 +405,39 @@ def test_model_from_the_yaml_carries_the_file_values():
     assert vm33.meta["provisional"] == (vm33.meta["cable_class"] == "kv30")
 
 
+def test_reactive_limits_default_to_the_mv_terminals():
+    vm = voltage_model_from_yaml(YAML, u_kv=20, cable_mm2=[240], n_turbines=7)
+    assert vm.meta["q_reference"] == "mv"
+    assert vm.meta["q_over_p"] == 0.540 and vm.meta["q_under_p"] == 0.484
+
+
+def test_lv_reference_converts_the_limits_through_the_transformer():
+    vm = voltage_model_from_yaml(YAML, u_kv=20, cable_mm2=[240], n_turbines=7,
+                                 q_reference="lv")
+    tr, p = vm.transformer, 6.8
+    for q_lv, key, sign in ((0.540, "q_over_p", 1), (0.484, "q_under_p", -1)):
+        s_lv = complex(p, sign * q_lv * p)                  # MVA at the LV side
+        s_mv = s_lv - tr.z_pu * abs(s_lv) ** 2 / tr.s_r_mva  # series branch
+        assert vm.meta[key] == pytest.approx(sign * s_mv.imag / p, rel=1e-12)
+    assert vm.meta["q_reference"] == "lv"
+    assert vm.meta["q_over_p_lv"] == 0.540
+    h1 = {c.name: c for c in vm.corners}["H1"]
+    assert h1.q_mvar[0] == pytest.approx(vm.meta["q_over_p"] * p)
+    # the over-excited range loses about 0.1 P per turbine: 4.7-4.8 Mvar in all
+    lost = 7 * p * (0.540 - vm.meta["q_over_p"])
+    assert 4.5 < lost < 5.0
+    assert vm.meta["q_under_p"] > 0.484                      # absorbing grows
+
+
+def test_lv_reference_needs_the_transformer_and_a_valid_name():
+    with pytest.raises(ValueError, match="needs the turbine transformer"):
+        voltage_model_from_yaml(YAML, u_kv=20, cable_mm2=[240], n_turbines=1,
+                                q_reference="lv", include_transformer=False)
+    with pytest.raises(ValueError, match="'mv' or 'lv'"):
+        voltage_model_from_yaml(YAML, u_kv=20, cable_mm2=[240], n_turbines=1,
+                                q_reference="hv")
+
+
 def test_missing_33kv_cables_fall_back_and_flag(tmp_path):
     import yaml
 

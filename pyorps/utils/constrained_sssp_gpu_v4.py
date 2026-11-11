@@ -24,15 +24,28 @@ import os
 import re
 import warnings
 from pathlib import Path
-from typing import Optional, Tuple
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError
+from pyorps.utils.constrained_sssp_gpu import check_constrained_gpu_settings
+from pyorps.utils.traversal_gpu import (
+    describe_gpu_error,
+    gpu_not_available_error,
+    gpu_out_of_memory_error,
+    gpu_probe_errors,
+    is_gpu_out_of_memory,
+)
+
+# Only a failed import means "no CuPy"; any other error while importing CuPy is a broken installation and
+# must be seen. The import error is kept so that "GPU not available" can name it.
 try:
     import cupy as cp
     GPU_AVAILABLE = True
-except (ImportError, Exception):  # pylint: disable=broad-exception-caught  # optional GPU backend probe
+    _GPU_IMPORT_ERROR = None
+except ImportError as _import_error:
     GPU_AVAILABLE = False
+    _GPU_IMPORT_ERROR = _import_error
 
 
 # ============================================================================
@@ -377,7 +390,7 @@ def _find_prev_tower_v4(current_cell, current_dir, current_dist,
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     walk_cell = current_cell
     walk_dist = 0.0  # accumulated physical distance from current_cell
-    for step in range(1000):  # pylint: disable=unused-variable
+    for _step in range(1000):
         dr = int(steps_np[current_dir, 0])
         dc = int(steps_np[current_dir, 1])
         r = walk_cell // cols
@@ -646,15 +659,24 @@ def _get_v4_kernel(source: str, name: str):
 # ============================================================================
 
 _v4_available = None
+#: Why the probe answered False (the import, CUDA or compile error); None while it is True or not yet run.
+_v4_unavailable_cause = None
 
 
 def _check_v4_available():
-    """Check if V4 kernels compile on this GPU."""
-    global _v4_available  # pylint: disable=global-statement  # module-level availability cache
+    """Check if V4 kernels compile on this GPU.
+
+    Only the errors of :func:`pyorps.utils.traversal_gpu.gpu_probe_errors` mean "unavailable"; the first such
+    result is announced once with a UserWarning that carries the cause, and the cause is kept in
+    ``_v4_unavailable_cause``. Out-of-memory is raised as ``MemoryError``; any other exception is a bug and
+    propagates.
+    """
+    global _v4_available, _v4_unavailable_cause  # pylint: disable=global-statement  # availability cache
     if _v4_available is not None:
         return _v4_available
     if not GPU_AVAILABLE:
         _v4_available = False
+        _v4_unavailable_cause = _GPU_IMPORT_ERROR
         return False
     try:
         defines = {
@@ -673,8 +695,14 @@ def _check_v4_available():
             options=("--std=c++17",))
         _ = kernel.kernel  # force compilation
         _v4_available = True
-    except Exception:  # pylint: disable=broad-exception-caught  # optional GPU backend probe
+        _v4_unavailable_cause = None
+    except gpu_probe_errors() as err:
+        if is_gpu_out_of_memory(err):
+            raise gpu_out_of_memory_error(err, "compiling the constrained GPU V4 kernel") from err
         _v4_available = False
+        _v4_unavailable_cause = err
+        warnings.warn(
+            f"Constrained GPU V4 kernel unavailable ({describe_gpu_error(err)})", UserWarning, stacklevel=2)
     return _v4_available
 
 
@@ -693,17 +721,17 @@ def _validate_v4_inputs(raster, source_row, source_col, target_row,
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if not GPU_AVAILABLE:
-        raise RuntimeError(
-            "CUDA GPU not available. Install cupy: pip install cupy-cuda12x")
+        raise gpu_not_available_error(
+            "CUDA GPU not available. Install cupy: pip install cupy-cuda12x", _GPU_IMPORT_ERROR)
 
     max_cost = int(np.iinfo(np.uint16).max)
 
     # Validate source and target
     if raster[source_row, source_col] == max_cost:
-        raise ValueError(
+        raise InvalidInputError(
             f"Source cell ({source_row}, {source_col}) is forbidden (65535)")
     if raster[target_row, target_col] == max_cost:
-        raise ValueError(
+        raise InvalidInputError(
             f"Target cell ({target_row}, {target_col}) is forbidden (65535)")
 
     # Defaults
@@ -719,11 +747,11 @@ def _validate_v4_inputs(raster, source_row, source_col, target_row,
 
     # Validate non-negative costs
     if np.any(angle_cost_lut < 0):
-        raise ValueError("angle_cost_lut must have non-negative values")
+        raise InvalidInputError("angle_cost_lut must have non-negative values")
     if np.any(tower_terrain_costs < 0):
-        raise ValueError("tower_terrain_costs must have non-negative values")
+        raise InvalidInputError("tower_terrain_costs must have non-negative values")
     if np.any(tower_angle_costs < 0):
-        raise ValueError("tower_angle_costs must have non-negative values")
+        raise InvalidInputError("tower_angle_costs must have non-negative values")
 
     return height_premiums, n_heights, tower_heights, angle_cost_lut
 
@@ -750,11 +778,11 @@ def _compute_v4_block_size(spc, n_cells, max_visited_fraction):
             max_visited_fraction = new_frac
             warnings.warn(
                 f"Reduced max_visited_fraction to {new_frac:.3f} "
-                f"to fit BLOCK_SIZE={target_bs} >= spc={spc} in VRAM")
+                f"to fit BLOCK_SIZE={target_bs} >= spc={spc} in VRAM", stacklevel=2)
         else:
             warnings.warn(
                 f"BLOCK_SIZE={gpu_block_size} < spc={spc}: insufficient "
-                f"VRAM for lossless exploration. Results may be suboptimal.")
+                f"VRAM for lossless exploration. Results may be suboptimal.", stacklevel=2)
 
     return gpu_block_size, max_visited_fraction
 
@@ -886,7 +914,7 @@ def _find_v4_best_target(d_cell_to_block, d_pool, target_cell,
     if target_block_idx < 0:
         warnings.warn(
             "GPU constrained SSSP V4 found no path to target "
-            "(target cell never visited)")
+            "(target cell never visited)", stacklevel=2)
         return float('inf'), -1
 
     # Read target cell's block entries
@@ -937,26 +965,26 @@ def constrained_sssp_raster_gpu_v4(
     span_bin_size: float,
     min_span: float,
     max_span: float,
-    height_premiums: Optional[np.ndarray] = None,
+    height_premiums: np.ndarray | None = None,
     n_heights: int = 1,
-    exclude_mask: Optional[np.ndarray] = None,
-    dem: Optional[np.ndarray] = None,  # pylint: disable=unused-argument  # kept for API/signature compatibility
-    obstacle_heights: Optional[np.ndarray] = None,  # pylint: disable=unused-argument
-    cell_size: float = 1.0,  # pylint: disable=unused-argument  # kept for API/signature compatibility
-    conductor_weight_per_m: float = 0.0,  # pylint: disable=unused-argument  # kept for API/signature compatibility
-    conductor_tension: float = 1.0,  # pylint: disable=unused-argument  # kept for API/signature compatibility
-    min_clearance: float = 0.0,  # pylint: disable=unused-argument  # kept for API/signature compatibility
-    max_gradient_pct: float = 100.0,  # pylint: disable=unused-argument  # kept for API/signature compatibility
-    gradient_scale: float = 2.0,  # pylint: disable=unused-argument  # kept for API/signature compatibility
-    tower_heights: Optional[np.ndarray] = None,
-    area_offsets: Optional[np.ndarray] = None,
-    area_offset_starts: Optional[np.ndarray] = None,  # pylint: disable=unused-argument
-    area_offset_counts: Optional[np.ndarray] = None,  # pylint: disable=unused-argument
+    exclude_mask: np.ndarray | None = None,
+    dem: np.ndarray | None = None,  # NOT implemented in V4: anything but None raises
+    obstacle_heights: np.ndarray | None = None,  # NOT implemented in V4: anything but None raises
+    cell_size: float = 1.0,  # pylint: disable=unused-argument  # only meaningful with a dem
+    conductor_weight_per_m: float = 0.0,  # pylint: disable=unused-argument  # only meaningful with a dem
+    conductor_tension: float = 1.0,  # pylint: disable=unused-argument  # only meaningful with a dem
+    min_clearance: float = 0.0,  # NOT implemented in V4: a value above 0 raises
+    max_gradient_pct: float = 100.0,  # NOT implemented in V4: anything but 100.0 raises
+    gradient_scale: float = 2.0,  # NOT implemented in V4: anything but 2.0 raises
+    tower_heights: np.ndarray | None = None,
+    area_offsets: np.ndarray | None = None,  # NOT implemented in V4: anything but None raises
+    area_offset_starts: np.ndarray | None = None,  # NOT implemented in V4: anything but None raises
+    area_offset_counts: np.ndarray | None = None,  # NOT implemented in V4: anything but None raises
     threads_per_block: int = 256,
     margin: float = 1.00001,
     max_tower_records: int = _MAX_TOWER_RECORDS,
     max_visited_fraction: float = 0.4,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Find constrained shortest path on GPU with tower placement (V4 persistent).
 
@@ -980,18 +1008,18 @@ def constrained_sssp_raster_gpu_v4(
         height_premiums: float32 (n_heights,) cost premium per height class
         n_heights: number of tower height classes (default 1)
         exclude_mask: optional uint8 mask (1=traversable, 0=blocked)
-        dem: optional float32 DEM array for clearance checking and gradient
-        obstacle_heights: optional float32 array of obstacle heights (meters)
-        cell_size: raster cell size in meters (default 1.0)
-        conductor_weight_per_m: conductor weight per meter in N/m (default 0.0)
-        conductor_tension: conductor tension in N (default 1.0)
-        min_clearance: minimum clearance above ground+obstacles in meters
-        max_gradient_pct: maximum allowed gradient percentage (default 100.0)
-        gradient_scale: exponential gradient cost scaling factor (default 2.0)
+        dem, obstacle_heights, min_clearance, max_gradient_pct,
+        gradient_scale, area_offsets, area_offset_starts, area_offset_counts:
+            NOT implemented in V4 (no DEM gradient, no clearance check, no
+            exact tower footprint). They are in the signature so that all
+            constrained solvers can be called alike; any value other than
+            the default raises AlgorithmNotImplementedError instead of
+            returning a route that ignores it.
+        cell_size, conductor_weight_per_m, conductor_tension: parameters of
+            the clearance model; unused here (they only matter with a dem).
         tower_heights: float32 (n_heights,) actual tower heights in meters
-        area_offsets: optional int32 flat array of (dr, dc) pairs
-        area_offset_starts: optional int32 (n_dirs*n_dirs,) start index per pair
-        area_offset_counts: optional int32 (n_dirs*n_dirs,) count per pair
+            (only used by the clearance model, i.e. not by V4; the cost
+            per height class comes from height_premiums)
         threads_per_block: CUDA threads per block (default 256)
         margin: early termination margin (default 1.00001)
         max_tower_records: max tower records to allocate (default 2M)
@@ -1004,8 +1032,15 @@ def constrained_sssp_raster_gpu_v4(
     Raises:
         RuntimeError: if CUDA GPU not available
         ValueError: if source or target is on forbidden cell
+        AlgorithmNotImplementedError: if a setting V4 does not implement
+            (see above) has a non-default value
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+    check_constrained_gpu_settings(
+        "raster_gpu_v4", dem=dem, obstacle_heights=obstacle_heights, min_clearance=min_clearance,
+        max_gradient_pct=max_gradient_pct, gradient_scale=gradient_scale, area_offsets=area_offsets,
+        area_offset_starts=area_offset_starts, area_offset_counts=area_offset_counts)
+
     height_premiums, n_heights, tower_heights, angle_cost_lut = \
         _validate_v4_inputs(
             raster, source_row, source_col, target_row, target_col,
@@ -1023,11 +1058,6 @@ def constrained_sssp_raster_gpu_v4(
     if exclude_mask is not None:
         raster = raster.copy()
         raster[exclude_mask == 0] = 65535
-
-    if area_offsets is not None:
-        warnings.warn(
-            "Exact tower area mode not yet supported in V4. "
-            "Using uniform mode.")
 
     # ---- Prepare step lookup tables ----
     from pyorps.utils.traversal_gpu import prepare_step_lookup_tables
@@ -1176,17 +1206,17 @@ def constrained_sssp_raster_gpu_v4(
     if done_flag != 1:
         warnings.warn(
             f"V4 kernel did not terminate cleanly (CTL_V4_DONE={done_flag}). "
-            f"Results may be incomplete.")
+            f"Results may be incomplete.", stacklevel=2)
 
     block_overflow = int(control_cpu[_CTL_V4_BLOCK_OVERFLOW])
     pool_overflow = int(control_cpu[_CTL_V4_POOL_OVERFLOW])
     if block_overflow > 0:
         warnings.warn(
             f"Block-sparse pool exhausted: {block_overflow} states dropped. "
-            f"Results may be suboptimal. Increase max_visited_fraction.")
+            f"Results may be suboptimal. Increase max_visited_fraction.", stacklevel=2)
     if pool_overflow > 0:
         warnings.warn(
-            f"Bucket pool overflow: {pool_overflow} items dropped.")
+            f"Bucket pool overflow: {pool_overflow} items dropped.", stacklevel=2)
 
     # ---- Find best target state ----
     empty_result = (np.empty(0, dtype=np.uint32),
@@ -1201,7 +1231,7 @@ def constrained_sssp_raster_gpu_v4(
         if best_state == -1 and best_dist != float('inf'):
             # _find_v4_best_target already warned for target_block_idx < 0
             warnings.warn(
-                "GPU constrained SSSP V4 found no path to target")
+                "GPU constrained SSSP V4 found no path to target", stacklevel=2)
         return empty_result
 
     # ---- Download tower records ----

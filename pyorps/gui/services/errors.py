@@ -13,15 +13,67 @@ to the right box and that no class is left to the generic fallback.
 """
 from __future__ import annotations
 
+import threading
 import traceback
 import uuid
 import warnings
+from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from pyorps.core import exceptions as pex
 
 SEVERITIES = ("error", "warning", "info", "success")
+
+#: the browser store keeps this many notices at most (every callback sends the
+#: whole store back and forth, so an unbounded history slows the app down)
+MAX_STORED_NOTICES = 20
+#: longest ``details`` text a notice carries into the browser store
+MAX_DETAILS_CHARS = 600
+#: how many full (long) ``details`` texts are kept server-side for the log
+_FULL_DETAILS_KEPT = 200
+_full_details: OrderedDict[str, str] = OrderedDict()
+_full_details_lock = threading.Lock()
+
+
+def _short_details(text: str, limit: int = MAX_DETAILS_CHARS) -> str:
+    """``text`` shortened for the browser: a traceback becomes its last line."""
+    text = (text or "").strip()
+    if "Traceback (most recent call last)" in text:
+        tail: list[str] = []
+        for line in reversed(text.splitlines()):
+            if not line.strip() or line.startswith((" ", "\t")):
+                break                         # a frame / code line: stop
+            tail.append(line)
+        text = "\n".join(reversed(tail)) or text.splitlines()[-1]
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
+def _remember_full_details(notice_id: str, text: str) -> None:
+    with _full_details_lock:
+        _full_details[notice_id] = text
+        _full_details.move_to_end(notice_id)
+        while len(_full_details) > _FULL_DETAILS_KEPT:
+            _full_details.popitem(last=False)
+
+
+def full_details(notice_id: str | None) -> str | None:
+    """The untruncated ``details`` of a notice made by :meth:`Notice.to_dict`.
+
+    None when the notice had short details (nothing was cut) or is unknown.
+    """
+    if not notice_id:
+        return None
+    with _full_details_lock:
+        return _full_details.get(notice_id)
+
+
+def cap_notices(notices: list[dict] | None,
+                limit: int = MAX_STORED_NOTICES) -> list[dict]:
+    """The newest ``limit`` notices (the store is history, not an archive)."""
+    kept = list(notices or [])
+    return kept[-limit:] if limit > 0 else []
 
 
 @dataclass
@@ -39,10 +91,23 @@ class Notice:
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        """The JSON-safe dict for the browser store.
+
+        ``details`` is shortened to :data:`MAX_DETAILS_CHARS` (for a traceback:
+        the exception line only); the full text is kept server-side, keyed by
+        the notice id, so the log file still gets the whole traceback
+        (:func:`full_details`).
+        """
+        data = asdict(self)
+        full = self.details or ""
+        short = _short_details(full)
+        if short != full:
+            _remember_full_details(self.id, full)
+            data["details"] = short
+        return data
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Notice":
+    def from_dict(cls, data: dict) -> Notice:
         return cls(**{k: data.get(k) for k in
                       ("severity", "title", "meaning", "impact", "fix",
                        "details", "focus_id", "focus_control", "id")
@@ -81,8 +146,53 @@ def _wfs_layer_notice(exc: BaseException) -> Notice:
         details=_exc_details(exc), focus_id="tab-data")
 
 
+class ProjectLoadError(Exception):
+    """A saved project could not be opened; the message names the failed asset.
+
+    Raised by ``project_io.load_project`` BEFORE the current session is touched,
+    so the user still has everything they had.
+    """
+
+    def __init__(self, message: str, *, asset: str = "", layer: str = "") -> None:
+        super().__init__(message)
+        self.asset = asset
+        self.layer = layer
+
+
+class ProjectLayersSkippedWarning(UserWarning):
+    """Layers were left out while saving / opening a project (see project_io)."""
+
+
+def _project_load_notice(exc: BaseException) -> Notice:
+    return Notice(
+        severity="error", title="Project could not be opened",
+        meaning=str(exc),
+        impact="Nothing was changed: your current session is exactly as it was.",
+        fix="Restore or re-save the named file next to project.json, then open "
+            "the project again.",
+        details=_exc_details(exc), focus_id="tab-data")
+
+
+class NothingToUndoError(Exception):
+    """"Undo last edit" was asked for a route that has no edit to take back."""
+
+
+def _nothing_to_undo_notice(exc: BaseException) -> Notice:
+    return Notice(
+        severity="info", title="Nothing to undo",
+        meaning=str(exc) or "This route has not been edited since it was "
+                            "computed, opened or last undone.",
+        impact="Nothing changed.",
+        fix="Edit the route first; 'Undo last edit' then brings back the "
+            "version before that edit (one step only).",
+        focus_id="tab-routes")
+
+
 #: ordered list of (exception class, lowercase substring or None, builder)
 EXCEPTION_RULES: list[tuple[type, str | None, _Builder]] = [
+    (NothingToUndoError, None, _nothing_to_undo_notice),
+    # ---- project files -----------------------------------------------------
+    (ProjectLoadError, None, _project_load_notice),
     # ---- data loading / WFS (most specific first) --------------------------
     (pex.WFSConnectionError, None, _n(
         "error", "Can't reach the WFS server",
@@ -295,7 +405,19 @@ def _w(severity: str, title: str, meaning: str, impact: str, fix: str,
     return build
 
 
+def _layers_skipped_notice(message: str) -> Notice:
+    return Notice(
+        severity="warning", title="Some layers were left out of the project",
+        meaning=message,
+        impact="Those layers are not part of the project file or the opened "
+               "session; everything else was handled.",
+        fix="Re-load or rebuild the listed layers (their source file is missing "
+            "or empty), then save the project again.",
+        details=message, focus_id="tab-data")
+
+
 WARNING_RULES: list[tuple[type, str, Callable[[str], Notice]]] = [
+    (ProjectLayersSkippedWarning, "", _layers_skipped_notice),
     (Warning, "crs mismatch between bbox", _w(
         "info", "Reprojected your area to the data's CRS",
         "Your study area was in a different CRS than the data.",
@@ -403,6 +525,9 @@ def guard(fn: Callable[..., Any], *args: Any,
     ``Notice.to_dict()`` dicts ready for the ``notices`` dcc.Store. On any
     exception the result is None and an error notice is appended — a callback
     using guard can therefore never dump a bare traceback (C15).
+
+    The returned history is capped at :data:`MAX_STORED_NOTICES` (newest kept),
+    and each notice carries only short ``details`` (see :meth:`Notice.to_dict`).
     """
     notices = list(notices or [])
     with warnings.catch_warnings(record=True) as caught:
@@ -412,9 +537,9 @@ def guard(fn: Callable[..., Any], *args: Any,
         except Exception as exc:  # noqa: BLE001 - translate everything (C15)  # pylint: disable=broad-exception-caught
             _append_warnings(caught, notices)
             notices.append(translate_exception(exc).to_dict())
-            return None, notices
+            return None, cap_notices(notices)
     _append_warnings(caught, notices)
-    return result, notices
+    return result, cap_notices(notices)
 
 
 def success(title: str, meaning: str = "", impact: str = "",

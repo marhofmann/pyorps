@@ -18,7 +18,6 @@ from typing import Any
 import geopandas as gpd
 from pyproj import Transformer
 from shapely.geometry import LineString, mapping, shape
-from shapely.ops import transform as shapely_transform
 
 WGS84 = "EPSG:4326"
 
@@ -59,8 +58,8 @@ def _fast_wgs84_geojson(wgs: gpd.GeoDataFrame) -> dict:
     Feature ids are positional (str(i)) — matching the ``__row``/iloc logic
     used by the attribute table and feature highlighting.
     """
-    import orjson
     import numpy as np
+    import orjson
     import shapely
 
     geom_col = wgs.geometry.name
@@ -126,8 +125,20 @@ def geometry_to_crs(geom, source_crs: Any, target_crs: Any):
     """Reproject a single shapely geometry between two CRSs."""
     if str(source_crs) == str(target_crs):
         return geom
+    import numpy as np
+    import shapely
+
     tf = Transformer.from_crs(source_crs, target_crs, always_xy=True)
-    return shapely_transform(lambda x, y, z=None: tf.transform(x, y), geom)
+
+    def _reproject(coords):
+        # shapely.transform hands over an (N, 2) array; z is dropped, as before.
+        # Lists, not arrays: pyproj takes a one-element array for a single point and then warns about
+        # converting an array to a scalar.
+        x, y = tf.transform(coords[:, 0].tolist(), coords[:, 1].tolist())
+        return np.column_stack([x, y]).reshape(-1, 2)
+
+    # shapely.ops.transform is deprecated since shapely 2.2 (an error under this project's warning filter).
+    return shapely.transform(geom, _reproject)
 
 
 def geojson_feature_geometry(feature: dict):
