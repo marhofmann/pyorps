@@ -17,6 +17,10 @@ from shapely.geometry import Polygon
 CASE = Path(__file__).resolve().parents[2] / "case_studies" / "runkel_free_siting"
 MANIFEST = CASE / "data" / "data_manifest.yaml"
 
+if not (CASE / "scripts" / "verify_forbidden_closure.py").exists():
+    # the wheel-test job runs the tests without the repository around them
+    pytest.skip("case-study files not present", allow_module_level=True)
+
 
 def _load(name):
     spec = importlib.util.spec_from_file_location(name, CASE / "scripts" / f"{name}.py")

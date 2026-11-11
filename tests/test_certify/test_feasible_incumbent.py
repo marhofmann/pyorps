@@ -4,6 +4,7 @@ import math
 
 import numpy as np
 import pytest
+from test_collector.test_voltage_rv import _field, _vmodel
 
 from pyorps.certify.feasible_incumbent import leg_length_interval_km, length_grid_km, make_feasible
 from pyorps.collector.voltage_plant import (
@@ -14,7 +15,6 @@ from pyorps.collector.voltage_plant import (
     UWTransformer,
     check_plant_tree,
 )
-from tests.test_collector.test_voltage_rv import _field, _vmodel
 
 
 def _plant_for(L_km: float) -> PlantModel:

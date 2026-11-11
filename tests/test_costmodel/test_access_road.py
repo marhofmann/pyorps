@@ -30,6 +30,8 @@ RECIPE = {
 
 @pytest.fixture(scope="module")
 def cat():
+    if not (CONFIG / "access_constraints_2026.yaml").exists():
+        pytest.skip("case-study files not present")
     return CostCatalogue.load(CONFIG / "cost_catalogue_2026.yaml")
 
 

@@ -15,6 +15,9 @@ from pyorps.siting.data_manifest import (
 
 CASE = Path(__file__).resolve().parents[2] / "case_studies" / "runkel_free_siting"
 REAL = CASE / "data" / "data_manifest.yaml"
+# the wheel-test job runs the tests without the repository around them
+needs_case = pytest.mark.skipif(not (REAL.exists() and (CASE / "scripts" / "download_log.py").exists()),
+                                reason="case-study files not present")
 
 
 def _write_raster(path, arr, origin=(1000.0, 5000.0), res=10.0, crs="EPSG:25832"):
@@ -75,6 +78,7 @@ layers:
     return DataManifest.load(f), arr, tmp_path
 
 
+@needs_case
 def test_the_shipped_manifest_is_valid_and_its_present_layers_verify():
     m = DataManifest.load(REAL)
     assert {e.kind for e in m.layers.values()} <= set(KINDS)
@@ -241,6 +245,7 @@ def test_registering_a_file_again_clears_the_old_exact_time(manifest):
     assert e.captured_at is None and e.captured == "2026-10-06"
 
 
+@needs_case
 def test_the_download_log_appends_and_never_rewrites(tmp_path, monkeypatch):
     import importlib.util
 
@@ -263,6 +268,7 @@ def test_the_download_log_appends_and_never_rewrites(tmp_path, monkeypatch):
     assert len((tmp_path / "log.jsonl").read_text(encoding="utf-8").splitlines()) == 2
 
 
+@needs_case
 def test_the_shipped_log_covers_every_present_layer_with_a_matching_hash():
     import importlib.util
 

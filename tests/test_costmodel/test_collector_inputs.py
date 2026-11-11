@@ -33,11 +33,15 @@ needs_table = pytest.mark.skipif(not TABLE.exists(),
 
 @pytest.fixture(scope="module")
 def inputs():
+    if not INPUTS.exists():
+        pytest.skip("case-study files not present")
     return CollectorInputs.load(INPUTS)
 
 
 @pytest.fixture(scope="module")
 def catalogue():
+    if not CATALOGUE.exists():
+        pytest.skip("case-study files not present")
     return CostCatalogue.load(CATALOGUE)
 
 

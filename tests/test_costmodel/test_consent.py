@@ -16,6 +16,8 @@ MANIFEST = CASE / "data" / "data_manifest.yaml"
 
 @pytest.fixture(scope="module")
 def table():
+    if not CONSENT.exists():
+        pytest.skip("case-study files not present")
     return ConsentTable.load(CONSENT, CostCatalogue.load(CATALOGUE))
 
 
@@ -36,6 +38,7 @@ def test_the_table_loads_with_the_catalogue_hdd_price_and_names_its_stand_ins(ta
     assert len(table.sha256) == 64
 
 
+@pytest.mark.skipif(not CONSENT.exists(), reason="case-study files not present")
 def test_only_priced_classes_and_valid_numbers_are_accepted(tmp_path):
     import yaml
 

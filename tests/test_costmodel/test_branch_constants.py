@@ -12,6 +12,8 @@ CASE = Path(__file__).resolve().parents[2] / "case_studies" / "runkel_free_sitin
 
 @pytest.fixture(scope="module")
 def cat():
+    if not (CASE / "branch_constants_2026.yaml").exists():
+        pytest.skip("case-study files not present")
     return CostCatalogue.load(CASE / "cost_catalogue_2026.yaml")
 
 
