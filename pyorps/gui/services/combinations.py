@@ -25,6 +25,8 @@ region (so a forbidden base class stays forbidden).
 """
 from __future__ import annotations
 
+from dataclasses import replace
+
 import geopandas as gpd
 from shapely.ops import unary_union
 
@@ -61,6 +63,26 @@ def _apply_modifier(cost: int, spec) -> tuple[int, bool]:
     return min(int(round(spec.factor)), FORBIDDEN), True     # override
 
 
+def _expand_zones(modifiers):
+    """Mirror the library's zone rule: a modifier with a ``zone_field`` and a
+    ``forbidden_zone`` is two acts in this order - its other features take the
+    factor, the features of the zone are overridden with ``forbidden_value``."""
+    for spec in modifiers:
+        gdf = getattr(spec, "gdf", None)
+        zone_field = getattr(spec, "zone_field", None)
+        zone = getattr(spec, "forbidden_zone", None)
+        if gdf is None or not zone_field or not zone or zone_field not in gdf.columns:
+            yield spec
+            continue
+        in_zone = gdf[zone_field] == zone
+        yield replace(spec, gdf=gdf[~in_zone], zone_field=None,
+                      forbidden_zone=None)
+        yield replace(spec, gdf=gdf[in_zone], mode="override",
+                      factor=float(spec.forbidden_value), zone_field=None,
+                      forbidden_zone=None,
+                      condition=f"{zone_field} = {zone}")
+
+
 # --------------------------------------------------------------- table builder
 def ensure_combination_gdf(layer):
     """Materialize a raster layer's combination table on FIRST use (lazy).
@@ -71,7 +93,10 @@ def ensure_combination_gdf(layer):
     sooner; the table is built the first time the 📋 table, the legend or a
     map-click needs it and cached in ``meta["combination_gdf"]`` as before.
     Returns the table or None (never raises — a broken build degrades to
-    "no combination table", same as pre-lazy behaviour).
+    "no combination table" for THIS call). A failed build keeps its inputs, is
+    written to the log (``logbook``) and leaves ``meta["combination_error"]``
+    for the caller; the next call tries again (the cause may be transient, such
+    as low memory), and a later success clears the error.
     """
     meta = layer.meta or {}
     combo = meta.get("combination_gdf")
@@ -88,14 +113,38 @@ def ensure_combination_gdf(layer):
             modifiers=inputs.get("modifiers"),
             base_crs=inputs.get("base_crs"),
             bounding_polygon=inputs.get("bounding_polygon"))
-    except Exception:      # degrade to "no table" — never crash a viewer  # pylint: disable=broad-exception-caught
-        meta.pop("combination_inputs", None)
+    except Exception as exc:      # never crash a viewer  # pylint: disable=broad-exception-caught
+        _record_build_failure(layer, meta, exc)
         return None
+    meta.pop("combination_error", None)
     meta.pop("combination_inputs", None)
     if combo is not None and not combo.empty:
         meta["combination_gdf"] = combo
         return combo
     return None
+
+
+def _record_build_failure(layer, meta: dict, exc: BaseException) -> None:
+    """Keep the inputs (a retry is allowed) and make the failure visible."""
+    import traceback
+
+    from . import logbook
+
+    meta["combination_error"] = f"{type(exc).__name__}: {exc}"
+    try:
+        logbook.log_notice({
+            "severity": "warning",
+            "title": f"Combination table for '{getattr(layer, 'name', '?')}' "
+                     "could not be built",
+            "meaning": "The cost-combination legend / table / map-click lookup "
+                       "is unavailable for this raster until a build succeeds.",
+            "impact": "Nothing else is affected; the next request retries the "
+                      "build.",
+            "details": "".join(traceback.format_exception(
+                type(exc), exc, exc.__traceback__)),
+        })
+    except Exception:  # pragma: no cover  # nosec B110  # pylint: disable=broad-exception-caught
+        pass                       # the log is best effort; never mask the miss
 
 
 def build_combination_table(base_gdf, feature_keys, assumptions, *,
@@ -132,7 +181,7 @@ def build_combination_table(base_gdf, feature_keys, assumptions, *,
             "cost": _combo_cost(assumptions, feature_keys, values),
             "modifiers": "", "geometry": geom})
 
-    for spec in modifiers or []:
+    for spec in _expand_zones(modifiers or []):
         if getattr(spec, "is_empty", False) or spec.gdf is None:
             continue
         mod = spec.gdf

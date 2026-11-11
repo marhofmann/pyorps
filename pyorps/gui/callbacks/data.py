@@ -16,8 +16,10 @@ from dash import ALL, Input, Output, State, ctx, html, no_update
 from dash.exceptions import PreventUpdate
 
 from .. import ids
-from ..services import data_io, geo, validate
-from ..services.errors import Notice, guard, success
+from ..layout import OVERLAY_STATUS
+from ..services import cost_model, data_io, geo, validate
+from ..services.errors import Notice, cap_notices, guard, success
+from .routes import numeric_field_problem
 
 _STUDY_AREA_LAYER_ID = "study-area"
 
@@ -100,6 +102,63 @@ def _add_vector_layer(state, gdf, name: str, source: dict | None = None):
     return layer, False
 
 
+def _add_vector_layer_guarded(state, gdf, name: str, source: dict | None,
+                              notices: list):
+    """``_add_vector_layer`` behind ``guard`` -> ``(layer, refreshed, notices)``;
+    ``layer`` is None when it failed (the failure is in ``notices``)."""
+    result, notices = guard(_add_vector_layer, state, gdf, name,
+                            source=source, notices=notices)
+    if result is None:
+        return None, False, notices
+    layer, refreshed = result
+    return layer, refreshed, notices
+
+
+def _manual_polygon_wkts(state) -> set[str]:
+    """WGS84 WKTs of the shapes that belong to the manual cost layer (kept
+    polygons plus the ones removed from its list whose drawn shape lingers),
+    minus any shape that was also used as a study area."""
+    from ..services import manual_cost
+
+    layer = state.get(manual_cost.MANUAL_LAYER_ID)
+    wkts = set((layer.meta or {}).get("wgs84_wkts") or []) \
+        if layer is not None else set()
+    wkts |= set(getattr(state, "manual_excluded_geoms", None) or ())
+    return wkts - set(getattr(state, "study_area_geoms", None) or ())
+
+
+def _area_features(state, features: list) -> list:
+    """The drawn features that can be a study area: everything except the
+    cost polygons (the draw control is shared by both)."""
+    manual = _manual_polygon_wkts(state)
+    if not manual:
+        return list(features)
+    kept = []
+    for feature in features:
+        try:
+            wkt = geo.geojson_feature_geometry(feature).wkt
+        except Exception:  # pylint: disable=broad-exception-caught  # not a shape: keep it, as before
+            wkt = None
+        if wkt not in manual:
+            kept.append(feature)
+    return kept
+
+
+def _whole_layer_notice(what: str, *, why: str, fix: str) -> dict:
+    """The warning for a WFS load that would download every feature.
+
+    ``why`` says what is missing, ``fix`` how to go on. There is no second
+    click: loading the whole layer is the explicit checkbox next to the button.
+    """
+    return Notice(
+        severity="warning", title="This would download the whole layer",
+        meaning=f"{what} {why}, so the server would send EVERY feature of "
+                "the layer - a state-wide layer can be millions of features "
+                "and gigabytes of memory.",
+        impact="Nothing was loaded.", fix=fix,
+        focus_id=ids.TAB_DATA, focus_control=ids.WFS_WHOLE_LAYER).to_dict()
+
+
 def _load_from_source(state, source: dict, notices: list):
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """(Re)load a dataset from its recorded source dict."""
@@ -115,7 +174,8 @@ def _load_from_source(state, source: dict, notices: list):
             osm_svc.load_osm_features, (south, west, north, east),
             source["filters"], notices=notices)
         if gdf is not None:
-            gdf = gdf.to_crs(state.project_crs)
+            gdf, notices = guard(gdf.to_crs, state.project_crs,
+                                 notices=notices)
         return gdf, notices
     if source.get("kind") == "merge":
         members = [state.get(lid) for lid in source.get("ids", [])]
@@ -164,25 +224,53 @@ def register(app, state) -> None:
             # live-sync THE editable custom-cost-polygon layer (task 33)
             from ..services import manual_cost
 
-            _layer, rows = manual_cost.sync_manual_layer(
-                state, features, project_crs=state.project_crs,
-                default_cost=float(m_cost if m_cost is not None else 65535),
-                mode=m_mode or "override",
-                name=(m_name or "Manual costs").strip() or "Manual costs",
-                prev_rows=m_rows)
+            prev_rows, problem = cost_model.clean_manual_rows(m_rows)
+            problem = problem or numeric_field_problem(
+                m_cost, "Default cost", control=ids.MANUAL_COST,
+                tab=ids.TAB_COST, minimum=0,
+                impact="The cost polygons were not changed.")
+            if problem is not None:
+                notices.append(problem)
+                return (no_update, no_update, no_update, no_update,
+                        cap_notices(notices))
+
+            def _sync():
+                return manual_cost.sync_manual_layer(
+                    state, features, project_crs=state.project_crs,
+                    default_cost=float(m_cost if m_cost is not None
+                                       else 65535),
+                    mode=m_mode or "override",
+                    name=(m_name or "Manual costs").strip() or "Manual costs",
+                    prev_rows=prev_rows)
+
+            result, notices = guard(_sync, notices=notices)
+            if result is None:
+                return (no_update, no_update, no_update, no_update,
+                        cap_notices(notices))
+            _layer, rows = result
             status = (f"{len(rows)} cost polygon(s) — edit name/cost below, "
                       "move vertices / delete with the map tools."
                       if rows else "Draw cost polygons on the map.")
-            return state.layers_view(), no_update, rows, status, no_update
-        # study area (default target)
-        if not features:
-            if state.study_area is not None:          # deleted -> clear area
-                state.study_area = None
-                state.remove_layer(_STUDY_AREA_LAYER_ID)
-                return (state.layers_view(), _study_area_info(state),
-                        no_update, no_update, notices)
-            raise PreventUpdate
-        feature = features[-1]
+            return (state.layers_view(), no_update, rows, status,
+                    cap_notices(notices))
+        # study area (default target): the draw control is shared with the
+        # cost polygons, so only the shapes that are NOT cost polygons count
+        area_features = _area_features(state, features)
+        if not area_features:
+            if state.study_area is None:
+                raise PreventUpdate
+            if getattr(state, "_study_area_not_drawn", False):
+                # the area came from an opened project, it is not a shape in
+                # the draw control: the "control is empty" echo of the
+                # clear-on-open must not delete it
+                state._study_area_not_drawn = False
+                raise PreventUpdate
+            state.study_area = None                   # deleted -> clear area
+            state.remove_layer(_STUDY_AREA_LAYER_ID)
+            return (state.layers_view(), _study_area_info(state),
+                    no_update, no_update, cap_notices(notices))
+        feature = area_features[-1]
+        state._study_area_not_drawn = False
         state.study_area = feature
         # remember this shape so the shared draw tool never turns it into a
         # cost polygon (task 62)
@@ -200,7 +288,7 @@ def register(app, state) -> None:
             "Study area set",
             meaning="New data loads and rasterization are clipped to it."))
         return (state.layers_view(), _study_area_info(state), no_update,
-                no_update, notices)
+                no_update, cap_notices(notices))
 
     # draw target follows the active tab: shapes drawn while the Cost tab is
     # open become cost polygons, anywhere else they set the study area (the
@@ -230,6 +318,7 @@ def register(app, state) -> None:
         State(ids.MERGE_SELECT, "value"),
         State(ids.MERGE_NAME, "value"),
         State(ids.NOTICES, "data"),
+        running=[(Output(ids.MERGE_BTN, "disabled"), True, False)],
         prevent_initial_call=True)
     def merge_layers(n_clicks, layer_ids, name, notices):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
@@ -257,8 +346,10 @@ def register(app, state) -> None:
             f"Merged: {' + '.join(ly.name for ly in members)}"[:80]
         source = {"kind": "merge",
                   "ids": [ly.id for ly in members], "clip": False}
-        layer, refreshed = _add_vector_layer(state, gdf, display,
-                                             source=source)
+        layer, refreshed, notices = _add_vector_layer_guarded(
+            state, gdf, display, source, notices)
+        if layer is None:
+            return no_update, no_update, notices
         notices.append(success(
             f"{'Re-merged' if refreshed else 'Merged'} {len(members)} "
             f"layer(s) → '{layer.name}'",
@@ -338,6 +429,7 @@ def register(app, state) -> None:
         if not n_clicks:
             raise PreventUpdate
         state.study_area = None
+        state._study_area_not_drawn = False
         state.remove_layer(_STUDY_AREA_LAYER_ID)
         toolbar = {"mode": "remove", "action": "clear all",
                    "n_clicks": n_clicks}
@@ -346,6 +438,8 @@ def register(app, state) -> None:
     # ---------------------------------------------------------- project CRS
     @app.callback(
         Output(ids.NOTICES, "data", allow_duplicate=True),
+        Output(ids.PROJECT_CRS, "value", allow_duplicate=True),
+        Output(ids.DIRTY_STORE, "data", allow_duplicate=True),
         Input(ids.PROJECT_CRS, "value"),
         State(ids.NOTICES, "data"),
         prevent_initial_call=True)
@@ -353,12 +447,34 @@ def register(app, state) -> None:
         notices = list(notices or [])
         if not crs:
             raise PreventUpdate
+        if str(crs) == str(state.project_crs):
+            raise PreventUpdate                   # echo of open / new / revert
         problem = validate.validate_project_crs(crs)
         if problem is not None:
             notices.append(problem.to_dict())
-            return notices
+            return cap_notices(notices), no_update, no_update
+        loaded = state.layers_of_kind("vector", "raster", "route")
+        if loaded:
+            # layers and rasters keep the CRS they were built in: switching the
+            # label would silently mix two CRSs in one project
+            old = str(state.project_crs)
+            notices.append(Notice(
+                severity="warning", title="Project CRS not changed",
+                meaning=f"{len(loaded)} layer(s) are already in {old}; "
+                        "changing the label would not reproject them, and "
+                        f"new data would arrive in {crs}.",
+                impact=f"The project stays in {old}.",
+                fix="Start a new project (New project) and set the CRS "
+                    "first, or keep the current CRS.",
+                focus_id=ids.TAB_DATA,
+                focus_control=ids.PROJECT_CRS).to_dict())
+            return cap_notices(notices), old, no_update
         state.project_crs = crs
-        return notices
+        state.dirty = True
+        notices.append(success(
+            "Project CRS set",
+            meaning=f"New data is loaded and rasterized in {crs}."))
+        return cap_notices(notices), no_update, True
 
     # ----------------------------------------------------------- local load
     # LOCAL_LOAD_STATUS sits inside a dcc.Loading, so its pending update
@@ -373,6 +489,7 @@ def register(app, state) -> None:
         State(ids.LOCAL_LAYER, "value"),
         State(ids.CLIP_TO_AREA, "value"),
         State(ids.NOTICES, "data"),
+        running=[(Output(ids.LOCAL_LOAD_BTN, "disabled"), True, False)],
         prevent_initial_call=True)
     def load_local(n_clicks, path, sub_layer, clip, notices):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
@@ -398,8 +515,10 @@ def register(app, state) -> None:
         if gdf is None:
             return no_update, no_update, notices, ""
         name = os.path.basename(str(path))
-        layer, refreshed = _add_vector_layer(state, gdf, name,
-                                             source=source)
+        layer, refreshed, notices = _add_vector_layer_guarded(
+            state, gdf, name, source, notices)
+        if layer is None:
+            return no_update, no_update, notices, ""
         notices.append(success(
             f"{'Refreshed' if refreshed else 'Loaded'} {layer.name}",
             meaning=f"{len(gdf)} features."))
@@ -451,6 +570,7 @@ def register(app, state) -> None:
         Input(ids.WFS_CAPS_BTN, "n_clicks"),
         State(ids.WFS_URL, "value"),
         State(ids.NOTICES, "data"),
+        running=[(Output(ids.WFS_CAPS_BTN, "disabled"), True, False)],
         prevent_initial_call=True)
     def list_feature_types(n_clicks, url, notices):
         from ..services import catalog
@@ -487,9 +607,9 @@ def register(app, state) -> None:
             raise PreventUpdate
         return value
 
-    def _add_wms_overlay(preset, notices):
-        from ..services import catalog
+    def _add_wms_overlay(preset):
         from ..presets import find_service
+        from ..services import catalog
 
         _service, url, layer = preset.split("|", 2)
         svc = find_service(url, layer)
@@ -506,18 +626,17 @@ def register(app, state) -> None:
                         meta={"wms": wms,
                               "attribution": svc.get("attribution", "")
                               if svc else ""})
-        notices.append(success(
+        return success(
             f"Overlay '{name}' added{clipped}",
             meaning="A live WMS tile overlay; set its opacity in the Raster "
-                    "tab, or remove it in the Layers tab."))
-        return notices
+                    "tab, or remove it in the Layers tab.")
 
     def _load_dem_for_area(preset, notices):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Download the DGM DEM for the study area. Returns (view, notices)."""
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-        from ..services import catalog
         from ..presets import DEFAULT_DEM, find_service
+        from ..services import catalog
 
         if state.study_area is None:
             notices.append(Notice(
@@ -542,7 +661,8 @@ def register(app, state) -> None:
         # the WCS SUBSET is in the coverage's native CRS (DGM200 = EPSG:25832);
         # expand outward (metres) so every DEM cell intersecting the study area
         # is returned (the SUBSET otherwise drops centre-outside edge cells)
-        bounds = data_io.study_area_bounds(state.study_area, dem_crs)
+        bounds, notices = guard(data_io.study_area_bounds, state.study_area,
+                                dem_crs, notices=notices)
         if bounds is None:
             return no_update, notices
         # the 1 m state models can get huge fast — pre-check the request size
@@ -592,19 +712,36 @@ def register(app, state) -> None:
             return no_update, notices
         return {"fit_bounds": layer.tile.bounds, "seq": 1}, notices
 
+    def _overlay_status(layers_before, notices_before, notices):
+        """One plain-language line for the overlay / DEM status element."""
+        if len(state.layers) > layers_before:
+            return f"Added {list(state.layers.values())[-1].name} to the map"
+        new = notices[notices_before:]
+        bad = [n for n in new if n.get("severity") in ("error", "warning")]
+        pick = (bad or new or [None])[0]
+        if pick is None:
+            return "Nothing was added to the map"
+        text = pick.get("title", "")
+        if pick.get("severity") == "error" and pick.get("meaning"):
+            text = f"{text}: {pick['meaning']}"
+        return f"Nothing was added: {text}"
+
     # ---------- overlays & DEM: WMS -> live overlay, WCS -> DEM for area (43)
     @app.callback(
         Output(ids.LAYERS_VIEW, "data", allow_duplicate=True),
         Output(ids.MAP_VIEW, "data", allow_duplicate=True),
         Output(ids.NOTICES, "data", allow_duplicate=True),
+        Output(OVERLAY_STATUS, "children"),
         Input(ids.OVERLAY_LOAD_BTN, "n_clicks"),
         State(ids.OVERLAY_PRESET, "value"),
         State(ids.NOTICES, "data"),
+        running=[(Output(ids.OVERLAY_LOAD_BTN, "disabled"), True, False)],
         prevent_initial_call=True)
     def load_overlay(n_clicks, preset, notices):
         notices = list(notices or [])
         if not n_clicks:
             raise PreventUpdate
+        n_layers, n_notices = len(state.layers), len(notices)
         if not preset:
             notices.append(Notice(
                 severity="warning", title="Pick a service",
@@ -612,31 +749,40 @@ def register(app, state) -> None:
                 impact="Nothing was added.",
                 fix="Select a service, then 'Add to map'.",
                 focus_id=ids.TAB_DATA).to_dict())
-            return no_update, no_update, notices
+            return (no_update, no_update, notices,
+                    _overlay_status(n_layers, n_notices, notices))
         service = preset.split("|", 1)[0]
         if service == "wms":
-            notices = _add_wms_overlay(preset, notices)
-            return state.layers_view(), no_update, notices
+            added, notices = guard(_add_wms_overlay, preset, notices=notices)
+            if added is None:
+                return (no_update, no_update, notices,
+                        _overlay_status(n_layers, n_notices, notices))
+            notices.append(added)
+            return (state.layers_view(), no_update, notices,
+                    _overlay_status(n_layers, n_notices, notices))
         view, notices = _load_dem_for_area(preset, notices)   # wcs/DEM
         return (state.layers_view() if view is not no_update else no_update,
-                view, notices)
+                view, notices, _overlay_status(n_layers, n_notices, notices))
 
     # explicit "Load DEM for area" button (uses the default DGM if none picked)
     @app.callback(
         Output(ids.LAYERS_VIEW, "data", allow_duplicate=True),
         Output(ids.MAP_VIEW, "data", allow_duplicate=True),
         Output(ids.NOTICES, "data", allow_duplicate=True),
+        Output(OVERLAY_STATUS, "children"),
         Input(ids.DEM_LOAD_BTN, "n_clicks"),
         State(ids.OVERLAY_PRESET, "value"),
         State(ids.NOTICES, "data"),
+        running=[(Output(ids.DEM_LOAD_BTN, "disabled"), True, False)],
         prevent_initial_call=True)
     def load_dem(n_clicks, preset, notices):
         notices = list(notices or [])
         if not n_clicks:
             raise PreventUpdate
+        n_layers, n_notices = len(state.layers), len(notices)
         view, notices = _load_dem_for_area(preset, notices)
         return (state.layers_view() if view is not no_update else no_update,
-                view, notices)
+                view, notices, _overlay_status(n_layers, n_notices, notices))
 
     # ---------------------------- OpenStreetMap features (Overpass, edit base)
     @app.callback(
@@ -649,6 +795,7 @@ def register(app, state) -> None:
         State(ids.OSM_TAGS, "value"),
         State(ids.NOTICES, "data"),
         State(ids.OSM_SELECTIONS, "data"),
+        running=[(Output(ids.OSM_LOAD_BTN, "disabled"), True, False)],
         prevent_initial_call=True)
     def load_osm(n_clicks, preset, tags, notices, selections=None):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
@@ -674,7 +821,10 @@ def register(app, state) -> None:
                     "combination'.",
                 focus_id=ids.TAB_DATA).to_dict())
             return no_update, no_update, no_update, notices
-        bounds = data_io.study_area_bounds(state.study_area, "EPSG:4326")
+        bounds, notices = guard(data_io.study_area_bounds, state.study_area,
+                                "EPSG:4326", notices=notices)
+        if bounds is None and state.study_area is not None:
+            return no_update, no_update, no_update, notices   # guard said why
         if bounds is None:
             notices.append(Notice(
                 severity="warning", title="Draw a study area first",
@@ -692,16 +842,22 @@ def register(app, state) -> None:
         if result is None:
             return no_update, no_update, no_update, notices
         # OSM is WGS84; reproject into the routing CRS so it rasterizes in metres
-        gdf = result.to_crs(state.project_crs)
+        gdf, notices = guard(result.to_crs, state.project_crs,
+                             notices=notices)
+        if gdf is None:
+            return no_update, no_update, no_update, notices
         source = {"kind": "osm", "filters": filters, "bbox": list(bounds),
                   "clip": False}
-        layer, refreshed = _add_vector_layer(state, gdf, f"OSM: {label}",  # pylint: disable=unused-variable
-                                             source=source)
+        layer, _refreshed, notices = _add_vector_layer_guarded(
+            state, gdf, f"OSM: {label}", source, notices)
+        if layer is None:
+            return no_update, no_update, no_update, notices
         notices.append(success(
             f"Loaded {len(gdf)} OSM feature(s) — {label}",
             meaning="An editable vector layer; pick it as a Cost-model dataset, "
                     "edit it in the 📋 table, or route/select on it."))
-        bounds_ll = geo.wgs84_bounds(layer.geojson)
+        bounds_ll, notices = guard(geo.wgs84_bounds, layer.geojson,
+                                   notices=notices)
         view = ({"fit_bounds": bounds_ll, "seq": n_clicks} if bounds_ll
                 else no_update)
         return state.layers_view(), _dataset_list(state), view, notices
@@ -718,8 +874,10 @@ def register(app, state) -> None:
         State(ids.WFS_LAYER, "value"),
         State(ids.CLIP_TO_AREA, "value"),
         State(ids.NOTICES, "data"),
+        State(ids.WFS_WHOLE_LAYER, "value"),
+        running=[(Output(ids.WFS_LOAD_BTN, "disabled"), True, False)],
         prevent_initial_call=True)
-    def load_wfs(n_clicks, url, layer, clip, notices):
+    def load_wfs(n_clicks, url, layer, clip, notices, whole_layer=False):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         notices = list(notices or [])
         if not n_clicks:
@@ -736,22 +894,37 @@ def register(app, state) -> None:
                 fix="Enter the layer name or pick a preset.",
                 focus_id=ids.TAB_DATA).to_dict())
             return no_update, no_update, notices, ""
-        if state.study_area is None and clip:
+        whole = bool(whole_layer)
+        if not whole and state.study_area is None and clip:
             notices.append(Notice(
                 severity="warning", title="Draw a study area first",
                 meaning="WFS layers can be huge; loads are clipped to the "
                         "drawn study area.",
                 impact="Nothing was loaded.",
-                fix="Draw a rectangle/polygon on the map, then retry.",
-                focus_id=ids.TAB_DATA).to_dict())
+                fix="Draw a rectangle/polygon on the map, then retry (or "
+                    "tick 'Load the whole layer (no study area)' to "
+                    "download everything).",
+                focus_id=ids.TAB_DATA,
+                focus_control=ids.WFS_WHOLE_LAYER).to_dict())
+            return no_update, no_update, notices, ""
+        if not whole and not clip:
+            notices.append(_whole_layer_notice(
+                f"WFS layer '{layer}'",
+                why="is set to load without clipping ('Clip to study area' "
+                    "is off)",
+                fix="Tick 'Clip to study area' and draw a study area, or "
+                    "tick 'Load the whole layer (no study area)' if you "
+                    "really want everything."))
             return no_update, no_update, notices, ""
         source = {"kind": "wfs", "url": str(url), "layer": str(layer),
-                  "clip": bool(clip)}
+                  "clip": bool(clip) and not whole, "whole_layer": whole}
         gdf, notices = _load_from_source(state, source, notices)
         if gdf is None:
             return no_update, no_update, notices, ""
-        added, refreshed = _add_vector_layer(state, gdf, layer,
-                                             source=source)
+        added, refreshed, notices = _add_vector_layer_guarded(
+            state, gdf, layer, source, notices)
+        if added is None:
+            return no_update, no_update, notices, ""
         notices.append(success(
             f"{'Refreshed' if refreshed else 'Loaded'} WFS layer "
             f"{added.name}",
@@ -776,10 +949,23 @@ def register(app, state) -> None:
         if layer is None or not layer.meta.get("source"):
             raise PreventUpdate
         source = layer.meta["source"]
+        # a layer that was loaded whole stays whole (the user chose it with
+        # the checkbox); one loaded for a study area needs that area again
+        if source.get("kind") == "wfs" and source.get("clip", True) \
+                and not source.get("whole_layer") and state.study_area is None:
+            notices.append(_whole_layer_notice(
+                f"WFS layer '{layer.name}'",
+                why="was loaded for a study area, and none is drawn now",
+                fix="Draw a study area and refresh again, or reload the "
+                    "layer with 'Load the whole layer (no study area)'."))
+            return no_update, no_update, notices
         gdf, notices = _load_from_source(state, source, notices)
         if gdf is None:
             return no_update, no_update, notices
-        _add_vector_layer(state, gdf, layer.name, source=source)
+        _added, _refreshed, notices = _add_vector_layer_guarded(
+            state, gdf, layer.name, source, notices)
+        if _added is None:
+            return no_update, no_update, notices
         notices.append(success(f"Refreshed {layer.name}",
                                meaning=f"{len(gdf)} features."))
         return state.layers_view(), _dataset_list(state), notices

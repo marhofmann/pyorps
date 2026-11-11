@@ -2,11 +2,10 @@
 import json
 
 import pytest
+from conftest import invoke
 
 from pyorps.gui import ids
 from pyorps.gui.callbacks.layers import render_layer, render_layer_host
-
-from conftest import invoke
 
 FC = {"type": "FeatureCollection", "features": [
     {"type": "Feature", "geometry": {"type": "Point", "coordinates": [9, 50]},
@@ -69,8 +68,8 @@ def test_cell_edit_visibility_and_name(app, state, three_layers):
     a, b, c = three_layers
     event = [{"colId": "visible",
               "data": {"id": b.id, "name": "Data", "visible": False}}]
-    resp = invoke(app, ("layers-view.data", ids.LAYERS_GRID, "cellValueChanged"), event,
-                  triggered=[f"{ids.LAYERS_GRID}.cellValueChanged"])
+    invoke(app, ("layers-view.data", ids.LAYERS_GRID, "cellValueChanged"), event,
+           triggered=[f"{ids.LAYERS_GRID}.cellValueChanged"])
     assert state.get(b.id).visible is False
     event = [{"colId": "name",
               "data": {"id": b.id, "name": "Renamed", "visible": False}}]
@@ -97,9 +96,9 @@ def test_move_layer_up_down(app, state, three_layers):
 
 def test_remove_layer_callback(app, state, three_layers):
     a, b, c = three_layers
-    resp = invoke(app, ("layers-view.data", ids.LAYER_REMOVE_BTN),
+    resp = invoke(app, ("layers-view.data", ids.GO_REMOVE_LAYERS),
                   1, [{"id": c.id}],
-                  triggered=[f"{ids.LAYER_REMOVE_BTN}.n_clicks"])
+                  triggered=[f"{ids.GO_REMOVE_LAYERS}.data"])
     assert state.get(c.id) is None
     assert [v["id"] for v in resp[ids.LAYERS_VIEW]["data"]] == [a.id, b.id]
 

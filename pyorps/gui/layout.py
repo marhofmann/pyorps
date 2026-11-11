@@ -12,13 +12,20 @@ component ids come from :mod:`pyorps.gui.ids`.
 """
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable
+from typing import Any
+
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
 from dash import dcc, html
 
 from . import ids
+from .services import rasterize, routing
 from .services.tiles import COLORMAPS
+
+_LOG = logging.getLogger(__name__)
 
 # Freely usable XYZ basemaps (attribution required), ordered by provider
 # (``group``) so related maps sit together in the map-corner switcher. URL
@@ -143,6 +150,12 @@ GRID_STYLE = {"height": "260px", "width": "100%"}
 SMALL_GRID_STYLE = {"height": "170px", "width": "100%"}
 TALL_GRID_STYLE = {"height": "62vh", "width": "100%"}   # Layers list — see all
 
+#: a status spinner appears only after this long, so quick calls do not flicker
+_SPINNER_DELAY_MS = 300
+
+#: status line under the overlay / DEM buttons (no constant in ids.py yet)
+OVERLAY_STATUS = "overlay-status"
+
 _DEFAULT_UI_STATE = {"active_tab": ids.TAB_DATA, "click_mode": "off",
                      "active_route_id": None}
 _DEFAULT_ROUTE_DRAFT = {"sources": [], "targets": [], "waypoints": []}
@@ -155,11 +168,15 @@ def _stores() -> list:
         dcc.Store(id=ids.LAYERS_VIEW, data=[]),
         dcc.Store(id=ids.MAP_VIEW, data={}),
         dcc.Store(id=ids.NOTICES, data=[]),
+        dcc.Store(id=ids.RASTERIZE_BUSY, data=False),
+        dcc.Store(id=ids.RUN_ROUTING_BUSY, data=False),
+        dcc.Store(id=ids.RUN_PLAIN_BUSY, data=False),
+        dcc.Store(id=ids.RUN_OHL_BUSY, data=False),
+        dcc.Store(id=ids.ROUTING_SETTINGS, data={}),
+        dcc.Store(id=ids.RASTER_COMBINE_BUSY, data=False),
         dcc.Store(id=ids.ROUTE_DRAFT, data=dict(_DEFAULT_ROUTE_DRAFT)),
         dcc.Store(id=ids.EDIT_REQUEST, data={}),
         dcc.Store(id=ids.COST_GRID_STATE, data={}),
-        dcc.Store(id=ids.RECOMPUTE_FLASH, data=0),
-        dcc.Store(id=ids.DRAG_EVENT, data={}),
         dcc.Store(id=ids.FOCUS_FLASH, data={}),
         dcc.Store(id=ids.SELECTED_FEATURE, data={}),
         dcc.Store(id=ids.DRAW_TARGET, data="area"),
@@ -167,6 +184,11 @@ def _stores() -> list:
         dcc.Store(id=ids.DIRTY_STORE, data=False),
         dcc.Store(id=ids.OSM_SELECTIONS, data=[]),
         dcc.Store(id=ids.PPB_CONDS, data=[]),
+        dcc.Store(id=ids.RASTER_SETTINGS, data={}),
+        # the action waiting for the answer of the confirm modal, and one
+        # counter per destructive action that fires it (callbacks/confirm.py)
+        dcc.Store(id=ids.CONFIRM_PENDING, data=None),
+        *[dcc.Store(id=go, data=None) for go in ids.GO_STORES],
         # polls the background routing job while one is running
         dcc.Interval(id=ids.ROUTING_POLL, interval=600, disabled=True),
     ]
@@ -202,11 +224,46 @@ def _collapsible_card(title: str, children: list, *,
         open=open)
 
 
-def _browse(target_id: str) -> dbc.Button:
-    """The 📁 button opening the native file/folder picker for an input."""
-    return dbc.Button("📁", id=f"browse-{target_id}", size="sm",
-                      color="secondary", outline=True,
-                      title="Browse…")
+def _lbl(text: str, target: str, *, className: str = "small") -> dbc.Label:
+    """A visible label bound to its control: ``<label for=target>``.
+
+    Clicking it focuses the field and a screen reader reads it with the field.
+    """
+    return dbc.Label(text, html_for=target, className=className)
+
+
+def _addon(text: str, target: str) -> dbc.InputGroupText:
+    """The caption of an input-group field (unit in brackets), bound to it."""
+    return dbc.InputGroupText(
+        html.Label(text, htmlFor=target, className="mb-0"), className="small")
+
+
+def _group(text: str, key: str, control, *, className: str = "small") -> html.Div:
+    """A control that has no ``for=`` target - a slider (its handle is not a
+    labelable element), a radio list or a checklist - under its visible caption.
+    The wrapper is a ``role="group"`` named by that caption."""
+    label_id = f"{key}-label"
+    return html.Div(
+        [html.Div(text, id=label_id, className=className), control],
+        role="group", **{"aria-labelledby": label_id})
+
+
+def _help(children, text: str, **kwargs) -> html.Div:
+    """``children`` with a hover/focus help text: dbc inputs take no ``title``,
+    so the text sits on a wrapper div (same pattern as the routing settings)."""
+    return html.Div(children, title=text, **kwargs)
+
+
+def _browse(target_id: str, what: str = "a file or folder") -> html.Button:
+    """The 📁 button opening the native file/folder picker for an input.
+
+    A plain ``html.Button`` (dbc.Button takes no ``aria-label``): the glyph
+    alone would be read as "file folder", so the button names what it picks.
+    """
+    return html.Button(
+        "📁", id=f"browse-{target_id}", type="button",
+        className="btn btn-outline-secondary btn-sm", title=f"Browse for {what}…",
+        **{"aria-label": f"Browse for {what}"})
 
 
 # ------------------------------------------------------------------------ map
@@ -259,17 +316,18 @@ def _basemap_control() -> html.Details:
     every basemap grouped by provider plus opacity / z-order. Closes on any
     outside click (assets/basemap-control.js).
     """
-    body: list = [html.Div("Background map", className="gui-card-title")]
     options = [{"label": bm["name"], "value": bm["name"]} for bm in BASEMAPS]
     options.append({"label": "None (no basemap)", "value": ""})
-    body.append(dbc.RadioItems(id=ids.BASEMAP_SELECT, options=options,
-                               value=DEFAULT_BASEMAP,
-                               className="small basemap-list"))
+    body: list = [_group(
+        "Background map", ids.BASEMAP_SELECT,
+        dbc.RadioItems(id=ids.BASEMAP_SELECT, options=options,
+                       value=DEFAULT_BASEMAP, className="small basemap-list"),
+        className="gui-card-title")]
     body += [
-        dbc.Label("Opacity", className="small"),
-        dcc.Slider(id=ids.BASEMAP_OPACITY, min=0, max=1, step=0.05,
-                   value=1.0, marks={0: "0", 1: "1"}),
-        dbc.Label("Z-order", className="small"),
+        _group("Opacity", ids.BASEMAP_OPACITY,
+               dcc.Slider(id=ids.BASEMAP_OPACITY, min=0, max=1, step=0.05,
+                          value=1.0, marks={0: "0", 1: "1"})),
+        _lbl("Z-order", ids.BASEMAP_ZORDER),
         dbc.Select(id=ids.BASEMAP_ZORDER, value="below", size="sm",
                    options=[
                        {"label": "below overlays", "value": "below"},
@@ -277,7 +335,8 @@ def _basemap_control() -> html.Details:
     ]
     return html.Details([
         html.Summary(html.Span(className="gi gi-layers"),
-                     title="Choose the background map"),
+                     title="Choose the background map",
+                     **{"aria-label": "Choose the background map"}),
         html.Div(body, className="basemap-panel"),
     ], className="basemap-control")
 
@@ -288,7 +347,8 @@ def _map_pane() -> html.Div:
         dbc.Badge("mode: off", id=ids.MODE_BADGE, color="secondary",
                   className="mode-badge"),
         _basemap_control(),
-        html.Div(id=ids.NOTICE_STACK, className="notice-stack"),
+        html.Div(id=ids.NOTICE_STACK, className="notice-stack", role="status",
+                 **{"aria-live": "polite"}),
         # drawer handle: collapses/expands the sidebar (callbacks/theme.py)
         html.Button(html.Span(className="gi gi-chevron"),
                     id=ids.SIDEBAR_TOGGLE, className="sidebar-handle",
@@ -338,29 +398,31 @@ def _data_tab() -> html.Div:
                            color="secondary"),
             ]),
             dbc.InputGroup([
-                dbc.InputGroupText("Project CRS", className="small"),
+                _addon("Project CRS", ids.PROJECT_CRS),
                 dbc.Input(id=ids.PROJECT_CRS, value="EPSG:25832", size="sm",
                           debounce=True),
             ], size="sm"),
         ], intro="Draw a rectangle or polygon with the map's draw tool; " +
                  "loaded data is clipped to it."),
         _card("Add vector data", [
-            dbc.RadioItems(
+            _group("Add data from", ids.DATA_SOURCE_TYPE, dbc.RadioItems(
                 id=ids.DATA_SOURCE_TYPE, inline=True, value="local",
                 options=[{"label": " Local file", "value": "local"},
                          {"label": " WFS server", "value": "wfs"}],
-                className="small"),
+                className="small")),
             dbc.Checkbox(id=ids.CLIP_TO_AREA, value=True,
                          label="Clip to study area", className="small"),
             # only the panel matching the selected source shows
             # (data.toggle_source_panels); local is the default
             html.Div([
+                _lbl("File path", ids.LOCAL_PATH),
                 dbc.InputGroup([
                     dbc.Input(id=ids.LOCAL_PATH, placeholder="Path to .shp / " +
                               ".geojson / .gpkg / .gml / .kml (or .tif " +
                               "raster)", size="sm"),
-                    _browse(ids.LOCAL_PATH),
+                    _browse(ids.LOCAL_PATH, "a vector or raster file"),
                 ], size="sm", className="mb-1"),
+                _lbl("Sub-layer (GPKG, optional)", ids.LOCAL_LAYER),
                 dbc.Input(id=ids.LOCAL_LAYER, placeholder="Sub-layer " +
                           "(GPKG, optional)", size="sm", className="mb-1"),
                 html.Div([
@@ -376,6 +438,7 @@ def _data_tab() -> html.Div:
                            "Filter by category and — with 'only in view' on " +
                            "— only the servers covering the current map area " +
                            "are listed.", className="text-muted"),
+                _lbl("Category", ids.WFS_CATEGORY),
                 dbc.Row([
                     dbc.Col(dcc.Dropdown(id=ids.WFS_CATEGORY,
                                          options=category_dd, value="",
@@ -385,11 +448,14 @@ def _data_tab() -> html.Div:
                                          label="only in view",
                                          className="small"), width=5),
                 ], className="g-1 mb-1"),
+                _lbl("Dataset / server", ids.WFS_PRESET),
                 dcc.Dropdown(id=ids.WFS_PRESET, options=presets_dd, value="",
                              placeholder="Pick a dataset / server…",
                              className="small mb-1"),
+                _lbl("WFS URL", ids.WFS_URL),
                 dbc.Input(id=ids.WFS_URL, placeholder="WFS URL (https://…)",
                           size="sm", className="mb-1"),
+                _lbl("Layer / feature type", ids.WFS_LAYER),
                 dbc.InputGroup([
                     dbc.Input(id=ids.WFS_LAYER,
                               placeholder="Layer / feature type", size="sm"),
@@ -398,18 +464,31 @@ def _data_tab() -> html.Div:
                                title="Query GetCapabilities for this " +
                                      "server's feature types"),
                 ], size="sm", className="mb-1"),
+                _lbl("Discovered feature types", ids.WFS_LAYER_SELECT),
                 dcc.Dropdown(id=ids.WFS_LAYER_SELECT, options=[], value=None,
                              placeholder="…or pick a discovered feature type",
                              className="small mb-1"),
                 html.Div([
                     dbc.Button("Load from WFS", id=ids.WFS_LOAD_BTN,
                                size="sm", color="primary"),
+                    # an explicit choice, never a second click: without a
+                    # study area the server would send every feature
+                    _help(dbc.Checkbox(
+                        id=ids.WFS_WHOLE_LAYER, value=False, className="small",
+                        label="Load the whole layer (no study area)"),
+                        "Downloads EVERY feature of the layer and ignores the "
+                        "study area. A state-wide layer can be millions of "
+                        "features and gigabytes of memory, so leave this off "
+                        "unless you really need all of it. Off = only the "
+                        "study area is loaded (draw one first).",
+                        className="wfs-whole-layer"),
                     dcc.Loading(html.Span(id=ids.WFS_LOAD_STATUS),
                                 type="dot", parent_className="load-inline"),
-                ], className="d-flex align-items-center gap-2"),
+                ], className="d-flex align-items-center flex-wrap gap-2"),
             ], id=ids.DATA_WFS_PANEL, style={"display": "none"}),
         ]),
         _collapsible_card("Overlays & terrain (WMS / DEM)", [
+            _lbl("Overlay or terrain service", ids.OVERLAY_PRESET),
             dcc.Dropdown(id=ids.OVERLAY_PRESET, options=overlay_dd,
                          value=None,
                          placeholder="Pick a WMS overlay or the DGM DEM…",
@@ -420,6 +499,11 @@ def _data_tab() -> html.Div:
                 dbc.Button("Load DEM for area", id=ids.DEM_LOAD_BTN,
                            size="sm", color="primary", outline=True),
             ]),
+            # status line of the overlay / DEM loads: the spinner target for
+            # callbacks/data.py (it writes its `children`; empty until then)
+            dcc.Loading(html.Div(id=OVERLAY_STATUS,
+                                 className="small text-info"),
+                        type="dot", delay_show=_SPINNER_DELAY_MS),
         ], intro="Nationwide BKG basemaps and the DGM terrain model. " +
                  "'Add to map' does the right thing: a WMS becomes a live " +
                  "overlay (clipped to the study area); the DGM DEM downloads " +
@@ -431,11 +515,12 @@ def _data_tab() -> html.Div:
                         type="dot"),
         ]),
         _collapsible_card("Merge vector layers", [
+            _lbl("Layers to merge", ids.MERGE_SELECT),
             dcc.Dropdown(id=ids.MERGE_SELECT, options=[], multi=True,
                          placeholder="Pick two or more vector layers…",
                          className="small"),
             dbc.InputGroup([
-                dbc.InputGroupText("Name", className="small"),
+                _addon("Name", ids.MERGE_NAME),
                 dbc.Input(id=ids.MERGE_NAME, size="sm",
                           placeholder="Merged land use"),
             ], size="sm"),
@@ -448,20 +533,20 @@ def _data_tab() -> html.Div:
                  "project CRS. The merged layer then takes ONE cost table " +
                  "and ONE rasterization step."),
         _collapsible_card("Project", [
+            _lbl("Save project to", ids.PROJECT_SAVE_PATH),
             dbc.InputGroup([
                 dbc.Input(id=ids.PROJECT_SAVE_PATH, size="sm",
                           placeholder="Save project to folder…"),
-                _browse(ids.PROJECT_SAVE_PATH),
+                _browse(ids.PROJECT_SAVE_PATH, "the project save folder"),
             ], size="sm"),
-            dbc.Label("Include in save", className="small"),
-            dbc.Checklist(
+            _group("Include in save", ids.SAVE_INCLUDE, dbc.Checklist(
                 id=ids.SAVE_INCLUDE, inline=True, className="small",
                 value=["raster", "vector", "cost_table"],
                 options=[
                     {"label": " raster files", "value": "raster"},
                     {"label": " vector layers", "value": "vector"},
                     {"label": " cost tables & modifiers",
-                     "value": "cost_table"}]),
+                     "value": "cost_table"}])),
             html.Small("Routes and the study area are ALWAYS saved with " +
                        "the project.", className="text-muted"),
             dbc.ButtonGroup([
@@ -470,14 +555,19 @@ def _data_tab() -> html.Div:
                 dbc.Button("New project", id=ids.PROJECT_NEW_BTN, size="sm",
                            color="danger", outline=True),
             ]),
+            _lbl("Open project file", ids.PROJECT_OPEN_PATH),
             dbc.InputGroup([
                 dbc.Input(id=ids.PROJECT_OPEN_PATH, size="sm",
                           placeholder="Open project… (project.json)"),
-                _browse(ids.PROJECT_OPEN_PATH),
+                _browse(ids.PROJECT_OPEN_PATH, "a project file"),
             ], size="sm"),
             html.Div(dbc.Button("Open project", id=ids.PROJECT_OPEN_BTN,
                                 size="sm", color="primary", outline=True)),
-            html.Div(id=ids.PROJECT_STATUS, className="small text-info"),
+            # Save / Open write this line (they copy rasters and GPKG files)
+            dcc.Loading(html.Div(id=ids.PROJECT_STATUS,
+                                 className="small text-info", role="status",
+                                 **{"aria-live": "polite"}),
+                        type="dot", delay_show=_SPINNER_DELAY_MS),
         ]),
     ], className="gui-tab-body")
 
@@ -495,12 +585,11 @@ def _osm_section() -> html.Details:
                for p in OSM_FEATURE_PRESETS]
     key_options = [{"label": k, "value": k} for k in OSM_KEY_VALUES]
     return _collapsible_card("OpenStreetMap features", [
-        dbc.Label("1. Feature column (OSM tag key)", className="small"),
+        _lbl("1. Feature column (OSM tag key)", ids.OSM_KEY),
         dcc.Dropdown(id=ids.OSM_KEY, options=key_options, value=None,
                      placeholder="e.g. landuse, highway, power…",
                      className="small"),
-        dbc.Label("2. Values in that column (empty = any)",
-                  className="small"),
+        _lbl("2. Values in that column (empty = any)", ids.OSM_VALUES),
         dcc.Dropdown(id=ids.OSM_VALUES, options=[], value=[], multi=True,
                      placeholder="pick one or more values…",
                      className="small"),
@@ -510,11 +599,12 @@ def _osm_section() -> html.Details:
         html.Div(dbc.Button("Load OSM features", id=ids.OSM_LOAD_BTN,
                             size="sm", color="primary", outline=True)),
         dbc.Accordion([dbc.AccordionItem([
+            _lbl("OSM feature preset", ids.OSM_PRESET),
             dcc.Dropdown(id=ids.OSM_PRESET, options=options, value=None,
                          placeholder="Pick an OSM feature preset…",
                          className="small mb-1"),
             dbc.InputGroup([
-                dbc.InputGroupText("or tag", className="small"),
+                _addon("or tag", ids.OSM_TAGS),
                 dbc.Input(id=ids.OSM_TAGS, size="sm",
                           placeholder="e.g. landuse=forest, highway"),
             ], size="sm"),
@@ -534,11 +624,11 @@ def _cost_tab() -> html.Div:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     return html.Div([
         _card("Cost model", [
-            dbc.Label("Base dataset", className="small"),
+            _lbl("Base dataset", ids.COST_DATASET),
             dcc.Dropdown(id=ids.COST_DATASET, options=[], placeholder="Pick a " +
                          "loaded vector layer…", className="small"),
-            dbc.Label("Feature column(s) — ordered; first = main",
-                      className="small"),
+            _lbl("Feature column(s) — ordered; first = main",
+                 ids.COST_FEATURE_KEYS),
             dcc.Dropdown(id=ids.COST_FEATURE_KEYS, options=[], multi=True,
                          placeholder="e.g. nutzart, bez", className="small"),
             html.Div(id=ids.COST_FEATURE_INFO),
@@ -559,19 +649,23 @@ def _cost_tab() -> html.Div:
                 dbc.Button("− Selected", id=ids.COST_DEL_ROW_BTN, size="sm",
                            color="secondary"),
             ]),
-            html.Div(id=ids.COST_COVERAGE_INFO,
-                     className="small text-warning"),
+            # Seed writes the coverage text: a spinner while it computes
+            dcc.Loading(html.Div(id=ids.COST_COVERAGE_INFO,
+                                 className="small text-warning"),
+                        type="dot", delay_show=_SPINNER_DELAY_MS),
+            _lbl("Import a cost table from", ids.COST_IMPORT_PATH),
             dbc.InputGroup([
                 dbc.Input(id=ids.COST_IMPORT_PATH, size="sm",
                           placeholder="Import cost table (.csv/.json/.xlsx)"),
-                _browse(ids.COST_IMPORT_PATH),
+                _browse(ids.COST_IMPORT_PATH, "a cost table file"),
                 dbc.Button("Import", id=ids.COST_IMPORT_BTN, size="sm",
                            color="secondary", outline=True),
             ], size="sm"),
+            _lbl("Export the cost table to", ids.COST_EXPORT_PATH),
             dbc.InputGroup([
                 dbc.Input(id=ids.COST_EXPORT_PATH, size="sm",
                           placeholder="Export cost table to…"),
-                _browse(ids.COST_EXPORT_PATH),
+                _browse(ids.COST_EXPORT_PATH, "the cost table export file"),
                 dbc.Button("Export", id=ids.COST_EXPORT_BTN, size="sm",
                            color="secondary", outline=True),
             ], size="sm"),
@@ -601,8 +695,35 @@ def _cost_tab() -> html.Div:
                  "maxWidth": 105},
                 {"field": "factor", "headerName": "Factor/cost",
                  "editable": True, "maxWidth": 110},
-                {"field": "buffer_m", "headerName": "Buf m",
-                 "editable": True, "maxWidth": 85},
+                {"field": "buffer_m", "headerName": "Buffer (m)",
+                 "editable": True, "maxWidth": 95,
+                 "headerTooltip": "Grow the matching features by this many "
+                                  "metres before burning (0 or more)."},
+                # how the row meets cells that are already forbidden, and the
+                # library's zone rule (ignore_value / forbidden_value /
+                # zone_field / forbidden_zone of modify_raster_from_dataset)
+                {"field": "keep_forbidden", "headerName": "Keep forbidden",
+                 "editable": True, "minWidth": 90, "maxWidth": 110,
+                 "cellRenderer": "agCheckboxCellRenderer",
+                 "cellEditor": "agCheckboxCellEditor",
+                 "headerTooltip": "On (default): cells that are already "
+                                  "forbidden (65535) stay forbidden. Off: "
+                                  "this row may change them too."},
+                {"field": "forbidden_value", "headerName": "Forbid as",
+                 "editable": True, "minWidth": 80, "maxWidth": 100,
+                 "headerTooltip": "Cost written for the zone value below "
+                                  "(a whole number, 0 or more; 65535 = "
+                                  "forbidden)."},
+                {"field": "zone_column", "headerName": "Zone column",
+                 "editable": True, "minWidth": 90, "maxWidth": 120,
+                 "headerTooltip": "Optional: a column of the dataset. "
+                                  "Features whose value in it equals the "
+                                  "zone value are burnt as 'Forbid as' "
+                                  "instead of Factor/cost."},
+                {"field": "forbidden_zone", "headerName": "Zone value",
+                 "editable": True, "minWidth": 80, "maxWidth": 110,
+                 "headerTooltip": "The value in the zone column that marks "
+                                  "the forbidden zone (not 0 or empty)."},
             ],
             defaultColDef={"resizable": True},
             dashGridOptions={"rowSelection": "single",
@@ -623,25 +744,32 @@ def _cost_tab() -> html.Div:
                  "one row each: ZONE == 1 → 100, ZONE == 2 → 2, …. For a " +
                  "drawn cost layer: Column = cost, Mode = per-feature."),
         _collapsible_card("Preprocessing", [
+            _lbl("Preprocessing", ids.PREPROC_SELECT),
             dcc.Dropdown(
                 id=ids.PREPROC_SELECT, className="small", value="none",
                 options=[{"label": "None", "value": "none"},
                          {"label": "Street type + buffer (A/B/L)",
                           "value": "street_buffer"}]),
-            dbc.Row([
+            _help(dbc.Row([
                 dbc.Col(dbc.InputGroup([
-                    dbc.InputGroupText("A", className="small"),
+                    _addon("A (m)", ids.PREPROC_BUF_A),
                     dbc.Input(id=ids.PREPROC_BUF_A, type="number", value=10,
-                              size="sm")], size="sm"), width=4),
+                              min=0, step=0.5, size="sm")], size="sm"),
+                    width=4),
                 dbc.Col(dbc.InputGroup([
-                    dbc.InputGroupText("B", className="small"),
+                    _addon("B (m)", ids.PREPROC_BUF_B),
                     dbc.Input(id=ids.PREPROC_BUF_B, type="number", value=4,
-                              size="sm")], size="sm"), width=4),
+                              min=0, step=0.5, size="sm")], size="sm"),
+                    width=4),
                 dbc.Col(dbc.InputGroup([
-                    dbc.InputGroupText("L", className="small"),
+                    _addon("L (m)", ids.PREPROC_BUF_L),
                     dbc.Input(id=ids.PREPROC_BUF_L, type="number", value=2,
-                              size="sm")], size="sm"), width=4),
+                              min=0, step=0.5, size="sm")], size="sm"),
+                    width=4),
             ], className="g-1"),
+                "Street buffers in metres for the street-type preset: A, B "
+                "and L are the buffer widths of the three street classes. "
+                "Each is 0 or more."),
             html.Div("Custom preprocessing steps", className="gui-subhead"),
             html.Small("Ordered edits to the base dataset before rasterizing. " +
                        "Each row selects rows by a condition (or a condition " +
@@ -708,21 +836,25 @@ def _preproc_builder() -> html.Div:
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     return html.Div([
-        dbc.Label("Build a step from conditions", className="small fw-bold"),
+        _lbl("Build a step from conditions", ids.PPB_DATASET,
+             className="small fw-bold"),
         dcc.Dropdown(id=ids.PPB_DATASET, options=[], value=None,
                      placeholder="Dataset the step applies to…",
                      className="small mb-1"),
         dbc.Row([
-            dbc.Col(dcc.Dropdown(id=ids.PPB_COLUMN, options=[], value=None,
-                                 placeholder="Column…", className="small"),
+            dbc.Col([_lbl("Column", ids.PPB_COLUMN),
+                     dcc.Dropdown(id=ids.PPB_COLUMN, options=[], value=None,
+                                  placeholder="Column…", className="small")],
                     width=5),
-            dbc.Col(dbc.Select(
-                id=ids.PPB_OPERATOR, size="sm", value="==",
-                options=[{"label": o, "value": o} for o in
-                         ("==", "!=", "<", "<=", ">", ">=", "in",
-                          "is-empty")]), width=3),
-            dbc.Col(dcc.Dropdown(id=ids.PPB_VALUE, options=[], value=None,
-                                 placeholder="Value…", className="small"),
+            dbc.Col([_lbl("Operator", ids.PPB_OPERATOR),
+                     dbc.Select(
+                         id=ids.PPB_OPERATOR, size="sm", value="==",
+                         options=[{"label": o, "value": o} for o in
+                                  ("==", "!=", "<", "<=", ">", ">=", "in",
+                                   "is-empty")])], width=3),
+            dbc.Col([_lbl("Value", ids.PPB_VALUE),
+                     dcc.Dropdown(id=ids.PPB_VALUE, options=[], value=None,
+                                  placeholder="Value…", className="small")],
                     width=4),
         ], className="g-1"),
         html.Div(dbc.Button("+ Add condition", id=ids.PPB_ADD_COND_BTN,
@@ -731,14 +863,14 @@ def _preproc_builder() -> html.Div:
         html.Div(id=ids.PPB_COND_LIST, className="small"),
         dbc.Row([
             dbc.Col([
-                dbc.Label("Combine", className="small"),
+                _lbl("Combine", ids.PPB_COMBINE),
                 dbc.Select(id=ids.PPB_COMBINE, size="sm", value="&",
                            options=[
                                {"label": "& (all must match)", "value": "&"},
                                {"label": "| (any matches)", "value": "|"}]),
             ], width=6),
             dbc.Col([
-                dbc.Label("Action", className="small"),
+                _lbl("Action", ids.PPB_OP),
                 dbc.Select(id=ids.PPB_OP, size="sm", value="buffer",
                            options=[{"label": o, "value": o} for o in
                                     ("buffer", "set", "keep", "drop")]),
@@ -746,12 +878,12 @@ def _preproc_builder() -> html.Div:
         ], className="g-1"),
         dbc.Row([
             dbc.Col(dbc.InputGroup([
-                dbc.InputGroupText("Target", className="small"),
+                _addon("Target", ids.PPB_TARGET),
                 dbc.Input(id=ids.PPB_TARGET, size="sm",
                           placeholder="column (set)"),
             ], size="sm"), width=6),
             dbc.Col(dbc.InputGroup([
-                dbc.InputGroupText("Arg", className="small"),
+                _addon("Arg (m or value)", ids.PPB_ARG),
                 dbc.Input(id=ids.PPB_ARG, size="sm", value="2",
                           placeholder="m / value"),
             ], size="sm"), width=6),
@@ -776,19 +908,24 @@ def _manual_cost_section() -> html.Details:
     return _collapsible_card("Custom cost polygons", [
         dbc.Row([
             dbc.Col(dbc.InputGroup([
-                dbc.InputGroupText("Name", className="small"),
+                _addon("Name", ids.MANUAL_NAME),
                 dbc.Input(id=ids.MANUAL_NAME, size="sm", value="Manual costs")],
                 size="sm"), width=7),
-            dbc.Col(dbc.Select(
-                id=ids.MANUAL_MODE, size="sm", value="override",
-                options=[{"label": "override", "value": "override"},
-                         {"label": "base", "value": "base"}]), width=5),
+            dbc.Col([_lbl("Mode", ids.MANUAL_MODE, className="small visually-hidden"),
+                     dbc.Select(
+                         id=ids.MANUAL_MODE, size="sm", value="override",
+                         options=[{"label": "override", "value": "override"},
+                                  {"label": "base", "value": "base"}])],
+                    width=5),
         ], className="g-1"),
-        dbc.InputGroup([
-            dbc.InputGroupText("Default cost", className="small"),
+        _help(dbc.InputGroup([
+            _addon("Default cost", ids.MANUAL_COST),
             dbc.Input(id=ids.MANUAL_COST, type="number", value=65535,
-                      size="sm"),
+                      min=0, step=1, size="sm"),
         ], size="sm"),
+            "The cost a new polygon starts with (0 or more, whole numbers). "
+            "65535 marks the area forbidden. Edit each polygon's own cost "
+            "in the table below."),
         dag.AgGrid(
             id=ids.MANUAL_GRID, rowData=[],
             columnDefs=[
@@ -830,59 +967,99 @@ def _raster_tab() -> html.Div:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     return html.Div([
         _card("Rasterization", [
-            dbc.Label("Dataset", className="small"),
+            _lbl("Dataset", ids.RASTERIZE_DATASET),
             dcc.Dropdown(id=ids.RASTERIZE_DATASET, options=[], value="",
                          clearable=False, className="small"),
-            dbc.Label("Cost table", className="small"),
+            _lbl("Cost table", ids.RASTERIZE_TABLE),
             dcc.Dropdown(id=ids.RASTERIZE_TABLE, options=[], value="current",
                          clearable=False, className="small"),
             html.Small("Only cost tables whose feature columns exist in the " +
                        "picked dataset are offered — a table can never be " +
                        "applied to a dataset it doesn't belong to.",
                        className="text-muted"),
-            dbc.InputGroup([
-                dbc.InputGroupText("Resolution m", className="small"),
+            _help(dbc.InputGroup([
+                _addon("Resolution (m)", ids.RES_M),
                 dbc.Input(id=ids.RES_M, type="number", value=1.0, min=0.1,
                           step=0.1, size="sm"),
             ], size="sm"),
+                "Cell size of the cost raster in metres (above 0; the field "
+                "takes 0.1 or more). 1 m suits parcel data; coarser cells "
+                "build faster and use less memory."),
             html.Div(id=ids.RASTER_SIZE_INFO, className="small text-info",
                      children="-"),
             dbc.Accordion([dbc.AccordionItem([
-                dbc.InputGroup([
-                    dbc.InputGroupText("fill_value", className="small"),
+                _help(dbc.InputGroup([
+                    _addon("Fill value (cost)", ids.FILL_VALUE),
                     dbc.Input(id=ids.FILL_VALUE, type="number", value=65535,
-                              size="sm"),
+                              min=0, max=65535, step=1, size="sm"),
                 ], size="sm", className="mb-1"),
+                    "Cost of cells no feature covers and of categories with "
+                    "no cost: a whole number from 0 to 65535 for uint16 (the "
+                    "range follows the data type below). 65535 = forbidden, "
+                    "0 = free."),
                 html.Small("Unmapped categories become this value — 65535 = " +
                            "forbidden (F11).", className="text-muted"),
                 dbc.InputGroup([
-                    dbc.InputGroupText("dtype", className="small"),
+                    _addon("Data type", ids.RASTER_DTYPE),
                     dbc.Select(id=ids.RASTER_DTYPE, value="uint16", options=[
                         {"label": v, "value": v}
                         for v in ("uint16", "uint32", "float32")]),
                 ], size="sm", className="mb-1"),
-                dbc.InputGroup([
-                    dbc.InputGroupText("Geometry buffer m",
-                                       className="small"),
-                    # dbc.Input does NOT accept `title` (dbc 2.x drops it from
-                    # the allowed props; Button and Offcanvas still take one,
-                    # which is why this was the only site that broke). A
-                    # dbc.Tooltip on the same target is the supported way to
-                    # get hover text, and it renders on focus too.
+                # dbc.Input takes no ``title``: the help sits on the wrapper
+                _help(dbc.InputGroup([
+                    _addon("Geometry buffer (m)", ids.GEOM_BUFFER),
                     dbc.Input(id=ids.GEOM_BUFFER, type="number", value=1,
-                              size="sm"),
-                    dbc.Tooltip(
-                        "Outward buffer on every feature before burn (m). " +
-                        "1 m at 1 m cells clears most ALKIS sub-cell parcel " +
-                        "defects.",
-                        target=ids.GEOM_BUFFER),
+                              min=0, step=0.5, size="sm"),
                 ], size="sm", className="mb-1"),
+                    "Outward buffer on every feature before it is burnt, in "
+                    "metres (0 or more). 1 m at 1 m cells clears most ALKIS "
+                    "sub-cell parcel defects. The GUI starts at 1 m; the "
+                    "library's own default is 0 m."),
+                html.Div("Thin features", className="gui-subhead"),
+                _help(dbc.Switch(
+                    id=ids.WIDEN_THIN, value=False, className="small",
+                    label="Widen thin forbidden features"),
+                    "Off (default). On: a forbidden feature narrower than "
+                    "1.4 cells is widened to that width before it is burnt, "
+                    "so a thin wall cannot vanish between cell centres. It "
+                    "can also close a real gap in a thin wall; a finer "
+                    "resolution is the only exact fix."),
+                _help(dbc.Switch(
+                    id=ids.ALL_TOUCHED, value=False, className="small",
+                    label="Burn forbidden features into every touched cell"),
+                    "Off (default): a cell is forbidden only if its centre "
+                    "lies inside a forbidden feature. On: also every cell a "
+                    "forbidden feature merely touches, so a forbidden zone "
+                    "grows by up to one cell. This also seals real openings "
+                    "narrower than a cell (a gate, a gap between parcels)."),
+                _help(html.Div([
+                    _lbl("If a thin feature is lost", ids.ON_THIN),
+                    dbc.Select(id=ids.ON_THIN, value="warn", size="sm",
+                               options=[
+                                   {"label": "warn (default)", "value": "warn"},
+                                   {"label": "raise (stop the build)",
+                                    "value": "raise"},
+                                   {"label": "ignore", "value": "ignore"}]),
+                ], className="mb-1"),
+                    "What happens when the burn does not represent the data "
+                    "faithfully (a forbidden feature dropped, split or holed, "
+                    "or a repair that sealed open space): warn shows a "
+                    "notice, raise stops the build with an error, ignore "
+                    "skips the check."),
+                html.Div("Extent", className="gui-subhead"),
+                _help(dbc.Switch(
+                    id=ids.CROP_BORDER, value=False, className="small",
+                    label="Crop the outer forbidden border"),
+                    "Off (default). On: after the build, rows and columns at "
+                    "the edge that hold only forbidden cells (65535) are cut "
+                    "off, so the raster is no larger than the passable area."),
             ], title="Advanced")], start_collapsed=True),
+            _lbl("Save raster as", ids.RASTER_SAVE_PATH),
             dbc.InputGroup([
                 dbc.Input(id=ids.RASTER_SAVE_PATH, size="sm",
                           placeholder="Save raster as… (blank = work dir, " +
                                       "F2)"),
-                _browse(ids.RASTER_SAVE_PATH),
+                _browse(ids.RASTER_SAVE_PATH, "the raster save file"),
             ], size="sm"),
             dbc.Button("Build cost raster", id=ids.RASTERIZE_BTN, size="sm",
                        color="primary", className="gui-cta",
@@ -895,19 +1072,21 @@ def _raster_tab() -> html.Div:
                         type="dot"),
         ]),
         _card("Load existing raster", [
+            _lbl("Raster file (.tif)", ids.RASTER_LOAD_PATH),
             dbc.InputGroup([
                 dbc.Input(id=ids.RASTER_LOAD_PATH, size="sm",
                           placeholder="Path to .tif"),
-                _browse(ids.RASTER_LOAD_PATH),
+                _browse(ids.RASTER_LOAD_PATH, "a raster file"),
                 dbc.Button("Load", id=ids.RASTER_LOAD_BTN, size="sm",
                            color="secondary", outline=True),
             ], size="sm"),
         ]),
         _collapsible_card("Display & legend", [
-            dbc.Label("Raster overlay opacity", className="small"),
-            dcc.Slider(id=ids.RASTER_OPACITY, min=0, max=1, step=0.05,
-                       value=0.7, marks={0: "0", 0.5: "0.5", 1: "1"}),
-            dbc.Label("Colormap", className="small"),
+            _group(
+                "Raster overlay opacity", ids.RASTER_OPACITY,
+                dcc.Slider(id=ids.RASTER_OPACITY, min=0, max=1, step=0.05,
+                           value=0.7, marks={0: "0", 0.5: "0.5", 1: "1"})),
+            _lbl("Colormap", ids.RASTER_COLORMAP),
             dbc.Select(id=ids.RASTER_COLORMAP, value="viridis",
                        options=[{"label": c, "value": c} for c in COLORMAPS],
                        size="sm"),
@@ -919,7 +1098,7 @@ def _raster_tab() -> html.Div:
             html.Div("Graduated rendering", className="gui-subhead"),
             dbc.Row([
                 dbc.Col([
-                    dbc.Label("Render", className="small"),
+                    _lbl("Render", ids.GRAD_MODE),
                     dbc.Select(id=ids.GRAD_MODE, size="sm",
                                value="continuous", options=[
                                    {"label": "continuous (default)",
@@ -935,7 +1114,7 @@ def _raster_tab() -> html.Div:
                                     "value": "unique"}]),
                 ], width=7),
                 dbc.Col([
-                    dbc.Label("Classes", className="small"),
+                    _lbl("Classes (2 to 32)", ids.GRAD_CLASSES),
                     dbc.Input(id=ids.GRAD_CLASSES, type="number", value=5,
                               min=2, max=32, step=1, size="sm"),
                 ], width=5),
@@ -945,7 +1124,10 @@ def _raster_tab() -> html.Div:
                                 title="Classify the raster selected in the " +
                                       "Layers tab (or the only raster) with " +
                                       "the chosen method")),
-            html.Div(id=ids.GRAD_STATUS, className="small text-info"),
+            # Classify reads the whole band: a spinner while it works
+            dcc.Loading(html.Div(id=ids.GRAD_STATUS,
+                                 className="small text-info"),
+                        type="dot", delay_show=_SPINNER_DELAY_MS),
             html.Small("Pick a classification and press Classify — the " +
                        "legend below gains one editable colour per class " +
                        "('continuous' restores the smooth ramp).",
@@ -960,11 +1142,12 @@ def _raster_tab() -> html.Div:
 def _raster_algebra_section() -> html.Details:
     """Combine several cost rasters into one (Feature 6)."""
     return _collapsible_card("Combine cost rasters", [
+        _lbl("Rasters to combine", ids.RASTER_COMBINE_SELECT),
         dcc.Dropdown(id=ids.RASTER_COMBINE_SELECT, options=[], multi=True,
                      placeholder="Select raster layers to combine…",
                      className="small"),
         dbc.InputGroup([
-            dbc.InputGroupText("Operation", className="small"),
+            _addon("Operation", ids.RASTER_COMBINE_OP),
             dbc.Select(id=ids.RASTER_COMBINE_OP, value="add", options=[
                 {"label": "add (sum costs)", "value": "add"},
                 {"label": "multiply", "value": "multiply"},
@@ -991,18 +1174,17 @@ def _routes_tab() -> html.Div:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     return html.Div([
         _card("New routing", [
-            dbc.Label("Route on raster", className="small"),
+            _lbl("Route on raster", ids.ROUTE_RASTER),
             dcc.Dropdown(id=ids.ROUTE_RASTER, options=[], className="small",
                          placeholder="Pick a raster layer…"),
-            dbc.Label("Map click…", className="small"),
-            dbc.RadioItems(
+            _group("Map click…", ids.BUILD_MODE, dbc.RadioItems(
                 id=ids.BUILD_MODE, inline=True, value="off",
                 options=[{"label": " Off", "value": "off"},
                          {"label": " Source", "value": "source"},
                          {"label": " Target", "value": "target"},
                          {"label": " +Waypoint", "value": "waypoint"},
                          {"label": " Move waypoint", "value": "move-waypoint"}],
-                className="small"),
+                className="small")),
             dbc.Switch(id=ids.EDIT_ENABLE, value=False, className="small",
                        label="Edit the selected route (move/add source, " +
                              "target & waypoints update it in place)"),
@@ -1011,12 +1193,13 @@ def _routes_tab() -> html.Div:
                        "Target move it; +Waypoint adds one; Move waypoint " +
                        "relocates the nearest waypoint). Editing replaces " +
                        "the route.", className="text-muted"),
-            dbc.Label("Control points — ONE list for the new route or the " +
-                      "selected route", className="small"),
+            html.Div("Control points — ONE list for the new route or the " +
+                     "selected route", className="small"),
             html.Small("Rows are editable (typed coordinates in the project " +
                        "CRS) and deletable; order = routing order. With a " +
-                       "route selected, 'Apply points' recomputes it as a " +
-                       "new variant.", className="text-muted"),
+                       "route selected, 'Apply points' recomputes it; the " +
+                       "new route replaces it ('Undo last edit' brings the " +
+                       "old one back).", className="text-muted"),
             dag.AgGrid(
                 id=ids.BUILD_POINTS_TABLE, rowData=[],
                 columnDefs=[
@@ -1065,69 +1248,109 @@ def _routes_tab() -> html.Div:
                                  "completed routes are kept"),
             ], className="d-flex align-items-center gap-2"),
             dcc.Loading(html.Div(id=ids.ROUTING_STATUS,
-                                 className="small text-info"),
+                                 className="small text-info", role="status",
+                                 **{"aria-live": "polite"}),
                         type="circle"),
         ]),
         _collapsible_card("Algorithm & search", [
         dbc.Row([
-            dbc.Col([
-                dbc.Label("Algorithm", className="small"),
+            dbc.Col(html.Div([
+                _lbl("Backend", ids.GRAPH_API),
+                dcc.Dropdown(
+                    id=ids.GRAPH_API, clearable=False, className="small",
+                    value=routing.DEFAULT_BACKEND,
+                    options=routing.backend_options()),
+            ], title="Which pyorps graph backend runs the search. cython is "
+                     "the default. A backend whose package is not installed "
+                     "is greyed out and names the install command; the GPU "
+                     "backends need CuPy and a CUDA GPU."), width=5),
+            dbc.Col(html.Div([
+                _lbl("Algorithm", ids.ALGORITHM),
                 dcc.Dropdown(id=ids.ALGORITHM, clearable=False,
-                             value="delta-stepping", className="small",
-                             options=[]),
-            ], width=7),
-            dbc.Col([
-                dbc.Label("Hardware", className="small"),
-                dbc.RadioItems(
-                    id=ids.HARDWARE, value="cpu", className="small",
-                    options=[{"label": " CPU", "value": "cpu"},
-                             {"label": " GPU (fastest, opt-in)",
-                              "value": "gpu"}]),
-            ], width=5),
+                             value=routing.default_algorithm(
+                                 routing.DEFAULT_BACKEND),
+                             className="small",
+                             options=[{"label": a.replace("_", " "),
+                                       "value": a} for a in
+                                      routing.backend_algorithms(
+                                          routing.DEFAULT_BACKEND)]),
+            ], title="Only the algorithms the chosen backend really runs are "
+                     "listed. Changing the backend resets this to the "
+                     "backend's default."), width=7),
         ], className="g-1"),
-        dbc.Label("Neighborhood", className="small mt-1"),
-        dcc.Dropdown(id=ids.NEIGHBORHOOD, clearable=False, value="r2",
-                     className="small",
-                     options=[
-                         {"label": "r0 — 4 directions (staircase)",
-                          "value": "r0"},
-                         {"label": "r1 — 8 directions", "value": "r1"},
-                         {"label": "r2 — 16 directions (recommended)",
-                          "value": "r2"},
-                         {"label": "r3 — 32 directions (heavy)",
-                          "value": "r3"}]),
-        dbc.InputGroup([
-            dbc.InputGroupText("Search buffer m", className="small"),
-            dbc.Input(id=ids.SEARCH_BUFFER, type="number", placeholder="auto",
-                      size="sm"),
+        html.Div(dbc.InputGroup([
+            _addon("Neighbourhood k", ids.NEIGHBORHOOD),
+            dbc.Input(id=ids.NEIGHBORHOOD, type="number", value=2, min=0,
+                      max=127, step=1, size="sm"),
         ], size="sm", className="mt-1"),
+            title="How many neighbours each raster cell connects to: k = 0 "
+                  "gives 4 directions, 1 gives 8, 2 gives 16 (recommended), "
+                  "3 gives 32. A larger k turns the route less angular but "
+                  "makes the search much heavier. Whole number from 0 to 127."),
+        html.Div(dbc.InputGroup([
+            _addon("Search buffer (m)", ids.SEARCH_BUFFER),
+            dbc.Input(id=ids.SEARCH_BUFFER, type="number", placeholder="auto",
+                      min=0, step=10, size="sm"),
+        ], size="sm", className="mt-1"),
+            title="How far around the control points the search may look, in "
+                  "metres. Empty or 0 = automatic: the larger of 1000 m and "
+                  "1.5 times the point distance."),
+        html.Div(dbc.Switch(
+            id=ids.FULL_WINDOW, value=False, className="small",
+            label="Use the whole raster as search window"),
+            title="Search the entire raster instead of a window around the "
+                  "points. The route can then never be cut off by a small "
+                  "buffer, but a large raster makes the run slow and "
+                  "memory-hungry. The buffer above is not used while this is "
+                  "on."),
         html.Div(id=ids.SEARCH_BUFFER_INFO, className="small text-info mb-1",
-                 children="blank = max(1000 m, 1.5 x distance) — never the " +
-                          "whole raster (F1)"),
-        dbc.Checkbox(id=ids.IGNORE_MAX_COST, value=True, className="small",
-                     label="Snap source/target off forbidden cells " +
-                           "(shift shown, F7)"),
+                 children="blank = max(1000 m, 1.5 x distance); or switch "
+                          "on 'whole raster'"),
+        # ``ignore_max_cost=True`` is the library's switch that makes cells at
+        # the maximum cost (65535, forbidden) hard barriers; it also moves a
+        # source/target that sits on one to the nearest routable cell.
+        _help(dbc.Checkbox(
+            id=ids.IGNORE_MAX_COST, value=True, className="small",
+            label="Forbidden cells are barriers (route around them)"),
+            "On (default): cells at the maximum cost (65535, forbidden) can "
+            "never be crossed, and a source or target standing on one is "
+            "moved to the nearest routable cell (the shift is reported). "
+            "Off: forbidden cells may be crossed, each metre costing 65535, "
+            "and points are not moved."),
         dbc.Checkbox(id=ids.PAIRWISE, value=False, className="small",
                      label="Pairwise (source i → target i)"),
-        dbc.Row([
+        _help(dbc.Row([
             dbc.Col(dbc.Checkbox(id=ids.SIMPLIFY, value=False,
                                  label="Simplify for display/export (F5)",
                                  className="small"), width=8),
-            dbc.Col(dbc.Input(id=ids.SIMPLIFY_TOL, type="number", value=1.0,
-                              min=0.1, size="sm"), width=4),
+            dbc.Col([
+                _lbl("Simplify tolerance (m)", ids.SIMPLIFY_TOL,
+                     className="small visually-hidden"),
+                dbc.Input(id=ids.SIMPLIFY_TOL, type="number", value=1.0,
+                          min=0, step=0.1, size="sm")], width=4),
         ], className="g-1"),
+            "Simplify tolerance in metres (0 or more). Only the drawn and "
+            "exported line is simplified; costs stay those of the full "
+            "route."),
         dbc.Accordion([dbc.AccordionItem([
-            dbc.InputGroup([
-                dbc.InputGroupText("delta", className="small"),
-                dbc.Input(id="route-delta", type="number", value=100,
-                          size="sm")], size="sm", className="mb-1"),
-            dbc.InputGroup([
-                dbc.InputGroupText("threads", className="small"),
-                dbc.Input(id="route-num-threads", type="number", value=0,
-                          size="sm")], size="sm", className="mb-1"),
-            dbc.Checkbox(id="route-use-astar", value=False,
-                         label="A* heuristic (off per project rule, F8)",
-                         className="small"),
+            html.Div(dbc.InputGroup([
+                _addon("delta (cost units)", ids.DELTA),
+                dbc.Input(id=ids.DELTA, type="number", value=100,
+                          min=0, step=10, size="sm")],
+                size="sm", className="mb-1"),
+                id=ids.DELTA_WRAP, title=routing.DELTA_HELP),
+            html.Div(dbc.InputGroup([
+                _addon("threads (0 = auto)", ids.NUM_THREADS),
+                dbc.Input(id=ids.NUM_THREADS, type="number", value=0,
+                          min=0, step=1, size="sm")],
+                size="sm", className="mb-1"),
+                id=ids.THREADS_WRAP, title=routing.THREADS_HELP),
+            html.Div(dbc.InputGroup([
+                _addon("margin (× distance)", ids.MARGIN),
+                dbc.Input(id=ids.MARGIN, type="number", placeholder="default",
+                          min=0, step=0.1, size="sm")],
+                size="sm", className="mb-1"),
+                id=ids.MARGIN_WRAP, title=routing.MARGIN_HELP),
         ], title="Advanced")], start_collapsed=True),
         ]),
         _collapsible_card("Constrained routing", [
@@ -1141,10 +1364,12 @@ def _routes_tab() -> html.Div:
         ]),
         _collapsible_card("Computed routes", [
         dbc.Row([
-            dbc.Col(dcc.Dropdown(
-                id=ids.EDIT_ROUTE_SELECT, options=[], value=None,
-                placeholder="Select the active route…",
-                className="small"), width=9),
+            dbc.Col([
+                _lbl("Active route", ids.EDIT_ROUTE_SELECT),
+                dcc.Dropdown(
+                    id=ids.EDIT_ROUTE_SELECT, options=[], value=None,
+                    placeholder="Select the active route…",
+                    className="small")], width=9),
             dbc.Col(dbc.Button("New", id=ids.NEW_ROUTE_BTN, size="sm",
                                color="secondary", outline=True,
                                title="Deselect — the points list goes back " +
@@ -1188,16 +1413,17 @@ def _routes_tab() -> html.Div:
                    "select route(s) and use 'Move to group'.",
                    className="text-muted"),
         dbc.InputGroup([
-            dbc.InputGroupText("Move to group", className="small"),
+            _addon("Move to group", ids.ROUTE_MOVE_GROUP),
             dbc.Input(id=ids.ROUTE_MOVE_GROUP, size="sm",
                       placeholder="group name (blank = ungrouped)"),
             dbc.Button("Move sel.", id=ids.ROUTE_MOVE_BTN, size="sm",
                        color="secondary"),
         ], size="sm"),
         # group-level actions
-        dbc.Label("Group actions", className="small"),
+        _lbl("Group actions", ids.GROUP_SELECT),
         dcc.Dropdown(id=ids.GROUP_SELECT, options=[], className="small",
                      placeholder="Pick a group…"),
+        _lbl("New group name", ids.GROUP_RENAME, className="small visually-hidden"),
         dbc.InputGroup([
             dbc.Input(id=ids.GROUP_RENAME, size="sm",
                       placeholder="rename group to…"),
@@ -1205,13 +1431,19 @@ def _routes_tab() -> html.Div:
                        color="secondary"),
         ], size="sm"),
         dbc.Row([
-            dbc.Col(dbc.Input(id=ids.GROUP_COLOR, type="color",
-                              value="#e6194b", size="sm",
-                              style={"height": "31px"}), width=3),
-            dbc.Col(dbc.Select(id=ids.GROUP_DASH, size="sm", value="solid",
-                               options=[{"label": d, "value": d} for d in
-                                        ("solid", "dashed", "dotted",
-                                         "dash-dot")]), width=4),
+            dbc.Col([
+                _lbl("Group colour", ids.GROUP_COLOR,
+                     className="small visually-hidden"),
+                dbc.Input(id=ids.GROUP_COLOR, type="color",
+                          value="#e6194b", size="sm",
+                          style={"height": "31px"})], width=3),
+            dbc.Col([
+                _lbl("Group line style", ids.GROUP_DASH,
+                     className="small visually-hidden"),
+                dbc.Select(id=ids.GROUP_DASH, size="sm", value="solid",
+                           options=[{"label": d, "value": d} for d in
+                                    ("solid", "dashed", "dotted",
+                                     "dash-dot")])], width=4),
             dbc.Col(dbc.Button("Restyle", id=ids.GROUP_RESTYLE_BTN, size="sm",
                                color="secondary", outline=True), width=5),
         ], className="g-1"),
@@ -1251,10 +1483,18 @@ def _routes_tab() -> html.Div:
             html.Small("Auto-refresh off → map-click edits are STAGED (the " +
                        "route dashes); press 'Refresh edited' to recompute " +
                        "only the edited route(s).", className="text-muted"),
-            dbc.Label("Simplify displayed/exported line (F5)",
-                      className="small"),
+            # a plain html.Button: dbc.Button takes no aria-label
+            html.Div(html.Button(
+                "↶ Undo last edit", id=ids.EDIT_UNDO_BTN, type="button",
+                disabled=True, className="btn btn-outline-secondary btn-sm",
+                title="Bring back the route as it was before the last edit. "
+                      "One step only.",
+                **{"aria-label": "Undo last edit: bring back the route as it "
+                                 "was before the last edit. One step only."})),
+            html.Div("Simplify displayed/exported line (F5)",
+                     className="small"),
             dbc.InputGroup([
-                dbc.InputGroupText("tolerance m", className="small"),
+                _addon("tolerance (m)", ids.EDIT_SIMPLIFY_TOL),
                 dbc.Input(id=ids.EDIT_SIMPLIFY_TOL, type="number", min=0,
                           step=0.5, placeholder="0 = off", size="sm"),
                 dbc.Button("Apply", id=ids.EDIT_SIMPLIFY_BTN, size="sm",
@@ -1268,19 +1508,23 @@ def _routes_tab() -> html.Div:
                  "delete rows in the control-points list and press " +
                  "'Apply points'."),
         _card("Export / load routes", [
+            _lbl("Export the selected route to", ids.EXPORT_ROUTE_PATH),
             dbc.InputGroup([
                 dbc.Input(id=ids.EXPORT_ROUTE_PATH, size="sm",
                           placeholder="Export selected to " +
                                       ".geojson/.gpkg/.shp/.csv"),
-                _browse(ids.EXPORT_ROUTE_PATH),
+                _browse(ids.EXPORT_ROUTE_PATH, "the route export file"),
                 dbc.Button("Export", id=ids.EXPORT_ROUTE_BTN, size="sm",
                            color="secondary", outline=True),
             ], size="sm"),
-            html.Div(id=ids.EXPORT_STATUS, className="small text-success"),
+            dcc.Loading(html.Div(id=ids.EXPORT_STATUS,
+                                 className="small text-success"),
+                        type="dot", delay_show=_SPINNER_DELAY_MS),
+            _lbl("Load routes from", ids.ROUTES_LOAD_PATH),
             dbc.InputGroup([
                 dbc.Input(id=ids.ROUTES_LOAD_PATH, size="sm",
                           placeholder="Load routes (.geojson/.gpkg/.shp)"),
-                _browse(ids.ROUTES_LOAD_PATH),
+                _browse(ids.ROUTES_LOAD_PATH, "a route file"),
                 dbc.Button("Load", id=ids.ROUTES_LOAD_BTN, size="sm",
                            color="secondary", outline=True),
             ], size="sm"),
@@ -1296,16 +1540,19 @@ def _ohl_options() -> list:
         html.Small("Tower-aware routing from an infrastructure profile " +
                    "(angles, spans, tower costs). Edit the profile (YAML).",
                    className="text-muted"),
+        _lbl("Shipped profile", ids.OHL_PROFILE_PRESET),
         dcc.Dropdown(id=ids.OHL_PROFILE_PRESET, options=[],
                      placeholder="Load a shipped profile…",
                      className="small my-1"),
+        _lbl("Infrastructure profile (YAML)", ids.OHL_PROFILE_TEXT),
         dbc.Textarea(id=ids.OHL_PROFILE_TEXT, size="sm",
                      style={"height": "160px", "fontFamily": "monospace",
                             "fontSize": "11px"}),
+        _lbl("Profile file", ids.OHL_PROFILE_PATH),
         dbc.InputGroup([
             dbc.Input(id=ids.OHL_PROFILE_PATH, size="sm",
                       placeholder="Profile file (.yaml/.json)"),
-            _browse(ids.OHL_PROFILE_PATH),
+            _browse(ids.OHL_PROFILE_PATH, "a profile file"),
             dbc.Button("Load", id=ids.OHL_PROFILE_LOAD_BTN, size="sm",
                        color="primary", outline=True),
             dbc.Button("Save", id=ids.OHL_PROFILE_SAVE_BTN, size="sm",
@@ -1313,7 +1560,7 @@ def _ohl_options() -> list:
         ], size="sm", className="my-1"),
         dbc.Row([
             dbc.Col([
-                dbc.Label("Backend", className="small"),
+                _lbl("Backend", ids.OHL_BACKEND),
                 dbc.Select(id=ids.OHL_BACKEND, value="cython", options=[
                     {"label": "cython (stable)", "value": "cython"},
                     {"label": "cython_parallel (experimental)",
@@ -1329,8 +1576,10 @@ def _ohl_options() -> list:
                 label="allow experimental backends (F10)",
                 className="small mt-4"), width=5),
         ], className="g-1"),
+        _lbl("DEM file (slope, optional)", ids.OHL_DEM),
         dbc.Input(id=ids.OHL_DEM, size="sm", className="mt-1",
                   placeholder="DEM path (slope, optional)"),
+        _lbl("DSM file (clearance, optional)", ids.OHL_DSM),
         dbc.Input(id=ids.OHL_DSM, size="sm", className="mt-1",
                   placeholder="DSM path (clearance, optional)"),
         html.Div(id=ids.OHL_STATUS, className="small mt-1"),
@@ -1435,10 +1684,13 @@ def _header() -> html.Div:
             dbc.Button([html.Span(className="gi gi-log"), "Log"],
                        id=ids.LOG_VIEW_BTN, size="sm", color="link",
                        title="Open the full warning/error log"),
-            dbc.Button([html.Span(className="gi gi-sun"),
-                        html.Span(className="gi gi-moon")],
-                       id=ids.THEME_TOGGLE, size="sm", color="link",
-                       title="Switch between light and dark theme"),
+            # icon-only: a plain html.Button, dbc.Button takes no aria-label
+            html.Button([html.Span(className="gi gi-sun"),
+                         html.Span(className="gi gi-moon")],
+                        id=ids.THEME_TOGGLE, type="button",
+                        className="btn btn-link btn-sm",
+                        title="Switch between light and dark theme",
+                        **{"aria-label": "Switch between light and dark theme"}),
         ], className="header-actions"),
     ], className="gui-header")
 
@@ -1477,11 +1729,18 @@ def _log_offcanvas() -> dbc.Offcanvas:
         style={"width": "560px"})
 
 
-def build_layout(state) -> dbc.Container:  # pylint: disable=unused-argument
-    """Assemble the full app layout (blank map — R1)."""
+def build_layout(state) -> dbc.Container:
+    """Assemble the full app layout.
+
+    A blank project gives the blank map (R1). When the server-side ``state``
+    already holds a project (the page was reloaded, or a second tab was
+    opened) every store and component whose content is DERIVED from that
+    state starts filled, so the browser shows what the server holds
+    (:func:`_state_prefill`).
+    """
     # width= (not md=) so the columns NEVER stack: with a 100vh map, a
     # stacked sidebar would sit invisibly below the fold on narrow windows.
-    return dbc.Container(
+    layout = dbc.Container(
         _stores() + [
             dbc.Row([
                 dbc.Col(_map_pane(), width=8, className="p-0 gui-map-col"),
@@ -1490,8 +1749,197 @@ def build_layout(state) -> dbc.Container:  # pylint: disable=unused-argument
             _layer_table_offcanvas(),
             _log_offcanvas(),
             _routing_confirm_modal(),
+            _confirm_modal(),
         ],
         fluid=True, className="p-0")
+    _apply_prefill(layout, _state_prefill(state))
+    return layout
+
+
+# ------------------------------------------------- server state -> first paint
+_Put = Callable[[str, str, Any], None]
+
+
+def _crs_text(crs: Any) -> str:
+    """The project CRS as the text the CRS field shows (``EPSG:25832``)."""
+    if isinstance(crs, str):
+        return crs
+    to_string = getattr(crs, "to_string", None)
+    return str(to_string() if callable(to_string) else crs)
+
+
+def _prefill_layers(state, put: _Put) -> None:
+    """Layer list, project status, CRS: the stores everything else follows."""
+    put(ids.PROJECT_CRS, "value", _crs_text(state.project_crs))
+    view = state.layers_view()
+    if view:
+        put(ids.LAYERS_VIEW, "data", view)
+        put(ids.PROJECT_STATUS, "children",
+            f"session restored: {len(view)} layer(s) are still loaded on "
+            "the server")
+
+
+def _prefill_data_tab(state, put: _Put) -> None:
+    """Study-area text and the dataset list (read from the same helpers the
+    callbacks use, so a reload and a live update cannot disagree)."""
+    from .callbacks.data import _dataset_list, _study_area_info
+
+    if state.study_area:
+        put(ids.STUDY_AREA_INFO, "children", _study_area_info(state))
+    if state.layers_of_kind("vector"):
+        put(ids.DATASET_LIST, "children", _dataset_list(state))
+
+
+def _prefill_routes(state, put: _Put) -> None:
+    """Route dropdown and the active route's map pieces (all values are
+    computed first, so a failure cannot leave a half-restored selection)."""
+    routes = state.layers_of_kind("route")
+    if not routes:
+        return
+    options = [{"label": ly.name, "value": ly.id} for ly in routes]
+    active = state.get(state.active_route_id) if state.active_route_id else None
+    if active is None or active.kind != "route":
+        put(ids.EDIT_ROUTE_SELECT, "options", options)
+        return
+    from .callbacks.edit import control_markers, cost_readout, points_rows, route_positions
+
+    pieces = {
+        (ids.ACTIVE_ROUTE, "positions"): route_positions(active),
+        (ids.CONTROL_MARKERS, "children"): control_markers(active),
+        (ids.BUILD_POINTS_TABLE, "rowData"): points_rows(active),
+        (ids.EDIT_COST_READOUT, "children"): cost_readout(active),
+    }
+    put(ids.EDIT_ROUTE_SELECT, "options", options)
+    put(ids.EDIT_ROUTE_SELECT, "value", active.id)
+    put(ids.UI_STATE, "data", {**_DEFAULT_UI_STATE, "active_route_id": active.id})
+    tolerance = (active.meta or {}).get("simplify_tol")
+    if tolerance is not None:
+        put(ids.EDIT_SIMPLIFY_TOL, "value", tolerance)
+    for (component_id, prop), value in pieces.items():
+        put(component_id, prop, value)
+
+
+#: routing setting key -> id of the control that shows it (its value)
+ROUTING_SETTING_CONTROLS: dict[str, str] = {
+    "graph_api": ids.GRAPH_API,
+    "algorithm": ids.ALGORITHM,
+    "neighborhood_k": ids.NEIGHBORHOOD,
+    "search_buffer_m": ids.SEARCH_BUFFER,
+    "full_window": ids.FULL_WINDOW,
+    "ignore_max_cost": ids.IGNORE_MAX_COST,
+    "pairwise": ids.PAIRWISE,
+    "simplify": ids.SIMPLIFY,
+    "simplify_tol": ids.SIMPLIFY_TOL,
+    "delta": ids.DELTA,
+    "num_threads": ids.NUM_THREADS,
+    "margin": ids.MARGIN,
+}
+
+
+def _prefill_routing_settings(state, put: _Put) -> None:
+    """The routing controls take the settings the server holds (a reload, or a
+    project that was opened); a blank project leaves the layout's defaults."""
+    settings = routing.normalise_routing_settings(
+        getattr(state, "routing_settings", None))
+    if not settings:
+        return
+    for key, control in ROUTING_SETTING_CONTROLS.items():
+        put(control, "value", settings[key])
+    put(ids.ALGORITHM, "options",
+        [{"label": a.replace("_", " "), "value": a}
+         for a in routing.backend_algorithms(settings["graph_api"])])
+    put(ids.ROUTING_SETTINGS, "data", settings)
+
+
+#: rasterize setting key -> id of the control that shows it (its value)
+RASTER_SETTING_CONTROLS: dict[str, str] = {
+    "resolution_m": ids.RES_M,
+    "fill_value": ids.FILL_VALUE,
+    "dtype": ids.RASTER_DTYPE,
+    "geometry_buffer_m": ids.GEOM_BUFFER,
+    "widen_thin_forbidden": ids.WIDEN_THIN,
+    "all_touched": ids.ALL_TOUCHED,
+    "on_thin_features": ids.ON_THIN,
+    "crop_border": ids.CROP_BORDER,
+}
+
+
+def _prefill_raster_settings(state, put: _Put) -> None:
+    """The rasterize controls take the settings the server holds (a reload, or
+    a project that was opened); a blank project leaves the layout's defaults."""
+    settings = rasterize.normalise_raster_settings(
+        getattr(state, "raster_settings", None))
+    if not settings:
+        return
+    for key, control in RASTER_SETTING_CONTROLS.items():
+        put(control, "value", settings[key])
+    put(ids.RASTER_SETTINGS, "data", settings)
+
+
+def _prefill_routing_job(state, put: _Put) -> None:
+    """A heavy routing job that outlived the page: poll it again and show Stop.
+
+    Without this the poll interval stays off and Stop stays hidden while the
+    server still holds the job, so "Run routing" would refuse forever.
+    """
+    job = state.routing_job
+    if job is None:
+        return
+    put(ids.ROUTING_POLL, "disabled", False)          # also collects a finished job
+    if getattr(job, "status", "running") == "running":
+        put(ids.ROUTING_STOP_BTN, "style", {})
+        put(ids.ROUTING_STATUS, "children", job.progress_text())
+
+
+def _state_prefill(state) -> dict[str, dict[str, Any]]:
+    """``{component id: {property: value}}`` for everything derived from ``state``.
+
+    A fresh, empty state yields only the values the layout already has, so a
+    blank project is exactly the blank layout. A step that fails is skipped
+    (and logged): a broken project must not take the whole page down.
+    """
+    values: dict[str, dict[str, Any]] = {}
+    if state is None:
+        return values
+    for step in (_prefill_layers, _prefill_data_tab, _prefill_routes,
+                 _prefill_routing_settings, _prefill_raster_settings,
+                 _prefill_routing_job):
+        staged = _run_prefill_step(step, state)
+        for component_id, props in staged.items():
+            values.setdefault(component_id, {}).update(props)
+    return values
+
+
+def _run_prefill_step(step: Callable[[Any, _Put], None],
+                      state) -> dict[str, dict[str, Any]]:
+    """What one prefill step wants to set; nothing if the step fails."""
+    staged: dict[str, dict[str, Any]] = {}
+
+    def put(component_id: str, prop: str, value: Any) -> None:
+        staged.setdefault(component_id, {})[prop] = value
+
+    try:
+        step(state, put)
+    except Exception:  # pylint: disable=broad-exception-caught  # a reload must still show the page
+        _LOG.warning("page prefill step %s failed", step.__name__,
+                     exc_info=True)
+        return {}
+    return staged
+
+
+def _apply_prefill(layout, values: dict[str, dict[str, Any]]) -> None:
+    """Assign the prefilled properties to the components that carry the ids."""
+    if not values:
+        return
+    found: set[str] = set()
+    for component in layout._traverse():  # pylint: disable=protected-access  # Dash's own tree walk
+        component_id = getattr(component, "id", None)
+        if isinstance(component_id, str) and component_id in values:
+            found.add(component_id)
+            for prop, value in values[component_id].items():
+                setattr(component, prop, value)
+    for missing in sorted(set(values) - found):
+        _LOG.warning("page prefill: no component with id %r", missing)
 
 
 def _routing_confirm_modal() -> dbc.Modal:
@@ -1509,6 +1957,26 @@ def _routing_confirm_modal() -> dbc.Modal:
                        color="primary"),
         ]),
     ], id=ids.ROUTING_CONFIRM_MODAL, is_open=False, backdrop="static",
+        keyboard=False, centered=True)
+
+
+def _confirm_modal() -> dbc.Modal:
+    """The one reusable "are you sure?" box (callbacks/confirm.py fills it).
+
+    Same look as the heavy-run gate: a static backdrop, no Escape, an explicit
+    Cancel and a confirm button whose label names the consequence.
+    """
+    return dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle(id=ids.CONFIRM_TITLE),
+                        close_button=False),
+        dbc.ModalBody(id=ids.CONFIRM_BODY),
+        dbc.ModalFooter([
+            dbc.Button("Cancel", id=ids.CONFIRM_CANCEL, size="sm",
+                       color="secondary", outline=True),
+            dbc.Button("Confirm", id=ids.CONFIRM_OK, size="sm",
+                       color="danger"),
+        ]),
+    ], id=ids.CONFIRM_MODAL, is_open=False, backdrop="static",
         keyboard=False, centered=True)
 
 

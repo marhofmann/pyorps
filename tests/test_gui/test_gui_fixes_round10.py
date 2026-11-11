@@ -15,9 +15,9 @@ import threading
 import warnings
 from pathlib import Path
 
-from pyorps.gui import ids
-
 from conftest import SOURCE, TARGET, invoke
+
+from pyorps.gui import ids
 
 GUI_DIR = Path(__file__).resolve().parents[2] / "pyorps" / "gui"
 
@@ -176,10 +176,10 @@ def test_background_job_completes_and_poll_finalizes(app, state, raster_path):
     params = {
         "raster_path": raster_path,
         "kwargs": dict(sources=[SOURCE], targets=[TARGET], waypoints=[],
-                       algorithm="delta-stepping", hardware="cpu",
+                       algorithm="delta-stepping", graph_api="cython",
                        neighborhood="r1", pairwise=False,
                        search_buffer_m=100.0, ignore_max_cost=True,
-                       delta=100.0, num_threads=0, use_astar=False),
+                       delta=100.0, num_threads=0),
         "meta": {"raster_layer_id": layer.id, "algorithm": "delta-stepping",
                  "simplify_tol": None, "wp_names": [], "n_sources": 1,
                  "n_targets": 1, "n_waypoints": 0},

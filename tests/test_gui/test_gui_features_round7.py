@@ -15,10 +15,9 @@ Round-7 GUI features (2026-07-16):
 import json
 
 import pytest
+from conftest import invoke
 
 from pyorps.gui import ids
-
-from conftest import invoke
 
 
 # =============================================================== 47/48 notices
@@ -105,8 +104,7 @@ def test_wfs_malformed_still_error():
 
 # ============================================================= 52 basemap
 def test_update_basemap_source_opacity_zorder(app):
-    from pyorps.gui.layout import (BASEMAP_BY_NAME, BASEMAP_Z_ABOVE,
-                                   BASEMAP_Z_BELOW, BLANK_TILE)
+    from pyorps.gui.layout import BASEMAP_BY_NAME, BASEMAP_Z_ABOVE, BASEMAP_Z_BELOW, BLANK_TILE
 
     resp = invoke(app, ("basemap-tile.url", ids.BASEMAP_SELECT),
                   "OpenStreetMap", 1.0, "below",
@@ -158,7 +156,7 @@ def test_table_resize_is_drag_based(state):
 
     layout = build_layout(state)
     found = {getattr(c, "id", None) for c in layout._traverse()}
-    assert ids.LAYER_TABLE_HEIGHT not in found      # slider removed
+    assert "layer-table-height" not in found        # slider removed
     strips = [c for c in layout._traverse()
               if "table-resizer" in (getattr(c, "className", "") or "")]
     assert len(strips) == 1
@@ -205,6 +203,7 @@ def test_step_gating_and_guide(app, state, raster_path):
 
     # empty project → every dependent step is greyed out
     resp = invoke(app, ("workflow-guide.children",), [], {}, None, None, None,
+                  False, False, False,
                   triggered=[f"{ids.LAYERS_VIEW}.data"])
     assert resp[ids.COST_SEED_BTN]["disabled"] is True
     assert resp[ids.RASTERIZE_BTN]["disabled"] is True
@@ -215,6 +214,7 @@ def test_step_gating_and_guide(app, state, raster_path):
     grid_state = {"dataset_id": "d1", "feature_keys": ["nutzart"]}
     resp = invoke(app, ("workflow-guide.children",), state.layers_view(),
                   grid_state, "d1", ["nutzart"], None,
+                  False, False, False,
                   triggered=[f"{ids.COST_GRID_STATE}.data"])
     assert resp[ids.COST_SEED_BTN]["disabled"] is False      # dataset + keys
     assert resp[ids.RASTERIZE_BTN]["disabled"] is False      # cost seeded

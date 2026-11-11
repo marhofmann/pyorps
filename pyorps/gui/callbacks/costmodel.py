@@ -13,7 +13,7 @@ from dash.exceptions import PreventUpdate
 
 from .. import ids
 from ..services import cost_model, validate
-from ..services.errors import Notice, guard, success
+from ..services.errors import Notice, cap_notices, guard, success
 
 
 def _vector_options(state) -> list[dict]:
@@ -45,6 +45,12 @@ def _coverage_text(state, dataset_id, feature_keys, rows) -> str:
     layer = state.get(dataset_id) if dataset_id else None
     if layer is None or not feature_keys:
         return ""
+    problems = cost_model.invalid_cost_cells(rows or [], tuple(feature_keys))
+    if problems:
+        first = problems[0]
+        return (f"⚠ {len(problems)} cost(s) are not numbers (row "
+                f"{first['row']}: '{first['text']}') - coverage is checked "
+                "once every cost is a number.")
     assumptions = cost_model.assumptions_from_grid_rows(
         rows or [], tuple(feature_keys))
     missing = validate.uncovered_categories(
@@ -315,6 +321,7 @@ def register(app, state) -> None:
         Output(ids.LAYERS_VIEW, "data", allow_duplicate=True),
         Output(ids.MANUAL_GRID, "rowData", allow_duplicate=True),
         Output(ids.MANUAL_STATUS, "children", allow_duplicate=True),
+        Output(ids.NOTICES, "data", allow_duplicate=True),
         Input(ids.MANUAL_DEL_BTN, "n_clicks"),
         State(ids.DRAW_CONTROL, "geojson"),
         State(ids.MANUAL_GRID, "rowData"),
@@ -322,9 +329,10 @@ def register(app, state) -> None:
         State(ids.MANUAL_NAME, "value"),
         State(ids.MANUAL_COST, "value"),
         State(ids.MANUAL_MODE, "value"),
+        State(ids.NOTICES, "data"),
         prevent_initial_call=True)
     def remove_manual_selected(n_clicks, drawn, rows, selected, name, cost,
-                               mode):
+                               mode, notices=None):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from ..services import manual_cost
 
@@ -334,54 +342,94 @@ def register(app, state) -> None:
         wkts = (layer.meta or {}).get("wgs84_wkts") if layer else None
         if layer is None or not wkts:
             raise PreventUpdate
+        notices = list(notices or [])
+        keep_prev, problem = cost_model.clean_manual_rows(rows)
+        if problem is not None:
+            notices.append(problem)
+            return no_update, no_update, no_update, cap_notices(notices)
         removed = {int(r["__row"]) for r in selected if r.get("__row") is not None}
-        for idx in removed:
-            if 0 <= idx < len(wkts):
-                state.manual_excluded_geoms.add(wkts[idx])
-        keep_rows = [r for r in (rows or []) if int(r["__row"]) not in removed]
+        newly_excluded = [wkts[idx] for idx in removed
+                          if 0 <= idx < len(wkts)
+                          and wkts[idx] not in state.manual_excluded_geoms]
+        state.manual_excluded_geoms.update(
+            wkts[idx] for idx in removed if 0 <= idx < len(wkts))
+        keep_rows = [r for r in keep_prev if int(r["__row"]) not in removed]
         features = (drawn or {}).get("features") or []
-        _layer, new_rows = manual_cost.sync_manual_layer(
-            state, features, project_crs=state.project_crs,
-            default_cost=float(cost if cost is not None else 65535),
-            mode=mode or "override",
-            name=(name or "Manual costs").strip() or "Manual costs",
-            prev_rows=keep_rows)
+        result, notices = guard(
+            lambda: manual_cost.sync_manual_layer(
+                state, features, project_crs=state.project_crs,
+                default_cost=float(cost if cost is not None else 65535),
+                mode=mode or "override",
+                name=(name or "Manual costs").strip() or "Manual costs",
+                prev_rows=keep_rows),
+            notices=notices)
+        if result is None:
+            state.manual_excluded_geoms.difference_update(newly_excluded)
+            return no_update, no_update, no_update, notices
+        _layer, new_rows = result
         status = (f"{len(new_rows)} cost polygon(s) — removed {len(removed)}."
                   if new_rows else "All cost polygons removed.")
-        return state.layers_view(), new_rows, status
+        return state.layers_view(), new_rows, status, no_update
 
     # per-polygon name/cost edits write back to the manual layer (task 33)
     @app.callback(
         Output(ids.LAYERS_VIEW, "data", allow_duplicate=True),
+        Output(ids.NOTICES, "data", allow_duplicate=True),
         Input(ids.MANUAL_GRID, "cellValueChanged"),
+        State(ids.NOTICES, "data"),
         prevent_initial_call=True)
-    def edit_manual_grid(events):
+    def edit_manual_grid(events, notices=None):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from ..services import geo, manual_cost
 
         layer = state.get(manual_cost.MANUAL_LAYER_ID)
         if layer is None or layer.gdf is None or not events:
             raise PreventUpdate
-        changed = False
-        for event in events if isinstance(events, list) else [events]:
-            data = event.get("data") or {}
-            row = data.get("__row")
-            column = (event.get("colId")
-                      or event.get("column", {}).get("colId"))
-            if row is None or column not in ("name", manual_cost.COST_COLUMN):
-                continue
-            if not 0 <= int(row) < len(layer.gdf):
-                continue
-            value = data.get(column)
-            if column == manual_cost.COST_COLUMN:
-                value = cost_model.coerce_factor(value)
-            layer.gdf.iat[int(row),
-                          layer.gdf.columns.get_loc(column)] = value
-            changed = True
+        notices = list(notices or [])
+
+        def _apply():
+            # read and validate EVERY edit first, so a bad cost cell changes
+            # nothing (and the notice names it) instead of half-applying
+            edits = []
+            for event in events if isinstance(events, list) else [events]:
+                data = event.get("data") or {}
+                row = data.get("__row")
+                column = (event.get("colId")
+                          or event.get("column", {}).get("colId"))
+                if row is None or column not in ("name",
+                                                 manual_cost.COST_COLUMN):
+                    continue
+                if not 0 <= int(row) < len(layer.gdf):
+                    continue
+                value = data.get(column)
+                if column == manual_cost.COST_COLUMN:
+                    try:
+                        value = cost_model.coerce_factor(value)
+                    except ValueError:
+                        return Notice(
+                            severity="warning", title="A cost is not a number",
+                            meaning=f"The cost '{value}' of polygon "
+                                    f"{int(row) + 1} cannot be used.",
+                            impact="The cost was not changed.",
+                            fix="Type one number (a decimal comma is fine: "
+                                "1,5).", focus_id=ids.TAB_COST,
+                            focus_control=ids.MANUAL_GRID).to_dict()
+                edits.append((int(row), column, value))
+            for row, column, value in edits:
+                layer.gdf.iat[row, layer.gdf.columns.get_loc(column)] = value
+            if edits:
+                layer.geojson = geo.gdf_to_wgs84_geojson(layer.gdf)  # names on the map
+            return bool(edits)
+
+        changed, notices = guard(_apply, notices=notices)
+        if changed is None:
+            return no_update, notices            # guard said what was wrong
+        if isinstance(changed, dict):            # a bad cost cell: nothing applied
+            notices.append(changed)
+            return no_update, cap_notices(notices)
         if not changed:
             raise PreventUpdate
-        layer.geojson = geo.gdf_to_wgs84_geojson(layer.gdf)   # names on the map
-        return state.layers_view()
+        return state.layers_view(), no_update
 
     # ------------------------------------------------- propose feature columns
     @app.callback(Output(ids.COST_FEATURE_KEYS, "options"),
@@ -437,6 +485,7 @@ def register(app, state) -> None:
         State(ids.COST_DATASET, "value"),
         State(ids.COST_FEATURE_KEYS, "value"),
         State(ids.NOTICES, "data"),
+        running=[(Output(ids.COST_SEED_BTN, "disabled"), True, False)],
         prevent_initial_call=True)
     def seed(n_clicks, dataset_id, feature_keys, notices):
         notices = list(notices or [])
@@ -459,7 +508,10 @@ def register(app, state) -> None:
                                      keys, notices=notices)
         if assumptions is None:
             return no_update, no_update, no_update, no_update, notices
-        rows = cost_model.grid_rows_from_assumptions(assumptions, keys)
+        rows, notices = guard(cost_model.grid_rows_from_assumptions,
+                              assumptions, keys, notices=notices)
+        if rows is None:
+            return no_update, no_update, no_update, no_update, notices
         grid_state = {"dataset_id": dataset_id, "feature_keys": list(keys)}
         register_cost_table(state, dataset_id=dataset_id, feature_keys=keys,
                             rows=rows)
@@ -469,9 +521,10 @@ def register(app, state) -> None:
         notices.append(success(f"Cost table seeded ({seeded_from})",
                                meaning=f"{len(rows)} rows for "
                                        f"{' x '.join(keys)}."))
-        coverage = _coverage_text(state, dataset_id, keys, rows)
+        coverage, notices = guard(_coverage_text, state, dataset_id, keys,
+                                  rows, notices=notices)
         return (cost_model.grid_column_defs(keys), rows, grid_state,
-                coverage, notices)
+                coverage or "", notices)
 
     # ----------------------------------------------------- add / delete rows
     @app.callback(
@@ -504,22 +557,34 @@ def register(app, state) -> None:
     # ------------------------------------------------ live coverage validation
     @app.callback(
         Output(ids.COST_COVERAGE_INFO, "children", allow_duplicate=True),
+        Output(ids.NOTICES, "data", allow_duplicate=True),
         Input(ids.COST_GRID, "cellValueChanged"),
         Input(ids.COST_GRID, "rowData"),
         State(ids.COST_GRID_STATE, "data"),
+        State(ids.NOTICES, "data"),
         prevent_initial_call=True)
-    def coverage(_event, rows, grid_state):
+    def coverage(_event, rows, grid_state, notices=None):
         if not grid_state:
             raise PreventUpdate
+        notices = list(notices or [])
+        keys = tuple(grid_state.get("feature_keys") or [])
         # keep the registered table in sync with the live grid so the Raster
         # tab always rasterizes the edited values, never a stale snapshot
         register_cost_table(
             state, dataset_id=grid_state.get("dataset_id"),
-            feature_keys=tuple(grid_state.get("feature_keys") or []),
-            rows=rows)
-        return _coverage_text(state, grid_state.get("dataset_id"),
-                              tuple(grid_state.get("feature_keys") or []),
-                              rows)
+            feature_keys=keys, rows=rows)
+        text, notices = guard(_coverage_text, state,
+                              grid_state.get("dataset_id"), keys, rows,
+                              notices=notices)
+        problem = cost_model.cost_problem_notice(rows or [], keys)
+        if problem is None:
+            return text or "", (notices if text is None else no_update)
+        last = notices[-1] if notices else {}
+        if last.get("title") == problem["title"] \
+                and last.get("meaning") == problem["meaning"]:
+            return text or "", no_update      # the same box is still showing
+        notices.append(problem)
+        return text or "", cap_notices(notices)
 
     # -------------------------------------------------------------- import
     @app.callback(
@@ -531,6 +596,7 @@ def register(app, state) -> None:
         State(ids.COST_IMPORT_PATH, "value"),
         State(ids.COST_DATASET, "value"),
         State(ids.NOTICES, "data"),
+        running=[(Output(ids.COST_IMPORT_BTN, "disabled"), True, False)],
         prevent_initial_call=True)
     def import_table(n_clicks, path, dataset_id, notices):
         notices = list(notices or [])
@@ -556,15 +622,16 @@ def register(app, state) -> None:
     # -------------------------------------------------------------- export
     @app.callback(
         Output(ids.NOTICES, "data", allow_duplicate=True),
-        Input(ids.COST_EXPORT_BTN, "n_clicks"),
+        Input(ids.GO_EXPORT_COSTS, "data"),
         State(ids.COST_EXPORT_PATH, "value"),
         State(ids.COST_GRID, "rowData"),
         State(ids.COST_GRID_STATE, "data"),
         State(ids.NOTICES, "data"),
+        running=[(Output(ids.COST_EXPORT_BTN, "disabled"), True, False)],
         prevent_initial_call=True)
-    def export_table(n_clicks, path, rows, grid_state, notices):
+    def export_table(go, path, rows, grid_state, notices):
         notices = list(notices or [])
-        if not n_clicks:
+        if not go:
             raise PreventUpdate
         if not path or not grid_state:
             notices.append(Notice(
@@ -576,7 +643,10 @@ def register(app, state) -> None:
                 focus_id=ids.TAB_COST).to_dict())
             return notices
         keys = tuple(grid_state.get("feature_keys") or [])
-        assumptions = cost_model.assumptions_from_grid_rows(rows or [], keys)
+        assumptions, notices = guard(cost_model.assumptions_from_grid_rows,
+                                     rows or [], keys, notices=notices)
+        if assumptions is None:
+            return notices
         result, notices = guard(cost_model.export_table, assumptions, keys,
                                 path, notices=notices)
         if result is not None:
@@ -596,7 +666,9 @@ def register(app, state) -> None:
         return (rows or []) + [{"dataset": "", "column": "",
                                 "operator": "all", "value": "",
                                 "mode": "multiply", "factor": "1.0",
-                                "buffer_m": 0}]
+                                "buffer_m": 0, "keep_forbidden": True,
+                                "forbidden_value": 65535,
+                                "zone_column": "", "forbidden_zone": ""}]
 
     @app.callback(
         Output(ids.MODIFIER_GRID, "rowData", allow_duplicate=True),

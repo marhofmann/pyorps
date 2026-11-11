@@ -16,12 +16,20 @@ Hard rules encoded here:
   nor 0 means "whole raster"; see that function.)
 - F5: pyorps' ``simplify=`` is a no-op, so :func:`simplify_line` implements
   Douglas-Peucker GUI-side; costs are always taken from the un-simplified line.
-- F8: the A* heuristic is disabled by default (user preference).
+- F8: the A* heuristic is never switched on by the GUI (user preference); the
+  library backends' own ``astar`` algorithm stays selectable by name.
+- Backends: the user picks the ``graph_api`` (:data:`BACKENDS`); the algorithm
+  list is what that backend really accepts. Only the Cython, GPU and FIM
+  backends can use a :class:`~pyorps.graph.search_session.SearchSession`
+  (:func:`uses_session`); every other backend runs ``PathFinder.find_route``
+  directly, because a session would silently run the Cython Dijkstra instead.
 """
 from __future__ import annotations
 
+import importlib.util
 import math
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any
 
 from shapely.geometry import LineString
@@ -73,14 +81,302 @@ def recommend_gpu(n_cells: int) -> bool:
     return n_cells > GPU_RECOMMEND_CELLS
 
 
+# -------------------------------------------------------------------- backends
+@dataclass(frozen=True)
+class Backend:
+    """One ``graph_api`` the Backend dropdown offers."""
+
+    name: str                       # the graph_api value
+    label: str                      # short text of the dropdown entry
+    algorithms: tuple[str, ...]     # what the backend really accepts
+    default_algorithm: str
+    modules: tuple[str, ...]        # all of these must be importable
+    hint: str                       # what to do when they are not
+    gpu: bool = False
+    about: str = ""                 # one line for the help text
+
+
+_GRAPH_HINT = 'pip install "pyorps[graph]"'
+_GPU_HINT = 'pip install "pyorps[gpu]"'
+_LIBRARY_ALGORITHMS = ("dijkstra", "bidirectional_dijkstra", "astar")
+
+#: The algorithm lists follow the ``ALGORITHMS`` tuple of each library API class
+#: (cython_api.CythonAPI, networkx_api.NetworkxAPI, ...). The GPU backend only
+#: accepts delta-stepping and dijkstra (raster_gpu_api.shortest_path) and the FIM
+#: backend fim, eikonal and dijkstra (raster_fim_api._ACCEPTED_ALGORITHMS); a
+#: test compares this table with the library. ``cugraph`` is left out on
+#: purpose: it raises NotImplementedError.
+BACKENDS: dict[str, Backend] = {b.name: b for b in (
+    Backend("cython", "cython", ("dijkstra", "delta-stepping",
+                                 "delta-stepping-circular"), "delta-stepping",
+            ("pyorps.utils._delta_stepping", "pyorps.utils._dijkstra"),
+            "the compiled search kernels are missing: reinstall pyorps or run "
+            "python setup.py build_ext --inplace",
+            about="Compiled kernels on the raster itself (default, fastest "
+                  "on the CPU)."),
+    Backend("raster_gpu", "raster_gpu (GPU)", ("delta-stepping", "dijkstra"),
+            "delta-stepping", ("cupy",), _GPU_HINT, gpu=True,
+            about="Delta-stepping on the NVIDIA GPU (needs CuPy and a CUDA "
+                  "GPU)."),
+    Backend("raster_fim", "raster_fim (GPU)", ("fim", "eikonal", "dijkstra"),
+            "fim", ("cupy",), _GPU_HINT, gpu=True,
+            about="Continuous eikonal solver on the NVIDIA GPU (needs CuPy "
+                  "and a CUDA GPU)."),
+    Backend("networkx", "networkx", _LIBRARY_ALGORITHMS, "dijkstra",
+            ("networkx",), _GRAPH_HINT,
+            about="Graph library; slow but simple. Builds an explicit graph."),
+    Backend("networkit", "networkit", _LIBRARY_ALGORITHMS, "dijkstra",
+            ("networkit",), _GRAPH_HINT,
+            about="Graph library; builds an explicit graph."),
+    Backend("igraph", "igraph", ("dijkstra", "bellman_ford", "astar"),
+            "dijkstra", ("igraph",), _GRAPH_HINT,
+            about="Graph library; builds an explicit graph."),
+    Backend("rustworkx", "rustworkx", ("dijkstra", "astar", "bellman_ford"),
+            "dijkstra", ("rustworkx",), _GRAPH_HINT,
+            about="Graph library; builds an explicit graph."),
+)}
+DEFAULT_BACKEND = "cython"
+
+#: backends that can run through a retained SearchSession; every other one
+#: runs PathFinder.find_route directly (see :func:`uses_session`)
+SESSION_BACKENDS = ("cython", "raster_gpu", "raster_fim")
+
+
+def backend_available(name: str) -> bool:
+    """True when every package of backend ``name`` can be found."""
+    backend = BACKENDS.get(name)
+    if backend is None:
+        return False
+    for module in backend.modules:
+        try:
+            if importlib.util.find_spec(module) is None:
+                return False
+        except (ImportError, ValueError):
+            return False
+    return True
+
+
+def backend_options() -> list[dict]:
+    """Options of the Backend dropdown: unavailable ones disabled, with the
+    install hint in the label (and as the option's tooltip)."""
+    options = []
+    for backend in BACKENDS.values():
+        if backend_available(backend.name):
+            options.append({"label": backend.label, "value": backend.name,
+                            "title": backend.about})
+        else:
+            options.append({
+                "label": f"{backend.label} (not installed: {backend.hint})",
+                "value": backend.name, "disabled": True,
+                "title": backend.hint})
+    return options
+
+
+def backend_algorithms(graph_api: str) -> list[str]:
+    """The algorithms ``graph_api`` accepts (empty for an unknown backend)."""
+    backend = BACKENDS.get(graph_api)
+    return list(backend.algorithms) if backend is not None else []
+
+
+def default_algorithm(graph_api: str) -> str:
+    """The algorithm a backend starts with (cython falls back to itself)."""
+    return BACKENDS.get(graph_api, BACKENDS[DEFAULT_BACKEND]).default_algorithm
+
+
+def uses_session(graph_api: str, algorithm: str, margin: float | None = None
+                 ) -> bool:
+    """True when a route runs through a retained ``SearchSession``.
+
+    A session picks its kernel from the BACKEND KIND only (cython, GPU, FIM):
+    on any graph library it would run the Cython Dijkstra, whatever the
+    algorithm says (audit 4b.1, confirmed by a run), so those backends run
+    ``find_route`` directly. A termination ``margin`` also needs the direct
+    path: the session settles the whole field with a fixed margin of 1e30 and
+    ignores the keyword.
+    """
+    if graph_api not in SESSION_BACKENDS:
+        return False
+    return not (margin is not None and uses_delta_kernel(graph_api, algorithm))
+
+
+def uses_delta_kernel(graph_api: str, algorithm: str) -> bool:
+    """True when the search is a delta-stepping kernel: ``delta`` and
+    ``margin`` then change what runs (both GPU algorithm names run it)."""
+    return graph_api == "raster_gpu" or (
+        graph_api == "cython" and str(algorithm).startswith("delta"))
+
+
+def uses_threads(graph_api: str, algorithm: str) -> bool:
+    """True when ``num_threads`` is read: the CPU delta-stepping kernel only."""
+    return graph_api == "cython" and str(algorithm).startswith("delta")
+
+
+def direct_route_kwargs(graph_api: str, algorithm: str, *, delta: float = 100,
+                        num_threads: int = 0,
+                        margin: float | None = None) -> dict[str, Any]:
+    """Keywords for ``find_route`` of a direct (session-less) route.
+
+    ``find_route`` rejects a keyword its backend's ``shortest_path`` does not
+    read (``FIND_ROUTE_OPTIONS``), so only what the backend takes is passed:
+    ``delta``, ``num_threads`` and ``margin`` on the cython delta kernel,
+    nothing on the graph libraries (the GPU's ``delta``/``margin`` are
+    constructor settings: :func:`graph_api_options`).
+    """
+    if graph_api == "cython" and uses_delta_kernel(graph_api, algorithm):
+        kwargs: dict[str, Any] = {"delta": delta, "num_threads": num_threads}
+        if margin is not None:
+            kwargs["margin"] = margin
+        return kwargs
+    return {}
+
+
+def graph_api_options(graph_api: str, algorithm: str, *, delta: float = 100,
+                      margin: float | None = None) -> dict[str, Any] | None:
+    """``PathFinder(graph_api_options=...)`` for a direct GPU route.
+
+    Only the settings the user gave: ``margin`` is the GPU kernel's
+    termination margin and is only passed when it was set.
+    """
+    if graph_api == "raster_gpu" and margin is not None:
+        return {"delta": delta, "margin": margin}
+    return None
+
+
+def resolve_route_backend(algorithm: str, hardware: str = "cpu",
+                          graph_api: str | None = None) -> tuple[str, str]:
+    """``(graph_api, algorithm)`` of a run.
+
+    An explicit ``graph_api`` (the Backend dropdown) must accept the
+    algorithm: a mismatch raises ``ValueError`` instead of quietly running
+    something else. Without one, the older (algorithm, hardware) matrix of
+    :func:`resolve_backend` applies.
+    """
+    if graph_api is None:
+        return resolve_backend(algorithm, hardware)
+    name = str(graph_api).strip().lower()
+    if name not in BACKENDS:
+        raise ValueError(f"Unknown backend {graph_api!r}: choose one of "
+                         f"{', '.join(BACKENDS)}.")
+    if algorithm not in BACKENDS[name].algorithms:
+        raise ValueError(
+            f"The {name} backend does not offer the algorithm {algorithm!r}: "
+            f"choose one of {', '.join(BACKENDS[name].algorithms)}.")
+    return name, algorithm
+
+
+def hardware_of(graph_api: str) -> str:
+    """``"gpu"`` for the GPU backends, else ``"cpu"`` (stored with a route)."""
+    backend = BACKENDS.get(graph_api)
+    return "gpu" if backend is not None and backend.gpu else "cpu"
+
+
+#: tooltips of the three delta-stepping settings; the *_OFF_HELP text says why a
+#: field is switched off for the chosen backend/algorithm
+DELTA_HELP = ("Bucket width of delta-stepping, in cost units. Larger buckets "
+              "mean fewer rounds but more repeated work. Default 100.")
+DELTA_OFF_HELP = ("Not used: delta is the bucket width of delta-stepping, "
+                  "and this backend/algorithm does not run it.")
+THREADS_HELP = ("Worker threads of the CPU delta-stepping kernel. 0 = all "
+                "cores.")
+THREADS_OFF_HELP = ("Not used: only the CPU delta-stepping kernel (cython) "
+                    "has worker threads.")
+MARGIN_HELP = ("Delta-stepping termination margin. 1 stops as soon as the "
+               "target is provably settled (exact); larger values search on "
+               "and buy no exactness. Empty = library default. Setting one "
+               "runs the route as a single search (no retained field).")
+MARGIN_OFF_HELP = ("Not used: the margin belongs to the delta-stepping "
+                   "kernels, and this backend/algorithm does not run one.")
+
+
+# --------------------------------------------------------------- neighbourhood
+#: range of the neighbourhood order K the library accepts
+NEIGHBORHOOD_MIN, NEIGHBORHOOD_MAX = 0, 127
+DEFAULT_NEIGHBORHOOD_K = 2
+
+
+def neighborhood_string(value: Any) -> str:
+    """The ``"rK"`` string for the k field's value (``"r2"`` for a blank one).
+
+    Also takes an ``"r1"`` / ``"1"`` string, as saved routes and older
+    callers carry it. Validation of the range is the caller's job
+    (:func:`~pyorps.gui.callbacks.routes.numeric_field_problem`).
+    """
+    if value is None or value == "":
+        return f"r{DEFAULT_NEIGHBORHOOD_K}"
+    if isinstance(value, str):
+        text = value.strip().lstrip("rR")
+        return f"r{int(float(text))}"
+    return f"r{int(value)}"
+
+
+@lru_cache(maxsize=64)
+def edges_per_cell(neighborhood: str) -> int:
+    """Outgoing edges per cell of an ``"rK"`` neighbourhood (4, 8, 16, 32, ...)."""
+    from pyorps.utils.neighborhood import get_neighborhood_steps
+
+    try:
+        return int(len(get_neighborhood_steps(neighborhood)))
+    except Exception:  # pylint: disable=broad-exception-caught  # an estimate must not fail
+        return 16
+
+
+# ------------------------------------------------------------ project settings
+#: the routing settings a project keeps, in the order of the controls:
+#: key -> value of a blank page (the layout's own defaults)
+ROUTING_SETTING_DEFAULTS: dict[str, Any] = {
+    "graph_api": DEFAULT_BACKEND,
+    "algorithm": BACKENDS[DEFAULT_BACKEND].default_algorithm,
+    "neighborhood_k": DEFAULT_NEIGHBORHOOD_K,
+    "search_buffer_m": None,
+    "full_window": False,
+    "ignore_max_cost": True,
+    "pairwise": False,
+    "simplify": False,
+    "simplify_tol": 1.0,
+    "delta": 100,
+    "num_threads": 0,
+    "margin": None,
+}
+ROUTING_SETTING_KEYS = tuple(ROUTING_SETTING_DEFAULTS)
+
+
+def _plain_number(value: Any, default: Any) -> Any:
+    """``value`` when it is a plain number (or None where None is the default)."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool) \
+            and math.isfinite(value):
+        return value
+    return default
+
+
+def normalise_routing_settings(raw: Any) -> dict[str, Any]:
+    """The routing settings of a project file, as the controls take them.
+
+    A project without them (an older file) gives ``{}``: the page keeps its
+    own defaults. Otherwise every key is present: a missing or unusable value
+    falls back to the default, an unknown backend to cython and an algorithm
+    the backend does not run to that backend's default.
+    """
+    if not isinstance(raw, dict) or not raw:
+        return {}
+    out = dict(ROUTING_SETTING_DEFAULTS)
+    graph_api = raw.get("graph_api")
+    out["graph_api"] = graph_api if graph_api in BACKENDS else DEFAULT_BACKEND
+    algorithm = raw.get("algorithm")
+    out["algorithm"] = (algorithm if algorithm in backend_algorithms(out["graph_api"])
+                        else default_algorithm(out["graph_api"]))
+    for key in ("neighborhood_k", "search_buffer_m", "simplify_tol", "delta", "num_threads", "margin"):
+        out[key] = _plain_number(raw.get(key), ROUTING_SETTING_DEFAULTS[key])
+    for key in ("full_window", "ignore_max_cost", "pairwise", "simplify"):
+        value = raw.get(key)
+        out[key] = value if isinstance(value, bool) else ROUTING_SETTING_DEFAULTS[key]
+    return out
+
+
 class RoutingCancelled(Exception):
     """Raised inside the routing loops when the user pressed Stop."""
 
 
 # ------------------------------------------------------------- run estimation
-#: outgoing edges per cell for each neighborhood ring
-NEIGHBORHOOD_EDGES = {"r0": 4, "r1": 8, "r2": 16, "r3": 32}
-
 #: very rough end-to-end throughput (graph build + search) per backend, in
 #: edges/second on a typical desktop CPU/GPU — order-of-magnitude only, used
 #: for the pre-run runtime prognosis.
@@ -110,7 +406,8 @@ def estimate_routing(raster_path: str, *,
                      waypoints: list[tuple[float, float]] | None = None,
                      algorithm: str = "delta-stepping", hardware: str = "cpu",
                      neighborhood: str = "r2", pairwise: bool = False,
-                     search_buffer_m: float | None = None) -> dict:
+                     search_buffer_m: float | None = None,
+                     graph_api: str | None = None) -> dict:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Prognosis for a routing run: cells, runtime, memory, storage.
 
@@ -129,7 +426,9 @@ def estimate_routing(raster_path: str, *,
         import numpy as np
         dtype_size = np.dtype(src.dtypes[0]).itemsize
 
-    buffer_m = search_buffer_m or default_search_buffer(sources, targets)
+    buffer_m = search_buffer_m
+    if buffer_m is None or buffer_m <= 0:          # blank or 0 = automatic
+        buffer_m = default_search_buffer(sources, targets)
     pairs = make_pairs(sources, targets, pairwise)
 
     total_cells = 0
@@ -147,14 +446,14 @@ def estimate_routing(raster_path: str, *,
         total_cells += cells
         max_cells = max(max_cells, cells)
 
-    graph_api, algo = resolve_backend(algorithm, hardware)
-    edges_per_cell = NEIGHBORHOOD_EDGES.get(neighborhood, 16)
+    graph_api, algo = resolve_route_backend(algorithm, hardware, graph_api)
+    n_edges = edges_per_cell(neighborhood)
     n_segments_per_pair = len(waypoints) + 1
-    total_edges = total_cells * edges_per_cell
+    total_edges = total_cells * n_edges
     # graph build dominates; each extra waypoint segment re-searches the graph
     work_edges = total_edges * (1 + 0.3 * (n_segments_per_pair - 1))
     seconds = work_edges / EDGES_PER_SECOND.get(graph_api, 4e6)
-    memory_mb = (max_cells * edges_per_cell * _BYTES_PER_EDGE
+    memory_mb = (max_cells * n_edges * _BYTES_PER_EDGE
                  + max_cells * _BYTES_PER_CELL) / 1e6
     storage_mb = max_cells * dtype_size / 1e6      # temp window raster
 
@@ -231,6 +530,43 @@ def refresh_route_display(layer) -> LineString:
     return display
 
 
+def has_undo(state, layer_id: str | None) -> bool:
+    """True when route ``layer_id`` holds a one-step undo snapshot."""
+    return bool(layer_id) and layer_id in state.route_undo
+
+
+def undo_last_edit(state, layer_id: str | None):
+    """Put the route that the last edit of ``layer_id`` replaced back.
+
+    The snapshot (``state.route_undo[layer_id]``) takes the place of the edited
+    route: its paint-order position, group, line style and visibility. It keeps
+    its own line, control points, params, metrics and name. The edited route is
+    removed, the restored one becomes the active route, and no snapshot is left
+    (one step only, no redo). Returns the restored layer; raises
+    :class:`~pyorps.gui.services.errors.NothingToUndoError` when there is no
+    snapshot for ``layer_id``.
+    """
+    from .errors import NothingToUndoError
+
+    with state.locked():
+        edited = state.get(layer_id) if layer_id else None
+        snapshot = state.route_undo.get(layer_id) if layer_id else None
+        if edited is None or edited.kind != "route" or snapshot is None:
+            raise NothingToUndoError(
+                "This route has not been edited since it was computed, "
+                "opened or last undone.")
+        refresh_route_display(snapshot)       # new geojson revision: no stale tile
+        snapshot.meta["group"] = edited.meta.get("group")
+        snapshot.style = dict(edited.style or {})
+        snapshot.visible = edited.visible
+        snapshot.z = edited.z
+        state.layers[snapshot.id] = snapshot
+        state.remove_layer(edited.id)         # also drops its snapshot entry
+        state.active_route_id = snapshot.id
+        state.dirty = True
+    return snapshot
+
+
 # ------------------------------------------------------------ chained routing
 def route_through_points(finder, ordered_points: list[tuple[float, float]],
                          algorithm: str = "dijkstra", cancel=None,
@@ -303,6 +639,34 @@ class BuiltRoute:
         return [self.source, *self.waypoints, self.target]
 
 
+def whole_raster_buffer(raster_source: Any) -> float:
+    """Search-space buffer that makes the window the WHOLE raster.
+
+    The library's own helper (``search_session.full_window_buffer_m``): the
+    raster's diagonal, which no buffer needs to exceed.
+    """
+    from pyorps.graph.search_session import full_window_buffer_m
+
+    return float(full_window_buffer_m(raster_source))
+
+
+def points_in_finder_window(finder, points: list[tuple[float, float]]) -> bool:
+    """True when every point lies inside the search window ``finder`` holds.
+
+    A direct (session-less) route cannot leave the window of its finder; a
+    ``SearchSession`` rebuilds the window itself, a direct route needs a new
+    finder instead.
+    """
+    handler = getattr(finder, "raster_handler", None)
+    if handler is None:
+        return False
+    rows, cols = handler.data.shape[-2:]
+    for row, col in handler.coords_to_indices([tuple(p) for p in points]):
+        if row < 0 or col < 0 or row >= rows or col >= cols:
+            return False
+    return True
+
+
 def run_routing(raster_source: Any, *, sources: list[tuple[float, float]],
                 targets: list[tuple[float, float]],
                 waypoints: list[tuple[float, float]] | None = None,
@@ -311,7 +675,8 @@ def run_routing(raster_source: Any, *, sources: list[tuple[float, float]],
                 search_buffer_m: float | None = None,
                 ignore_max_cost: bool = True,
                 delta: float = 100, num_threads: int = 0,
-                use_astar: bool = False, margin: float | None = None,
+                margin: float | None = None,
+                graph_api: str | None = None, full_window: bool = False,
                 cancel=None, progress=None):
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Route every source/target pair through the shared, ordered waypoints.
@@ -320,6 +685,14 @@ def run_routing(raster_source: Any, *, sources: list[tuple[float, float]],
     — the PathFinder is returned so callers can keep it for later editing.
     Pairs that raise ``NoPathFoundError`` are skipped and reported in the
     failed list: the actual return is ``(finder, results, failed_pairs)``.
+
+    ``graph_api`` is the backend the user picked (``algorithm`` must be one it
+    accepts); without it the older (``algorithm``, ``hardware``) matrix picks
+    one. Cython, GPU and FIM routes run through a retained ``SearchSession``;
+    every other backend, and any route with a termination ``margin`` on a
+    delta-stepping kernel, runs ``PathFinder.find_route`` directly so exactly
+    the chosen backend, algorithm and margin run (:func:`uses_session`).
+    ``full_window`` makes the whole raster the search window.
 
     ``cancel`` (threading.Event) stops the run cooperatively: it is checked
     before every pair AND between waypoint legs, so pressing Stop aborts
@@ -335,32 +708,41 @@ def run_routing(raster_source: Any, *, sources: list[tuple[float, float]],
                          "place at least one source and one target.")
 
     waypoints = list(waypoints or [])
-    graph_api, algo = resolve_backend(algorithm, hardware)
+    graph_api, algo = resolve_route_backend(algorithm, hardware, graph_api)
 
-    if not search_buffer_m or search_buffer_m <= 0:      # F1: never blank
+    if full_window:
+        search_buffer_m = whole_raster_buffer(raster_source)
+    elif not search_buffer_m or search_buffer_m <= 0:      # F1: never blank
         search_buffer_m = default_search_buffer(sources, targets)
 
+    use_session = uses_session(graph_api, algo, margin)
+    finder_options = (None if use_session else
+                      graph_api_options(graph_api, algo, delta=delta,
+                                        margin=margin))
     # One PathFinder seeded with every point so the search window covers them
     # all (and the waypoints); the chained routing reuses its graph.
     seed_sources = [*sources, *waypoints]
+    finder_kwargs = {"graph_api_options": finder_options} if finder_options         else {}
     finder = PathFinder(
         raster_source, source_coords=seed_sources, target_coords=targets,
         graph_api=graph_api, neighborhood_str=neighborhood,
         search_space_buffer_m=search_buffer_m,
-        ignore_max_cost=ignore_max_cost)
+        ignore_max_cost=ignore_max_cost, **finder_kwargs)
 
     # margin is only forwarded when the caller sets one: passing a value here
-    # overrides the API's exact termination floor, and the old default of 1.1
-    # made every interactive run relax a ~21% larger annulus for nothing.
+    # overrides the API's exact termination floor. A session ignores it, so a
+    # route that has one runs find_route directly (see uses_session).
     algo_kwargs = {"delta": delta, "num_threads": num_threads}
-    if margin is not None:
-        algo_kwargs["margin"] = margin
+    direct_kwargs = direct_route_kwargs(graph_api, algo, delta=delta,
+                                        num_threads=num_threads,
+                                        margin=margin)
     params = {"algorithm": algo, "graph_api": graph_api,
               "neighborhood": neighborhood,
               "search_space_buffer_m": search_buffer_m,
-              "ignore_max_cost": ignore_max_cost, "hardware": hardware,
-              "delta": delta, "num_threads": num_threads,
-              "use_astar": use_astar}
+              "full_window": bool(full_window),
+              "ignore_max_cost": ignore_max_cost,
+              "hardware": hardware_of(graph_api),
+              "delta": delta, "num_threads": num_threads, "margin": margin}
 
     results: list[BuiltRoute] = []
     failed: list[tuple[tuple, tuple, str]] = []
@@ -373,10 +755,15 @@ def run_routing(raster_source: Any, *, sources: list[tuple[float, float]],
         pts = [tuple(src), *map(tuple, waypoints), tuple(tgt)]
         session = None
         try:
-            session = finder.search_session(algorithm=algo, **algo_kwargs)
-            line, rc = route_through_points(finder, pts, algorithm=algo,
-                                            cancel=cancel, session=session,
-                                            **algo_kwargs)
+            if use_session:
+                session = finder.search_session(algorithm=algo, **algo_kwargs)
+                line, rc = route_through_points(
+                    finder, pts, algorithm=algo, cancel=cancel,
+                    session=session, **algo_kwargs)
+            else:
+                line, rc = route_through_points(
+                    finder, pts, algorithm=algo, cancel=cancel,
+                    **direct_kwargs)
         except RoutingCancelled:
             if session is not None:
                 session.close()

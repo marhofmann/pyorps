@@ -4,9 +4,24 @@ from __future__ import annotations
 
 def register_all(app, state) -> None:
     """Register every callback module against the app + shared state."""
-    from . import (attrs, browse, constrained, costmodel, data, edit, groups,
-                   guide, interaction, io, layers, notifications, raster,
-                   routes, theme)
+    from . import (
+        attrs,
+        browse,
+        confirm,
+        constrained,
+        costmodel,
+        data,
+        edit,
+        groups,
+        guide,
+        interaction,
+        io,
+        layers,
+        notifications,
+        raster,
+        routes,
+        theme,
+    )
 
     notifications.register(app, state)
     layers.register(app, state)
@@ -19,6 +34,7 @@ def register_all(app, state) -> None:
     edit.register(app, state)
     groups.register(app, state)
     io.register(app, state)
+    confirm.register(app, state)
     constrained.register(app, state)
     browse.register(app, state)
     guide.register(app, state)

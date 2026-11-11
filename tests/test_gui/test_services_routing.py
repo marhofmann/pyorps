@@ -1,10 +1,9 @@
 """Unit tests: pyorps.gui.services.routing — C13/C14, F1, F5, F8."""
 import pytest
+from conftest import SOURCE, TARGET, TEST_CRS
 from shapely.geometry import LineString
 
 from pyorps.gui.services import routing
-
-from conftest import SOURCE, TARGET, TEST_CRS
 
 
 # ------------------------------------------------------------- C14 matrix
@@ -92,7 +91,7 @@ def test_run_routing_end_to_end(raster_path):
     assert built.line.geom_type == "LineString"
     assert built.cost.total_cost > 0
     assert built.params["graph_api"] == "cython"
-    assert built.params["use_astar"] is False           # F8
+    assert "use_astar" not in built.params               # F8: no A* switch
     assert built.params["search_space_buffer_m"] == 80
     assert built.control_points == [SOURCE, TARGET]
     assert built.session is not None
