@@ -1,11 +1,12 @@
-import rustworkx as rx
-import pandapower as pp
-import numpy as np
-from IPython.extensions.autoreload import update_function
-from numba import njit, prange, bool as nb_bool
 from itertools import pairwise
+
+import numpy as np
+import pandapower as pp
 import pandas as pd
+import rustworkx as rx
 from geopandas import GeoDataFrame
+from numba import bool as nb_bool
+from numba import njit, prange
 from rustworkx.visit import BFSVisitor
 from shapely.geometry import LineString
 
@@ -262,7 +263,7 @@ class TreeTopologyGenerator:
         """
         Modified version that avoids copying the network.
         """
-        print(f"Extracting trees from a given pandapower network...")
+        print("Extracting trees from a given pandapower network...")
 
         # Initialize mappings
         from_buses, to_buses = self._initialize_mappings()

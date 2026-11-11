@@ -245,7 +245,8 @@ def setup(app):
 
     # Check if Cython extensions are available
     try:
-        from pyorps.utils import path_algorithms
+        # The import itself is the probe: find_spec would not catch a broken build.
+        from pyorps.utils import path_algorithms  # noqa: F401
         print("Cython extensions detected and available for documentation")
     except ImportError:
         print("Cython extensions not available. Build with: "

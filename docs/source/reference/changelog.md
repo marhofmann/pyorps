@@ -15,8 +15,13 @@ api: []
 Added:
 
 - Python 3.14 is supported (wheels for Windows, Linux and macOS, and a test job).
+- Python 3.15 is supported (wheels for Windows, Linux and macOS, built with cibuildwheel 4.3.5, and test jobs on all three systems). The supported versions are now 3.12 to 3.15.
 
 Changed:
+
+- Data in a geographic CRS (degrees, for example EPSG:4326) is now reprojected automatically to the local UTM zone, with one `CrsReprojectionWarning`, instead of being rejected. The raster and every route are in the UTM CRS (`GeoRasterizer.crs`): give source and target coordinates in it.
+- The GitHub Actions shrink to two workflows: *Tests* (a ruff lint job, the test matrix with the `full` and `gui` extras, and a weekly run against the newest dependencies) and the release pipeline. The separate *Code Quality Check* and *Tests with the newest dependencies* workflows are gone; ruff replaces flake8 and Pylint, and the Pylint settings are removed from `pyproject.toml`. ruff is part of the `dev` and `full` extras.
+- The `graph` and `full` extras no longer install networkit on macOS: it has wheels for macOS 26 only (and none for macOS 14), so pip would compile it. Install it by hand on macOS 26 or newer if you want the networkit backend.
 
 - Python 3.11 is no longer supported: PYORPS requires Python 3.12 or newer. numpy 2.5, scipy 1.18 and rasterio 1.5 already require 3.12, so a Python 3.11 installation was stuck on older releases of its dependencies. Stay on PYORPS 0.4.0 if you need Python 3.11.
 

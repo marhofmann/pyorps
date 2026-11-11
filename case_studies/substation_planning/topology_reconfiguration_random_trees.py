@@ -1,13 +1,14 @@
 
-import pandapower as pp
+from itertools import chain, pairwise
+
 import networkx as nx
 import numpy as np
-from numba import njit, prange, bool as nb_bool
+import pandapower as pp
 import pandas as pd
-from networkx.algorithms.tree.mst import SpanningTreeIterator
-from itertools import chain, pairwise
 import rustworkx as rx
-
+from networkx.algorithms.tree.mst import SpanningTreeIterator
+from numba import bool as nb_bool
+from numba import njit, prange
 from progressbar import progressbar
 
 
@@ -282,8 +283,6 @@ def calculate_jaccard_threshold(items_list, subset_size, num_subsets):
     theoretical_max = (subset_size - 1) / (subset_size + 1)
 
     # Adjustment based on total items vs subset size
-    coverage_ratio = (subset_size * num_subsets) / total_items
-
     if total_items < subset_size * num_subsets:
         # Not enough elements to create completely distinct subsets
         min_overlap = (subset_size * num_subsets - total_items) / num_subsets
@@ -370,7 +369,7 @@ def create_trees_with_cycle_switches(net, n_trees=10, resistance_first=True):
         - cycle_line_switches: List of lists, each containing line-switch indices for a cycle
         - tree_excluded_switches: List of lists, each containing line-switch indices excluded from a tree
     """
-    print(f"Extracting trees from a given pandapower network...")
+    print("Extracting trees from a given pandapower network...")
     # Map from bus1-bus2 pair to line_idx
     from_buses = net.line.from_bus.values
     to_buses = net.line.to_bus.values
@@ -458,7 +457,7 @@ def create_trees_with_cycle_switches_one_by_one(net, func, parameter, n_trees=10
         - cycle_line_switches: List of lists, each containing line-switch indices for a cycle
         - tree_excluded_switches: List of lists, each containing line-switch indices excluded from a tree
     """
-    print(f"Extracting trees from a given pandapower network...")
+    print("Extracting trees from a given pandapower network...")
     # Map from bus1-bus2 pair to line_idx
     from_buses = net.line.from_bus.values
     to_buses = net.line.to_bus.values
@@ -610,7 +609,6 @@ def create_trees_with_cycle_switches_all_trees(net, n_trees=10, max_jaccard_simi
 
     # Step 6: Generate trees using SpanningTreeIterator with decreasing sorting strategy
     tree_excluded_switches = []
-    nr_of_cycles = len(cycle_switches)
     tree_count = 0
     similarities = []
     min_similarity = 1

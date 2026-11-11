@@ -1,6 +1,6 @@
 
-from check_tree_topologies import *
 import matplotlib.pyplot as plt
+from check_tree_topologies import *
 
 
 def simulated_annealing_weights(net, temperature, best_metrics=None, switch_config=None,
@@ -374,7 +374,7 @@ class SimulatedAnnealingTreeFinder(TreeTopologyGenerator):
         # Run power flow
         try:
             pp.runpp(self.net)
-        except:
+        except Exception:
             print("Power flow did not converge, skipping this configuration")
             self.restore_switch_states(current_switch_states)
             return False

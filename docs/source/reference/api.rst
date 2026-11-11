@@ -124,6 +124,30 @@ Exceptions
    PairwiseError
    CostAssumptionsError
    WFSError
+   FileLoadError
+   InvalidSourceError
+   FormatError
+   ObjectiveError
+   MetricStackError
+   EnsembleError
+   FeatureColumnError
+   NoSuitableColumnsError
+   ColumnAnalysisError
+   WFSConnectionError
+   WFSResponseParsingError
+   WFSLayerNotFoundError
+   WFSServerError
+   WFSRequestRejectedError
+   ProvenanceMismatch
+   InvalidInputError
+   InvalidTypeError
+   MissingKeyError
+   MissingDependencyError
+   FeatureNotImplementedError
+   PyorpsRuntimeError
+   InsufficientMemoryError
+   InputFileNotFoundError
+   PyorpsWarning
 
 Packages
 --------
