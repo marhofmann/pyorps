@@ -147,6 +147,8 @@ Exceptions
    PyorpsRuntimeError
    InsufficientMemoryError
    InputFileNotFoundError
+   ConsistencyCheckError
+   NumericalPrecisionError
    PyorpsWarning
 
 Packages

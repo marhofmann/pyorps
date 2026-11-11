@@ -16,6 +16,9 @@ Added:
 
 - Python 3.14 is supported (wheels for Windows, Linux and macOS, and a test job).
 - Python 3.15 is supported (wheels for Windows, Linux and macOS, built with cibuildwheel 4.3.5, and test jobs on all three systems). The supported versions are now 3.12 to 3.15.
+- The research packages `pyorps.collector`, `pyorps.certify`, `pyorps.costmodel` and `pyorps.siting` have package exports (`__all__`), correct package descriptions and one API page each ({doc}`../api/collector`, {doc}`../api/certify`, {doc}`../api/costmodel`, {doc}`../api/siting`). They are experimental research code: tested on synthetic instances, the method is not complete, and the interfaces may change.
+- New extra `yaml` (`pip install "pyorps[yaml]"`, also part of `case_studies` and `full`) for everything that reads or writes YAML outside the GUI: infrastructure profiles, the cost catalogue, the data manifest and the collector and voltage input files. Without PyYAML these raise `MissingDependencyError` and name the extra, instead of a bare `ModuleNotFoundError`.
+- Two exception classes: `ConsistencyCheckError` (also an `AssertionError`) and `NumericalPrecisionError` (also an `ArithmeticError`).
 
 Changed:
 
@@ -25,6 +28,14 @@ Changed:
 - The `graph` and `full` extras no longer install networkit on macOS: it has wheels for macOS 26 only (and none for macOS 14), so pip would compile it. Install it by hand on macOS 26 or newer if you want the networkit backend.
 
 - Python 3.11 is no longer supported: PYORPS requires Python 3.12 or newer. numpy 2.5, scipy 1.18 and rasterio 1.5 already require 3.12, so a Python 3.11 installation was stuck on older releases of its dependencies. Stay on PYORPS 0.4.0 if you need Python 3.11.
+- The research packages raise only `PyorpsError` subclasses (`InvalidInputError`, `PyorpsRuntimeError`, `MissingKeyError`, `MissingDependencyError`, and their own `DesignError`, `LoadFlowError`, `ManifestError`). Each class still derives from the builtin it replaces, so existing `except ValueError` code keeps working.
+- The packages have a fixed import order, checked by a test: the core imports no research package, `pyorps.collector` imports only the core, `pyorps.certify` and `pyorps.costmodel` may import the collector, and `pyorps.siting` imports none of the others. For this the raster helpers `drain`, `step_table`, `boundary_cells` and `EXCLUDED` moved to `pyorps.graph.drain` (the old import from `pyorps.certify.windows` still works), and `certify_voltage` and `VoltageCertificate` moved from `pyorps.collector.voltage_rv` to `pyorps.certify.voltage` (the old import path is gone).
+- Country-specific values of the research packages are named constants and keyword parameters with unchanged defaults: the railway-traction markers of `verified_110kv_towers`, the collector voltage tables and the cable-class fallback of `voltage_model_from_yaml`, and the connection-point and protection defaults of `grid_rules_from_yaml` and `plant_model_from_yaml`.
+
+Fixed:
+
+- GUI: a raster layer's tile client no longer keeps a rasterio environment open in the calling thread. Before, an action that read a raster could fail now and then with "No GDAL environment exists" (seen with Python 3.14).
+- Saving an infrastructure profile to a `.yaml` file without PyYAML no longer leaves an empty file behind.
 
 (changelog-0-4-0)=
 ## 0.4.0 (2026-10-01)

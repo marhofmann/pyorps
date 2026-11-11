@@ -21,6 +21,8 @@ api:
   - pyorps.PyorpsRuntimeError
   - pyorps.InsufficientMemoryError
   - pyorps.InputFileNotFoundError
+  - pyorps.ConsistencyCheckError
+  - pyorps.NumericalPrecisionError
   - pyorps.PyorpsWarning
 ---
 # Exceptions
@@ -52,7 +54,11 @@ Catch `PyorpsError` for anything the library reports. The classes that replace a
 | `PyorpsRuntimeError` | A valid call failed at run time: use after `close()`, a solver that did not converge, a GPU failure. Also a `RuntimeError`. |
 | `InsufficientMemoryError` | The operation needs more host or GPU memory than is available or allowed. Also a `MemoryError`. |
 | `InputFileNotFoundError` | A file the caller named (raster, profile, saved field) does not exist. Also a `FileNotFoundError`. |
+| `ConsistencyCheckError` | A result failed a check that must hold if the inputs are what they claim to be, for example a lower bound above an upper bound. Also an `AssertionError`. |
+| `NumericalPrecisionError` | A computation cannot be carried out exactly enough in the number format used, for example an FFT convolution too large for exact float64. Also an `ArithmeticError`. |
 | `PyorpsWarning` | Root of the warning classes (`ThinForbiddenFeatureWarning`, `SealedOpeningWarning`, `ForbiddenBurnRoutingAssessment`, `CrsReprojectionWarning`). Derives from `UserWarning`. |
+
+The research packages add their own classes: `DesignError` (`pyorps.collector`, an `InvalidInputError`), `LoadFlowError` (`pyorps.collector.voltage`, a `PyorpsRuntimeError`) and `ManifestError` (`pyorps.siting`, an `InvalidInputError`).
 
 The thin-feature tools add their own warning and error classes, all rooted in `PyorpsWarning` and `InvalidInputError`; see {doc}`thin_forbidden_features`.
 

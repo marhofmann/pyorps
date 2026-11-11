@@ -84,9 +84,16 @@ case_studies = [
     # would compile pandas from source there. Drop the marker once pandapower accepts pandas 3.
     "pandapower>=3.0.0; python_version < '3.15'",
     "contextily>=1.6.0",
+    # the case studies read YAML data files (see the yaml extra)
+    "pyyaml>=6.0",
 ]
 additionals = [
     "openpyxl>=3.1.0",
+]
+# YAML files of the research packages (profiles, cost catalogue, data manifests); optional because PyYAML has no wheel
+# for every new Python on the day it is released. Without it, reading or writing YAML raises MissingDependencyError.
+yaml = [
+    "pyyaml>=6.0",
 ]
 gui = [
     "dash>=3.0.0",
@@ -157,6 +164,8 @@ full = [
     # would compile pandas from source there. Drop the marker once pandapower accepts pandas 3.
     "pandapower>=3.0.0; python_version < '3.15'",
     "contextily>=1.6.0",
+    # yaml (also read by the case studies)
+    "pyyaml>=6.0",
     # additionals
     "openpyxl>=3.1.0",
     # simplify

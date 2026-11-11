@@ -204,6 +204,8 @@ This command will install the core functionality of **PYORPS** along with its es
 
 - **Route simplification**: `pip install pyorps[simplify]`
 
+- **YAML files** (infrastructure profiles, cost catalogue, data manifests): `pip install pyorps[yaml]`
+
 - **Full Installation**: To install all optional dependencies at once:
   ```bash
   pip install pyorps[full]

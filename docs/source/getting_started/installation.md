@@ -48,11 +48,12 @@ PYORPS provides several optional dependency groups for different use cases:
 | `gpu-full` | `pip install pyorps[gpu-full]` | cupy-cuda12x plus the RAPIDS packages cugraph-cu12 and cudf-cu12. No PYORPS backend uses the RAPIDS packages; install the extra only if your own GPU workflow needs them alongside PYORPS. |
 | `dev` | `pip install pyorps[dev]` | coverage, pytest, cython |
 | `examples` | `pip install pyorps[examples]` | notebook, fiona |
-| `case_studies` | `pip install pyorps[case_studies]` | notebook, fiona, pandapower, contextily |
+| `case_studies` | `pip install pyorps[case_studies]` | notebook, fiona, pandapower, contextily, pyyaml |
 | `additionals` | `pip install pyorps[additionals]` | openpyxl |
+| `yaml` | `pip install pyorps[yaml]` | pyyaml: reading and writing YAML files (infrastructure profiles, cost catalogue, data manifests, collector inputs). Without it these calls raise `MissingDependencyError` that names this extra. |
 | `gui` | `pip install pyorps[gui]` | dash, dash-leaflet, dash-ag-grid, dash-extensions, dash-bootstrap-components, localtileserver, pywebview, pyyaml, orjson, flask-compress, pyarrow, waitress, geobuf |
 | `viz` | `pip install pyorps[viz]` | Deprecated alias of `gui` (same packages) |
-| `full` | `pip install pyorps[full]` | graph, dev, examples, case_studies and additionals groups (not GPU, not GUI) |
+| `full` | `pip install pyorps[full]` | graph, dev, examples, case_studies, additionals, yaml and simplify groups (not GPU, not GUI) |
 
 You can combine multiple groups:
 

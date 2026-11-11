@@ -72,6 +72,7 @@ Each page states its status. `stable` pages describe the API that is kept; `expe
 | Route simplification | stable | {doc}`api/path_finder` |
 | Multi-metric objectives, cost fields, corridor graphs, tower fields | experimental | {doc}`api/metric_stack_objective`, {doc}`api/cost_fields`, {doc}`api/corridor_graphs`, {doc}`api/tower_fields` |
 | Thin forbidden features, eikonal FIM, constrained routing, GUI | experimental | {doc}`api/thin_forbidden_features`, {doc}`api/eikonal_fim`, {doc}`api/constrained_path_finder`, {doc}`api/gui` |
+| Research packages for free siting: collector, certify, cost model, siting (experimental research code) | unreleased | {doc}`api/collector`, {doc}`api/certify`, {doc}`api/costmodel`, {doc}`api/siting` |
 
 Machine-readable versions of these docs: `llms.txt`, `llms-full.txt` and `api-index.json` at the root of the built site.
 
@@ -125,6 +126,10 @@ api/corridor_graphs
 api/tower_fields
 api/constrained_path_finder
 api/gui
+api/collector
+api/certify
+api/costmodel
+api/siting
 api/exceptions
 ```
 
