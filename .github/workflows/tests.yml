@@ -74,11 +74,28 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Install system dependencies (Linux)
+      # The GitHub Ubuntu images ship gcc and g++, and gcc brings its own OpenMP runtime (libgomp), so the
+      # build needs no package from the Ubuntu servers. The step used to run "apt-get update" and install
+      # build-essential and libomp-dev on every run; all four Linux jobs of one run failed when the runner
+      # could not resolve the package server. apt-get is now only a fallback, with retries.
+      - name: Install the C++ compiler if the runner has none (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libomp-dev
+          if command -v gcc >/dev/null && command -v g++ >/dev/null; then
+            g++ --version
+            exit 0
+          fi
+          for attempt in 1 2 3 4; do
+            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y build-essential; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              echo "apt-get failed (attempt $attempt of 4), waiting before the next attempt"
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "apt-get failed four times"
+          exit 1
 
       # setup.py finds OpenMP through "brew --prefix libomp". The release workflow builds with the same target.
       # The deployment target equals the runner: the Homebrew libomp is built for the runner's macOS.
@@ -130,11 +147,25 @@ jobs:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
 
-      - name: Install system dependencies (Linux)
+      # same step as in the test job above
+      - name: Install the C++ compiler if the runner has none (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libomp-dev
+          if command -v gcc >/dev/null && command -v g++ >/dev/null; then
+            g++ --version
+            exit 0
+          fi
+          for attempt in 1 2 3 4; do
+            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y build-essential; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              echo "apt-get failed (attempt $attempt of 4), waiting before the next attempt"
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "apt-get failed four times"
+          exit 1
 
       - name: Install the package and upgrade everything to the newest release
         run: |

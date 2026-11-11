@@ -116,6 +116,26 @@ def test_tests_workflow_runs_the_weekly_newest_dependency_job():
     assert "--upgrade-strategy eager" in text
 
 
+def test_workflows_do_not_depend_on_the_ubuntu_package_servers():
+    """A run must not fail because a runner cannot reach the package server.
+
+    All four Linux jobs of one run failed in "apt-get update" with "Temporary failure resolving". The
+    build needs only gcc and g++ (gcc brings libgomp), which the runner images ship, so apt-get may appear
+    only as a fallback: behind a check for the compiler and with retries.
+    """
+    for name in ("tests.yml", "build_and_publish_to_pypi.yml"):
+        text = _workflow_text(name)
+        commands = [line for line in text.splitlines() if "apt-get" in line and not line.lstrip().startswith("#")]
+        if not commands:
+            continue
+        assert "command -v g++" in text, f"{name}: apt-get runs without a check for an installed compiler"
+        for line in commands:
+            if re.search(r"apt-get.*(update|install)", line):
+                assert "Acquire::Retries" in line, f"{name}: apt-get without retries: {line.strip()}"
+        assert not any("libomp-dev" in line for line in commands), (
+            f"{name}: libomp-dev is not needed with gcc (libgomp)")
+
+
 def test_release_workflow_builds_and_tests_every_supported_python():
     text = _workflow_text("build_and_publish_to_pypi.yml")
     for version in _SUPPORTED_PYTHONS:
