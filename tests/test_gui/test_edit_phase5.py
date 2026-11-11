@@ -13,11 +13,14 @@ def built_route(app, state, raster_path):
            "viridis", [], triggered=[f"{ids.RASTER_LOAD_BTN}.n_clicks"])
     raster_layer = state.layers_of_kind("raster")[0]
     draft = _draft({"source": [SOURCE], "target": [TARGET]})
-    invoke(app, (f"{ids.ROUTING_STATUS}.children", ids.RUN_ROUTING_BTN),
-           1, False, draft, raster_layer.id, "dijkstra",
-           None, 1, 80, False, True, False, False, 1.0, 100, 0, None, [], [],
-           triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
-    return state.layers_of_kind("route")[0]
+    resp = invoke(app, (f"{ids.ROUTING_STATUS}.children", ids.RUN_ROUTING_BTN),
+                  1, False, draft, raster_layer.id, "dijkstra",
+                  None, 1, 80, False, True, False, False, 1.0, 100, 0, None, [], [],
+                  triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
+    routes = state.layers_of_kind("route")
+    # seen once on a CI runner with no route and no reason: the callback's answer (status, notices) names it
+    assert routes, f"the fixture run built no route; the callback answered: {resp!r:.3000}"
+    return routes[0]
 
 
 _EMPTY_DRAFT = {"sources": [], "targets": [], "waypoints": []}
