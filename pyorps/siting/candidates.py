@@ -29,7 +29,8 @@ without that bound certifies the lattice and not the space.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field as _field
+from dataclasses import dataclass
+from dataclasses import field as _field
 from typing import Any
 
 import numpy as np

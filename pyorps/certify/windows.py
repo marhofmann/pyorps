@@ -57,11 +57,13 @@ import numpy as np
 __all__ = [
     "TreeCertificate",
     "WindowCertificate",
+    "WindowGrowth",
     "boundary_cells",
     "certify_path_field",
     "certify_tree_field",
     "drain",
     "ellipse_window",
+    "grow_window",
     "step_table",
 ]
 
@@ -218,17 +220,119 @@ class WindowCertificate:
         exact: bool mask, where ``field`` equals the unwindowed field.
         beta: the boundary term (``min(beta_in, beta_out)``).
         b: ``d_W(dW, s)``.
+        inside: bool mask of the window ``W`` (``None`` when not recorded).
     """
     field: np.ndarray
     lower: np.ndarray
     exact: np.ndarray
     beta: float
     b: np.ndarray
+    inside: np.ndarray | None = None
 
     @property
     def exact_fraction(self) -> float:
         inside = np.isfinite(self.field)
         return float(self.exact[inside].mean()) if inside.any() else 0.0
+
+    @property
+    def uncertified(self) -> np.ndarray:
+        """Cells of ``W`` where the field is NOT shown to be exact. At the
+        growth cap these keep ``lower`` as their bound and are reported as
+        such (review finding CODE-10)."""
+        return self._in_window() & ~self.exact
+
+    def _in_window(self) -> np.ndarray:
+        if self.inside is not None:
+            return self.inside
+        return np.isfinite(self.field)
+
+    def bracket(self, row: int, col: int) -> tuple[float, float]:
+        """``(lower, upper)`` for the true field value at one cell of ``W``:
+        equal where exact, otherwise ``lower`` (a global lower bound) and the
+        in-window value (a walk that stays in ``W``, so an upper bound). A
+        caller must report the bracket, never pick an end, for a cell that is
+        not certified (plan 3.5, CODE-10)."""
+        if not self._in_window()[row, col]:
+            raise ValueError("the cell lies outside the window")
+        if self.exact[row, col]:
+            v = float(self.field[row, col])          # may be inf: unreachable
+            return v, v
+        return float(self.lower[row, col]), float(self.field[row, col])
+
+
+@dataclass
+class WindowGrowth:
+    """The outcome of one :func:`grow_window` request.
+
+    Attributes:
+        window: The window to use next (the grown one, or the old one when
+            growth was refused).
+        grown: True when the window got bigger.
+        capped: True when growth was refused (cell cap or retry limit); the
+            caller keeps ``min(d_W, beta + b)`` as the bound and reports the
+            uncertified cells.
+        reason: Why growth was refused, ``""`` when it happened.
+        cells: Number of cells in ``window``.
+        regrowths: Regrowths used after this call.
+    """
+    window: np.ndarray
+    grown: bool
+    capped: bool
+    reason: str
+    cells: int
+    regrowths: int
+
+
+def grow_window(inside: np.ndarray, *, margin_cells: int, cap_cells: int,
+                regrowths: int = 0, max_regrowths: int = 1) -> WindowGrowth:
+    """One capped regrowth of a window (plan 3.5, D2, review CODE-10).
+
+    A failed border self-check used to mean "grow and re-run" with neither a
+    cap nor an exit, and one attempt of the collector DW takes hours. Growth is
+    now refused once ``max_regrowths`` have been used (the plan: at most one)
+    or when the grown window would exceed ``cap_cells`` (the plan: 145 M cells
+    for the DW, 240 M for single-source fields). On refusal the caller keeps
+    the lower bound everywhere and reports a bracket where the certificate does
+    not hold (:meth:`WindowCertificate.bracket`).
+
+    Parameters:
+        inside: bool mask of the current window.
+        margin_cells: Cells added on every side (a square dilation, clipped to
+            the raster).
+        cap_cells: Largest allowed window, in cells.
+        regrowths: Regrowths already used for this window.
+        max_regrowths: How many are allowed in all.
+    """
+    cur = np.asarray(inside, dtype=bool)
+    n = int(cur.sum())
+    if margin_cells < 1:
+        raise ValueError("margin_cells must be >= 1")
+    if regrowths >= max_regrowths:
+        return WindowGrowth(cur, False, True,
+                            f"{regrowths} regrowth(s) used, at most "
+                            f"{max_regrowths} allowed", n, regrowths)
+    grown = cur.copy()
+    rows, cols = cur.shape
+    # square dilation, separable: rows then columns
+    k = int(margin_cells)
+    tmp = cur.copy()
+    for d in range(1, k + 1):
+        tmp[d:, :] |= cur[:-d, :]
+        tmp[:-d, :] |= cur[d:, :]
+    grown = tmp.copy()
+    for d in range(1, k + 1):
+        grown[:, d:] |= tmp[:, :-d]
+        grown[:, :-d] |= tmp[:, d:]
+    m = int(grown.sum())
+    if m > cap_cells:
+        return WindowGrowth(cur, False, True,
+                            f"the grown window has {m} cells, the cap is "
+                            f"{cap_cells}", n, regrowths)
+    if m == n:
+        return WindowGrowth(cur, False, True,
+                            "the window already covers every reachable cell "
+                            "of the raster", n, regrowths)
+    return WindowGrowth(grown, True, False, "", m, regrowths + 1)
 
 
 def certify_path_field(values: np.ndarray, steps, inside: np.ndarray, seeds,
@@ -291,7 +395,7 @@ def certify_path_field(values: np.ndarray, steps, inside: np.ndarray, seeds,
     lower = np.minimum(field, bound)
     exact = inside & (field <= bound)
     return WindowCertificate(field=field, lower=lower, exact=exact,
-                             beta=beta, b=b)
+                             beta=beta, b=b, inside=inside.copy())
 
 
 @dataclass

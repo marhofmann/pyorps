@@ -1,0 +1,529 @@
+{
+ "window": "farm",
+ "grid_epsg25832": [
+  441701,
+  5584764,
+  446075,
+  5587711
+ ],
+ "summary": {
+  "cells": 12890178,
+  "buildable": 8195575,
+  "buildable_share": 0.6358,
+  "distinct_prices": 20,
+  "price_min": 250,
+  "price_max": 2242
+ },
+ "ledger": [
+  {
+   "key": "soil",
+   "treat": "premium",
+   "n": 31,
+   "before": 11605905,
+   "after": 11605905,
+   "mean_after": 910.8
+  },
+  {
+   "key": "wsg_zone_3",
+   "treat": "premium",
+   "n": 4,
+   "before": 11605905,
+   "after": 11605905,
+   "mean_after": 913.0
+  },
+  {
+   "key": "wsg_zone_3b",
+   "treat": "premium",
+   "n": 1,
+   "before": 11605905,
+   "after": 11605905,
+   "mean_after": 913.0
+  },
+  {
+   "key": "lsg",
+   "treat": "premium",
+   "n": 1,
+   "before": 11605905,
+   "after": 11605905,
+   "mean_after": 913.7
+  },
+  {
+   "key": "biotope_all",
+   "treat": "premium",
+   "n": 141,
+   "before": 11605905,
+   "after": 11605905,
+   "mean_after": 914.8
+  },
+  {
+   "key": "kompensation",
+   "treat": "premium",
+   "n": 2,
+   "before": 11605905,
+   "after": 11605905,
+   "mean_after": 914.8
+  },
+  {
+   "key": "hq_extrem",
+   "treat": "premium",
+   "n": 0,
+   "before": 11605905,
+   "after": 11605905,
+   "mean_after": 914.8
+  },
+  {
+   "key": "road_zustimmung_autobahn",
+   "treat": "premium",
+   "n": 2,
+   "before": 11605905,
+   "after": 11605905,
+   "mean_after": 914.8
+  },
+  {
+   "key": "road_zustimmung",
+   "treat": "premium",
+   "n": 265,
+   "before": 11605905,
+   "after": 11605905,
+   "mean_after": 919.9
+  },
+  {
+   "key": "buildings",
+   "treat": "exclude",
+   "n": 1534,
+   "before": 11605905,
+   "after": 11605507,
+   "mean_after": 919.9
+  },
+  {
+   "key": "residential_parcels",
+   "treat": "exclude",
+   "n": 4515,
+   "before": 11605507,
+   "after": 10503498,
+   "mean_after": 963.0
+  },
+  {
+   "key": "residential_buildings",
+   "treat": "exclude",
+   "n": 1169,
+   "before": 10503498,
+   "after": 9595075,
+   "mean_after": 989.4
+  },
+  {
+   "key": "gewaesserrandstreifen",
+   "treat": "exclude",
+   "n": 1767,
+   "before": 9595075,
+   "after": 9403795,
+   "mean_after": 993.3
+  },
+  {
+   "key": "road_verbotszone_autobahn",
+   "treat": "exclude",
+   "n": 2,
+   "before": 9403795,
+   "after": 9403795,
+   "mean_after": 993.3
+  },
+  {
+   "key": "road_verbotszone",
+   "treat": "exclude",
+   "n": 265,
+   "before": 9403795,
+   "after": 9214948,
+   "mean_after": 981.8
+  },
+  {
+   "key": "rail",
+   "treat": "exclude",
+   "n": 158,
+   "before": 9214948,
+   "after": 9214948,
+   "mean_after": 981.8
+  },
+  {
+   "key": "turbines",
+   "treat": "exclude",
+   "n": 7,
+   "before": 9214948,
+   "after": 9137705,
+   "mean_after": 987.4
+  },
+  {
+   "key": "wsg_zone_1",
+   "treat": "exclude",
+   "n": 1,
+   "before": 9137705,
+   "after": 9134184,
+   "mean_after": 987.2
+  },
+  {
+   "key": "wsg_zone_2",
+   "treat": "exclude",
+   "n": 1,
+   "before": 9134184,
+   "after": 9112847,
+   "mean_after": 987.9
+  },
+  {
+   "key": "nsg",
+   "treat": "exclude",
+   "n": 13,
+   "before": 9112847,
+   "after": 8999350,
+   "mean_after": 987.2
+  },
+  {
+   "key": "ffh",
+   "treat": "exclude",
+   "n": 9,
+   "before": 8999350,
+   "after": 8227636,
+   "mean_after": 972.7
+  },
+  {
+   "key": "spa",
+   "treat": "exclude",
+   "n": 2,
+   "before": 8227636,
+   "after": 8227636,
+   "mean_after": 972.7
+  },
+  {
+   "key": "ueg_hq100",
+   "treat": "exclude",
+   "n": 1,
+   "before": 8227636,
+   "after": 8227636,
+   "mean_after": 972.7
+  },
+  {
+   "key": "abflussgebiet_hq100",
+   "treat": "exclude",
+   "n": 1,
+   "before": 8227636,
+   "after": 8227636,
+   "mean_after": 972.7
+  },
+  {
+   "key": "gesch_biotope",
+   "treat": "exclude",
+   "n": 1103,
+   "before": 8227636,
+   "after": 8203638,
+   "mean_after": 973.3
+  },
+  {
+   "key": "gesch_komplexe",
+   "treat": "exclude",
+   "n": 42,
+   "before": 8203638,
+   "after": 8195575,
+   "mean_after": 973.4
+  },
+  {
+   "key": "naturdenkmal",
+   "treat": "exclude",
+   "n": 1,
+   "before": 8195575,
+   "after": 8195575,
+   "mean_after": 973.4
+  },
+  {
+   "key": "naturpark",
+   "treat": "ignore",
+   "n": 0,
+   "before": 8195575,
+   "after": 8195575
+  }
+ ],
+ "constraint_model": [
+  {
+   "key": "soil",
+   "treatment": "premium",
+   "buffer_m": 0.0,
+   "buffer_basis": "no buffer",
+   "premium": null,
+   "why": "excavation difficulty is a cost, not a prohibition"
+  },
+  {
+   "key": "wsg_zone_3",
+   "treatment": "premium",
+   "buffer_m": 0.0,
+   "buffer_basis": "no buffer",
+   "premium": 1.25,
+   "why": "Sec. 49(2) AwSV permits Stufe-A oil plant in Zone III with containment"
+  },
+  {
+   "key": "wsg_zone_3b",
+   "treatment": "premium",
+   "buffer_m": 0.0,
+   "buffer_basis": "no buffer",
+   "premium": 1.15,
+   "why": "outermost weitere Zone; Sec. 49(2) AwSV imposes no bar on Stufe A"
+  },
+  {
+   "key": "lsg",
+   "treatment": "premium",
+   "buffer_m": 0.0,
+   "buffer_basis": "no buffer",
+   "premium": 1.8,
+   "why": "Verbot mit Erlaubnisvorbehalt -- consentable, so a permitting-risk price"
+  },
+  {
+   "key": "biotope_all",
+   "treatment": "premium",
+   "buffer_m": 0.0,
+   "buffer_basis": "no buffer",
+   "premium": 1.1,
+   "why": "unprotected biotopes: compensation liability, not a prohibition"
+  },
+  {
+   "key": "kompensation",
+   "treatment": "premium",
+   "buffer_m": 0.0,
+   "buffer_basis": "no buffer",
+   "premium": 1.3,
+   "why": "already committed as another project's offset -- re-compensation cost"
+  },
+  {
+   "key": "hq_extrem",
+   "treatment": "premium",
+   "buffer_m": 0.0,
+   "buffer_basis": "no buffer",
+   "premium": 1.15,
+   "why": "modelled, not festgesetzt: resilience premium, no legal bar"
+  },
+  {
+   "key": "road_zustimmung_autobahn",
+   "treatment": "premium",
+   "buffer_m": 100.0,
+   "buffer_basis": "Sec. 9(2) FStrG Zustimmungszone Bundesautobahn: 100 m (statute)",
+   "premium": 1.1,
+   "why": "Sec. 9(2) FStrG: consentable, routinely granted"
+  },
+  {
+   "key": "road_zustimmung",
+   "treatment": "premium",
+   "buffer_m": 40.0,
+   "buffer_basis": "Sec. 9(2) FStrG / Sec. 23(2) HStrG Zustimmungszone B/L/K: 40 m (statute)",
+   "premium": 1.1,
+   "why": "Sec. 9(2) FStrG / Sec. 23(2) HStrG: consentable, routinely granted"
+  },
+  {
+   "key": "buildings",
+   "treatment": "exclude",
+   "buffer_m": 0.0,
+   "buffer_basis": "footprint itself, no buffer",
+   "premium": null,
+   "why": "a switchyard cannot stand on an existing structure"
+  },
+  {
+   "key": "residential_parcels",
+   "treatment": "exclude",
+   "buffer_m": 300.0,
+   "buffer_basis": "ENGINEERING JUDGEMENT, not statute. Back-calculated from L_WA = 88 dB(A) measured on a 40 MVA 110-kV transformer bank with forced cooling (Ing.-Buero Greiner, UW Unterschleissheim, 2008) through hemispherical decay Lp = L_WA - 20log10(r) - 8 dB: 40 dB(A) night (allgemeines Wohngebiet, TA Laerm Nr. 6.1) is reached at 141 m with the +3 dB Tonzuschlag for the 100/200 Hz hum, and at 282 m once the 6 dB Irrelevanz margin of TA Laerm Nr. 3.2.1(2) is added. 300 m also covers a reines Wohngebiet at 35 dB(A) without margins (251 m). Documented DSO practice puts the floor at 200 m (B-Plan 'Umspannwerk', Stadt Woerth am Main, 2020). ALKIS cannot distinguish WA/WR/MD, so the WA reading is the conservative one; a Dorfgebiet fringe would legally justify ~160 m.",
+   "premium": null,
+   "why": "TA Laerm night value cannot be held at short range (see buffer_basis)"
+  },
+  {
+   "key": "residential_buildings",
+   "treatment": "exclude",
+   "buffer_m": 300.0,
+   "buffer_basis": "ENGINEERING JUDGEMENT -- identical to residential_parcels",
+   "premium": null,
+   "why": "TA Laerm protects the dwelling, including one on farmland"
+  },
+  {
+   "key": "gewaesserrandstreifen",
+   "treatment": "exclude",
+   "buffer_m": 10.0,
+   "buffer_basis": "Sec. 23(1) HWG: 10 m im Aussenbereich (statute)",
+   "premium": null,
+   "why": "Sec. 23(2) Nr. 3 HWG prohibits non-standortgebundene bauliche Anlagen"
+  },
+  {
+   "key": "road_verbotszone_autobahn",
+   "treatment": "exclude",
+   "buffer_m": 40.0,
+   "buffer_basis": "Sec. 9(1) Nr. 1 FStrG Bundesautobahn: 40 m (statute)",
+   "premium": null,
+   "why": "Sec. 9(1) Nr. 1 FStrG: Hochbauten verboten within 40 m of a BAB"
+  },
+  {
+   "key": "road_verbotszone",
+   "treatment": "exclude",
+   "buffer_m": 20.0,
+   "buffer_basis": "Sec. 9(1) Nr. 1 FStrG (Bundesstr.) / Sec. 23(1) Nr. 1 HStrG (L, K): 20 m (statute). WRONG DATUM, DELIBERATELY CONSERVATIVE, AND IT MATTERS: the statute measures from the outer edge of the BEFESTIGTE FAHRBAHN, but ALKIS Strassenverkehr is the whole Verkehrsflaeche including verges, embankments and ditches. Measured over the farm window, the three K 431 polygons are 14-17 m wide (area / half perimeter) where the carriageway of a Kreisstrasse is ~6-7 m, so buffering the polygon over-measures the statutory zone by roughly 4-5 m PER SIDE. Substation_5 -- the one candidate this layer decides -- clears the burned buffer by 14.44 m and so misses by 5.56 m, which is the SAME ORDER as the datum error. Its failure must not be reported as a clean statutory result: either narrow the source geometry to the carriageway (ALKIS ave_Nutzung cannot do it; a Strassennetz layer such as ATKIS Basis-DLM can) or state the margin explicitly.",
+   "premium": null,
+   "why": "Sec. 9(1)/23(1): verboten; the Sec. 9(8)/23(8) Ausnahme is discretionary"
+  },
+  {
+   "key": "rail",
+   "treatment": "exclude",
+   "buffer_m": 20.0,
+   "buffer_basis": "ASSUMPTION, NOT STATUTE. German law contains no Anbauverbotszone for railways comparable to Sec. 9 FStrG; proximity is handled by case-by-case Zustimmung of the Eisenbahninfrastrukturunternehmen and by operational rules (DGUV 201-021: 3,0 m to live overhead-line parts; earthing of conductive structures within 4 m of track centre). 20 m is adopted for consistency with the road classes and must be presented as an assumption. Set to 0 to fall back to excluding only the ALKIS Bahnverkehr polygons themselves.",
+   "premium": null,
+   "why": "operational clearance and DB Zustimmung; the track itself is already forbidden"
+  },
+  {
+   "key": "turbines",
+   "treatment": "exclude",
+   "buffer_m": 60.0,
+   "buffer_basis": "ENGINEERING JUDGEMENT, not statute. Physical clearance for the turbine foundation, crane hardstanding and access geometry only. Explicitly NOT the 531 m ice-throw radius -- see the why field.",
+   "premium": null,
+   "why": "ice throw protects third parties; an unmanned switchyard is not one"
+  },
+  {
+   "key": "wsg_zone_1",
+   "treatment": "exclude",
+   "buffer_m": 0.0,
+   "buffer_basis": "no buffer",
+   "premium": null,
+   "why": "Sec. 49(1) AwSV: no AwSV-Anlage may be erected in the Fassungsbereich"
+  },
+  {
+   "key": "wsg_zone_2",
+   "treatment": "exclude",
+   "buffer_m": 0.0,
+   "buffer_basis": "no buffer",
+   "premium": null,
+   "why": "Sec. 49(1) AwSV: the ~13 m3 oil charge makes this an AwSV-Anlage"
+  },
+  {
+   "key": "nsg",
+   "treatment": "exclude",
+   "buffer_m": 0.0,
+   "buffer_basis": "statutory: BNatSchG creates NO buffer around an NSG. A 50-100 m screening buffer for construction-phase disturbance would be defensible engineering judgement; 0 m is the statutory minimum and is used here.",
+   "premium": null,
+   "why": "Sec. 23(2) BNatSchG: strictest area category; Sec. 67 Befreiung not presumed"
+  },
+  {
+   "key": "ffh",
+   "treatment": "exclude",
+   "buffer_m": 300.0,
+   "buffer_basis": "ENGINEERING JUDGEMENT, not statute. Sec. 34 BNatSchG creates NO buffer, and its text says nothing about distance: Sec. 34(1) catches any project 'geeignet, das Gebiet erheblich zu beeintraechtigen', which the settled reading -- not the wording -- extends to projects outside the boundary. A nonzero screening zone is therefore defensible but is NOT a statutory figure and must not be presented as one. Set to 0 for the statutory-minimum sensitivity run; the recommended band is 0-500 m.",
+   "premium": null,
+   "why": "Sec. 34(2) BNatSchG: unzulaessig, and the alternatives test always fails"
+  },
+  {
+   "key": "spa",
+   "treatment": "exclude",
+   "buffer_m": 300.0,
+   "buffer_basis": "ENGINEERING JUDGEMENT -- identical to ffh",
+   "premium": null,
+   "why": "Sec. 34(2) BNatSchG, identical to FFH"
+  },
+  {
+   "key": "ueg_hq100",
+   "treatment": "exclude",
+   "buffer_m": 0.0,
+   "buffer_basis": "statutory designation boundary; WHG creates no buffer",
+   "premium": null,
+   "why": "Sec. 78(4) WHG: bauliche Anlagen untersagt in the festgesetzte Gebiet"
+  },
+  {
+   "key": "abflussgebiet_hq100",
+   "treatment": "exclude",
+   "buffer_m": 0.0,
+   "buffer_basis": "no buffer",
+   "premium": null,
+   "why": "flood conveyance corridor: obstruction displaces the flood"
+  },
+  {
+   "key": "gesch_biotope",
+   "treatment": "exclude",
+   "buffer_m": 0.0,
+   "buffer_basis": "no buffer",
+   "premium": null,
+   "why": "Sec. 30(2) BNatSchG: direct statutory prohibition, no designation needed"
+  },
+  {
+   "key": "gesch_komplexe",
+   "treatment": "exclude",
+   "buffer_m": 0.0,
+   "buffer_basis": "no buffer",
+   "premium": null,
+   "why": "Sec. 30(2) BNatSchG, identical to gesch_biotope"
+  },
+  {
+   "key": "naturdenkmal",
+   "treatment": "exclude",
+   "buffer_m": 25.0,
+   "buffer_basis": "ENGINEERING JUDGEMENT, not statute. Sec. 28(2) BNatSchG protects the root zone and canopy of a protected tree, not the ~5 m disc the record stores, so the point geometry is buffered to a plausible crown-plus-root radius. Negligible area cost.",
+   "premium": null,
+   "why": "Sec. 28(2) BNatSchG: Beseitigung und Beeintraechtigung verboten"
+  },
+  {
+   "key": "naturpark",
+   "treatment": "ignore",
+   "buffer_m": 0.0,
+   "buffer_basis": "no buffer",
+   "premium": null,
+   "why": "Sec. 27 BNatSchG carries no building prohibition; 100% of the window"
+  }
+ ],
+ "base_costs_eur_m2": {
+  "Landwirtschaft": 300,
+  "Unland": 250,
+  "Unland/Vegetationslose Fläche": 250,
+  "Gehölz": 1200,
+  "Wald": 1500,
+  "Wohnbaufläche": 65535,
+  "Industrie- und Gewerbefläche": 65535,
+  "Fläche besonderer funktionaler Prägung": 65535,
+  "Fläche gemischter Nutzung": 65535,
+  "Tagebau, Grube, Steinbruch": 65535,
+  "Tagebau/Grube/Steinbruch": 65535,
+  "Friedhof": 65535,
+  "Halde": 65535,
+  "Sumpf": 65535,
+  "Flugverkehr": 65535,
+  "Straßenverkehr": 65535,
+  "Bahnverkehr": 65535,
+  "Weg": 65535,
+  "Platz": 65535,
+  "Sport-, Freizeit- und Erholungsfläche": 65535,
+  "Sport-, Freizeit- und Erholungsflaeche": 65535,
+  "Fließgewässer": 65535,
+  "Stehendes Gewässer": 65535,
+  "Meer": 65535,
+  "": 65535
+ },
+ "inputs_sha256": {
+  "alkis_land_use": "95d5e973f4ae9c90da3e4f9fd37f6934204a3581b08359d3cf898009539baa71",
+  "biotope_complexes_protected": "159b9e90b3ab00d0d1e70553d78cd4c3b710ad9a1d3f1b3cd88632190bbb628a",
+  "biotopes_protected": "b96a306d5bc55aa32fff77205981fd685879f7b37eed29673259f5c0b4c2b0c6",
+  "bird_protection_areas": "9ecc2c6d2646f4f04df390040346961b2a2c67b28037feffebd650bc62e303fc",
+  "dem": "782149e5ccc2e3534493fe30ede8f4b0d48e23c8ed6ea9a9bfeaae3d699146b0",
+  "landscape_protection": "b3cd81f7193fb7d9e9d6fbb303765d5af25a096a8182affd587387321d5ba827",
+  "natura2000_habitats": "25271d383ec3d5165cc54ae9ed1a10e2b9da084583fa3648864b2afff3efc141",
+  "nature_reserves": "a2e11a8aa03991cd152250b46b73bc7f19ef71a45e21be46b5765cf093eb438b",
+  "soil_units": "e10a6e296646737fabc6642b9f52e4cfa4b732f7a62296885efdf8da64379c77",
+  "terminals": "e0be92b5a6e1c6d7c4ffc866ad3affed12b37dbacf375cce4d1411b8704ae0a3",
+  "turbines": "a20a675466d52d7da6ab100c8eeb5f3dc6feae491b752f2433164cc3411367f3",
+  "water_zones": "02d25cde9061b8ee21b0f16e7359cdeaf69c87675c5400dabaa1b41e510697a6"
+ },
+ "new_layers": {
+  "sc_tws_hqs_alk_farm": "sc_tws_hqs_alk_farm.gpkg",
+  "sc_biotope_farm": "sc_biotope_farm.gpkg",
+  "sc_0_farm": "sc_0_farm.gpkg",
+  "sc_hochwasser_mit_niedriger_wahrscheinlichkeit_farm": "sc_hochwasser_mit_niedriger_wahrscheinlichkeit_farm.gpkg",
+  "sc_buildings_farm": "sc_buildings_farm.gpkg",
+  "sc_ueberschwemmungsgebiete_hq100_nach_hwg_farm": "sc_ueberschwemmungsgebiete_hq100_nach_hwg_farm.gpkg",
+  "sc_abflussgebiete_hq100_nach_hwg_farm": "sc_abflussgebiete_hq100_nach_hwg_farm.gpkg"
+ },
+ "legacy_script_sha256": "b07b6242920dd7ea316d83a97d983cea7d38721880e2184d462151ae4f880094",
+ "script_sha256": "09efb7d42c3307d4b21bfcdb161a4c6acec6936be1ee0806ac51a73f21be8132",
+ "closure_check": "passed",
+ "pyorps_warnings": [
+  "The forbidden-feature repair all_touched=True changed the raster at 1 m so that it SEALED free space: 8 region(s) that the plain pixel-centre burn left connected are cut into two or more pieces (e.g. at row 0, column 3592), and 143523 free cell(s) were lost in total. That may be the barrier you want"
+ ],
+ "candidate_screen": "\ncandidate screen against substation_sites_points.geojson (60 x 80 m, 36 rotations, pass = every footprint cell buildable)\n  Substation_0   FAIL  best theta 125.0 deg, 4794/4794 footprint cells forbidden\n                 touches : biotope_all [premium], ffh [exclude, 300 m], gesch_biotope [exclude], residential_buildings [exclude, 300 m], residential_parcels [exclude, 300 m], soil [premium]\n                 land use: Landwirtschaft, Unland/Vegetationslose Fläche, Weg\n  Substation_1   FAIL  best theta   0.0 deg, 4746/4800 footprint cells forbidden\n                 touches : soil [premium]\n                 land use: Landwirtschaft, Sport-, Freizeit- und Erholungsfläche, Weg\n  Substation_2   FAIL  best theta  65.0 deg, 4115/4798 footprint cells forbidden\n                 touches : gesch_komplexe [exclude], gewaesserrandstreifen [exclude, 10 m], residential_buildings [exclude, 300 m], residential_parcels [exclude, 300 m], soil [premium], wsg_zone_2 [exclude], wsg_zone_3 [premium]\n                 land use: Fließgewässer, Gehölz, Landwirtschaft, Weg\n  Substation_3   OUTSIDE the raster window\n  Substation_4   FAIL  best theta  15.0 deg, 446/4800 footprint cells forbidden\n                 touches : soil [premium]\n                 land use: Landwirtschaft, Weg\n  Substation_5   FAIL  best theta 110.0 deg, 351/4797 footprint cells forbidden\n                 touches : road_verbotszone [exclude, 20 m], road_zustimmung [premium, 40 m], soil [premium]\n                 land use: Landwirtschaft\n",
+ "built": {
+  "time_local": "2026-10-05T15:32:46+02:00",
+  "time_utc": "2026-10-05T13:32:46+00:00"
+ }
+}

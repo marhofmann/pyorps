@@ -21,11 +21,13 @@ from pyorps.certify.rv import (
 from pyorps.certify.windows import (
     TreeCertificate,
     WindowCertificate,
+    WindowGrowth,
     boundary_cells,
     certify_path_field,
     certify_tree_field,
     drain,
     ellipse_window,
+    grow_window,
     step_table,
 )
 
@@ -35,6 +37,7 @@ __all__ = [
     "RVResult",
     "TreeCertificate",
     "WindowCertificate",
+    "WindowGrowth",
     "boundary_cells",
     "certify_path_field",
     "certify_tree_field",
@@ -42,6 +45,7 @@ __all__ = [
     "drain",
     "ellipse_window",
     "fidelity_delta",
+    "grow_window",
     "line_integral_cost",
     "relax_and_verify",
     "step_table",

@@ -424,7 +424,7 @@ def load_flow(tree: ElectricalTree, s_mva: Sequence[complex],
     rev = order[::-1]
     par = tree.parent
     J = [0j] * N
-    for it in range(1, max_iter + 1):
+    for it in range(1, max_iter + 1):  # noqa: B007  (the last value is returned as iterations)
         acc = [0j] * N
         for i in rev:
             if i == 0:
@@ -757,6 +757,28 @@ def _pick(v):
     return float(v[0]) if isinstance(v, (list, tuple)) else float(v)
 
 
+def q_capability_at_mv(q_over_p: float, q_under_p: float,
+                       tr: TurbineTransformer, p_rated_mw: float
+                       ) -> tuple[float, float]:
+    """A reactive capability stated at the LV terminals, seen at the MV ones.
+
+    ``q_over_p`` / ``q_under_p`` are Mvar per MW at rated power (positive
+    magnitudes) at the turbine's LV terminals. The turbine transformer's
+    series reactance consumes ``x (P^2 + Q^2) / S_r`` at 1.0 p.u. LV voltage
+    (magnetising branch neglected, as in :class:`TurbineTransformer`), so the
+    over-excited range shrinks and the under-excited one grows at the MV
+    terminals: ``q_mv = q_lv - x (P / S_r) (1 + q_lv^2)`` per MW, with ``q_lv``
+    signed.
+    """
+    x = tr.z_pu.imag
+    k = x * p_rated_mw / tr.s_r_mva
+
+    def at_mv(q_lv: float) -> float:
+        return q_lv - k * (1.0 + q_lv ** 2)
+
+    return at_mv(q_over_p), -at_mv(-q_under_p)
+
+
 def voltage_model_from_yaml(path, *, u_kv: float, cable_mm2: Sequence[int],
                             n_turbines: int | None = None,
                             p_rated_mw: Sequence[float] | None = None,
@@ -767,7 +789,8 @@ def voltage_model_from_yaml(path, *, u_kv: float, cable_mm2: Sequence[int],
                             include_transformer: bool = True,
                             corners: Sequence[str] = ("H1", "L1", "H0", "N1"),
                             cable_class: str | None = None,
-                            u_m_kv: float | None = None) -> VoltageModel:
+                            u_m_kv: float | None = None,
+                            q_reference: str = "mv") -> VoltageModel:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Build a :class:`VoltageModel` from ``voltage_2026.yaml``.
 
@@ -787,6 +810,10 @@ def voltage_model_from_yaml(path, *, u_kv: float, cable_mm2: Sequence[int],
         cable_class: ``"kv20"``, ``"kv30"``, ``"kv33"`` (default by level;
             a missing ``kv33`` falls back to ``kv30`` and sets
             ``meta["provisional"]``).
+        q_reference: Where the turbine's published reactive limits hold:
+            ``"mv"`` (default; an assumption, user decision D3 of
+            2026-10-05, not verified against the datasheet) or ``"lv"``
+            (converted by :func:`q_capability_at_mv`; needs the transformer).
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     import yaml
@@ -818,6 +845,16 @@ def voltage_model_from_yaml(path, *, u_kv: float, cable_mm2: Sequence[int],
             uk=trd["impedance_pct"]["value"] / 100.0,
             p_cu_kw=trd["losses_w"]["load"] / 1e3,
             lv_kv=tb["lv_nominal_v"]["value"] / 1e3)
+    if q_reference not in ("mv", "lv"):
+        raise ValueError("q_reference must be 'mv' or 'lv'")
+    meta["q_reference"] = q_reference
+    if q_reference == "lv":
+        if tr is None:
+            raise ValueError("q_reference='lv' needs the turbine transformer "
+                             "(include_transformer=True)")
+        meta["q_over_p_lv"], meta["q_under_p_lv"] = q_over, q_under
+        q_over, q_under = q_capability_at_mv(
+            q_over, q_under, tr, tb["rated_power_kw"]["value"] / 1e3)
     lv_tol = tb["lv_nominal_v"]["tolerance_pct"] / 100.0
     cab = data["cables"]
     cls = cable_class or DEFAULT_CABLE_CLASS.get(key)

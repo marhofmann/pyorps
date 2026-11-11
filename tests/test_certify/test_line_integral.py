@@ -67,3 +67,74 @@ def test_crossing_an_excluded_cell_is_infinite_but_a_corner_is_not():
     v2 = np.full((2, 2), 5, dtype=np.uint16)
     v2[0, 1] = 65535
     assert line_integral_cost(v2, [0, 3]) == pytest.approx(5 * math.sqrt(2))
+
+
+# ------------------------------------------------------------ V4-02 (limit)
+
+
+def _exact_cell_lengths(step, shape=(5, 7)):
+    """Exact chord length (in cell units) of the step ``(dr, dc)`` through
+    every cell, from the line integral over a one-cell-at-a-time raster."""
+    import numpy as np
+
+    from pyorps.certify.line_integral import line_integral_cost
+
+    dr, dc = step
+    cols = shape[1]
+    start, end = 1 * cols + 1, (1 + dr) * cols + (1 + dc)
+    out = {}
+    for r in range(shape[0]):
+        for c in range(shape[1]):
+            v = np.zeros(shape, dtype=np.uint16)
+            v[r, c] = 1
+            w = line_integral_cost(v, [start, end])
+            if w > 1e-12:
+                out[(r - 1, c - 1)] = w
+    return out
+
+
+def test_r3_corner_steps_are_priced_inexactly_by_the_compiled_rule():
+    """Review finding V4-02, kept as a documented LIMIT, not a repair.
+
+    The compiled step rule charges both end cells and the cells of
+    ``intermediate_offsets(p, q)`` each ``hypot(p, q) / (2 + n_int)``. That is
+    exact for the cardinal, knight (1, 2) steps, but for the r3 steps (1, 3)
+    and (2, 3) the weights are wrong and (1, 3) charges two cells the line only
+    touches at a corner. The Stage-5 line-integral re-price
+    (``pyorps.certify.line_integral``) measures the gap per route; exact
+    per-cell weights for every step class are NOT built. The overhead lattice
+    of the siting study uses steps up to (1, 3)/(2, 3), so its pricing carries
+    this error and must be reported with the fidelity gap.
+    """
+    import math
+
+    from pyorps.graph.tower_field import intermediate_offsets
+
+    def compiled(step):
+        p, q = step
+        cells = [(0, 0), (p, q)] + list(intermediate_offsets(p, q))
+        w = math.hypot(p, q) / len(cells)
+        return {c: w for c in cells}
+
+    def max_error(step):
+        exact, comp = _exact_cell_lengths(step), compiled(step)
+        keys = set(exact) | set(comp)
+        return max(abs(exact.get(k, 0.0) - comp.get(k, 0.0)) for k in keys)
+
+    # exact for the cardinal, diagonal-free knight step
+    assert max_error((1, 0)) == pytest.approx(0.0, abs=1e-12)
+    assert max_error((1, 2)) == pytest.approx(0.0, abs=1e-12)
+    # the r1 diagonal is also inexact (2 cells at 1/2 L against 4 at sqrt2/4)
+    assert max_error((1, 1)) > 0.3
+    # (1, 3): exact is 1/6, 1/3, 1/3, 1/6 of L on four cells; the rule spreads
+    # L/6 over six, two of them touched only at a corner
+    ex = _exact_cell_lengths((1, 3))
+    L = math.sqrt(10.0)
+    assert sorted(round(v / L, 9) for v in ex.values()) == pytest.approx(
+        sorted([1 / 6, 1 / 3, 1 / 3, 1 / 6]), abs=1e-9)
+    assert set(compiled((1, 3))) - set(ex) == {(1, 1), (0, 2)}
+    assert max_error((1, 3)) == pytest.approx(math.sqrt(10.0) / 6, rel=1e-9)
+    # (2, 3): no corner cells, but the weights are uniform instead of
+    # length-proportional (max error 0.3005 in cell units)
+    assert set(compiled((2, 3))) == set(_exact_cell_lengths((2, 3)))
+    assert max_error((2, 3)) == pytest.approx(0.3005, abs=5e-4)

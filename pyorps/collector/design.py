@@ -209,7 +209,7 @@ def layout(design: Design, graph, turbines, model: CollectorModel, *,
     for i in range(model.n):
         if len(outs[("turbine", i)]) != 1:
             raise DesignError(f"turbine {i} needs exactly one out-system")
-    for j, jn in enumerate(design.junctions):
+    for j, _jn in enumerate(design.junctions):
         if len(outs[("junction", j)]) != 1:
             raise DesignError(f"junction {j} needs exactly one output")
         if len(ins[("junction", j)]) < 2:
@@ -226,7 +226,7 @@ def layout(design: Design, graph, turbines, model: CollectorModel, *,
             if design.systems[sid].mask != acc:
                 raise DesignError(f"flow conservation fails at {key}")
     # radial into the root: follow sinks
-    for sid, s in enumerate(design.systems):
+    for _sid, s in enumerate(design.systems):
         seen = set()
         cur = s
         while cur.sink[0] != "root":
@@ -323,9 +323,9 @@ def reprice(design: Design, graph, turbines, model: CollectorModel, *,
             raise DesignError(f"turbine {i} exceeds switchgear or panels")
         panels += model.turbine_panel_eur * cond
     stations = 0.0
-    for tnode in {j.tnode for j in design.junctions}:  # pylint: disable=unused-variable
+    for _tnode in {j.tnode for j in design.junctions}:
         stations += model.station_building_eur
-    for j, jn in enumerate(design.junctions):  # pylint: disable=unused-variable
+    for j, _jn in enumerate(design.junctions):
         cond = sum(design.systems[s].option[1] for s in ins[("junction", j)])
         cond += design.systems[outs[("junction", j)][0]].option[1]
         stations += model.station_panel_eur * cond

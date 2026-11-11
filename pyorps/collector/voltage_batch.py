@@ -365,7 +365,7 @@ def batch_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
     live = np.ones((C, B), dtype=bool)
     it = 0
     with np.errstate(all="ignore"):
-        for it in range(1, its + 1):
+        for it in range(1, its + 1):  # noqa: B007  (the last value is returned as iterations)
             acc = np.zeros((C, B, S), dtype=np.complex128)
             cur = np.conj(s_pos / V) - y * V
             for k in range(S - 1, 0, -1):

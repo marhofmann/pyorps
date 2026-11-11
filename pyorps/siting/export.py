@@ -36,7 +36,8 @@ written.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field as _field
+from dataclasses import dataclass
+from dataclasses import field as _field
 
 import numpy as np
 
