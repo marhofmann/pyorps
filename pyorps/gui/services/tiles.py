@@ -310,16 +310,24 @@ def build_tile_layer(raster_source: Any, *, name: str = "Cost raster",
     if vmax <= vmin:
         vmax = vmin + 1.0
 
-    client = TileClient(str(tif_path), cors_all=True)
-    # Advertise "localhost" rather than the raw server host. The background
-    # server often binds to the IPv6 loopback "::1", which produces an
-    # unbracketed (invalid) URL; "localhost" resolves to whichever loopback the
-    # server is actually listening on and is browser-friendly.
-    client.client_host = "localhost"
-    client.client_port = client.server_port
-    tile_url = client.get_tile_url(colormap=colormap, vmin=vmin, vmax=vmax,
-                                   nodata=nodata, client=True)
-    bottom, top, left, right = client.bounds("EPSG:4326")
+    # The client's reader opens the file and keeps it open. Opened without a
+    # surrounding rasterio environment it would also keep an environment open
+    # in THIS thread until the client is garbage collected, and when that
+    # happens inside another raster read, the read loses its environment
+    # ("No GDAL environment exists"). Opened inside this block it holds none.
+    import rasterio
+
+    with rasterio.Env():
+        client = TileClient(str(tif_path), cors_all=True)
+        # Advertise "localhost" rather than the raw server host. The background
+        # server often binds to the IPv6 loopback "::1", which produces an
+        # unbracketed (invalid) URL; "localhost" resolves to whichever loopback
+        # the server is actually listening on and is browser-friendly.
+        client.client_host = "localhost"
+        client.client_port = client.server_port
+        tile_url = client.get_tile_url(colormap=colormap, vmin=vmin, vmax=vmax,
+                                       nodata=nodata, client=True)
+        bottom, top, left, right = client.bounds("EPSG:4326")
     bounds = [[float(bottom), float(left)], [float(top), float(right)]]
 
     return RasterTileLayer(
