@@ -1,5 +1,7 @@
 # Configuration file for the Sphinx documentation builder.
 
+import importlib.util
+import inspect
 import os
 import sys
 from datetime import datetime
@@ -86,16 +88,18 @@ autoclass_content = 'both'
 autodoc_default_options = {
     'members': True,
     'member-order': 'bysource',
-    'special-members': '__init__',
     'undoc-members': True,
     'exclude-members': '__weakref__',
     'show-inheritance': True,
     'inherited-members': False,
-    'noindex': False,
 }
 
-# Mock imports for packages that might not be available during doc build
-autodoc_mock_imports = [
+# Mock imports for packages that might not be available during doc build.
+# A package that is installed is imported for real: a mock class cannot take
+# part in the annotations that pyorps evaluates at import time
+# (``np.floating | None``, ``Axes | None``), which broke the autosummary import
+# of ``pyorps.gui`` and ``pyorps.utils.plotting``.
+_OPTIONAL_FOR_DOCS = [
     'numba',
     'numpy',
     'pandas',
@@ -121,6 +125,9 @@ autodoc_mock_imports = [
     'cugraph',
     'cudf',
 ]
+autodoc_mock_imports = [
+    name for name in _OPTIONAL_FOR_DOCS if importlib.util.find_spec(name) is None
+]
 
 # -- Options for autosummary -------------------------------------------------
 
@@ -132,13 +139,15 @@ autosummary_imported_members = False
 
 napoleon_google_docstring = True
 napoleon_numpy_docstring = True
-napoleon_include_init_with_doc = True
+# False: the autosummary class template documents ``__init__`` itself, and a
+# second description of it (as a documented member) is a duplicate object.
+napoleon_include_init_with_doc = False
 napoleon_include_private_with_doc = False
 napoleon_include_special_with_doc = True
 napoleon_use_admonition_for_examples = True
 napoleon_use_admonition_for_notes = True
 napoleon_use_admonition_for_references = False
-napoleon_use_ivar = False
+napoleon_use_ivar = True
 napoleon_use_param = True
 napoleon_use_rtype = True
 napoleon_preprocess_types = False
@@ -239,9 +248,26 @@ suppress_warnings = [
 
 # -- Cython specific configuration -------------------------------------------
 
+def _strip_embedded_signature(app, what, name, obj, options, lines):
+    """Drop the signature line that Cython embeds in a compiled function's docstring.
+
+    autodoc removes it only when the documented name equals the function name;
+    for a re-export under another name (``delta_stepping_2d_persistent as
+    delta_stepping_2d``) the C-typed line stays and its ``*`` breaks the markup.
+    """
+    if what not in ('function', 'method') or inspect.isfunction(obj) or not lines:
+        return
+    short = getattr(obj, '__name__', None)
+    if short and lines[0].startswith(short + '(') and lines[0].rstrip().endswith(')'):
+        del lines[0]
+        if lines and not lines[0].strip():
+            del lines[0]
+
+
 def setup(app):
     """Setup function for custom Sphinx configuration."""
     app.add_css_file('css/custom.css')
+    app.connect('autodoc-process-docstring', _strip_embedded_signature)
 
     # Check if Cython extensions are available
     try:

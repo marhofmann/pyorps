@@ -64,7 +64,7 @@ Full class and function documentation.
 (index-status)=
 ## What is available where
 
-Each page states its status. `stable` pages describe the API that is kept; `experimental` pages describe features in the same release (`pip install pyorps`, 0.4.0) that may still change. See {doc}`getting_started/release_status`.
+Each page states its status (`status:` in its header) and where you can get it (`available_in:`). `stable` pages describe the API that is kept; `experimental` pages describe features that are in the latest PyPI release (`available_in: pypi`) and may change in a later version; `unreleased` pages describe code that is only on the `main` branch or in a source checkout (`available_in: main` or `source`). The `since:` field names the release in which a page's feature first appeared. See {doc}`getting_started/release_status`.
 
 | Area | Status | Page |
 |---|---|---|

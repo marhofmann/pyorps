@@ -24,6 +24,23 @@ api:
   - pyorps.ConsistencyCheckError
   - pyorps.NumericalPrecisionError
   - pyorps.PyorpsWarning
+  - pyorps.FileLoadError
+  - pyorps.InvalidSourceError
+  - pyorps.FormatError
+  - pyorps.ObjectiveError
+  - pyorps.MetricStackError
+  - pyorps.EnsembleError
+  - pyorps.FeatureColumnError
+  - pyorps.NoSuitableColumnsError
+  - pyorps.ColumnAnalysisError
+  - pyorps.WFSConnectionError
+  - pyorps.WFSResponseParsingError
+  - pyorps.WFSLayerNotFoundError
+  - pyorps.WFSServerError
+  - pyorps.WFSRequestRejectedError
+  - pyorps.ProvenanceMismatch
+  - pyorps.CrsReprojectionWarning
+  - pyorps.AlgorithmFallbackWarning
 ---
 # Exceptions
 
@@ -56,7 +73,8 @@ Catch `PyorpsError` for anything the library reports. The classes that replace a
 | `InputFileNotFoundError` | A file the caller named (raster, profile, saved field) does not exist. Also a `FileNotFoundError`. |
 | `ConsistencyCheckError` | A result failed a check that must hold if the inputs are what they claim to be, for example a lower bound above an upper bound. Also an `AssertionError`. |
 | `NumericalPrecisionError` | A computation cannot be carried out exactly enough in the number format used, for example an FFT convolution too large for exact float64. Also an `ArithmeticError`. |
-| `PyorpsWarning` | Root of the warning classes (`ThinForbiddenFeatureWarning`, `SealedOpeningWarning`, `ForbiddenBurnRoutingAssessment`, `CrsReprojectionWarning`). Derives from `UserWarning`. |
+| `PyorpsWarning` | Root of the warning classes (`ThinForbiddenFeatureWarning`, `SealedOpeningWarning`, `ForbiddenBurnRoutingAssessment`, `CrsReprojectionWarning`, `AlgorithmFallbackWarning`). Derives from `UserWarning`. |
+| `AlgorithmFallbackWarning` | A different search runs than the one that was asked for, because the requested one cannot evaluate the request. The answer is still the one the request defines: terrain is never dropped. Once per `PathFinder` or `SearchSession`, not once per route. Cases: delta-stepping or the retained GPU field with a DEM (Dijkstra runs instead), and `graph_api="raster_fim"` with a DEM (the cython Dijkstra runs instead). See {ref}`metric-dem-3d`. |
 
 The research packages add their own classes: `DesignError` (`pyorps.collector`, an `InvalidInputError`), `LoadFlowError` (`pyorps.collector.voltage`, a `PyorpsRuntimeError`) and `ManifestError` (`pyorps.siting`, an `InvalidInputError`).
 
