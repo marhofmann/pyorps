@@ -1034,9 +1034,14 @@ class TestChordRuleProjection:
 
 
 class TestTierAPathFinderIntegration:
-    def test_end_to_end_with_dem(self):
+    def test_a_dem_makes_pathfinder_fall_back_to_the_cython_dijkstra(self):
+        """Tier A (the 3-D length metric) is a property of RasterFIMAPI. Through PathFinder a DEM no
+        longer reaches it: the eikonal route is not the discrete least-cost route of the other
+        backends and the bare-DEM slope penalty has no eikonal form, so the finder announces the
+        fallback and routes with the cython Dijkstra (tests/test_graph/test_dem_backend_agreement_round14.py)."""
         from rasterio.transform import from_origin
 
+        from pyorps.core.warning_types import AlgorithmFallbackWarning
         from pyorps.graph.path_finder import PathFinder
         rng = np.random.default_rng(9)
         n = 100
@@ -1044,24 +1049,23 @@ class TestTierAPathFinderIntegration:
         _rr, cc = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
         dem = (30.0 * np.sin(cc / 8.0)).astype(np.float32)
         transform = from_origin(0.0, float(n), 1.0, 1.0)
-        finder = PathFinder(
-            dataset_source=raster,
-            crs="EPSG:32632",
-            transform=transform,
-            source_coords=(10.5, 50.5),
-            target_coords=(89.5, 50.5),
-            search_space_buffer_m=500,
-            graph_api="raster_fim",
-            dem=dem,
-            dem_kwargs={"crs": "EPSG:32632", "transform": transform},
-        )
+        with pytest.warns(AlgorithmFallbackWarning, match="raster_fim"):
+            finder = PathFinder(
+                dataset_source=raster,
+                crs="EPSG:32632",
+                transform=transform,
+                source_coords=(10.5, 50.5),
+                target_coords=(89.5, 50.5),
+                search_space_buffer_m=500,
+                graph_api="raster_fim",
+                dem=dem,
+                dem_kwargs={"crs": "EPSG:32632", "transform": transform},
+            )
+        assert finder.graph_api_name == "cython"
         path = finder.find_route()
         assert path is not None
-        api = finder.graph_api
-        # cell_size reached the backend and Tier A is live
-        assert api._cell_size == pytest.approx(1.0)
-        assert api._dem is not None
-        assert api.last_field_costs[0] > 0
+        assert path.graph_api == "cython"
+        assert path.total_length_3d > path.total_length_2d     # the DEM was applied
 
 
 # ===========================================================================

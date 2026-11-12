@@ -38,7 +38,7 @@ import math
 
 import numpy as np
 
-from pyorps.core.exceptions import InvalidInputError
+from pyorps.core.exceptions import ConsistencyCheckError, InvalidInputError
 
 __all__ = [
     "primitive_directions",
@@ -124,7 +124,7 @@ def bezout(p: int, q: int) -> tuple[int, int]:
     a = old_s * (1 if p >= 0 else -1)
     b = old_t * (1 if q >= 0 else -1)
     if a * p + b * q != 1:
-        raise AssertionError(f"bezout failed for ({p}, {q})")
+        raise ConsistencyCheckError(f"bezout failed for ({p}, {q})")
     return int(a), int(b)
 
 

@@ -92,7 +92,7 @@ def test_node(workers, repeats, timed) -> list[dict]:
 
 # --------------------------------------------------------------------- drains
 def test_drains(workers, repeats, timed) -> list[dict]:
-    from pyorps.certify.windows import drain
+    from pyorps.graph.drain import drain
     from pyorps.utils.neighborhood import get_neighborhood_steps
 
     vals = C.load_window(1_000_000)

@@ -91,10 +91,10 @@ def main(argv=None) -> int:
     import run_bound_and_prune as rbp
     from rasterio.windows import Window
 
-    from pyorps.certify.windows import drain
     from pyorps.collector.reference import CollectorGraph, solve_collector
     from pyorps.costmodel import CostCatalogue, LossCategories
     from pyorps.costmodel.collector_inputs import CollectorInputs, build_collector_model
+    from pyorps.graph.drain import drain
     from pyorps.siting.data_manifest import DataManifest
     from pyorps.utils.neighborhood import get_neighborhood_steps
 

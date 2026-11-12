@@ -21,6 +21,7 @@ The objective combination (combine/quantize) arrives with Phase 3.
 from __future__ import annotations
 
 import json
+import os
 import warnings
 from dataclasses import dataclass
 
@@ -32,6 +33,12 @@ from rasterio.windows import transform as window_transform
 
 from .exceptions import MetricStackError
 from .objective import RESERVED_LAYERS, Objective
+from .warning_types import PyorpsWarning
+
+#: Frames of the pyorps package are skipped when a warning picks the line it
+#: is attributed to, so it names the caller's own code.
+_PACKAGE_PREFIXES = (os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ""),)
 
 #: Sentinel marking forbidden cells (mirrors IMPASSABLE_CELL_COST; not
 #: imported from .types to avoid a circular import).
@@ -48,14 +55,30 @@ _TAG_KEY = "pyorps_metric_stack"
 
 def reproject_to_grid(source: np.ndarray, src_transform: Affine, src_crs,
                       dst_shape: tuple[int, int], dst_transform: Affine,
-                      dst_crs) -> np.ndarray:
+                      dst_crs, src_nodata: float | None = None) -> np.ndarray:
     """Reproject a raster onto a target grid (bilinear, NaN where uncovered).
 
     Transform-correct for any source resolution or extent — unlike
     shape-based zooming, which silently assumes identical extents.
+
+    A destination cell that the source does not cover is NaN, and so is one
+    whose source cells are all ``src_nodata``. (``rasterio.warp.reproject``
+    starts its destination at the destination nodata value, which is 0 unless
+    ``dst_nodata`` says otherwise, so without it a partly covering source
+    gave 0 outside its coverage, indistinguishable from a real 0.) Cells
+    that are covered and valid are the same bilinear values as before.
+
+    Parameters:
+        src_nodata: The source's nodata value; those cells do not take part
+            in the interpolation and become NaN where nothing else
+            contributes. None (or a non-finite value) means the source has
+            no nodata value.
     """
     from rasterio.warp import Resampling, reproject
 
+    options = {"dst_nodata": np.nan}
+    if src_nodata is not None and np.isfinite(src_nodata):
+        options["src_nodata"] = float(src_nodata)
     destination = np.full(dst_shape, np.nan, dtype=np.float32)
     reproject(
         source=np.ascontiguousarray(source, dtype=np.float32),
@@ -65,6 +88,7 @@ def reproject_to_grid(source: np.ndarray, src_transform: Affine, src_crs,
         dst_transform=dst_transform,
         dst_crs=dst_crs,
         resampling=Resampling.bilinear,
+        **options,
     )
     return destination
 
@@ -204,7 +228,8 @@ class MetricStack:
     def add_layer(self, name: str, values: np.ndarray,
                   hard_max: float | None = None,
                   hard_min: float | None = None,
-                  *, copy: bool = True) -> None:
+                  *, copy: bool = True,
+                  void: np.ndarray | None = None) -> None:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Add a metric layer (float32; forbidden values join the mask).
 
@@ -226,6 +251,15 @@ class MetricStack:
                 performance-plan item 2.6). Values that are not already a
                 float32 ndarray are converted, and a conversion allocates
                 anyway, so ``copy`` only matters for float32 input.
+            void: Optional boolean mask (stack shape) of the cells the layer
+                has no value for (outside the coverage of its source, or its
+                nodata). Such a cell is not forbidden by itself (a coverage
+                gap is not an exclusion zone) and holds 0 in the stored
+                layer, but a hard bound cannot be checked where there is no
+                value: when ``hard_max`` or ``hard_min`` is given, void cells
+                are forbidden, so a missing value neither passes nor fails a
+                bound by the accident of being stored as 0. The caller's
+                ``values`` must already hold 0 (or any finite number) there.
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not isinstance(name, str) or not name:
@@ -264,6 +298,9 @@ class MetricStack:
             forbidden |= values > hard_max
         if hard_min is not None:
             forbidden |= values < hard_min
+        if void is not None and (hard_max is not None or hard_min is not None):
+            self._check_shape(np.asarray(void), f"Void mask of layer '{name}'")
+            forbidden |= np.asarray(void, dtype=bool)
         values[forbidden] = 0.0
         self._layers[name] = values
         self._merge_forbidden(forbidden)
@@ -344,11 +381,16 @@ class MetricStack:
             dem = dem.copy()
             dem[invalid] = fill
             self._merge_forbidden(invalid)
+            # PyorpsWarning is a UserWarning: filters written for UserWarning
+            # keep working. The frames of this package are skipped so the
+            # warning names the line of the user's code, whether it was an
+            # ``attach_dem`` call or a PathFinder that derives a slope layer.
             warnings.warn(
-                f"DEM contains {int(invalid.sum())} non-finite cell(s) — "
-                f"marked forbidden and filled with the mean height "
+                f"DEM contains {int(invalid.sum())} non-finite cell(s) "
+                f"without elevation (not covered by the DEM, nodata or NaN) "
+                f"— marked forbidden and filled with the mean height "
                 f"({fill:.1f} m) for kernel safety.",
-                UserWarning, stacklevel=2)
+                PyorpsWarning, skip_file_prefixes=_PACKAGE_PREFIXES)
         self.dem = dem
 
     def derive_terrain_slope(self) -> np.ndarray:

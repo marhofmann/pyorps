@@ -73,7 +73,12 @@ from typing import Any
 
 import numpy as np
 
-from pyorps.core.exceptions import FeatureNotImplementedError, InvalidInputError, PyorpsRuntimeError
+from pyorps.core.exceptions import (
+    ConsistencyCheckError,
+    FeatureNotImplementedError,
+    InvalidInputError,
+    PyorpsRuntimeError,
+)
 from pyorps.utils.directional import (
     circular_window_min,
     direction_angles,
@@ -937,7 +942,7 @@ class TowerField:
             if prev == self._source or layer < 0:
                 break
             if len(cells) > limit:
-                raise RuntimeError(
+                raise PyorpsRuntimeError(
                     "predecessor walk did not reach the source; the field "
                     "and its predecessor plane disagree")
             layer = max(0, min(layer, i_dir.shape[0] - 1))
@@ -2020,20 +2025,21 @@ def check_bounds(lower: TowerField, upper: TowerField, *,
                  tol: float = 1e-6) -> dict:
     """``LB <= UB`` on every cell -- the cheapest strong invariant there is.
 
-    Returns a summary dict; raises :class:`AssertionError` on a
+    Returns a summary dict; raises :class:`ConsistencyCheckError` (an
+    ``AssertionError``) on a
     violation, including a cell reachable in the upper bound but not the
     lower, which no relaxation can produce.
     """
     both = np.isfinite(lower.arrival) & np.isfinite(upper.arrival)
     gap = upper.arrival[both] - lower.arrival[both]
     if gap.size and float(gap.min()) < -tol:
-        raise AssertionError(
+        raise ConsistencyCheckError(
             f"LB <= UB is violated on {int((gap < -tol).sum())} cells, worst "
             f"by {-float(gap.min()):,.3f} EUR -- one of the two fields is "
             f"not the bound it claims to be")
     only_ub = (~np.isfinite(lower.arrival)) & np.isfinite(upper.arrival)
     if only_ub.any():
-        raise AssertionError(
+        raise ConsistencyCheckError(
             f"{int(only_ub.sum())} cells are reachable in the upper bound "
             f"but not in the lower one, which no relaxation can do")
     return {
@@ -2061,7 +2067,8 @@ def assert_matched_tier1(tier1: TowerField, tier2: TowerField) -> None:
     tier2.arrival`` a certificate.
 
     Raises:
-        AssertionError: listing every violated condition.
+        ConsistencyCheckError: listing every violated condition (it is also
+            an ``AssertionError``).
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     bad: list[str] = []
@@ -2119,7 +2126,7 @@ def assert_matched_tier1(tier1: TowerField, tier2: TowerField) -> None:
     elif np.any(s1 > s2):
         bad.append("tier 1 starts some chain above tier 2")
     if bad:
-        raise AssertionError("not a matched tier 1: " + "; ".join(bad))
+        raise ConsistencyCheckError("not a matched tier 1: " + "; ".join(bad))
 
 
 __all__.append("assert_matched_tier1")

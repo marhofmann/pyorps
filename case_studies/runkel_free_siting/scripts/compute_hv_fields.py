@@ -126,7 +126,7 @@ def main(argv=None) -> int:
     print(stats, flush=True)
 
     if args.check_cpu:
-        from pyorps.certify.windows import drain
+        from pyorps.graph.drain import drain
 
         order = sorted(seeds_of)
         seeds = np.concatenate([seeds_of[k][0] for k in order])

@@ -445,7 +445,10 @@ class ConstrainedPathFinder(PathFinder):
             self._evaluate_objective_metrics(idx // cols_n, idx % cols_n,
                                              result)
 
-        # Store in parent's PathCollection so save_paths() works
+        # Store in parent's PathCollection so save_paths() works. Drop the
+        # cached GeoDataFrame first, as PathFinder.find_route does: it was
+        # built from the routes before this one.
+        self.path_gdf = None
         self.paths.add(result)
 
         return result

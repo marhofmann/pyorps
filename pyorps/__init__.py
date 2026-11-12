@@ -63,6 +63,7 @@ from .core.path import (  # Fixed: import from core.path instead of graph  # pyl
     Path,
     PathCollection,
 )
+from .core.warning_types import AlgorithmFallbackWarning  # pylint: disable=wrong-import-position
 from .graph.corridor import (  # pylint: disable=wrong-import-position
     cell_sharing_profile,
     corridor_graph_from_routes,
@@ -190,5 +191,5 @@ __all__ = [
     "PyorpsRuntimeError", "InsufficientMemoryError", "InputFileNotFoundError",
     "ConsistencyCheckError", "NumericalPrecisionError",
     # Warning root
-    "PyorpsWarning", "CrsReprojectionWarning",
+    "PyorpsWarning", "CrsReprojectionWarning", "AlgorithmFallbackWarning",
 ]

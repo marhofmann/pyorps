@@ -3,8 +3,8 @@ PYORPS: An Open-Source Tool for Automated Power Line Routing
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
-    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
+Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
 import os
 import warnings
@@ -420,25 +420,27 @@ def initialize_geo_dataset(file_source: InputDataType,
             the type received and lists the accepted forms.
 
     Examples:
-        # From local vector file
-        vector_dataset = create_geo_dataset("path/to/shapefile.shp", crs="EPSG:4326")
+        .. code-block:: python
 
-        # From GeoDataFrame
-        vector_dataset = create_geo_dataset(gdf, bbox=(x1, y1, x2, y2))
+            # From local vector file
+            vector_dataset = initialize_geo_dataset("path/to/shapefile.shp", crs="EPSG:4326")
 
-        # From WFS source
-        wfs_dataset = create_geo_dataset({"url": "https://example.com/wfs",
-                                          "layer": "layer1"})
+            # From GeoDataFrame
+            vector_dataset = initialize_geo_dataset(gdf, bbox=(x1, y1, x2, y2))
 
-        # From local raster file
-        raster_dataset = create_geo_dataset("path/to/dem.tif")
+            # From WFS source
+            wfs_dataset = initialize_geo_dataset({"url": "https://example.com/wfs",
+                                                  "layer": "layer1"})
 
-        # From numpy array
-        raster_dataset = create_geo_dataset(array_data, transform=transform,
-                                            crs="EPSG:4326")
+            # From local raster file
+            raster_dataset = initialize_geo_dataset("path/to/dem.tif")
 
-        # From a (data_array, crs, transform) tuple
-        raster_dataset = create_geo_dataset((array_data, "EPSG:4326", transform))
+            # From numpy array
+            raster_dataset = initialize_geo_dataset(array_data, transform=transform,
+                                                    crs="EPSG:4326")
+
+            # From a (data_array, crs, transform) tuple
+            raster_dataset = initialize_geo_dataset((array_data, "EPSG:4326", transform))
     """
     # An existing dataset needs no factory
     if isinstance(file_source, GeoDataset):

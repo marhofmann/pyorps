@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -41,8 +42,18 @@ from pyorps.core.exceptions import (
 )
 from pyorps.core.path import Path
 from pyorps.core.types import IMPASSABLE_CELL_COST
-from pyorps.io.geo_dataset import InMemoryRasterDataset, LocalRasterDataset
+from pyorps.core.warning_types import AlgorithmFallbackWarning
+from pyorps.io.geo_dataset import (
+    InMemoryRasterDataset,
+    LocalRasterDataset,
+    VectorDataset,
+)
 from pyorps.utils._raster_context import NO_EXCLUSION_VALUE
+
+#: Frames in this package are skipped when a warning picks the line it is
+#: attributed to: it then names the caller's line whether the session was
+#: opened by ``SearchSession(...)`` or by ``finder.search_session(...)``.
+_INTERNAL_FILE_PREFIXES = (os.path.join(os.path.dirname(__file__), ""),)
 
 if TYPE_CHECKING:
     from pyorps.graph.path_finder import PathFinder
@@ -94,7 +105,9 @@ def _require_gradient_support(finder: PathFinder, kind: str) -> None:
         raise FeatureNotImplementedError(
             f"the {kind} full-field kernel does not apply the DEM's "
             f"per-edge slope terms, so its field would price flat terrain; "
-            f"use algorithm='dijkstra' (what 'auto' picks here on cython)")
+            f"pass algorithm='dijkstra' or algorithm='auto' (the field is "
+            f"then settled by the Dijkstra tree, which applies them), or "
+            f"drop the DEM")
 
 
 def _backend_kind(finder: PathFinder, algorithm: str) -> str:
@@ -107,6 +120,49 @@ def _backend_kind(finder: PathFinder, algorithm: str) -> str:
     if algo in ("delta-stepping", "delta-stepping-circular"):
         return "delta"
     return "dijkstra"
+
+
+def _resolve_field_algorithm(finder: PathFinder,
+                             requested: str) -> tuple[str, str]:
+    """The ``(algorithm, kind)`` a rooted field is settled with.
+
+    ``requested`` is what the caller passed. With slope terms (a DEM) the
+    delta-stepping and GPU kernels would price flat terrain, so the field is
+    settled by the Dijkstra tree, the same mapping a :class:`SearchSession`
+    makes (:meth:`SearchSession._terrain_kind`). That holds for
+    ``algorithm="auto"`` and ``"dijkstra"`` on every backend, including
+    ``graph_api="raster_gpu"``, whose kind follows the graph API and not the
+    algorithm name. An explicit delta-stepping or GPU request is refused: it
+    names a kernel that cannot do what was asked.
+
+    Pure: it warns nothing (see :func:`_announce_field_fallback`).
+
+    Raises:
+        FeatureNotImplementedError: An explicit delta-stepping or GPU
+            algorithm with slope terms.
+    """
+    algorithm = _resolve_algorithm(finder, requested)
+    kind = _backend_kind(finder, algorithm)
+    if kind in ("delta", "gpu") and _uses_gradients(finder):
+        if (requested or "").lower() not in ("auto", "dijkstra"):
+            _require_gradient_support(finder, kind)
+        return "dijkstra", "dijkstra"
+    return algorithm, kind
+
+
+def _announce_field_fallback(finder: PathFinder, requested: str) -> None:
+    """Say once per finder that a GPU field runs as Dijkstra (slope terms)."""
+    api = (finder.graph_api_name or "cython").lower()
+    if api != "raster_gpu" or not _uses_gradients(finder):
+        return
+    announce = getattr(finder, "_warn_fallback", None)
+    if callable(announce):
+        announce(
+            "cost_field",
+            f"CostField on graph_api='raster_gpu': the GPU kernel cannot "
+            f"evaluate slope terms (a DEM is set), so the field is settled by "
+            f"the cython Dijkstra tree instead (algorithm={requested!r}). Use "
+            f"graph_api='cython' to silence this warning.")
 
 
 #: Fraction of the cores ``algorithm="auto"`` asks for. The delta-stepping
@@ -268,11 +324,10 @@ def _encode_pred_steps(pred: np.ndarray, steps: np.ndarray,
 
 #: How :meth:`CostField.save` can store the labels of a raw field.
 #:
-#: ``"float32"``       round to nearest, 4 B/cell (the default);
-#: ``"float32-down"``  round toward minus infinity, 4 B/cell: every stored
-#:                     value is a lower bound, as plan section 3.7 wants
-#:                     for pruning layers;
-#: ``"float64"``       exact, 8 B/cell, for fields a certificate reads.
+#: - ``"float32"``: round to nearest, 4 B/cell (the default);
+#: - ``"float32-down"``: round toward minus infinity, 4 B/cell: every stored
+#:   value is a lower bound, as plan section 3.7 wants for pruning layers;
+#: - ``"float64"``: exact, 8 B/cell, for fields a certificate reads.
 FIELD_STORAGE = ("float32", "float32-down", "float64")
 
 #: A raw field written before storage modes existed stored
@@ -619,13 +674,11 @@ def cost_field_provenance(finder: PathFinder, origin, *,
         finder.create_raster_handler()
     section = _storage_section(storage, codec, error_bound)
     requested = algorithm
-    algorithm = _resolve_algorithm(finder, algorithm)
+    algorithm, kind = _resolve_field_algorithm(finder, requested)
     kwargs = dict(algo_kwargs)
     if (requested or "").lower() == "auto" and algorithm.startswith(
             "delta-stepping"):
         kwargs.setdefault("num_threads", _auto_threads())
-    kind = _backend_kind(finder, algorithm)
-    _require_gradient_support(finder, kind)
     _require_bound_storage(kind, storage, codec)
     idx = _index(finder, _as_point(origin))
     return _field_provenance(finder, idx, algorithm, kind, kwargs, section,
@@ -698,45 +751,98 @@ def _points_in_window(finder: PathFinder, points: Sequence[Coordinate]) -> bool:
     return True
 
 
-def _clone_finder(finder: PathFinder, points: Sequence[Coordinate]) -> PathFinder:
-    """New PathFinder whose window covers ``points``. Drops retained trees."""
-    from pyorps.graph.path_finder import PathFinder
+#: The ``PathFinder.__init__`` parameters a rebuilt window does NOT take over
+#: from the old finder, each with its reason. Every other parameter is passed
+#: by :func:`_clone_arguments`; ``tests/test_graph/test_objective_session_and_
+#: dem_errors_round14.py`` fails when ``__init__`` gains a parameter that is on
+#: neither side, so a new setting cannot be forgotten silently (a clone that
+#: lacked ``metric_layers`` made the first window rebuild raise
+#: "unknown metric layer").
+_CLONE_NOT_CARRIED = {
+    "raster_save_path": "writing the first window to a file is a one-off; a "
+                        "rebuilt window must not overwrite the caller's file",
+    "bbox": "clips a VECTOR source when it is loaded; the dataset that is "
+            "passed on has been clipped already (a raster ignores it)",
+    "mask": "clips a VECTOR source when it is loaded; the dataset that is "
+            "passed on has been clipped already (a raster ignores it)",
+    "gradient_options": "folded into the Objective, which is passed on; "
+                        "giving both is an error",
+}
 
+
+def _clone_source(finder: PathFinder) -> tuple[Any, Any, Any]:
+    """``(dataset_source, transform, crs)`` a clone reads its raster from.
+
+    A raster file is read again from the file and an in-memory raster is
+    passed as its array, so the new window can lie anywhere in it. A vector
+    dataset is passed on as it is, together with the cost assumptions it is
+    burned with. Any other dataset is cut from the old window.
+    """
     dataset = finder.dataset
     if isinstance(dataset, InMemoryRasterDataset):
         data = np.asarray(dataset.data)
         if data.ndim == 3:
             data = data[0]
-        source: Any = data
-        transform = dataset.transform
-        crs = dataset.crs
-    elif isinstance(dataset, LocalRasterDataset):
-        source = dataset.file_source
-        transform = None
-        crs = dataset.crs
-    else:
-        data = _raster_of(finder)
-        source = data
-        transform = finder.raster_handler.window_transform
-        crs = dataset.crs
+        return data, dataset.transform, dataset.crs
+    if isinstance(dataset, LocalRasterDataset):
+        return dataset.file_source, None, dataset.crs
+    if isinstance(dataset, VectorDataset):
+        return dataset, None, dataset.crs
+    return (_raster_of(finder), finder.raster_handler.window_transform,
+            dataset.crs)
 
+
+def _clone_arguments(finder: PathFinder,
+                     points: Sequence[Coordinate]) -> dict[str, Any]:
+    """The keyword arguments of the finder a rebuilt window is made with.
+
+    One entry per ``PathFinder.__init__`` parameter except those in
+    :data:`_CLONE_NOT_CARRIED`, plus the raster ``**kwargs`` the old finder
+    was built with.
+    """
+    source, transform, crs = _clone_source(finder)
     buffer_m = finder._explicit_buffer_m  # pylint: disable=protected-access  # same-package collaborator
     if buffer_m is None:
         buffer_m = finder.search_space_buffer_m
-    return PathFinder(
-        dataset_source=source,
-        source_coords=list(points),
-        target_coords=[points[-1]],
-        search_space_buffer_m=buffer_m,
-        neighborhood_str=finder.neighborhood_str,
-        ignore_max_cost=finder.ignore_max_cost,
-        graph_api=finder.graph_api_name,
-        crs=crs,
-        transform=transform,
-        use_gpu=finder.use_gpu,
-        objective=finder.objective,
-        corridor_first=finder.corridor_first,
-    )
+    raster = getattr(finder, "_raster_arguments", None) or {}
+    arguments = {
+        "dataset_source": source,
+        "source_coords": list(points),
+        "target_coords": [points[-1]],
+        "search_space_buffer_m": buffer_m,
+        "neighborhood_str": finder.neighborhood_str,
+        "steps": np.array(finder.steps, copy=True),
+        "ignore_max_cost": finder.ignore_max_cost,
+        "graph_api": finder.graph_api_name,
+        "cost_assumptions": raster.get("cost_assumptions"),
+        "datasets_to_modify": raster.get("datasets_to_modify"),
+        "crs": crs,
+        "transform": transform,
+        # The DEM travels with the window: a clone without it would search
+        # flat terrain, silently. A DEM without an objective stays one (no
+        # objective).
+        "dem": finder.dem_dataset,
+        "dem_kwargs": finder.dem_kwargs,
+        "use_gpu": finder.use_gpu,
+        "objective": finder.objective,
+        "metric_layers": finder.metric_layers,
+        "weight_precision": finder.weight_precision,
+        "corridor_first": finder.corridor_first,
+        "graph_api_options": dict(finder.graph_api_options or {}),
+    }
+    # The raster read options (rasterio read(), rasterize()) of the old finder.
+    return {**arguments, **dict(raster.get("kwargs") or {})}
+
+
+def _clone_finder(finder: PathFinder, points: Sequence[Coordinate]) -> PathFinder:
+    """New PathFinder whose window covers ``points``. Drops retained trees.
+
+    Takes over every constructor setting of ``finder`` (see
+    :func:`_clone_arguments` and :data:`_CLONE_NOT_CARRIED`).
+    """
+    from pyorps.graph.path_finder import PathFinder
+
+    return PathFinder(**_clone_arguments(finder, points))
 
 
 def _index(finder: PathFinder, point: Coordinate) -> int:
@@ -861,17 +967,50 @@ def _delta_dummy_target(raster: np.ndarray, root_idx: int,
     return 0 if root_idx != 0 else (1 if flat.size > 1 else 0)
 
 
+#: Backends that search an undirected graph built from the HALF step set
+#: (every edge once, usable both ways). The cython Dijkstra solver reads its
+#: steps as directed edges, so a retained tree on such a finder needs the
+#: full set (see :func:`_dijkstra_inputs`).
+_HALF_STEP_BACKENDS = ("networkit", "networkx", "igraph", "rustworkx")
+
+
+def _dijkstra_inputs(finder: PathFinder, api) -> tuple[np.ndarray, Any]:
+    """The steps and slope tables the cython Dijkstra solver searches with.
+
+    The finder's own steps and the slope tables its backend built, except on
+    a graph-library finder: there the steps are the half set, which the
+    directed cython kernel would walk as a DAG and so return routes that
+    are clearly too expensive, with or without a DEM. The solver then gets
+    the steps closed under negation, and the slope tables, if there are any,
+    are rebuilt for exactly those steps (they are indexed by step). Every
+    other finder keeps its steps.
+    """
+    steps = finder.steps
+    luts = getattr(api, "gradient_luts", None)
+    if (finder.graph_api_name not in _HALF_STEP_BACKENDS
+            or _steps_closed_under_negation(steps)):
+        return steps, luts
+    steps = np.unique(np.vstack([steps, -np.asarray(steps)]), axis=0)
+    if luts is not None:
+        combined = finder._combine_result  # pylint: disable=protected-access  # same-package collaborator
+        luts = finder._terrain_objective().build_gradient_luts(  # pylint: disable=protected-access  # same-package collaborator
+            steps, _cell_size(finder),
+            combined.scale if combined is not None else 1.0)
+    return steps, luts
+
+
 def _make_tree(finder: PathFinder, kind: str, root_idx: int,
                algo_kwargs: dict):
     """Build the backend tree adapter rooted at ``root_idx``."""
     if kind == "dijkstra":
         from pyorps.utils._dijkstra import make_dijkstra_solver
         api = finder.graph_api
+        steps, luts = _dijkstra_inputs(finder, api)
         solver = make_dijkstra_solver(
-            _raster_of(finder), finder.steps,
+            _raster_of(finder), steps,
             max_value=_max_value(finder),
             dem=getattr(api, "dem_data", None),
-            gradient_luts=getattr(api, "gradient_luts", None),
+            gradient_luts=luts,
         )
         return _DijkstraTree(solver, root_idx)
     if kind == "delta":
@@ -1249,7 +1388,15 @@ class SearchSession:
       ``find_route`` on each consecutive pair.
     * Control points outside the current search window rebuild the
       windowed raster and drop the trees, then solve exactly on the new
-      window.
+      window. The DEM, if any, is carried over to the new window.
+    * With slope terms (a DEM) a delta-stepping or GPU session searches
+      with Dijkstra instead, because those trees have no slope terms. The
+      session warns once (``AlgorithmFallbackWarning``) when it is opened
+      and its routes name ``"dijkstra"``. With slope terms a session on a
+      graph-library finder searches with the full step set and the same
+      slope tables as the direct search. Without a DEM it searches with the
+      full step set as well, so a session route costs what ``find_route``
+      costs on every backend.
     * One session is per route, not per raster.
     * With ``reuse_reverse=True`` a Dijkstra tree is 13 B/cell -- 0.95 GB
       on the 73 M-cell windows the substation case study uses -- and up
@@ -1267,6 +1414,7 @@ class SearchSession:
         self._algorithm = algorithm
         self._algo_kwargs = dict(algo_kwargs)
         self._kind = _backend_kind(finder, algorithm)
+        self._kind = self._terrain_kind(finder)
         self._neighborhood = finder.neighborhood_str
         self._ignore_max = finder.ignore_max_cost
         self._api_name = finder.graph_api_name
@@ -1289,6 +1437,43 @@ class SearchSession:
         ok, why = _reversible(finder)
         self._can_reverse = self._reuse_reverse and ok
         self._reverse_blocked = why if (self._reuse_reverse and not ok) else ""
+
+    def _terrain_kind(self, finder: PathFinder) -> str:
+        """The tree kind that can evaluate the finder's slope terms.
+
+        The delta-stepping and GPU trees have no slope terms: with a DEM they
+        would settle fields over flat terrain. Such a session searches with
+        the Dijkstra tree instead (the cython Dijkstra solver reads the
+        finder's DEM and slope tables), announces it once, and names
+        ``"dijkstra"`` on its routes.
+        """
+        kind = self._kind
+        fallback = kind in ("delta", "gpu") and _uses_gradients(finder)
+        final = "dijkstra" if fallback else kind
+        if (getattr(finder, "weight_precision", "uint16") == "float32"
+                and final in ("dijkstra", "delta")):
+            # The cython trees read a uint16 raster; handing them the
+            # float32 weight surface would fail inside the kernel.
+            raise InvalidInputError(
+                f"A SearchSession on the {final!r} tree cannot search a "
+                f"weight_precision='float32' finder: its kernels are "
+                f"uint16-only"
+                f"{' (slope terms need the Dijkstra tree)' if fallback else ''}"
+                f". Route with find_route, use weight_precision='uint16', "
+                f"or graph_api='raster_gpu' / 'raster_fim' without a DEM.")
+        if fallback:
+            what = ("delta-stepping" if kind == "delta"
+                    else "the retained GPU field")
+            silence = ("Pass algorithm='dijkstra' to silence this warning."
+                       if kind == "delta" else
+                       "Use graph_api='cython' to silence this warning.")
+            warnings.warn(
+                f"SearchSession: {what} cannot evaluate slope terms (a DEM "
+                f"is set), so Dijkstra runs instead. " + silence,
+                AlgorithmFallbackWarning,
+                skip_file_prefixes=_INTERNAL_FILE_PREFIXES)
+            self._algorithm = "dijkstra"
+        return final
 
     @property
     def finder(self) -> PathFinder:
@@ -1571,7 +1756,7 @@ class CostField:
         if finder.raster_handler is None:
             finder.create_raster_handler()
         requested = algorithm
-        algorithm = _resolve_algorithm(finder, algorithm)
+        algorithm, kind = _resolve_field_algorithm(finder, requested)
         if (requested or "").lower() == "auto" and algorithm.startswith(
                 "delta-stepping"):
             # Leave the machine some cores; an explicit value still wins.
@@ -1591,8 +1776,8 @@ class CostField:
         self._origin = origin
         self._algorithm = algorithm
         self._algo_kwargs = dict(algo_kwargs)
-        self._kind = _backend_kind(finder, algorithm)
-        _require_gradient_support(finder, self._kind)
+        self._kind = kind
+        _announce_field_fallback(finder, requested)
         self._neighborhood = finder.neighborhood_str
         self._ignore_max = finder.ignore_max_cost
         self._api_name = finder.graph_api_name
@@ -2611,7 +2796,7 @@ class CostFieldSet:
         rows, cols = finder.raster_handler.data.shape[-2:]
         self._cells = int(rows) * int(cols)
 
-        resolved = _resolve_algorithm(finder, algorithm)
+        resolved, _ = _resolve_field_algorithm(finder, algorithm)
         if spill is None:
             spill = not fields_fit_in_memory(len(pts), self._cells,
                                              algorithm=resolved)
@@ -2651,7 +2836,7 @@ class CostFieldSet:
     @property
     def algorithm(self) -> str:
         """The algorithm actually used, with ``"auto"`` resolved."""
-        return _resolve_algorithm(self._finder, self._algorithm)
+        return _resolve_field_algorithm(self._finder, self._algorithm)[0]
 
     @property
     def memory_bytes(self) -> int:

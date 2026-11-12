@@ -4,9 +4,9 @@ import random
 import numpy as np
 import pytest
 
-from pyorps.certify.windows import drain
 from pyorps.collector.bounds_window import cable_rate_floor, exit_cells, rho_hat_exit_value
 from pyorps.collector.raster import RasterCollector
+from pyorps.graph.drain import drain
 from pyorps.utils.neighborhood import get_neighborhood_steps
 
 from .test_engine_vs_oracle_v2 import _model

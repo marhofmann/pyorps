@@ -25,3 +25,13 @@ class CrsReprojectionWarning(PyorpsWarning):
     The raster and every route are in the new CRS: source and target
     coordinates have to be given in it.
     """
+
+
+class AlgorithmFallbackWarning(PyorpsWarning):
+    """A different search runs than the one that was asked for.
+
+    The answer is still the one the request defines (terrain is never dropped
+    to keep the requested search); only the route to it changed. Raised once
+    per ``PathFinder`` or ``SearchSession``, not once per route. Typical case:
+    delta-stepping cannot evaluate slope terms, so Dijkstra runs instead.
+    """

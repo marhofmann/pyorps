@@ -374,7 +374,7 @@ def decode_field(payload, meta: dict) -> DecodedField:
 
 
 def decode_rows(payload, meta: dict, r0: int, r1: int) -> DecodedField:
-    """Read back rows ``r0 .. r1`` (``r1`` exclusive) of a stored field.
+    """Read back rows ``r0`` to ``r1`` (``r1`` exclusive) of a stored field.
 
     Only the frames (tile-rows) that cover those rows are inflated, and only
     the slice of the reachability mask, so a merge that needs a band of a

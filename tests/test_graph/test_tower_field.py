@@ -18,6 +18,7 @@ import math
 import numpy as np
 import pytest
 
+from pyorps.core.exceptions import ConsistencyCheckError
 from pyorps.core.infrastructure_profile import InfrastructureProfile
 from pyorps.graph.tower_field import (
     AngleTables,
@@ -281,7 +282,20 @@ class TestBounds:
         finite = np.flatnonzero(np.isfinite(lower.arrival.ravel()))
         lower.arrival.ravel()[finite[0]] = np.inf
         upper.arrival.ravel()[finite[0]] = 1.0
-        with pytest.raises(AssertionError, match="no relaxation can do"):
+        with pytest.raises(AssertionError, match="no relaxation can do") as info:
+            check_bounds(lower, upper)
+        assert isinstance(info.value, ConsistencyCheckError)
+
+    def test_a_lower_bound_above_the_upper_bound_is_caught(self, profile):
+        rng = np.random.default_rng(6)
+        raster = rng.integers(1, 200, size=(40, 40)).astype(np.uint16)
+        lower, upper = tower_field_bounds(
+            raster, cell_size_m=10.0, profile=profile, source_cell=(20, 2),
+            factor=1, directions=primitive_directions(1))
+        both = np.flatnonzero(np.isfinite(lower.arrival.ravel())
+                              & np.isfinite(upper.arrival.ravel()))
+        lower.arrival.ravel()[both[-1]] = upper.arrival.ravel()[both[-1]] + 5.0
+        with pytest.raises(ConsistencyCheckError, match="LB <= UB is violated"):
             check_bounds(lower, upper)
 
     def test_restricting_the_feasible_set_raises_cost(self, profile):

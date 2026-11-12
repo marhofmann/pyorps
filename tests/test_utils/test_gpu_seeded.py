@@ -36,7 +36,7 @@ def _seeds(r, n, seed=1):
 
 @gpu_only
 def test_seeded_field_is_a_sound_bound_of_the_exact_kernel():
-    from pyorps.certify.windows import drain
+    from pyorps.graph.drain import drain
     from pyorps.utils.sssp_gpu import GpuSsspSession
 
     r = _raster()

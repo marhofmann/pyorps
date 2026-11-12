@@ -102,17 +102,17 @@ FINITE_LIMIT = 1e29
 ANISO_OFFSETS = ((1, 0), (1, 1), (0, 1), (-1, 1),
                  (-1, 0), (-1, -1), (0, -1), (1, -1))
 
-#: Largest |grad z| for which the 8-simplex stencil is provably
+#: Largest ``|grad z|`` for which the 8-simplex stencil is provably
 #: metric-acute — sqrt(2*(1+sqrt(2))), i.e. an anisotropy ratio
 #: kappa = 1 + sqrt(2) = 2.41421. Verified numerically: the scheme is
 #: exact on linear fields to 0.0000 % up to this value and the acuteness
-#: condition |q_r q_c| <= 1 + min(q_r^2, q_c^2) first fails at |q| = 2.20.
-#: pyorps' default GradientOptions.s_max_pct = 200 % (|q| = 2.0, kappa
+#: condition ``|q_r q_c| <= 1 + min(q_r^2, q_c^2)`` first fails at ``|q| = 2.20``.
+#: pyorps' default GradientOptions.s_max_pct = 200 % (``|q| = 2.0``, kappa
 #: 2.236) clamps inside the exact regime with margin.
 Q_ACUTE_LIMIT = 2.1973671
 #: Default steepness clamp, = default s_max_pct / 100.
 Q_CLAMP_DEFAULT = 2.0
-#: |q| below which a cell takes the isotropic 4-point fast path. At 0.1 %
+#: ``|q|`` below which a cell takes the isotropic 4-point fast path. At 0.1 %
 #: grade the 3D stretch differs from 1 by 5e-7 — below float32 resolution
 #: on the cost.
 Q_FLAT_EPS_DEFAULT = 1e-3

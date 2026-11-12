@@ -251,7 +251,7 @@ class GradientLUTs:
     bin_width_pct: float
     max_gradient_pct: float | None
     quant_scale: float
-    #: Per-direction factor mapping |Δh| in meters straight to a bin index:
+    #: Per-direction factor mapping ``|Δh|`` in meters straight to a bin index:
     #: ``b = min(int(|Δh| * bin_factor[d]), n_bins - 1)`` — folds the
     #: percent conversion and bin width into one multiply.
     bin_factor: np.ndarray = None      # float32 (n_dirs,)

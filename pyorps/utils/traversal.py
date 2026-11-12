@@ -3,14 +3,14 @@ PYORPS: An Open-Source Tool for Automated Power Line Routing
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
-    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
+Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 
 Backward-compatibility shim — imports from Cython _traversal module.
 Falls back to Numba implementations if Cython extension is not available.
 
 THE INTERMEDIATE-CELL INVARIANT (read before changing any edge builder)
-----------------------------------------------------------------------
+-----------------------------------------------------------------------
 A step from ``(r, c)`` to ``(r+dr, c+dc)`` is admitted only if EVERY
 intermediate cell of that step is passable. ``intermediate_steps_numba``
 (``_raster_context.pyx:_calculate_intermediate_steps_cython``) enumerates them:

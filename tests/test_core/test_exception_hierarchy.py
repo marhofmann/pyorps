@@ -10,6 +10,8 @@
 
 The front-end packages (gui, webviz) are skipped on purpose (see ``_OUT_OF_SCOPE``).
 """
+import ast
+import builtins
 import importlib
 import inspect
 import pickle
@@ -461,3 +463,32 @@ def test_the_docs_page_lists_every_exception_class():
     names |= {cls.__name__ for cls in WARNING_CLASSES.values()}
     missing = sorted(n for n in names if not re.search(rf"\b{n}\b", text))
     assert not missing, f"docs/source/api/exceptions.md does not mention {missing}"
+
+
+# ---------------------------------------------------------------------------
+# No bare built-in raises and no run-time ``assert`` in the converted modules
+# ---------------------------------------------------------------------------
+
+#: Modules cleaned of bare built-in raises; extend this list as more are converted.
+_NO_BARE_RAISE = ("graph/tower_field.py", "utils/linestring_simplify.py",
+                  "utils/directional.py")
+
+
+def _bare_raises_and_asserts(path: Path) -> list[str]:
+    found = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Assert):
+            found.append(f"{path.name}:{node.lineno} assert")
+        elif isinstance(node, ast.Raise) and node.exc is not None:
+            target = node.exc.func if isinstance(node.exc, ast.Call) else node.exc
+            name = target.id if isinstance(target, ast.Name) else None
+            builtin = getattr(builtins, name, None) if name else None
+            if isinstance(builtin, type) and issubclass(builtin, BaseException):
+                found.append(f"{path.name}:{node.lineno} raise {name}")
+    return found
+
+
+@pytest.mark.parametrize("relative", _NO_BARE_RAISE)
+def test_converted_modules_raise_only_pyorps_errors(relative):
+    path = Path(pyorps.__file__).parent / relative
+    assert not _bare_raises_and_asserts(path)

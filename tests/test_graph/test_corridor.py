@@ -1052,7 +1052,8 @@ def finder_raster(tmp_path):
         dataset.write(raster, 1)
 
     def xy(row, col):
-        x, y = transform * (col + 0.5, row + 0.5)
+        x = transform.a * (col + 0.5) + transform.b * (row + 0.5) + transform.c
+        y = transform.d * (col + 0.5) + transform.e * (row + 0.5) + transform.f
         return (float(x), float(y))
 
     return path, xy

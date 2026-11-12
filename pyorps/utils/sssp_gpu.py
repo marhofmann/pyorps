@@ -3108,6 +3108,7 @@ def sssp_raster_gpu_v5(
         shape is checked against it. When omitted a session is built for
         this call and freed on return -- i.e. exactly the pre-1.2
         behaviour.
+
     arena_factor: ring-arena sizing (see :func:`_v5_arena_cap`).
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

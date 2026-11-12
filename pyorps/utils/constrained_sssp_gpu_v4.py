@@ -1008,13 +1008,15 @@ def constrained_sssp_raster_gpu_v4(
         height_premiums: float32 (n_heights,) cost premium per height class
         n_heights: number of tower height classes (default 1)
         exclude_mask: optional uint8 mask (1=traversable, 0=blocked)
-        dem, obstacle_heights, min_clearance, max_gradient_pct,
-        gradient_scale, area_offsets, area_offset_starts, area_offset_counts:
-            NOT implemented in V4 (no DEM gradient, no clearance check, no
-            exact tower footprint). They are in the signature so that all
+        dem: NOT implemented in V4 (no DEM gradient, no clearance check, no
+            exact tower footprint). It is in the signature so that all
             constrained solvers can be called alike; any value other than
             the default raises AlgorithmNotImplementedError instead of
             returning a route that ignores it.
+        obstacle_heights, min_clearance, max_gradient_pct: Like ``dem``, not
+            implemented in V4; a non-default value raises.
+        gradient_scale, area_offsets, area_offset_starts, area_offset_counts:
+            Like ``dem``, not implemented in V4; a non-default value raises.
         cell_size, conductor_weight_per_m, conductor_tension: parameters of
             the clearance model; unused here (they only matter with a dem).
         tower_heights: float32 (n_heights,) actual tower heights in meters

@@ -9,7 +9,7 @@ import unittest
 import numpy as np
 from rasterio.transform import from_origin
 
-from pyorps import PathFinder
+from pyorps import AlgorithmFallbackWarning, PathFinder
 from pyorps.core.objective import Objective
 from pyorps.utils.metric_edges import construct_edges_gradient
 from pyorps.utils.neighborhood import get_neighborhood_steps
@@ -203,10 +203,18 @@ class TestGuardsAndPinning(unittest.TestCase):
             finder({"gradient": 1.0, "length": 0.01},
                    tilted_plane_dem(), graph_api="cugraph")
 
-    def test_delta_stepping_with_gradient_rejected(self):
-        f = finder({"gradient": 1.0, "length": 0.01}, tilted_plane_dem())
-        with self.assertRaises(NotImplementedError):
-            f.find_route(algorithm="delta-stepping")
+    def test_delta_stepping_with_gradient_runs_as_dijkstra(self):
+        """The delta kernels have no slope terms: the request runs as
+        Dijkstra (it used to raise) and says so once."""
+        objective = {"gradient": 1.0, "length": 0.01}
+        f = finder(objective, tilted_plane_dem())
+        with self.assertWarns(AlgorithmFallbackWarning):
+            path = f.find_route(algorithm="delta-stepping")
+        self.assertEqual(path.algorithm, "dijkstra")
+        reference = finder(objective, tilted_plane_dem()).find_route(
+            algorithm="dijkstra")
+        self.assertEqual(list(path.path_indices),
+                         list(reference.path_indices))
 
     def test_no_dem_objective_unchanged(self):
         """Objective without DEM: no gradient machinery activates."""

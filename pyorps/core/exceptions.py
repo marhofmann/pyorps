@@ -3,8 +3,8 @@ PYORPS: An Open-Source Tool for Automated Power Line Routing
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
-    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
+Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 
 Exceptions of pyorps.
 
@@ -57,9 +57,10 @@ Hierarchy (a name in brackets is the builtin the class also derives from)::
     +-- ForbiddenBurnRoutingAssessment     (pyorps.raster.thinness)
     +-- SealedOpeningWarning               (pyorps.raster.thinness)
     +-- CrsReprojectionWarning             (pyorps.core.warning_types)
+    +-- AlgorithmFallbackWarning           (pyorps.core.warning_types)
 """
 
-from .warning_types import CrsReprojectionWarning, PyorpsWarning
+from .warning_types import AlgorithmFallbackWarning, CrsReprojectionWarning, PyorpsWarning
 
 __all__ = [
     # Root
@@ -80,7 +81,7 @@ __all__ = [
     "PyorpsRuntimeError", "InsufficientMemoryError", "InputFileNotFoundError",
     "ConsistencyCheckError", "NumericalPrecisionError",
     # Warnings
-    "PyorpsWarning", "CrsReprojectionWarning",
+    "PyorpsWarning", "CrsReprojectionWarning", "AlgorithmFallbackWarning",
 ]
 
 

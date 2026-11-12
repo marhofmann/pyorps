@@ -3,8 +3,8 @@ PYORPS: An Open-Source Tool for Automated Power Line Routing
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
-    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
+Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
 import math
 import os
@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from geopandas import GeoDataFrame
+from geopandas import GeoDataFrame, GeoSeries
 from pyproj import CRS as PyprojCRS
 from pyproj.exceptions import CRSError as PyprojCRSError
 from rasterio import open as rio_open
@@ -664,8 +664,11 @@ class GeoRasterizer:
                 "resolution_in_m must be a finite number greater than 0 (cell "
                 f"size in metres), got {resolution_in_m!r}")
 
-    def _check_metric_crs(self) -> None:
+    def _check_metric_crs(self):
         """Reproject base data in a geographic (degree) CRS to the local UTM zone.
+
+        Returns the CRS the data was given in when it was reprojected (so a
+        caller can bring coordinates given in that CRS along), else None.
 
         Cell size, buffers and bounding boxes are metres, so degree
         coordinates cannot be rasterized as they are. The data is reprojected
@@ -677,7 +680,7 @@ class GeoRasterizer:
         """
         crs = getattr(self.base_data, 'crs', None)
         if crs is None or not crs.is_geographic:
-            return
+            return None
         gdf = self.base_data
         try:
             utm_crs = gdf.estimate_utm_crs()
@@ -713,6 +716,95 @@ class GeoRasterizer:
             f"e.g. geopandas.GeoSeries([Point(lon, lat)], crs='{source}')"
             f".to_crs('{shown}').{wide}",
             CrsReprojectionWarning, stacklevel=3)
+        return crs
+
+    def _bounding_box_in_raster_crs(self, bounding_box, source_crs):
+        """Bring a ``bounding_box`` given in ``source_crs`` into the raster CRS.
+
+        The envelope of the transformed box is returned, so the raster still
+        covers the whole box. ``source_crs`` None (no reprojection happened)
+        leaves the box as it is.
+        """
+        if bounding_box is None or source_crs is None:
+            return bounding_box
+        transformed = GeoSeries([bounding_box], crs=source_crs).to_crs(self.crs)
+        return box(*transformed.total_bounds)
+
+    @staticmethod
+    def _check_numeric_value(value, name: str, dtype=None, *,
+                             factor: bool = False) -> None:
+        """Reject a value that cannot be written into a raster of ``dtype``.
+
+        ``factor=True`` checks a multiplier instead: it must be a finite
+        number of at least 0 (a product above the dtype range SATURATES at
+        the maximum, 65535 for uint16, which is the forbidden value; that is
+        the documented behaviour of ``multiply=True``). Otherwise the value is
+        written as it is, so it must be representable: an integer raster takes
+        whole numbers within its range only, a float raster any number.
+        """
+        if (isinstance(value, (bool, np.bool_))
+                or not isinstance(value, (int, float, np.integer, np.floating))):
+            raise InvalidInputError(
+                f"{name} must be a number, got {type(value).__name__} "
+                f"{value!r}.")
+        number = float(value)
+        if factor:
+            if not math.isfinite(number) or number < 0:
+                raise InvalidInputError(
+                    f"{name} is a multiplier and must be a finite number of "
+                    f"at least 0, got {value!r}.")
+            return
+        target = np.dtype(dtype)
+        if target.kind == 'f':
+            limits = np.finfo(target)
+            if math.isfinite(number) and abs(number) > float(limits.max):
+                raise InvalidInputError(
+                    f"{name}={value!r} is outside the range of the "
+                    f"{target.name} raster ({float(limits.min):g} to "
+                    f"{float(limits.max):g}).")
+            return
+        if target.kind not in 'iu':
+            return
+        limits = np.iinfo(target)
+        allowed = f"{limits.min} to {limits.max}"
+        if target.kind == 'u' and limits.max == IMPASSABLE_CELL_COST:
+            allowed += f", where {IMPASSABLE_CELL_COST} marks a forbidden cell"
+        if not math.isfinite(number) or number != math.floor(number):
+            raise InvalidInputError(
+                f"{name}={value!r} cannot be stored in a {target.name} raster: "
+                f"only whole numbers fit (allowed range {allowed}).")
+        if not limits.min <= number <= limits.max:
+            raise InvalidInputError(
+                f"{name}={value!r} is outside the range of the {target.name} "
+                f"raster (allowed range {allowed}); it would wrap around "
+                "silently.")
+
+    @staticmethod
+    def _check_ignore_value(ignore_value) -> None:
+        """``ignore_value`` is only compared with; it must be a number or None."""
+        if ignore_value is None:
+            return
+        if (isinstance(ignore_value, (bool, np.bool_)) or not isinstance(
+                ignore_value, (int, float, np.integer, np.floating))):
+            raise InvalidInputError(
+                "ignore_value must be a number or None, got "
+                f"{type(ignore_value).__name__} {ignore_value!r}.")
+
+    @classmethod
+    def _check_fill_value(cls, fill_value, dtype) -> None:
+        """Reject a ``fill_value`` the output ``dtype`` cannot represent.
+
+        NaN is accepted for a float dtype only; an integer dtype takes whole
+        numbers within its range.
+        """
+        try:
+            target = np.dtype(dtype)
+        except TypeError:
+            return  # an unknown dtype is reported by the burn itself
+        if (isinstance(fill_value, (float, np.floating))
+                and math.isnan(fill_value) and target.kind == 'f'):
+            return
+        cls._check_numeric_value(fill_value, "fill_value", target)
 
     @classmethod
     def _join_keys(cls, keys: list, formatter=repr) -> str:
@@ -876,11 +968,19 @@ class GeoRasterizer:
         Parameters:
             field_name: The field to use for rasterization values
             resolution_in_m: The resolution of the output raster in meters
-            fill_value: Value to use for areas with no data
+            fill_value: Value to use for areas with no data. It must be
+                representable in ``dtype`` (uint16: a whole number from 0 to
+                65535), else InvalidInputError is raised before any work.
             save_path: Path to save the rasterized output
             dtype: Data type for the output raster
             geometry_buffer_m: Buffer to apply to the dataset geometries
-            bounding_box: Bounding box to define the rasterization extent
+            bounding_box: Bounding box (shapely Polygon) that defines the
+                rasterization extent. It is read in the CRS of the base data as
+                it stands when this method is called, i.e. the CRS you gave the
+                data in. If that CRS is geographic (degrees), the box is
+                reprojected together with the data to the local UTM zone (the
+                envelope of the transformed box is used), so give it in the
+                same degrees as the data. Otherwise it is used as it is.
             preprocessing_function: A function that takes the base dataset as a first
             argument and other arguments defined in preprocessing_kwargs which will
             be called before rasterization
@@ -959,6 +1059,7 @@ class GeoRasterizer:
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         self._check_resolution(resolution_in_m)
+        self._check_fill_value(fill_value, dtype)
 
         if self.base_data.shape[0] == 0:
             raise InvalidInputError("Base data is empty - nothing to rasterize!")
@@ -972,7 +1073,10 @@ class GeoRasterizer:
             preprocessing_function(self.base_dataset.data, **preprocessing_kwargs)
 
         # After the hook, which may reproject the frame in place.
-        self._check_metric_crs()
+        source_crs = self._check_metric_crs()
+        # The box is read in the CRS of the data as given; the raster is in
+        # the UTM CRS when the data was geographic, so bring the box along.
+        bounding_box = self._bounding_box_in_raster_crs(bounding_box, source_crs)
 
         # Add cost field
         if field_name == 'cost':
@@ -1580,15 +1684,28 @@ class GeoRasterizer:
 
         Parameters:
             gdf: The GeoDataFrame containing polygons to use for masking
-            value: The value to set for the raster cells inside the polygons
+            value: The value to set for the raster cells inside the polygons.
+                It must fit the raster dtype (uint16: a whole number from 0 to
+                65535, where 65535 is forbidden); otherwise InvalidInputError
+                is raised and the raster is not touched.
             ignore_value: Value in the raster to ignore during modification
             multiply: If True, multiply the raster values by the given value
+                (a finite number of at least 0). A product beyond the dtype
+                range saturates at its maximum (65535 for uint16, forbidden);
+                it never wraps.
 
         Returns:
             The modified raster
+
+        Raises:
+            InvalidInputError: ``value`` is not a number, is NaN or negative, or
+                does not fit the raster dtype (see above).
         """
         if self.raster is None or self.transform is None:
             raise InvalidInputError("No raster data available to modify")
+        self._check_numeric_value(value, "value", self.raster.dtype,
+                                  factor=multiply)
+        self._check_ignore_value(ignore_value)
 
         # Create a mask from the geometries in the GeoDataFrame.
         # ``geometry_mask`` takes BARE geometries (no (geom, value) tuples),
@@ -1661,7 +1778,8 @@ class GeoRasterizer:
             geometry_buffer_m: Buffer to apply to the dataset geometries
             ignore_value: Value in the raster to ignore
             multiply: If True, multiply the raster values by the given value
-                (in cost_assumptions)
+                (in cost_assumptions); a product beyond the dtype range
+                saturates at its maximum (65535 for uint16, forbidden)
             zone_field: Field name for zones in the dataset
             forbidden_zone: Zone value that should be treated as forbidden
             forbidden_value: Value to use for forbidden areas
@@ -1670,11 +1788,28 @@ class GeoRasterizer:
 
         Returns:
             The modified raster
+
+        Raises:
+            InvalidInputError: a cost, ``forbidden_value`` or multiplier is not
+                a number, is NaN, or does not fit the raster dtype (uint16:
+                whole numbers 0 to 65535; a multiplier must be finite and at
+                least 0). Nothing is written in that case.
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if self.raster is None or self.transform is None:
             msg = "No raster data available to modify. Call rasterize() first."
             raise InvalidInputError(msg)
+
+        # Everything that will be written is checked BEFORE the data is read
+        # and before the first cell changes, so a bad value leaves the raster
+        # as it was.
+        self._check_ignore_value(ignore_value)
+        if isinstance(cost_assumptions, (float, int)):
+            self._check_numeric_value(cost_assumptions, "cost_assumptions",
+                                      self.raster.dtype, factor=multiply)
+        if zone_field and forbidden_zone:
+            self._check_numeric_value(forbidden_value, "forbidden_value",
+                                      self.raster.dtype)
 
         # Create bounds for data reading
         if bbox is None:
@@ -1738,6 +1873,13 @@ class GeoRasterizer:
             groups.append((unique_value, value_geoms))
         if not groups:
             return
+
+        # Before any cell changes: one bad group must not leave a half-edited
+        # raster. A NaN cost never matches a group (``nan == nan`` is False), so
+        # it cannot reach this point.
+        for unique_value, _ in groups:
+            self._check_numeric_value(unique_value, "cost", raster.dtype,
+                                      factor=multiply)
 
         if multiply:
             self._apply_cost_groups_multiply(groups, ignore_value)

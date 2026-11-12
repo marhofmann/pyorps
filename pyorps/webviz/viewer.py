@@ -17,7 +17,7 @@ Typical use::
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025.
+Automated Power Line Routing', CIRED 2025.
 """
 from __future__ import annotations
 
@@ -273,12 +273,19 @@ class RouteViewer:
             app.run(host=host, port=port, debug=debug)
 
     def shutdown(self) -> None:
-        """Stop all background tile servers."""
+        """Stop all background tile servers and close the rasters they read.
+
+        Each client is released like the GUI releases its own (server stop and
+        reader close, once; a failure is logged, never raised). Closing the
+        reader matters: Dash keeps the app, and through it this viewer,
+        referenced until the interpreter exits, and a reader still open then is
+        closed during interpreter shutdown, where rasterio's close fails and
+        Python prints "Error in sys.excepthook".
+        """
+        from pyorps.gui.state import TileManager
+
         for layer in self.raster_layers:
-            try:
-                layer.tile_client.shutdown()
-            except Exception:  # nosec B110  # pylint: disable=broad-exception-caught
-                pass
+            TileManager.shutdown_client(layer.tile_client)
 
 
 def _launch_desktop(app, title: str, host: str, port: int) -> None:

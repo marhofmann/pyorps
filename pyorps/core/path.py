@@ -3,8 +3,8 @@ PYORPS: An Open-Source Tool for Automated Power Line Routing
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
-    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
+Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
 from __future__ import annotations
 
@@ -93,6 +93,7 @@ class Path:
         Return a human-readable breakdown of the path by terrain category.
 
         Labels are resolved in this order:
+
         1. Explicit *cost_labels* dict passed to this call
         2. Labels built from a *cost_assumptions* object passed to this call
         3. ``self.cost_labels`` (set automatically when the PathFinder had

@@ -295,8 +295,11 @@ class TestRasterSizeValidation(unittest.TestCase):
         pf.steps = [(0, 1, 1.0)]
         pf._graph_api = None
 
-        # Should not raise
-        pf.create_graph()
+        # a normal-sized raster builds: the graph of the backend is returned
+        # and the backend is kept on the finder
+        graph = pf.create_graph()
+        self.assertIs(graph, mock_api_instance.graph)
+        self.assertIs(pf._graph_api, mock_api_instance)
 
 
 class TestUint16OverflowProtection(unittest.TestCase):

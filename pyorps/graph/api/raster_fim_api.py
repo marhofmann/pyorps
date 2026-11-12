@@ -48,13 +48,13 @@ not be relied on. It hashes a bounded ~256 KiB sample, so it catches
 global or bulk edits and reliably misses localized ones at scale.
 Measured on this implementation, editing the same buffer in place:
 
-===============  ============  ==================  ===================
+===============  ============  ===================  ===================
 DEM size         sample step   one off-sample cell  50x50 patch (+5 m)
-===============  ============  ==================  ===================
+===============  ============  ===================  ===================
 40 K cells       1             n/a (all sampled)    detected
 9 M cells        137           **missed**           detected
 144 M cells      2197          **missed**           **missed**
-===============  ============  ==================  ===================
+===============  ============  ===================  ===================
 
 Pass ``strict_dem_check=True`` to hash the whole array instead. That is
 exact at any size and costs a full pass over the DEM before each cached

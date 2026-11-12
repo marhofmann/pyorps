@@ -3,10 +3,11 @@ PYORPS: An Open-Source Tool for Automated Power Line Routing
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
-    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
+Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
 import inspect
+import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from time import time
@@ -27,7 +28,9 @@ from numpy import (
     uint32,
     unravel_index,
 )
-from rasterio.transform import Affine, from_bounds
+from rasterio.crs import CRS
+from rasterio.errors import CRSError
+from rasterio.transform import Affine, array_bounds, from_bounds
 from rasterio.windows import bounds as window_bounds
 from rasterio.windows import transform as window_transform
 from shapely.geometry import LineString, MultiPoint, Point, box
@@ -42,8 +45,8 @@ from pyorps.core.exceptions import (
     PyorpsError,
     RasterShapeError,
 )
-from pyorps.core.metric_stack import MetricStack
-from pyorps.core.objective import Objective
+from pyorps.core.metric_stack import FORBIDDEN_VALUE, MetricStack
+from pyorps.core.objective import GradientOptions, Objective
 
 # Project imports
 from pyorps.core.path import Path, PathCollection
@@ -61,6 +64,7 @@ from pyorps.core.types import (
     NodePathList,
     NormalizedCoordinate,
 )
+from pyorps.core.warning_types import AlgorithmFallbackWarning, PyorpsWarning
 from pyorps.graph.api.graph_api import GraphAPI
 from pyorps.graph.api.graph_library_api import reject_unknown_options
 from pyorps.io.geo_dataset import (
@@ -69,6 +73,7 @@ from pyorps.io.geo_dataset import (
     RasterDataset,
     VectorDataset,
     _determine_data_type,
+    _is_raster_tuple,
     initialize_geo_dataset,
 )
 from pyorps.raster.handler import RasterHandler
@@ -205,6 +210,150 @@ _RASTER_READ_OPTIONS = ("indexes", "out", "window", "masked", "out_shape",
 
 #: How many unreachable pairs a find_route warning spells out.
 _MAX_LISTED_PAIRS = 10
+
+#: The delta-stepping algorithm names of the cython backend. Their kernels have
+#: no slope terms, so a request that has slope terms runs Dijkstra instead.
+_DELTA_ALGORITHMS = ("delta-stepping", "delta-stepping-circular")
+
+#: The slope models ``dem_kwargs["gradient_function"]`` can name for a DEM
+#: without an objective. Any other name was the quadratic default of the old
+#: edge builder, which is the "squared" model.
+_BARE_DEM_SLOPE_MODELS = ("exponential", "power", "energy", "sigmoid")
+
+#: Keys of ``dem_kwargs`` that choose the slope model; they are not raster
+#: read options and must never reach ``load_data`` or a windowed read.
+_DEM_SLOPE_OPTIONS = ("gradient_function",)
+
+#: Frames in this package are skipped when a warning picks the line it is
+#: attributed to, so it names the caller's line however many pyorps layers
+#: (PathFinder, SearchSession, a CostFieldSet) sit in between.
+_INTERNAL_FILE_PREFIXES = (os.path.join(os.path.dirname(__file__), ""),)
+
+
+def _crs_label(crs: Any) -> str:
+    """A CRS as a short printable name (``EPSG:32632`` where there is one)."""
+    if crs is None:
+        return "None (unknown)"
+    try:
+        parsed = CRS.from_user_input(crs)
+    except (CRSError, ValueError, TypeError):
+        return str(crs)
+    epsg = parsed.to_epsg()
+    return f"EPSG:{epsg}" if epsg is not None else parsed.to_string()
+
+
+def _same_crs(first: Any, second: Any) -> bool:
+    """Whether two CRS definitions mean the same system.
+
+    An unknown CRS (None) is taken to match: the DEM code assumes that a DEM
+    without a CRS lies in the CRS of the cost raster.
+    """
+    if first is None or second is None:
+        return True
+    try:
+        return CRS.from_user_input(first) == CRS.from_user_input(second)
+    except (CRSError, ValueError, TypeError):
+        return str(first) == str(second)
+
+
+def _bounds_text(bounds: tuple[float, float, float, float]) -> str:
+    west, south, east, north = bounds
+    return (f"x {west:.2f} to {east:.2f}, y {south:.2f} to {north:.2f}")
+
+
+def _check_dem_matches_raster(dem_dataset: Any, raster_crs: Any,
+                              handler: RasterHandler) -> None:
+    """Refuse a DEM the search window cannot be cut from.
+
+    pyorps does not reproject a DEM: the DEM handler cuts the search window
+    out of the DEM with the coordinates of the cost raster. A DEM in another
+    CRS, or one whose extent does not touch the search window, gave an empty
+    window and, three frames down, rasterio's "Number of columns or rows must
+    be non-negative". A DEM that covers the window only partly is fine: the
+    cells it does not cover are forbidden.
+
+    Args:
+        dem_dataset: The DEM as a raster dataset whose header (``crs``,
+            ``transform``, ``shape``) is known.
+        raster_crs: The CRS of the cost raster.
+        handler: The handler of the search raster (the cost raster's window).
+
+    Raises:
+        InvalidInputError: Naming both coordinate systems, or both bounds,
+            and saying to reproject or clip the DEM first.
+    """
+    dem_crs = dem_dataset.crs
+    if not _same_crs(dem_crs, raster_crs):
+        raise InvalidInputError(
+            f"The DEM is in {_crs_label(dem_crs)} but the cost raster is in "
+            f"{_crs_label(raster_crs)}. pyorps does not reproject a DEM: "
+            f"reproject it to {_crs_label(raster_crs)} first (for example "
+            f"with rasterio.warp.reproject or gdalwarp) and pass the "
+            f"reprojected DEM.")
+    try:
+        dem_height, dem_width = dem_dataset.shape
+        dem_bounds = array_bounds(dem_height, dem_width, dem_dataset.transform)
+        rows, cols = handler.data.shape[-2:]
+        window_bounds_xy = array_bounds(rows, cols, handler.window_transform)
+    except (AttributeError, TypeError, ValueError):
+        return  # a header or handler without usable geometry: no claim
+    try:
+        dem_window = RasterHandler.window_from_bounds(
+            handler.buffer_geometry.bounds, dem_dataset.transform,
+            dem_dataset.shape)
+        window_is_empty = (int(dem_window.width) <= 0
+                           or int(dem_window.height) <= 0)
+    except ValueError:  # rasterio refuses a window of negative size
+        window_is_empty = True
+    overlap_x = (min(dem_bounds[2], window_bounds_xy[2])
+                 - max(dem_bounds[0], window_bounds_xy[0]))
+    overlap_y = (min(dem_bounds[3], window_bounds_xy[3])
+                 - max(dem_bounds[1], window_bounds_xy[1]))
+    if window_is_empty or overlap_x <= 0 or overlap_y <= 0:
+        raise InvalidInputError(
+            f"The DEM does not overlap the search window of the cost raster "
+            f"(both in {_crs_label(raster_crs)}): the DEM covers "
+            f"{_bounds_text(dem_bounds)}, the search window covers "
+            f"{_bounds_text(window_bounds_xy)}. Clip or extend the DEM so "
+            f"that it covers the area to be routed (reproject it first if "
+            f"it was made for another coordinate system). A DEM that covers "
+            f"the window only partly is allowed: the cells it does not "
+            f"cover are forbidden.")
+
+
+def _dem_read_options(dem_kwargs: dict[str, Any] | None) -> dict[str, Any]:
+    """The raster read options of ``dem_kwargs``, without the slope options."""
+    return {key: value for key, value in (dem_kwargs or {}).items()
+            if key not in _DEM_SLOPE_OPTIONS}
+
+
+def _bare_dem_objective(dem_kwargs: dict[str, Any] | None = None) -> Objective:
+    """What ``dem=`` without ``objective=`` means, on every backend.
+
+    Every edge is priced by its 3-D length in metres, ``sqrt(run^2 + rise^2)``,
+    and its cost is multiplied by the exponential slope penalty
+    ``exp(2 s^2)`` (s = rise over horizontal run, both in metres). That is the
+    objective ``{"cost": 1}`` with the "exponential" slope multiplier, which
+    is what this returns, so every backend routes a bare DEM the same way.
+    The slope is tabulated in bins of 0.25 % up to ``s_max_pct`` = 200 %; a
+    steeper edge uses the last bin, so the largest penalty is ``exp(8)``,
+    about 2981 (the 3-D length stretch comes on top), not a cap of 10 000.
+
+    This FIXES the old graph-library edge builder at every cell size other
+    than 1 m. That builder measured the horizontal run in cells instead of
+    metres, so on 10 m cells a 10 % slope was priced as a 100 % slope, and it
+    capped the penalty at 10 000 and every edge at 65 535. Routes of the
+    graph-library backends over a bare DEM therefore change at cell sizes
+    other than 1 m; at 1 m the run in cells and in metres agree, and only the
+    caps differ.
+
+    ``dem_kwargs["gradient_function"]`` picks another model ("power",
+    "energy", "sigmoid"; any other name is the "squared" model, the
+    quadratic default of the old edge builder).
+    """
+    name = (dem_kwargs or {}).get("gradient_function", "exponential")
+    model = name if name in _BARE_DEM_SLOPE_MODELS else "squared"
+    return Objective({"cost": 1.0}, GradientOptions(multiplier=model))
 
 
 def _named_parameters(func: Any, skip: tuple[str, ...] = (),
@@ -377,7 +526,8 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
 
     The class supports various graph APIs to create a graph from a raster.
 
-    Runtime accounting (``self.runtimes``, seconds, copied onto every Path):
+    Runtime accounting (``self.runtimes``, seconds, copied onto every Path)::
+
         raster_loading            one-time: loading/rasterizing the search
                                   raster; measured in __init__ and repeated
                                   verbatim in every later path's runtimes
@@ -415,6 +565,10 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
     #: Raster parameters of a constructor call without coordinates, kept
     #: until the first routing call supplies them (see create_raster_handler).
     _deferred_raster_parameters = None
+    #: ``cost_assumptions``, ``datasets_to_modify`` and the raster ``**kwargs``
+    #: of the last create_raster_handler call (None before it); read by
+    #: ``search_session._clone_finder``.
+    _raster_arguments = None
     #: (source, target) coordinate pairs of the LAST multi-route find_route
     #: call that have no route; empty when every pair was routed.
     unreachable_pairs = ()
@@ -490,12 +644,11 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                 will be created from neighborhood_str.
             ignore_max_cost: Whether to ignore all cells in the raster
                 which have the maximum cost value or not
-            graph_api: Graph API to use.
-                Available graph libraries:
-                    "cython" (default), "networkit", "rustworkx", "igraph",
-                    "networkx", "cugraph", "raster_gpu" (GPU delta-stepping)
-                    and "raster_fim" (GPU eikonal solver — continuous
-                    least-cost paths, no neighborhood; requires CUDA)
+            graph_api: Graph API to use. Available graph libraries are
+                "cython" (default), "networkit", "rustworkx", "igraph",
+                "networkx", "cugraph", "raster_gpu" (GPU delta-stepping)
+                and "raster_fim" (GPU eikonal solver — continuous
+                least-cost paths, no neighborhood; requires CUDA).
             cost_assumptions: Cost assumptions to use for rasterization.
                 Required if dataset_source is vector data.
             datasets_to_modify: List of datasets to use to modify the raster using
@@ -512,6 +665,45 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                 RasterDataset. Can be used ia a raster dataset is passed directly to
                 dataset_source.
             raster_save_path: Path to save the raster dataset to.
+            dem: Optional digital elevation model, a raster (file path, array
+                with ``transform=`` or raster dataset). With a DEM the search
+                prices every edge by its 3-D length and applies the slope
+                response of the objective, on every backend. A DEM without
+                ``objective=`` means the objective ``{"cost": 1}`` with
+                ``GradientOptions(multiplier="exponential")``: 3-D edge
+                lengths in metres and a cost multiplied by the slope penalty
+                ``exp(2 s^2)`` (s = rise over horizontal run; slope tables in
+                0.25 % bins up to 200 %, so the largest penalty is exp(8),
+                about 2981), the same on every backend (``self.objective``
+                stays None, the metric pipeline stays off). This FIXES the
+                old graph-library behaviour at cell sizes other than 1 m,
+                where the horizontal run was measured in cells instead of
+                metres and slopes were overstated by the cell size: routes
+                there change. The DEM is resampled onto the search window.
+                It is NOT reprojected: a DEM in another CRS than the cost
+                raster, or one that does not overlap the search window,
+                raises InvalidInputError (naming both CRS or both bounds)
+                telling you to reproject or clip it first. A tuple
+                ``(array, crs, transform)`` keeps its own CRS and transform.
+                A DEM that covers the window only partly is allowed. Cells
+                it does not cover, and voids in it (NaN or the file's nodata
+                value), are forbidden cells: hard barriers with
+                ``ignore_max_cost=True`` (the default), traversable at the
+                maximum cost with ``ignore_max_cost=False`` (on the uint16
+                search raster; on the float32 weight raster they are +inf and
+                stay barriers). They are forbidden before the first route, so
+                a source or target on one is corrected like a point on any
+                other forbidden cell, with a warning that names the DEM.
+                ``Path.total_length`` is the 3-D
+                length. ``graph_api="raster_fim"`` does not route a DEM: the
+                finder warns (AlgorithmFallbackWarning) and runs the cython
+                Dijkstra instead, and ``graph_api_name`` becomes "cython".
+                With a DEM, ``algorithm="delta-stepping"`` runs as Dijkstra,
+                see :meth:`find_route`.
+            dem_kwargs: Options for loading the DEM raster. With a DEM
+                alone, ``"gradient_function"`` picks the slope model:
+                "exponential" (default), "power", "energy" or "sigmoid"; any
+                other name is the old quadratic default, the "squared" model.
             use_gpu: Reserved. GPU edge construction for the graph library
                 backends (networkit, rustworkx, igraph, networkx) is not
                 implemented: True warns and the edges are built on the CPU.
@@ -525,16 +717,26 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                 (default), routing behaves exactly as before.
             gradient_options: Optional gradient-response configuration
                 (dict, see pyorps.GradientOptions) when ``objective`` is a
-                plain dict. In-search gradient terms require the kernel
-                phases of the feasibility plan and are rejected until then.
+                plain dict: slope multiplier, additive slope exposure and
+                hard grade limit. They need ``dem=`` and act on every
+                backend in GRADIENT_BACKENDS (raster_fim falls back to the
+                cython Dijkstra).
             weight_precision: "uint16" (default — the quantized search
                 raster all backends accept) or "float32" — a LOSSLESS
                 combined surface for extreme weight dynamic ranges (when
                 the combine diagnostics warn about quantization collapse).
-                float32 requires an objective and one of the
-                FLOAT_BACKENDS (library backends, raster_gpu or
-                raster_fim — the eikonal solver consumes float32
-                natively).
+                float32 requires an objective, an explicit
+                ``search_space_buffer_m`` and one of the FLOAT_BACKENDS
+                (library backends, raster_gpu or raster_fim — the eikonal
+                solver consumes float32 natively). A backend without
+                float32 kernels (cython) raises FeatureNotImplementedError;
+                every other unsupported combination (no objective, a DEM
+                alone, a missing buffer, any other value) raises
+                InvalidInputError. It never silently falls back to uint16.
+                ``graph_api="raster_fim"`` with a DEM is refused only for
+                float32 (the DEM would send it to the uint16-only cython
+                kernels); with uint16 it falls back to the cython Dijkstra
+                with an AlgorithmFallbackWarning.
             corridor_first: Restrict the stages BEFORE the search to the
                 search corridor (performance-plan item 2.2): read only the
                 search window out of a raster/DEM file, burn only the
@@ -592,6 +794,7 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                 "Thin Barriers & Forbidden Zones" documentation page.
 
         Minimal example:
+
         >>> from pyorps import PathFinder
         >>> source = (472000, 5593400)
         >>> target = (472800, 5594000)
@@ -644,7 +847,18 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
             raise InvalidInputError(
                 "metric_layers require an objective — pass objective= "
                 "to activate the metric pipeline.")
+        # A DEM without an objective means the same on every backend (see
+        # _bare_dem_objective). The finder keeps ``objective`` None in that
+        # case: the metric pipeline stays off, only the slope terms apply.
+        self._bare_dem_objective = (
+            _bare_dem_objective(dem_kwargs)
+            if dem is not None and self.objective is None else None)
+        #: Kinds of fallback already announced by this finder ("backend",
+        #: "algorithm"): each is announced once, not once per route.
+        self._fallback_warned = set()
         self.weight_precision = weight_precision
+        if dem is not None:
+            self._fall_back_from_raster_fim()
         self._validate_precision_support()
 
         if steps is None:
@@ -681,12 +895,28 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                 dem_clip = {}
             else:
                 dem_clip = {"bbox": bbox, "mask": mask}
+            # A DEM array takes the CRS of the main dataset and the
+            # ``transform`` argument. The tuple form (array, crs, transform)
+            # carries its own: giving it the main dataset's values would
+            # overwrite what the caller said about the DEM and hide a DEM in
+            # another CRS from the check in _finish_raster_handler_setup.
+            if _is_raster_tuple(dem):
+                dem_crs, dem_transform = None, None
+            else:
+                dem_crs, dem_transform = self.dataset.crs, transform
             self.dem_dataset = initialize_geo_dataset(
                 dem,
-                crs=self.dataset.crs,  # Use same CRS as main dataset
-                transform=transform,
+                crs=dem_crs,  # Use same CRS as main dataset
+                transform=dem_transform,
                 **dem_clip
             )
+            if isinstance(self.dem_dataset, VectorDataset):
+                raise InvalidInputError(
+                    f"dem must be a raster (a file, an array with transform= "
+                    f"or a raster dataset), got vector data "
+                    f"({type(self.dem_dataset).__name__}). Rasterize the "
+                    f"elevation first; a vector DEM was never read, so the "
+                    f"route would have ignored the terrain.")
 
         self._validate_gradient_support()
 
@@ -805,9 +1035,20 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
             result = Objective(objective, gradient_options)
         return result
 
-    #: Backends whose search kernels consume the gradient LUT pair.
+    #: Backends whose search kernels consume the gradient LUT pair: they
+    #: compute every slope term natively (3-D length stretch, slope
+    #: multipliers, additive slope exposure, hard grade limit).
     GRADIENT_BACKENDS = ("cython", "networkit", "networkx", "igraph",
                          "rustworkx", "raster_gpu")
+
+    #: Backends that cannot route over a DEM and hand the request to the
+    #: cython Dijkstra, with an AlgorithmFallbackWarning. The eikonal solver
+    #: of "raster_fim" returns a continuous route, not the discrete
+    #: least-cost route of the other backends (on steep terrain the two
+    #: differ by tens of percent), and it has no slope multiplier and no
+    #: additive slope term. It stays available on terrain-free requests
+    #: and, with a DEM, through ``RasterFIMAPI`` itself.
+    DEM_FALLBACK_BACKENDS = ("raster_fim",)
 
     #: Backends that accept lossless float32 weight rasters (Phase 9).
     #: The cython kernels remain uint16-pinned (RasterContext).
@@ -898,6 +1139,26 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                     points.extend(tuple(c) for c in coords)
             geometry = MultiPoint(points).convex_hull
         return geometry.buffer(distance=buffer_m, quad_segs=32)
+
+    def _corridor_points(self) -> list[tuple[float, float]] | None:
+        """Every given source and target as ``(x, y)``, or None without both.
+
+        These are the points ``RasterHandler`` makes sure its window holds
+        (``window_from_bounds(points=...)``): every step that cuts a window
+        ahead of the handler passes them too, so that it cuts the window the
+        handler would cut.
+        """
+        source = self.source_coords
+        target = self.target_coords
+        if source is None or target is None:
+            return None
+        points: list[tuple[float, float]] = []
+        for coords in (source, target):
+            if self._is_single_coordinate(coords):
+                points.append(tuple(coords))
+            else:
+                points.extend(tuple(c) for c in coords)
+        return points
 
     def corridor_bounds(
             self,
@@ -999,30 +1260,50 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
         if self.weight_precision == "uint16":
             return
         if self.objective is None:
+            bare_dem = (" A DEM without an objective is not one: pass "
+                        "objective={'cost': 1} as well."
+                        if getattr(self, "_bare_dem_objective", None)
+                        is not None else "")
             raise InvalidInputError(
-                "weight_precision='float32' requires an objective — the "
-                "lossless path exists for combined feasibility surfaces.")
+                f"weight_precision='float32' requires an objective — the "
+                f"lossless path exists for combined feasibility surfaces. "
+                f"Pass objective=, or use weight_precision='uint16'."
+                f"{bare_dem}")
         if self.graph_api_name not in self.FLOAT_BACKENDS:
             raise FeatureNotImplementedError(
-                f"weight_precision='float32' is supported on "
-                f"{self.FLOAT_BACKENDS}; the '{self.graph_api_name}' "
-                f"kernels are uint16-pinned.")
+                f"weight_precision='float32' is not available on "
+                f"graph_api={self.graph_api_name!r}: its kernels are "
+                f"uint16-pinned. Use one of {self.FLOAT_BACKENDS}, or "
+                f"weight_precision='uint16'.")
         if self.search_space_buffer_m is None:
             raise InvalidInputError(
                 "weight_precision='float32' requires an explicit "
                 "search_space_buffer_m (the buffer estimator assumes "
                 "integer rasters).")
 
+    def _terrain_objective(self) -> "Objective | None":
+        """The objective whose slope terms the search applies, if any.
+
+        The caller's objective; for a DEM without an objective, the one that
+        request means (:func:`_bare_dem_objective`); None otherwise.
+        """
+        objective = getattr(self, "objective", None)
+        if objective is not None:
+            return objective
+        return getattr(self, "_bare_dem_objective", None)
+
     def _uses_gradient_kernels(self) -> bool:
         """True when the search must apply per-edge slope terms.
 
-        With an objective and a DEM, the 3D length stretch applies
-        unconditionally (geometry, plan section 0) — even without explicit
-        gradient responses.
+        With a DEM the 3D length stretch applies unconditionally (geometry,
+        plan section 0) — even without explicit gradient responses — and a
+        DEM without an objective also applies the slope penalty it means
+        (see :func:`_bare_dem_objective`).
         """
-        return self.objective is not None and (
+        objective = self._terrain_objective()
+        return objective is not None and (
             self.dem_dataset is not None
-            or self.objective.has_gradient_terms)
+            or objective.has_gradient_terms)
 
     def _validate_gradient_support(self) -> None:
         """Fail fast when gradient/stretch terms cannot reach the search."""
@@ -1033,12 +1314,88 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                 "The objective contains gradient terms (a 'gradient' "
                 "weight, a multiplier response or max_gradient_pct) but "
                 "no DEM was provided — pass dem=.")
-        if self.graph_api_name not in self.GRADIENT_BACKENDS:
-            raise FeatureNotImplementedError(
-                f"With a DEM, an objective applies per-edge slope terms "
-                f"(3D stretch always; responses when configured) — "
-                f"supported on {self.GRADIENT_BACKENDS}, "
-                f"not on '{self.graph_api_name}'.")
+        name = self.graph_api_name
+        if name in self.GRADIENT_BACKENDS:
+            return
+        if self.objective is None and name not in GRAPH_APIS:
+            return  # a subclass routing with backend names of its own
+        raise FeatureNotImplementedError(
+            f"With a DEM, an objective applies per-edge slope terms "
+            f"(3D stretch always; responses when configured) — "
+            f"supported on {self.GRADIENT_BACKENDS}, "
+            f"not on '{name}'.")
+
+    def _warn_fallback(self, kind: str, message: str) -> None:
+        """One AlgorithmFallbackWarning per finder and ``kind``.
+
+        The warning is attributed to the first frame outside the package. The
+        kind is recorded as announced only AFTER the warning went out: under
+        ``warnings.simplefilter("error")`` the warning raises, and a kind
+        recorded before that would make the next call silent.
+        """
+        warned = getattr(self, "_fallback_warned", None)
+        if warned is None:
+            warned = self._fallback_warned = set()
+        if kind in warned:
+            return
+        warn(message, AlgorithmFallbackWarning,
+             skip_file_prefixes=_INTERNAL_FILE_PREFIXES)
+        warned.add(kind)
+
+    def _fall_back_from_raster_fim(self) -> None:
+        """Run the cython Dijkstra when a DEM is set on the raster_fim backend.
+
+        The finder switches to the cython backend (graph search: the same
+        answer as every other discrete backend) before its neighbourhood is
+        built, and warns once. See :attr:`DEM_FALLBACK_BACKENDS`.
+
+        Raises:
+            InvalidInputError: With ``weight_precision='float32'``, which the
+                cython kernels do not have.
+        """
+        if self.graph_api_name not in self.DEM_FALLBACK_BACKENDS:
+            return
+        if self.weight_precision == "float32":
+            raise InvalidInputError(
+                f"graph_api={self.graph_api_name!r} does not route over a "
+                f"DEM, and the backend that does here (cython) has no "
+                f"weight_precision='float32'. Use weight_precision='uint16', "
+                f"or graph_api='raster_gpu' or a graph library backend.")
+        requested = self.graph_api_name
+        self.graph_api_name = "cython"
+        self.graph_api_options = {}
+        if (self.neighborhood_str is None
+                or (isinstance(self.neighborhood_str, str)
+                    and not self.neighborhood_str.strip())):
+            self.neighborhood_str = "r2"
+        self._warn_fallback(
+            "backend",
+            f"graph_api={requested!r} does not route over a DEM: its "
+            f"eikonal solver returns a continuous route, not the discrete "
+            f"least-cost route of the other backends, and has no slope "
+            f"multiplier or additive slope term. The cython Dijkstra runs "
+            f"instead (graph_api is now 'cython'); the {requested} settings "
+            f"are dropped.")
+
+    def _terrain_algorithm(self, algorithm: str) -> str:
+        """The algorithm that can evaluate this finder's slope terms.
+
+        The delta-stepping kernels of the cython backend have no slope terms
+        and used to return the flat route when a DEM was set. With slope
+        terms the search runs as Dijkstra instead, and the finder says so
+        once.
+        """
+        if (self.graph_api_name == "cython"
+                and isinstance(algorithm, str)
+                and algorithm.lower() in _DELTA_ALGORITHMS
+                and self._uses_gradient_kernels()):
+            self._warn_fallback(
+                "algorithm",
+                f"algorithm={algorithm!r} cannot evaluate slope terms (a DEM "
+                f"is set), so Dijkstra runs instead. Pass "
+                f"algorithm='dijkstra' to silence this warning.")
+            return "dijkstra"
+        return algorithm
 
     def set_objective(
             self,
@@ -1155,8 +1512,9 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
         if corridor is None or corridor.is_empty:
             return None
 
+        points = self._corridor_points()
         window = RasterHandler.window_from_bounds(
-            corridor.bounds, stack.transform, stack.shape)
+            corridor.bounds, stack.transform, stack.shape, points=points)
         height, width = int(window.height), int(window.width)
         if height <= 0 or width <= 0:
             return None
@@ -1165,7 +1523,7 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
 
         sub_transform = window_transform(window, stack.transform)
         check = RasterHandler.window_from_bounds(
-            corridor.bounds, sub_transform, (height, width))
+            corridor.bounds, sub_transform, (height, width), points=points)
         if (int(check.col_off), int(check.row_off),
                 int(check.width), int(check.height)) != (0, 0, width, height):
             return None
@@ -1318,6 +1676,19 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
             {"derive": "slope_from_dem", ...}— per-cell terrain slope (%)
             {"source": path|ndarray, "transform": ..., "crs": ...,
              "hard_max": ..., "hard_min": ...}
+
+        A layer that does not cover the whole stack grid (a file or an array
+        with its own ``transform`` that stops inside the grid, or a file with
+        nodata cells) has no value on the remaining cells ("void" cells).
+        They count as 0 for that layer (a coverage gap is not an exclusion
+        zone, so routes over a gap are priced as if the layer were 0 there),
+        and ONE ``PyorpsWarning`` per layer says how many cells and which
+        layer. A ``hard_max``/``hard_min`` cannot be checked where there is no
+        value, so those cells are forbidden when a bound is given. A layer
+        that covers the grid completely gives the same values as before, and
+        an array of the stack's own shape is taken as it is. For
+        ``slope_from_dem`` the DEM's own rule applies: cells the DEM does not
+        cover are forbidden (see :meth:`MetricStack.attach_dem`).
         """
 
         stack = self.metric_stack
@@ -1339,13 +1710,13 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
             if derive == "slope_from_dem":
                 self._ensure_stack_dem()
                 values = stack.derive_terrain_slope()
-                owned = True
+                owned, void = True, None
             elif derive is not None:
                 raise InvalidInputError(
                     f"Unknown derive '{derive}' for metric layer "
                     f"'{name}' (supported: 'slope_from_dem')")
             elif "source" in spec:
-                values, owned = self._load_layer_source(name, spec)
+                values, owned, void = self._load_layer_source(name, spec)
             else:
                 raise InvalidInputError(
                     f"metric_layers['{name}'] needs 'source' or 'derive'")
@@ -1353,7 +1724,7 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
             stack.add_layer(name, values,
                             hard_max=spec.get("hard_max"),
                             hard_min=spec.get("hard_min"),
-                            copy=not owned)
+                            copy=not owned, void=void)
 
     def _ensure_stack_dem(self) -> None:
         """Reproject the DEM dataset onto the stack grid (once)."""
@@ -1366,25 +1737,57 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
             raise InvalidInputError(
                 "Deriving terrain_slope requires a DEM — pass dem=.")
         if self.dem_dataset.data is None:
-            self.dem_dataset.load_data(**(self.dem_kwargs or {}))
+            self.dem_dataset.load_data(**_dem_read_options(self.dem_kwargs))
         dem_src = self.dem_dataset.data
         if dem_src.ndim > 2:
             dem_src = dem_src[0]
         # Legacy assumption: an unspecified DEM CRS matches the stack CRS.
         src_crs = self.dem_dataset.crs or stack.crs
+        # A cell the DEM does not cover, or has as nodata, is NaN here:
+        # attach_dem forbids it (the rule of the finder's own DEM) instead
+        # of reading it as sea level.
         aligned = reproject_to_grid(
             dem_src, self.dem_dataset.transform, src_crs,
-            stack.shape, stack.transform, stack.crs)
+            stack.shape, stack.transform, stack.crs,
+            src_nodata=getattr(self.dem_dataset, "nodata", None))
         stack.attach_dem(aligned)
 
-    def _load_layer_source(self, name: str, spec: dict) -> tuple[ndarray, bool]:
+    @staticmethod
+    def _zero_void_cells(name: str, spec: dict, aligned: ndarray,
+                         void: ndarray) -> ndarray:
+        """Count the void cells of a layer as 0 and warn once for the layer.
+
+        ``aligned`` is the layer's own array (written in place). The cells
+        stay available as a mask because a hard bound is not checked on them
+        (:meth:`MetricStack.add_layer`, ``void``).
+        """
+        count = int(void.sum())
+        bounded = (spec.get("hard_max") is not None
+                   or spec.get("hard_min") is not None)
+        aligned[void] = 0.0
+        warn(f"Metric layer '{name}': {count} of {void.size} cell(s) have no "
+             f"value (outside the coverage of the source, or nodata/NaN). "
+             f"They count as 0 for this layer"
+             + (", but are forbidden because hard_max/hard_min is set (a "
+                "bound cannot be checked without a value)." if bounded
+                else ", and are not forbidden.")
+             + " Pass a source that covers the whole grid to remove "
+               "the gap.",
+             PyorpsWarning, skip_file_prefixes=_INTERNAL_FILE_PREFIXES)
+        return void
+
+    def _load_layer_source(
+            self, name: str, spec: dict
+    ) -> tuple[ndarray, bool, ndarray | None]:
         """Load a prebuilt layer source onto the stack grid.
 
         Returns:
-            ``(values, owned)`` — ``owned`` is True when the array was
+            ``(values, owned, void)`` — ``owned`` is True when the array was
             allocated here, so the stack may adopt it without copying
             (item 2.6). It is False for a caller-supplied array handed
-            through unchanged, which must never be written into.
+            through unchanged, which must never be written into. ``void``
+            is the boolean mask of the cells the source has no value for
+            (they hold 0 in ``values``), or None when there are none.
         """
         from pyorps.core.metric_stack import reproject_to_grid
 
@@ -1392,32 +1795,51 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
         source = spec["source"]
         if isinstance(source, ndarray):
             if source.shape == stack.shape:
-                return source, False
+                return source, False, None
             if "transform" not in spec:
                 raise InvalidInputError(
                     f"metric_layers['{name}'] array shape {source.shape} "
                     f"differs from the stack {stack.shape} — provide "
                     f"'transform' (and optionally 'crs') for "
                     f"reprojection.")
-            return reproject_to_grid(
+            aligned = reproject_to_grid(
                 source, spec["transform"], spec.get("crs", stack.crs),
-                stack.shape, stack.transform, stack.crs), True
+                stack.shape, stack.transform, stack.crs)
+            # Only the cells the array does not cover are void; a NaN in the
+            # array itself stays NaN, which add_layer forbids (as before).
+            coverage = reproject_to_grid(
+                np.ones(source.shape, dtype=np.float32), spec["transform"],
+                spec.get("crs", stack.crs), stack.shape, stack.transform,
+                stack.crs)
+            void = np.isnan(coverage)
+            if void.any():
+                return aligned, True, self._zero_void_cells(
+                    name, spec, aligned, void)
+            return aligned, True, None
         if isinstance(source, str):
             from rasterio import open as rio_open
             with rio_open(source) as src:
                 data = src.read(1)
+                nodata = src.nodata
+                # A nodata value of 65535 is the forbidden sentinel of the
+                # layers themselves and stays one (forbidden, as before).
+                if (nodata is not None and np.isfinite(nodata)
+                        and float(nodata) != FORBIDDEN_VALUE):
+                    src_nodata = float(nodata)
+                else:
+                    src_nodata = None
                 aligned = reproject_to_grid(
                     data, src.transform, src.crs,
-                    stack.shape, stack.transform, stack.crs)
-            # Uncovered area contributes 0 (coverage gaps are not
-            # forbidden — forbidden comes from values, 65535/inf).
-            uncovered = ~np.isfinite(aligned)
-            if uncovered.any():
-                warn(f"Metric layer '{name}': {int(uncovered.sum())} "
-                     f"cell(s) outside the source coverage default to 0.",
-                     UserWarning, stacklevel=2)
-                aligned[uncovered] = 0.0
-            return aligned, True
+                    stack.shape, stack.transform, stack.crs,
+                    src_nodata=src_nodata)
+            # No value (outside the coverage, nodata, NaN or inf in the file)
+            # contributes 0: coverage gaps are not forbidden — forbidden
+            # comes from values, 65535/inf of an array of the grid's shape.
+            void = ~np.isfinite(aligned)
+            if void.any():
+                return aligned, True, self._zero_void_cells(
+                    name, spec, aligned, void)
+            return aligned, True, None
         raise InvalidInputError(
             f"metric_layers['{name}']['source'] must be a path or an "
             f"array, got {type(source)}")
@@ -1652,8 +2074,9 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                 return None
             full_transform = from_bounds(*full_bounds, cols, rows)
 
+            points = self._corridor_points()
             window = RasterHandler.window_from_bounds(
-                corridor.bounds, full_transform, (rows, cols))
+                corridor.bounds, full_transform, (rows, cols), points=points)
             width, height = int(window.width), int(window.height)
             if width <= 0 or height <= 0:
                 return None
@@ -1673,7 +2096,7 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                 return None
 
             handler_window = RasterHandler.window_from_bounds(
-                corridor.bounds, predicted, (height, width))
+                corridor.bounds, predicted, (height, width), points=points)
             if (int(handler_window.col_off), int(handler_window.row_off),
                     int(handler_window.width),
                     int(handler_window.height)) != (0, 0, width, height):
@@ -1737,11 +2160,11 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                 GeoRasterizer.modify_raster_from_dataset
             raster_save_path: Path to save the raster dataset to.
             dem_kwargs: Options for loading the DEM raster.
-            **kwargs: As the **kwargs of the constructor.
+            **kwargs: As the ``**kwargs`` of the constructor.
 
         A finder constructed without coordinates keeps the raster parameters
         its constructor was given; an argument left at None here falls back
-        to them, and their **kwargs are merged under the ones given here.
+        to them, and their ``**kwargs`` are merged under the ones given here.
 
         Returns:
             RasterReader: The created RasterReader object
@@ -1777,6 +2200,14 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
             kwargs = {**{k: v for k, v in deferred.items() if k not in named},
                       **kwargs}
         self._check_raster_keywords(kwargs)
+        # What the search raster was built with. A window rebuild
+        # (SearchSession) makes a new finder from these, so a setting that is
+        # not kept here would be dropped silently by the rebuilt finder.
+        self._raster_arguments = {
+            "cost_assumptions": cost_assumptions,
+            "datasets_to_modify": datasets_to_modify,
+            "kwargs": dict(kwargs),
+        }
         # Using timed context manager instead of manual timing
         with timed("raster_loading", self.runtimes):
             if self.objective is not None:
@@ -1897,14 +2328,23 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                 )
         # Create DEM raster handler if DEM dataset exists
         if self.dem_dataset is not None and isinstance(self.dem_dataset, RasterDataset):
-            if dem_kwargs is None:
-                dem_kwargs = {}
+            # gradient_function picks the slope model, it is no read option
+            dem_kwargs = _dem_read_options(dem_kwargs)
 
             # Load DEM data — unless the handler can read just the window
             # (item 2.2/2.3). The DEM handler uses the buffer the main
             # handler settled on, so its window is unchanged either way.
             if not self._can_read_source_window(self.dem_dataset, dem_kwargs):
                 self.dem_dataset.load_data(**dem_kwargs)
+            elif (getattr(self.dem_dataset, "transform", None) is None
+                    or getattr(self.dem_dataset, "shape", None) is None):
+                self.dem_dataset.load_metadata()  # header only, no pixels
+
+            # A DEM in another CRS, or one that does not touch the search
+            # window, is refused here with its CRS / bounds instead of
+            # failing inside the handler (the library does not reproject).
+            _check_dem_matches_raster(self.dem_dataset, self.dataset.crs,
+                                      self.raster_handler)
 
             # Create DEM RasterHandler with same parameters
             self.dem_raster_handler = RasterHandler(
@@ -1965,14 +2405,16 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
         else:
             dem_data = None
 
-        # Objective + DEM: replace the raw DEM with one reprojected onto
-        # the search window grid and build the slope-response LUTs (the 3D
-        # stretch applies unconditionally; responses when configured).
+        # Objective + DEM (or a DEM alone, which means the "exponential"
+        # slope penalty, see _bare_dem_objective): replace the raw DEM with
+        # one reprojected onto the search window grid and build the
+        # slope-response LUTs (the 3D stretch applies unconditionally;
+        # responses when configured). _terrain_objective reads its attributes
+        # with getattr: PathFinder is also constructed via __new__ (test
+        # doubles, subclasses that skip super().__init__), where only the
+        # attributes a caller sets exist.
         gradient_luts = None
-        # getattr: PathFinder is also constructed via __new__ (test doubles,
-        # subclasses that skip super().__init__), where only the attributes a
-        # caller sets exist.
-        if (getattr(self, "objective", None) is not None
+        if (self._terrain_objective() is not None
                 and self.dem_raster_handler is not None):
             dem_data, gradient_luts = self._prepare_gradient_inputs(
                 raster_data)
@@ -2112,17 +2554,29 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                       metric_columns] = delta
         return table
 
-    def _prepare_gradient_inputs(self, raster_data):
-        """Reproject the DEM onto the search window grid and build LUTs.
+    def _align_dem_to_window(self, raster_data):
+        """Reproject the DEM onto the search window grid, once per raster.
 
         Uses rasterio.warp.reproject (bilinear) with the true transforms of
-        both grids — correct for any DEM resolution or extent, unlike the
-        legacy shape-zoom approach. Non-finite DEM cells (nodata voids)
-        make the corresponding weight cells forbidden and are filled with
-        the mean height, so no NaN can ever reach a kernel.
+        both grids -- correct for any DEM resolution or extent, unlike the
+        legacy shape-zoom approach. A cell the DEM does not cover, and a
+        cell the DEM file marks as nodata, is NaN; so is a NaN void. The
+        search raster is marked forbidden there (65535 on a uint16 raster,
+        +inf on the float32 weight raster) and the DEM is filled with its
+        mean height at those cells, so no NaN can ever reach a kernel.
+
+        The marks are written into ``raster_data`` in place, so every point
+        correction that runs afterwards sees them. The result is kept for
+        the raster it was made for: a replaced handler (an objective change)
+        gets a new alignment.
+
+        Args:
+            raster_data: The 2D search raster of ``self.raster_handler``
+                (a view of its data).
 
         Returns:
-            (dem_aligned float32, GradientLUTs)
+            (dem_aligned float32, invalid bool mask) -- ``invalid`` marks the
+            cells the DEM has no elevation for.
         """
         from rasterio.warp import Resampling, reproject
 
@@ -2130,12 +2584,27 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
             raise InvalidInputError(
                 "Gradient terms require a DEM — pass dem= to PathFinder.")
 
+        handler_data = self.raster_handler.data
+        cached = getattr(self, "_dem_alignment", None)
+        if (cached is not None and cached[0] is handler_data
+                and cached[1] is self.dem_raster_handler):
+            return cached[2], cached[3]
+
         dem_src = self.dem_raster_handler.data
         if dem_src.ndim > 2:
             dem_src = dem_src[0]
         dst_crs = self.raster_handler.raster_dataset.crs
         # Legacy assumption: an unspecified DEM CRS matches the raster CRS.
         src_crs = self.dem_dataset.crs or dst_crs
+        # NaN is the "no elevation" value of the aligned DEM. reproject()
+        # starts the destination at its nodata value, which is 0 unless
+        # dst_nodata says otherwise: left at 0, a DEM that stops inside the
+        # window gave sea-level terrain (and a wall of fake slope at its
+        # edge) instead of forbidden cells.
+        source_nodata = getattr(self.dem_dataset, "nodata", None)
+        options = {"dst_nodata": np.nan}
+        if source_nodata is not None and np.isfinite(source_nodata):
+            options["src_nodata"] = float(source_nodata)
         dem_aligned = np.full(raster_data.shape, np.nan, dtype=np.float32)
         reproject(
             source=np.ascontiguousarray(dem_src, dtype=np.float32),
@@ -2145,19 +2614,58 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
             dst_transform=self.raster_handler.window_transform,
             dst_crs=dst_crs,
             resampling=Resampling.bilinear,
+            **options,
         )
 
         invalid = ~np.isfinite(dem_aligned)
         if invalid.any():
             finite = dem_aligned[~invalid]
             fill = float(finite.mean()) if finite.size else 0.0
-            raster_data[invalid] = uint16(65535)  # forbid uncovered cells
+            # forbid uncovered cells: 65535 on a uint16 raster, +inf on the
+            # float32 weight raster (there 65535 would be a finite cost)
+            raster_data[invalid] = (
+                np.float32(np.inf) if np.issubdtype(raster_data.dtype,
+                                                    np.floating)
+                else uint16(65535))
             dem_aligned[invalid] = fill
+            self._category_cache = None  # the raster has a new value now
+        self._dem_alignment = (handler_data, self.dem_raster_handler,
+                               dem_aligned, invalid)
+        return dem_aligned, invalid
 
+    def _apply_dem_forbidden_cells(self) -> ndarray | None:
+        """Forbid the cells the DEM has no elevation for, before any routing.
+
+        Called ahead of the point correction: the marks used to be written
+        only when the graph was built, so the first route of a finder let a
+        source or target stand on such a cell (the search then found no path
+        or started on a barrier) while every later route moved it.
+
+        Returns:
+            The boolean mask of the cells without DEM elevation on the search
+            raster, or None when no DEM slope terms apply.
+        """
+        if (getattr(self, "dem_raster_handler", None) is None
+                or self._terrain_objective() is None):
+            return None
+        handler_data = self.raster_handler.data
+        raster_data = handler_data[0] if handler_data.ndim == 3 else handler_data
+        return self._align_dem_to_window(raster_data)[1]
+
+    def _prepare_gradient_inputs(self, raster_data):
+        """Align the DEM to the search window and build the slope LUTs.
+
+        See :meth:`_align_dem_to_window` for the alignment and the cells it
+        forbids.
+
+        Returns:
+            (dem_aligned float32, GradientLUTs)
+        """
+        dem_aligned, _invalid = self._align_dem_to_window(raster_data)
         cell_size = float(abs(self.raster_handler.window_transform.a))
         quant_scale = (self._combine_result.scale
                        if self._combine_result is not None else 1.0)
-        gradient_luts = self.objective.build_gradient_luts(
+        gradient_luts = self._terrain_objective().build_gradient_luts(
             self.steps, cell_size, quant_scale)
         self._gradient_dem = dem_aligned  # reused by the metric evaluator
         return dem_aligned, gradient_luts
@@ -2212,6 +2720,13 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
         Retains the settled search field so later source/target/waypoint
         edits extract or resume instead of starting from scratch.
         ``find_route`` stays one-shot; this is the opt-in retention seam.
+
+        With slope terms (a DEM) the delta-stepping and GPU fields cannot be
+        retained, because their kernels have no slope terms: the session
+        searches with Dijkstra (the cython solver, which applies the DEM's
+        slope terms), warns once with an AlgorithmFallbackWarning and names
+        "dijkstra" on its routes. Edits that rebuild the search window keep
+        the DEM.
 
         Parameters:
             algorithm: The search algorithm of the session.
@@ -2406,6 +2921,12 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
         indices_2d = self.raster_handler.coords_to_indices(coords,
                                                            check_bounds=True)
 
+        # The cells the DEM has no elevation for are forbidden cells too:
+        # mark them first, so that a point standing on one is corrected like
+        # a point on any other forbidden cell (before this, only a LATER
+        # call corrected it; the first one started on the barrier).
+        self._apply_dem_forbidden_cells()
+
         # Correct positions with max cost if needed (using Numba-optimized method)
         indices_2d = self._correct_max_cost_positions(indices_2d)
 
@@ -2426,6 +2947,28 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
         else:
             result = node_indices
         return result
+
+    def _dem_gap_note(self, positions: list[tuple[int, int]]) -> str:
+        """A sentence for the correction warnings when a DEM caused the move.
+
+        Args:
+            positions: (row, col) cells on the search raster that were moved.
+
+        Returns:
+            "" when no DEM gap is involved (the text of a correction for an
+            ordinary forbidden cost cell stays as it was), else a sentence
+            naming how many of the cells have no DEM elevation.
+        """
+        cached = getattr(self, "_dem_alignment", None)
+        if cached is None or cached[0] is not self.raster_handler.data:
+            return ""
+        invalid = cached[3]
+        count = sum(1 for row, col in positions if invalid[row, col])
+        if not count:
+            return ""
+        return (f"{count} of them lie where the DEM has no elevation "
+                f"(outside its extent or in a void of it); those cells are "
+                f"forbidden like any other.")
 
     def _correct_max_cost_positions(self, indices_2d: ndarray) -> ndarray:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
@@ -2524,7 +3067,9 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                     f"  {oc_str:>{col_w[0]}}  {oi_str:>{col_w[1]}}  "
                     f"  ->  {cc_str:>{col_w[2]}}  {ci_str:>{col_w[3]}}\n"
                 )
-            warn(header + table, UserWarning, stacklevel=2)
+            note = self._dem_gap_note([(c[1], c[2]) for c in corrections])
+            warn(header + table + (note + "\n" if note else ""),
+                 UserWarning, skip_file_prefixes=_INTERNAL_FILE_PREFIXES)
 
         return corrected_indices
 
@@ -2546,9 +3091,13 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
             d2 = ((finite_cells[:, 0] - row) ** 2
                   + (finite_cells[:, 1] - col) ** 2)
             nearest = finite_cells[int(d2.argmin())]
+            note = self._dem_gap_note([(row, col)])
+            dem_hint = (" The cell has no DEM elevation (outside its extent "
+                        "or in a void of it); those cells are forbidden like "
+                        "any other." if note else "")
             warn(f"Position [{row}, {col}] lies on a forbidden cell and "
-                 f"was corrected to [{nearest[0]}, {nearest[1]}].",
-                 UserWarning, stacklevel=2)
+                 f"was corrected to [{nearest[0]}, {nearest[1]}]." + dem_hint,
+                 UserWarning, skip_file_prefixes=_INTERNAL_FILE_PREFIXES)
             corrected[i] = nearest
         return corrected
 
@@ -2604,7 +3153,14 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                 Can be a single pair (x, y) or a list of pairs
                 [(x1, y1), (x2, y2), ...].
             algorithm: Algorithm to use for shortest path. Defaults to
-                "dijkstra".
+                "dijkstra". With slope terms (a DEM) the delta-stepping
+                algorithms of the cython backend ("delta-stepping",
+                "delta-stepping-circular") run as Dijkstra instead: their
+                kernels have no slope terms, so they used to return the flat
+                route. The finder says so once with an
+                AlgorithmFallbackWarning, and ``Path.algorithm`` names
+                "dijkstra". This holds for single routes, one source to many
+                targets, pairwise and all-pairs calls alike.
             calculate_metrics: Whether to calculate path metrics. Defaults to
                 True.
             pairwise: Whether to calculate paths pairwise (requires equal
@@ -2647,9 +3203,10 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
         ``source`` and ``target`` are adopted: they define the search window.
 
         Returns:
-            Path: When a single source-target pair is provided.
-            PathCollection: When multiple source-target pairs or a single
-                source with multiple targets are provided. It holds the
+            Path or PathCollection: A ``Path`` when a single source-target
+                pair is provided. A ``PathCollection`` when multiple
+                source-target pairs or a single source with multiple targets
+                are provided. It holds the
                 routes that exist. Pairs without a route are named in ONE
                 UserWarning and listed, as ``(source, target)`` coordinate
                 tuples, in ``unreachable_pairs`` of the returned collection
@@ -2732,6 +3289,10 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
         # Convert coordinates to node indices
         source_indices = self.get_node_indices_from_coords(source)
         target_indices = self.get_node_indices_from_coords(target)
+
+        # Delta-stepping has no slope terms: with a DEM the search runs as
+        # Dijkstra (announced once) instead of returning the flat route.
+        algorithm = self._terrain_algorithm(algorithm)
 
         # Build the graph BEFORE the search timer starts — dereferencing the
         # property inside the timed block charged edge construction (minutes
@@ -3074,7 +3635,8 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
             term = ("the 3D length stretch and the slope response that the "
                     "search applied to every edge")
             if self.objective is None:
-                term += " (Path.total_length is the 2D length here as well)"
+                term += (" (a DEM without an objective: Path.total_length "
+                         "is the 3D length)")
             divergences.append(term)
         if self.objective is not None:
             scale = (self._combine_result.scale
@@ -3226,6 +3788,33 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
         # the float layers (the legacy fields above stay untouched).
         if self.objective is not None and self.metric_stack is not None:
             self._evaluate_objective_metrics(rows_idx, cols_idx, path)
+        elif (getattr(self, "_bare_dem_objective", None) is not None
+              and self._gradient_dem is not None
+              and raster_data.dtype == np.uint16):
+            self._evaluate_bare_dem_length(raster_data, rows_idx, cols_idx,
+                                           path)
+
+    def _evaluate_bare_dem_length(self, raster_data, rows_idx, cols_idx,
+                                  path):
+        """Report the 3D length of a route searched over a DEM alone.
+
+        The search priced every edge by its 3D length (and the slope
+        penalty); the legacy numbers above are 2D. Only the lengths and the
+        slope statistics are added: there is no objective, so there are no
+        metrics or feasibility.
+        """
+        from pyorps.utils.metric_eval import evaluate_path_metrics
+
+        evaluation = evaluate_path_metrics(
+            rows_idx, cols_idx, {"cost": raster_data},
+            self._bare_dem_objective,
+            cell_size=float(abs(self.raster_handler.window_transform.a)),
+            dem=self._gradient_dem)
+        path.total_length_2d = evaluation.total_length_2d
+        path.total_length_3d = evaluation.total_length_3d
+        path.mean_gradient_pct = evaluation.mean_gradient_pct
+        path.max_gradient_pct = evaluation.max_gradient_pct
+        path.total_length = evaluation.total_length_3d
 
     def _evaluate_objective_metrics(self, rows_idx, cols_idx, path):
         """Populate Path.metrics/feasibility from the metric stack."""
@@ -3796,10 +4385,10 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
         Notes:
             - The saved file includes all path attributes (ID, length, cost data)
             - The geometries are saved as LineString features with the CRS from the
-            source dataset
+              source dataset
             - The GeoDataFrame is rebuilt from ``self.paths`` on every call, so the
-            file always holds all routes computed so far (a frame cached by an
-            earlier call is never written)
+              file always holds all routes computed so far (a frame cached by an
+              earlier call is never written)
 
         Raises:
             PyorpsError: If a file path is given and no route has been computed.
@@ -3834,7 +4423,7 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
         Notes:
             - The saved raster includes all cost modifications from additional datasets
             - The file is saved in GeoTIFF format which preserves geo referencing
-            information
+              information
             - If the PathFinder uses a GeoRasterizer, the complete raster is saved
             - Otherwise, only the section loaded in the RasterHandler is saved
             - For large areas, the resulting file size may be substantial

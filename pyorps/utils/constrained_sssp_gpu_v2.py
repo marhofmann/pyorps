@@ -5,45 +5,50 @@ with full 4D state (cell, direction, span_bin, height_class), inline tower
 placement via TowerRecord atomic-append, and float16 span tracking.
 
 Algorithm:
-    Persistent cooperative delta-stepping with custom sense-reversing grid
-    barrier (no grid.sync() — Blackwell-safe). Each bucket processes:
-    - Light phase: edges with cost <= delta (repeats until no new states)
-    - Heavy phase: edges with cost > delta (once per bucket)
 
-    Tower placement (hybrid per-thread + warp-cooperative protocol):
-    - Same direction: optional tower when span >= min_span
-    - Direction change: mandatory tower when span >= min_span
-    - Non-tower edges (same-direction span continuation) are processed
-      per-thread for maximum parallelism (each thread handles its own
-      frontier item independently -- no lane waste).
-    - Tower placement uses warp-cooperative round-robin protocol: all 32
-      lanes in a warp process their non-tower work independently, then
-      cooperate on tower placement via __ballot_sync + __shfl_sync for
-      parallel area cost summation and clearance checking.
-    - TowerRecord appended atomically for every relaxation that goes via
-      a tower placement and improves a state.
+Persistent cooperative delta-stepping with custom sense-reversing grid
+barrier (no grid.sync() — Blackwell-safe). Each bucket processes:
 
-    Clearance checking:
-    - When DEM is provided, catenary sag is checked along each span at
-      tower placement. Parabolic approximation: sag(x) = w*x*(L-x)/(2*T).
-    - Variable tower heights: sorted descending, early exit when tallest
-      fails clearance (shorter heights will also fail).
-    - Gradient penalty on traversal: slope > max_gradient_pct is rejected,
-      otherwise cost scaled by exp(gradient_scale * slope / 100).
-    - Warp-cooperative clearance: 32 lanes check span cells in parallel,
-      then warp-reduce with __ballot_sync to determine if clearance passes.
+- Light phase: edges with cost <= delta (repeats until no new states)
+- Heavy phase: edges with cost > delta (once per bucket)
 
-    Area cost:
-    - When area_offsets are provided, tower terrain cost sums all pixels in
-      the rotated square footprint (warp-cooperative parallel sum).
-    - Forbidden footprint rejection: if ANY pixel in the footprint is 65535,
-      the tower placement is rejected (warp ballot check).
-    - Area-averaged slope multiplier: exp(gradient_scale * avg_slope / 100)
-      applied to the summed terrain cost.
-    - When area_offsets is NULL (uniform mode), falls back to single-pixel
-      tower_terrain_lut[raster[cell]] with single-pixel slope multiplier.
+Tower placement (hybrid per-thread + warp-cooperative protocol):
 
-    Path reconstruction walks the tower record chain backward (no d_pred).
+- Same direction: optional tower when span >= min_span
+- Direction change: mandatory tower when span >= min_span
+- Non-tower edges (same-direction span continuation) are processed
+  per-thread for maximum parallelism (each thread handles its own
+  frontier item independently -- no lane waste).
+- Tower placement uses warp-cooperative round-robin protocol: all 32
+  lanes in a warp process their non-tower work independently, then
+  cooperate on tower placement via __ballot_sync + __shfl_sync for
+  parallel area cost summation and clearance checking.
+- TowerRecord appended atomically for every relaxation that goes via
+  a tower placement and improves a state.
+
+Clearance checking:
+
+- When DEM is provided, catenary sag is checked along each span at
+  tower placement. Parabolic approximation: ``sag(x) = w*x*(L-x)/(2*T)``.
+- Variable tower heights: sorted descending, early exit when tallest
+  fails clearance (shorter heights will also fail).
+- Gradient penalty on traversal: slope > max_gradient_pct is rejected,
+  otherwise cost scaled by exp(gradient_scale * slope / 100).
+- Warp-cooperative clearance: 32 lanes check span cells in parallel,
+  then warp-reduce with __ballot_sync to determine if clearance passes.
+
+Area cost:
+
+- When area_offsets are provided, tower terrain cost sums all pixels in
+  the rotated square footprint (warp-cooperative parallel sum).
+- Forbidden footprint rejection: if ANY pixel in the footprint is 65535,
+  the tower placement is rejected (warp ballot check).
+- Area-averaged slope multiplier: exp(gradient_scale * avg_slope / 100)
+  applied to the summed terrain cost.
+- When area_offsets is NULL (uniform mode), falls back to single-pixel
+  tower_terrain_lut[raster[cell]] with single-pixel slope multiplier.
+
+Path reconstruction walks the tower record chain backward (no d_pred).
 """
 
 from __future__ import annotations
@@ -1444,14 +1449,15 @@ def constrained_sssp_raster_gpu_v2(
         margin: early termination margin (default 1.00001)
         max_tower_records: max tower records to allocate (default 2M)
         sparse: memory mode for distance storage.
-            "auto": use block-sparse when dense arrays would exceed
-                70% of available VRAM, otherwise use dense arrays.
-            "block": force block-sparse mode (32 slots per cell,
-                ~10x smaller than dense for typical configs).
-            "sparse": force sparse hash table mode (legacy).
-            True: force sparse hash table mode (for large rasters).
-            False/"dense": force dense array mode (default behavior,
-                fastest for small rasters that fit in VRAM).
+
+            - ``"auto"``: use block-sparse when dense arrays would exceed
+              70% of available VRAM, otherwise use dense arrays.
+            - ``"block"``: force block-sparse mode (32 slots per cell,
+              ~10x smaller than dense for typical configs).
+            - ``"sparse"``: force sparse hash table mode (legacy).
+            - ``True``: force sparse hash table mode (for large rasters).
+            - ``False`` / ``"dense"``: force dense array mode (default
+              behavior, fastest for small rasters that fit in VRAM).
 
     Returns:
         tuple: (path_cell_indices uint32[], tower_cell_indices uint32[],

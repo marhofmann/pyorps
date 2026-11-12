@@ -26,7 +26,7 @@ import numpy as np
 import shapely
 from shapely.geometry import LineString
 
-from pyorps.core.exceptions import InvalidInputError, MissingDependencyError
+from pyorps.core.exceptions import ConsistencyCheckError, InvalidInputError, MissingDependencyError
 
 _METHODS: Final[tuple[str, ...]] = (
     "douglas_peucker",
@@ -79,7 +79,8 @@ def simplify_linestring(
         return _simplify_visvalingam(line, tolerance)
     if method == "grid":
         return _simplify_grid(line, tolerance)
-    raise AssertionError("unreachable")  # pragma: no cover
+    raise ConsistencyCheckError(  # pragma: no cover
+        f"simplification method {method!r} passed the check but has no branch")
 
 
 def _simplify_visvalingam(line: LineString, area_tolerance: float) -> LineString:

@@ -157,9 +157,9 @@ class RasterGPUAPI(GraphAPI):
     #:   applies the *same* LUT pair in both directions
     #:   (``sssp_gpu.py:828, 1274, 1378``).
     #:
-    #: A bare ``dem_data`` without ``gradient_luts`` never reaches the
-    #: kernel at all (see ``_gradient_dem``), so it cannot break symmetry
-    #: either — that is the over-broad guard item 1.6 removed.
+    #: A ``dem_data`` without ``gradient_luts`` is refused by the constructor
+    #: (the kernel would ignore it), so every DEM that reaches the kernel
+    #: comes with the symmetric slope tables.
     #:
     #: **A directional slope response** (signed ``dem[v] - dem[u]``, i.e.
     #: uphill priced differently from downhill — the eikonal increment-3
@@ -194,13 +194,20 @@ class RasterGPUAPI(GraphAPI):
 
         super().__init__(raster_data, steps, ignore_max, dem_data)
 
-        # Per-edge gradient terms (feasibility plan): only active when the
-        # slope-response LUT pair is provided — a bare dem_data keeps the
-        # legacy behavior (it merely disables the symmetric-search trick).
+        # Per-edge gradient terms (feasibility plan): the kernel reads a DEM
+        # only through the slope-response LUT pair, so a bare dem_data would
+        # be ignored and the route would be the flat route.
         self.gradient_luts = gradient_luts
         if gradient_luts is not None and dem_data is None:
             raise InvalidInputError(
                 "gradient_luts require dem_data aligned to the raster")
+        if dem_data is not None and gradient_luts is None:
+            raise InvalidInputError(
+                "dem_data without gradient_luts would be ignored by the "
+                "raster_gpu kernels (the route would be the flat route). "
+                "Pass the gradient_luts built for this DEM "
+                "(Objective.build_gradient_luts), or route through "
+                "PathFinder(dem=...), which builds them.")
 
         self._delta = delta
         self._margin = margin

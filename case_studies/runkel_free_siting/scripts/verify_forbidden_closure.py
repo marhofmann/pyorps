@@ -67,7 +67,7 @@ def check_window(values: np.ndarray, transform, forbidden_union, *, n_seeds: int
     from shapely import prepared
     from shapely.geometry import LineString
 
-    from pyorps.certify.windows import drain
+    from pyorps.graph.drain import drain
     from pyorps.utils.neighborhood import get_neighborhood_steps
 
     steps = np.asarray(get_neighborhood_steps(3, directed=True), dtype=np.int8)
@@ -91,7 +91,9 @@ def check_window(values: np.ndarray, transform, forbidden_union, *, n_seeds: int
                         bad = True
             res["cell_violations"] += int(bad)
             if prep is not None and len(cells) > 1:
-                xy = [transform * (c + 0.5, r + 0.5) for r, c in cells]
+                xy = [(transform.a * (c + 0.5) + transform.b * (r + 0.5) + transform.c,
+                       transform.d * (c + 0.5) + transform.e * (r + 0.5) + transform.f)
+                      for r, c in cells]
                 line = LineString(xy)
                 if prep.intersects(line) and line.intersection(forbidden_union).length > 1e-9:
                     res["vector_violations"] += 1

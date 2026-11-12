@@ -3,8 +3,8 @@ PYORPS: An Open-Source Tool for Automated Power Line Routing
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
-    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
+Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 
 This file contains the abstract base class for the interface to the graph libraries.
 All specific graph library interfaces should inherit from this class. The workflow of
@@ -15,8 +15,8 @@ of the graph libraries can vary!
 - For networkit and networkx the edges can be added on the fly when adding the nodes
 
 - For rustworkx and igraph the edges can only be added as a list of tuples. This means
-that the edge information as retrieved by numpy arrays, need to be converted into a
-list, which leads to a much higher (more than double) memory usage!
+  that the edge information as retrieved by numpy arrays, need to be converted into a
+  list, which leads to a much higher (more than double) memory usage!
 - For networkit and networkx edges can be added as a sparse matrix or as numpy arrays
 
 Please see the specific interfaces to the specific graph libraries for more details!
@@ -221,6 +221,10 @@ class GraphLibraryAPI(GraphAPI):
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         super().__init__(raster_data, steps, ignore_max, dem_data)
+        #: The slope-response tables the edge weights were built from (None
+        #: without slope terms); retained search sessions and corridor
+        #: graphs read them to price the same edges.
+        self.gradient_luts = gradient_luts
 
         check_library_backend_size(
             self.raster_data.size, len(self.steps), type(self).__name__,

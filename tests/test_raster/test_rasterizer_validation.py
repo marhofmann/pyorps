@@ -384,12 +384,14 @@ def test_second_call_does_not_warn_again():
 
 def test_geographic_crs_is_reprojected_with_a_bounding_box_too():
     gdf, rasterizer = _geographic_rasterizer()
-    box_utm = gpd.GeoSeries([box(9.0, 50.0, 9.001, 50.001)],
-                            crs=GEOGRAPHIC_CRS).to_crs("EPSG:32632").iloc[0]
+    # Round 14: the box is read in the CRS the data was given in (degrees)
+    # and reprojected with it; a box already in UTM metres is no longer read.
+    box_degrees = box(9.0, 50.0, 9.001, 50.001)
     with pytest.warns(CrsReprojectionWarning):
-        rasterizer.rasterize(resolution_in_m=10, bounding_box=box_utm,
+        rasterizer.rasterize(resolution_in_m=10, bounding_box=box_degrees,
                              on_thin_features="ignore")
     assert rasterizer.crs == "EPSG:32632"
+    assert rasterizer.raster.size > 0
 
 
 def test_wide_geographic_extent_says_so_in_the_warning():

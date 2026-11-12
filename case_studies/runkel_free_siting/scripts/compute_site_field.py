@@ -111,7 +111,8 @@ def main(argv=None) -> int:
     cheapest = []
     for b in best:
         r, c = int(rr[b]), int(cc[b])
-        x, y = transform * (c + 0.5, r + 0.5)
+        x = transform.a * (c + 0.5) + transform.b * (r + 0.5) + transform.c
+        y = transform.d * (c + 0.5) + transform.e * (r + 0.5) + transform.f
         cheapest.append(dict(easting=round(x, 1), northing=round(y, 1), eur=field.cents[r, c] / 100.0,
                              rotation_deg=float(thetas[field.rotation[r, c]])))
     print("summary:", summary, flush=True)

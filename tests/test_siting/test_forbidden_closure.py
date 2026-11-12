@@ -123,7 +123,9 @@ def test_the_registered_closed_cost_map_has_no_forbidden_traversal_on_a_real_win
         win = Window(9000, 5000, 700, 700)            # inside the farm area
         values, tr = src.read(1, window=win), src.window_transform(win)
     frame = gpd.read_file(alk)
-    xs, ys = tr * (0, 700), tr * (700, 0)
+    # corner (col, row) -> (x, y) with the six coefficients (no deprecated `Affine * tuple`)
+    xs = (tr.b * 700 + tr.c, tr.e * 700 + tr.f)    # corner (col 0, row 700): (left, bottom)
+    ys = (tr.a * 700 + tr.c, tr.d * 700 + tr.f)    # corner (col 700, row 0): (right, top)
     union = vf.forbidden_union_in(frame, (xs[0], xs[1], ys[0], ys[1]))
     r = vf.check_window(values, tr, union, n_seeds=2, n_targets=25, rng=np.random.default_rng(11))
     assert r["routes"] >= 40

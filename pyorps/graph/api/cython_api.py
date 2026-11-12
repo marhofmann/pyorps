@@ -104,6 +104,15 @@ class CythonAPI(GraphAPI):
         if gradient_luts is not None and dem_data is None:
             raise InvalidInputError(
                 "gradient_luts require dem_data aligned to the raster")
+        if dem_data is not None and gradient_luts is None:
+            # The kernels read a DEM only through the slope tables: without
+            # them it would be ignored and the route would be the flat one.
+            raise InvalidInputError(
+                "dem_data without gradient_luts would be ignored by the "
+                "cython kernels (the route would be the flat route). Pass "
+                "the gradient_luts built for this DEM "
+                "(Objective.build_gradient_luts), or route through "
+                "PathFinder(dem=...), which builds them.")
         # Cached Dijkstra context + solver, see _dijkstra_solver().
         self._solver = None
         self._solver_state = (None, None, None, None, None)
@@ -165,6 +174,7 @@ class CythonAPI(GraphAPI):
             target_indices: Target node indices
             algorithm: Algorithm name ("dijkstra" or "delta-stepping")
             **kwargs: Additional parameters:
+
                 - pairwise: bool - compute paths pairwise (for multiple sources/targets)
                 - delta: float - bucket width for delta-stepping (default 100)
                 - num_threads: int - number of threads for delta-stepping (0=auto)

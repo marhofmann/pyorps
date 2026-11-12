@@ -63,6 +63,7 @@ from .types import (
                                InputDataType,
                                NormalizedCoordinate,
 )
+from .warning_types import AlgorithmFallbackWarning
 
 __all__ = [
     # Cost assumptions
@@ -107,5 +108,5 @@ __all__ = [
     "ConsistencyCheckError", "NumericalPrecisionError",
 
     # Warning root
-    "PyorpsWarning", "CrsReprojectionWarning",
+    "PyorpsWarning", "CrsReprojectionWarning", "AlgorithmFallbackWarning",
 ]
