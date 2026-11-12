@@ -145,3 +145,47 @@ def test_notice_roundtrip():
                       fix="f", details="d", focus_id="tab-data")
     d = n.to_dict()
     assert errors.Notice.from_dict(d) == n
+
+
+# ------------------------------------------- tidy-up: two library warnings with their own boxes
+def test_algorithm_fallback_warning_has_its_own_plain_box():
+    text = ("algorithm='delta-stepping' cannot evaluate slope terms (a DEM or a gradient objective): "
+            "Dijkstra runs instead. Using the gpu path is not possible here.")
+    notice = errors.translate_warning(_warning_message(text, pex.AlgorithmFallbackWarning))
+    assert notice.title == "A different search ran than the one you chose"
+    assert notice.severity == "info"
+    assert "Dijkstra" in notice.meaning and "cython" in notice.meaning
+    assert "route is correct" in notice.impact
+    assert "Dijkstra" in notice.fix and "cython" in notice.fix
+    assert notice.focus_id == "tab-routes"
+    assert "A step reported a warning" not in notice.title
+    assert text[:40] in notice.details
+    # the same words in a plain UserWarning are NOT a fallback notice (the rule matches the class)
+    other = errors.translate_warning(_warning_message("Dijkstra runs instead."))
+    assert other.title != notice.title
+
+
+@pytest.mark.parametrize("text", [
+    # several points, the table form of the library
+    "2 position(s) had maximum cost value (65535) and were corrected:\n  Orig Coords ...\n"
+    "1 of them lie where the DEM has no elevation (outside its extent or in a void of it); those cells are "
+    "forbidden like any other.\n",
+    # one point on a float weight raster
+    "Position [3, 4] lies on a forbidden cell and was corrected to [3, 6]. The cell has no DEM elevation "
+    "(outside its extent or in a void of it); those cells are forbidden like any other.",
+])
+def test_a_point_moved_because_the_dem_has_no_elevation_gets_its_own_box(text):
+    notice = errors.translate_warning(_warning_message(text))
+    assert "terrain model has no elevation" in notice.title
+    assert notice.severity == "warning"
+    assert "DEM" in notice.meaning and "nearest cell with elevation" in notice.impact
+    assert notice.focus_id == "tab-routes"
+
+
+def test_a_point_moved_off_an_ordinary_forbidden_cell_keeps_the_old_box():
+    notice = errors.translate_warning(_warning_message(
+        "2 position(s) had maximum cost value (65535) and were corrected:"))
+    assert "nearest routable cell" in notice.title
+    notice = errors.translate_warning(_warning_message(
+        "Position [3, 4] lies on a forbidden cell and was corrected to [3, 6]."))
+    assert notice.title == "A step reported a warning"

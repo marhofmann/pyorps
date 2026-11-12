@@ -12,7 +12,7 @@ from dash import ALL, Input, Output, State, ctx, html, no_update
 from dash.exceptions import PreventUpdate
 
 from .. import ids
-from ..services import cost_model, validate
+from ..services import cost_field, cost_model, validate
 from ..services.errors import Notice, cap_notices, guard, success
 
 
@@ -74,8 +74,12 @@ def register(app, state) -> None:
     def sync_options(_view):
         raster_options = [{"label": ly.name, "value": ly.id}
                           for ly in state.layers_of_kind("raster")]
+        # a cost-field result is a raster of accumulated cost: routing on it would be nonsense, so the "Route
+        # on raster" list leaves it out; the raster-algebra list (any raster is fine there) keeps it
+        route_options = [{"label": ly.name, "value": ly.id}
+                         for ly in state.layers_of_kind("raster") if not cost_field.is_cost_field_layer(ly)]
         vector_options = _vector_options(state)
-        return (vector_options, raster_options, raster_options,
+        return (vector_options, route_options, raster_options,
                 vector_options, vector_options)
 
     def _vector_columns():

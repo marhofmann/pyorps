@@ -2,12 +2,18 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import os
 import sys
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
 
 from .app import LaunchError, check_host, launch
-from .state import ProjectState
+from .callbacks.io import apply_opened_project
+from .services import project_io
+from .services.errors import ProjectLayersSkippedWarning, ProjectLoadError
+from .state import ProjectState, TileManager
 
 
 def _port(value: str) -> int:
@@ -29,6 +35,13 @@ def _folder(value: str) -> Path:
     if path.exists() and not path.is_dir():
         raise argparse.ArgumentTypeError(f"{value!r} exists and is not a folder")
     return path
+
+
+def _project_path(value: str) -> Path:
+    """``--project``: the path made absolute (a relative one is taken from the
+    current folder). Whether it exists is not checked here: a missing file ends
+    the program with exit code 1, like a broken one, not with a usage error."""
+    return Path(os.path.abspath(os.path.expanduser(value)))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -58,6 +71,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help="folder for the session's rasters and temporary "
                              "files (default: a new pyorps_gui_* folder in the "
                              "temp directory; never deleted automatically)")
+    parser.add_argument("--project", type=_project_path, default=None,
+                        metavar="FILE",
+                        help="open a saved project at start: a project.json or "
+                             "a folder that holds one (a relative path is taken "
+                             "from the current folder). A missing or broken file "
+                             "prints one error line and ends the program with "
+                             "exit code 1 before the server starts or a window "
+                             "opens")
     parser.add_argument("--compress", action=argparse.BooleanOptionalAction,
                         default=None,
                         help="compress HTTP responses (default: on in the "
@@ -80,10 +101,87 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def _cannot_open(path: Path, reason: str) -> LaunchError:
+    """The one error line of a project that cannot be opened at start."""
+    return LaunchError(f"could not open the project '{path}': {reason}")
+
+
+def _project_manifest(path: Path) -> Path:
+    """The ``project.json`` behind ``--project`` (a folder holds one), checked
+    BEFORE any state exists; a :class:`LaunchError` when there is none."""
+    if path.is_dir():
+        manifest = path / "project.json"
+        if not manifest.is_file():
+            raise _cannot_open(manifest, "the folder holds no project.json")
+        return manifest
+    if not path.exists():
+        raise _cannot_open(path, "the file does not exist")
+    if not path.is_file():
+        raise _cannot_open(path, "it is not a file")
+    return path
+
+
+def _reason(exc: Exception) -> str:
+    """Why a project failed to load, on one line."""
+    text = " ".join(str(exc).split())
+    if isinstance(exc, ProjectLoadError):          # names the layer and its file
+        return text
+    if isinstance(exc, OSError):
+        return f"the file could not be read ({type(exc).__name__}: {text})"
+    return f"the file is not a valid project ({type(exc).__name__}: {text})"
+
+
+def _discard(state: ProjectState, *, remove_work_dir: bool) -> None:
+    """Undo a failed start: stop the tile servers the load may have started and
+    remove the temporary work folder when it is still empty (a folder the user
+    named with ``--work-dir``, or one that holds files, stays)."""
+    for cleanup in (state.shutdown, TileManager.stop_server):
+        with contextlib.suppress(Exception):
+            cleanup()
+    if remove_work_dir:
+        with contextlib.suppress(OSError):
+            state.work_dir.rmdir()
+
+
+def open_project_at_start(path: Path, work_dir: Path | None = None) -> ProjectState:
+    """A new :class:`ProjectState` holding the project at ``path`` (a
+    ``project.json`` or a folder with one), for ``--project``.
+
+    Opened through ``project_io.load_project`` and ``apply_opened_project``,
+    exactly like the "Open project" button, so both end in the same state.
+    Layers that could not be restored are printed as ``warning: ...`` lines.
+    A missing or broken file raises a :class:`LaunchError` with one line that
+    names the file; nothing has been served or opened at that point.
+    """
+    manifest_file = _project_manifest(path)
+    state = ProjectState(work_dir=work_dir)
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            manifest = project_io.load_project(state, manifest_file)
+        apply_opened_project(state, manifest, manifest_file)
+    except Exception as exc:  # pylint: disable=broad-exception-caught  # any broken file is ONE error line, never a traceback
+        _discard(state, remove_work_dir=work_dir is None)
+        raise _cannot_open(manifest_file, _reason(exc)) from exc
+    for item in caught:
+        if issubclass(item.category, ProjectLayersSkippedWarning):
+            print(f"warning: {item.message}", file=sys.stderr)
+        else:                                   # not ours: let it through
+            warnings.warn_explicit(item.message, item.category, item.filename,
+                                   item.lineno, source=item.source)
+    count = len(state.layers)
+    print(f"opened project: {manifest_file} "
+          f"({count} layer{'' if count == 1 else 's'})")
+    return state
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    state = ProjectState(work_dir=args.work_dir) if args.work_dir else None
     try:
+        if args.project is not None:
+            state = open_project_at_start(args.project, args.work_dir)
+        else:
+            state = ProjectState(work_dir=args.work_dir) if args.work_dir else None
         launch(state, host=args.host, port=args.port, debug=args.debug,
                desktop=args.desktop, allow_remote=args.allow_remote,
                threads=args.threads, compress=args.compress)

@@ -17,8 +17,10 @@ from dash.exceptions import PreventUpdate
 from shapely.geometry import LineString
 
 from .. import ids
-from ..services import data_io, geo, routing, validate
+from ..services import data_io, geo, jobs, routing, validate
 from ..services.errors import Notice, guard, success
+from . import job_poll
+from . import objective as objective_cb
 
 _EMPTY_DRAFT = {"sources": [], "targets": [], "waypoints": []}
 
@@ -280,27 +282,48 @@ def _estimate_body(est: dict) -> list:
     ]
 
 
-def collect_finished_job(state, notices: list):
-    """Take the outcome of a routing job that is no longer running.
+def routing_outcome(state, job):
+    """The ended routing job as ``(results, notices)`` for the job poll (``callbacks/job_poll.py``).
 
-    Shared by the polling callback and by ``run``: the worker thread never
-    touches the state, so whoever notices that the job has ended (poller, or
-    a "Run routing" click after a page reload) collects its result here. The
-    job is forgotten. Returns the six values of :func:`finalize_routing`
-    (view, status, options, newest, notices, draft); a failed job gives its
-    translated error and leaves everything else as it was.
+    ``results`` are the values of ``LAYERS_VIEW``, ``ROUTING_STATUS``, the two route-select properties and
+    ``ROUTE_DRAFT`` (those of :func:`finalize_routing`), ``notices`` the notice dicts to add: the warnings the
+    worker thread collected (``errors.guard`` cannot see a thread it did not start), then the run's own. A
+    failed job gives its translated error and leaves everything else as it was. Runs once per job, in a poll
+    tick: the worker thread never touches the state.
     """
-    job = state.routing_job
-    state.routing_job = None
+    notices = list(getattr(job, "notices", None) or [])
     if job.status == "failed":
         from ..services import errors
         notices.append(errors.translate_exception(job.error).to_dict())
-        return (no_update, "routing failed", no_update, no_update, notices,
-                no_update)
+        return (no_update, "routing failed", no_update, no_update, no_update), notices
     finder, built, failed = job.result
-    return finalize_routing(
+    view, status, options, newest, notices, draft = finalize_routing(
         state, finder, built, failed, meta=job.params["meta"],
         notices=notices, cancelled=job.status == "cancelled")
+    return (view, status, options, newest, draft), notices
+
+
+def _held_routing_job(state, notices: list):
+    """A Run click while the state holds a routing job: the nine outputs of ``run``, else None.
+
+    A running job refuses the click. An ended one switches the poll on, which hands its outcome over (the
+    page may have missed it, e.g. after a reload); while that is under way the click waits for it.
+    """
+    phase = jobs.held_phase(state, jobs.ROUTING_SLOT)
+    if phase is None:
+        return None
+    if phase == jobs.HELD_RUNNING:
+        return (no_update, "a routing job is already running — press "
+                "⏹ Stop first", no_update, no_update, notices,
+                False, no_update, no_update, no_update)
+    if phase == jobs.HELD_HANDOVER:
+        notices.append(job_poll.handover_notice(jobs.ROUTING_LABEL))
+        status = jobs.finalizing_text(jobs.ROUTING_LABEL)
+    else:
+        notices.append(job_poll.ended_notice("routing", "Run routing"))
+        status = "collecting the earlier routing run…"
+    return (no_update, status, no_update, no_update, notices, False,
+            no_update, no_update, False)
 
 
 def finalize_routing(state, finder, built, failed, *, meta: dict,
@@ -349,10 +372,12 @@ def finalize_routing(state, finder, built, failed, *, meta: dict,
                 "the effort first.").to_dict())
     elif built:
         graph_api = built[0].params.get("graph_api", "?")
+        objective_line = meta.get("objective_summary")
         notices.append(success(
             f"{len(built)} route(s) computed",
             meaning=f"{meta.get('algorithm')} on {graph_api}, chained "
-                    f"through {meta.get('n_waypoints', 0)} waypoint(s)."))
+                    f"through {meta.get('n_waypoints', 0)} waypoint(s)."
+                    + (f" {objective_line}" if objective_line else "")))
     status = (f"{len(built)} route(s), {len(failed)} failed"
               if failed else f"{len(built)} route(s) built")
     if cancelled:
@@ -549,6 +574,8 @@ def register(app, state) -> None:
         Output(ids.ROUTING_CONFIRM_MODAL, "is_open"),
         Output(ids.ROUTING_CONFIRM_BODY, "children"),
         Output(ids.ROUTE_DRAFT, "data", allow_duplicate=True),
+        # switched on when the click finds an ended job nobody polled (the poll collects it)
+        Output(ids.ROUTING_POLL, "disabled", allow_duplicate=True),
         Input(ids.RUN_ROUTING_BTN, "n_clicks"),
         State(ids.OHL_ENABLE, "value"),
         State(ids.ROUTE_DRAFT, "data"),
@@ -573,30 +600,26 @@ def register(app, state) -> None:
             graph_api, neighborhood_k, search_buffer, full_window,
             ignore_max_cost, pairwise, simplify, simplify_tol, delta,
             num_threads, margin, points_rows_data, notices):
-        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         notices = list(notices or [])
         if not n_clicks or constrained_on:
             raise PreventUpdate          # constrained runner handles it
+        # a job that ended while nobody polled (page reload, other tab) is
+        # collected by the poll instead of refusing forever (audit #4)
+        held = _held_routing_job(state, notices)
+        if held is not None:
+            return held
+        return (*_route(draft, raster_layer_id, algorithm, graph_api,
+                        neighborhood_k, search_buffer, full_window,
+                        ignore_max_cost, pairwise, simplify, simplify_tol,
+                        delta, num_threads, margin, points_rows_data,
+                        notices), no_update)
 
-        job = state.routing_job
-        if job is not None and job.status == "running":
-            return (no_update, "a routing job is already running — press "
-                    "⏹ Stop first", no_update, no_update, notices,
-                    False, no_update, no_update)
-        if job is not None:
-            # a job that ended while nobody polled (page reload, other tab):
-            # collect it instead of refusing forever (audit #4)
-            notices.append(Notice(
-                severity="info", title="An earlier routing run was collected",
-                meaning="A routing job finished while this page was not "
-                        "watching it; its routes were added now.",
-                impact="No new run was started by this click.",
-                fix="Press Run routing again for another run.").to_dict())
-            view, status, options, newest, notices, draft = \
-                collect_finished_job(state, notices)
-            return (view, status, options, newest, notices, False, no_update,
-                    draft)
-
+    def _route(draft, raster_layer_id, algorithm, graph_api, neighborhood_k,
+               search_buffer, full_window, ignore_max_cost, pairwise,
+               simplify, simplify_tol, delta, num_threads, margin,
+               points_rows_data, notices):
+        """The eight outputs of ``run`` (all but the poll) for a click that may start a run."""
+        # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         raster_layer = state.get(raster_layer_id) if raster_layer_id else None
         if raster_layer is None or raster_layer.kind != "raster":
             notices.append(Notice(
@@ -682,6 +705,23 @@ def register(app, state) -> None:
             "n_waypoints": len(waypoints),
         }
 
+        # ------------- objective & terrain card: its settings reach the run through the state
+        window_buffer = (run_kwargs["search_buffer_m"] if run_kwargs["search_buffer_m"] is not None
+                         else routing.default_search_buffer(sources, targets))
+        objective_run, objective_meta, notices = objective_cb.prepare_run(
+            state, raster_layer=raster_layer, graph_api=graph_api, algorithm=algorithm,
+            raster_bounds=info["bounds"], points=[*sources, *targets, *waypoints],
+            buffer_m=window_buffer, notices=notices)
+        if objective_run is None:
+            return (no_update, "check the highlighted field", no_update,
+                    no_update, notices, False, no_update, no_update)
+        run_kwargs.update(objective_run)
+        estimate_extra = {}
+        if objective_meta:
+            meta["objective_summary"] = objective_meta["objective_summary"]
+            if objective_meta["stack_bands"]:
+                estimate_extra["stack_bands"] = objective_meta["stack_bands"]
+
         # ------------- heavy-run gate: warn + require "accept" up front
         est = None
         estimate_failed = False
@@ -692,7 +732,8 @@ def register(app, state) -> None:
                 graph_api=run_kwargs["graph_api"],
                 neighborhood=run_kwargs["neighborhood"],
                 pairwise=run_kwargs["pairwise"],
-                search_buffer_m=run_kwargs["search_buffer_m"])
+                search_buffer_m=run_kwargs["search_buffer_m"],
+                **estimate_extra)
         except Exception as exc:  # pylint: disable=broad-exception-caught  # an unknown effort counts as heavy (#35)
             estimate_failed = True
             notices.append(_estimate_failed_notice(exc, what="routing run"))
@@ -760,33 +801,17 @@ def register(app, state) -> None:
         job.cancel.set()
         return "stopping — finishing the segment in flight…"
 
-    @app.callback(
-        Output(ids.LAYERS_VIEW, "data", allow_duplicate=True),
-        Output(ids.ROUTING_STATUS, "children", allow_duplicate=True),
-        Output(ids.EDIT_ROUTE_SELECT, "options", allow_duplicate=True),
-        Output(ids.EDIT_ROUTE_SELECT, "value", allow_duplicate=True),
-        Output(ids.NOTICES, "data", allow_duplicate=True),
-        Output(ids.ROUTING_POLL, "disabled", allow_duplicate=True),
-        Output(ids.ROUTING_STOP_BTN, "style", allow_duplicate=True),
-        Output(ids.ROUTE_DRAFT, "data", allow_duplicate=True),
-        Input(ids.ROUTING_POLL, "n_intervals"),
-        State(ids.NOTICES, "data"),
-        prevent_initial_call=True)
-    def poll_routing_job(_n, notices):
-        """Progress readout while the job runs; layer creation + notices on
-        completion (the worker thread never mutates state itself)."""
-        hide = {"display": "none"}
-        job = state.routing_job
-        if job is None:                     # stale tick — switch polling off
-            return (no_update, no_update, no_update, no_update, no_update,
-                    True, hide, no_update)
-        if job.status == "running":
-            return (no_update, job.progress_text(), no_update, no_update,
-                    no_update, no_update, no_update, no_update)
-        notices = list(notices or [])
-        view, status, options, newest, notices, draft = \
-            collect_finished_job(state, notices)
-        return view, status, options, newest, notices, True, hide, draft
+    # the shared job poll: progress while the job runs; the route layers and the notices (registered by
+    # ``routing_outcome``, the worker thread never touches the state) are handed to the page exactly once
+    job_poll.register_poll(app, state, job_poll.JobPoll(
+        slot=jobs.ROUTING_SLOT, label=jobs.ROUTING_LABEL, poll=ids.ROUTING_POLL,
+        stop=ids.ROUTING_STOP_BTN, ack=ids.JOB_ACK_ROUTING,
+        results=((ids.LAYERS_VIEW, "data"), (ids.ROUTING_STATUS, "children"),
+                 (ids.EDIT_ROUTE_SELECT, "options"),
+                 (ids.EDIT_ROUTE_SELECT, "value"), (ids.ROUTE_DRAFT, "data")),
+        status=(ids.ROUTING_STATUS, "children"),
+        running_text=lambda job: job.progress_text(),
+        finalize=lambda st, job: routing_outcome(st, job)))
 
     # ------------------------------------------------- load existing routes
     @app.callback(

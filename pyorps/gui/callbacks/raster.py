@@ -12,9 +12,10 @@ from dash import ALL, Input, Output, State, no_update
 from dash.exceptions import PreventUpdate
 
 from .. import ids
+from ..services import jobs, tiles, validate
 from ..services import rasterize as rasterize_service
-from ..services import tiles, validate
-from ..services.errors import Notice, guard, success
+from ..services.errors import Notice, cap_notices, guard, success
+from . import job_poll
 from .routes import field_notice, number_or_default, numeric_field_problem
 
 
@@ -365,6 +366,155 @@ def _rasterize_field_problem(resolution, fill_value, dtype, geom_buffer,
     return next((check for check in checks if check is not None), None)
 
 
+#: what the two background-job outputs of ``run_rasterize`` (poll, Stop button) hold when a run does not
+#: touch the job. ``RASTERIZE_BUSY`` stays a ``running=`` target of that callback alone: the Build button is
+#: gated only while the callback itself runs, so a click during a background run reaches the job
+#: service's refusal notice.
+_NO_JOB = (no_update, no_update)
+#: the Stop button of the rasterize job is hidden unless a job runs
+STOP_HIDDEN = job_poll.STOP_HIDDEN
+#: where the state keeps the rasterize job
+_RASTERIZE_SLOT = jobs.kind_slot(rasterize_service.JOB_KIND)
+#: what a stop is promised to do, for the status line and the Stop answer
+STOP_NOTE = ("The raster is built in stages (base layer, each modifier, crop, save): the run stops when the "
+             "stage in flight is finished, and then builds nothing.")
+
+
+def rasterize_status_text(job) -> str:
+    """The status line of a running rasterize job: its progress, and that a Stop is waiting."""
+    text = job.progress_text()
+    if job.cancel.is_set() and job.status == jobs.RUNNING:
+        text += " (stop requested, the run ends at the next stage boundary)"
+    return text
+
+
+def _combination_inputs(base_layer_name: str, build_kwargs: dict) -> dict:
+    """The lazy combination-table inputs a built raster layer keeps (perf plan phase 4)."""
+    return {
+        "base_gdf": build_kwargs["base_gdf"], "feature_keys": build_kwargs["feature_keys"],
+        "assumptions": build_kwargs["assumptions"], "base_layer_name": base_layer_name,
+        "modifiers": build_kwargs["modifiers"], "base_crs": build_kwargs["base_gdf"].crs,
+        "bounding_polygon": build_kwargs["bounding_polygon"],
+    }
+
+
+def finalize_rasterize(state, raster_path: str, log: list[str], notices: list[dict], *, resolution: float,
+                       colormap, config: dict, combination: dict, seq):
+    """What happens after a cost raster is built: layer, tiles, coverage info, log.
+
+    The one path for the synchronous run (inside ``run_rasterize``) and a background run (the job
+    poll, ``callbacks/raster_job.py``, through :func:`rasterize_outcome`). ``config`` is the layer's
+    ``rasterize_config``, ``combination`` its lazy ``combination_inputs``, ``seq`` the map-view counter
+    that makes the map fit the new layer. Returns the four values of ``LAYERS_VIEW``, ``MAP_VIEW``,
+    ``RASTERIZE_LOG`` and ``NOTICES``.
+    """
+    new_layer, notices = add_raster_layer(
+        state, raster_path, notices,
+        name=f"Cost raster ({resolution:g} m)", colormap=colormap)
+    if new_layer is None:
+        return no_update, no_update, "\n".join(log), notices
+    new_layer.meta["rasterize_config"] = config
+    # F2: the cost -> layer/feature/value combination table is now built
+    # LAZILY (perf plan phase 4): stash the inputs and let the first
+    # 📋-table / legend / map-click materialize it — the geometric
+    # overlay can take seconds on a big model and the rasterize callback
+    # shouldn't wait for it.
+    new_layer.meta["combination_inputs"] = combination
+    log.append("combination table: built on first use (📋 table / "
+               "legend / map-click)")
+    view = {"fit_bounds": new_layer.tile.bounds, "seq": seq}
+    return state.layers_view(), view, "\n".join(log), notices
+
+
+def rasterize_outcome(state, job):
+    """The ended rasterize job as ``(results, notices)`` for the job poll (``callbacks/job_poll.py``).
+
+    ``results`` are the values of ``LAYERS_VIEW``, ``MAP_VIEW`` and ``RASTERIZE_LOG``, ``notices`` the notice
+    dicts to add. Done: the shared :func:`finalize_rasterize` adds the layer. Stopped: a notice, nothing
+    changes in the project. Failed: the translated error as a notice. Runs once per job, in a poll tick.
+    """
+    notices: list[dict] = []
+    if job.status == jobs.FAILED:
+        failed = job.error_notice()
+        if failed is not None:
+            notices.append(failed)
+        return (no_update, no_update, job.progress_text()), notices
+    if job.status == jobs.CANCELLED:
+        notices.append(Notice(
+            severity="info", title="Rasterizing stopped",
+            meaning="Stop was pressed; the run ended at a stage boundary.",
+            impact="No raster was built and the project is unchanged.",
+            fix="Press Build cost raster again to start over.").to_dict())
+        return (no_update, no_update, f"{job.progress_text()} No raster was built."), notices
+    result = job.result or {}
+    notices.extend(result.get("notices") or [])
+    view, map_view, log, notices = finalize_rasterize(
+        state, result["path"], list(result["log"]), notices, **job.params["finalize"])
+    return (view, map_view, log), notices
+
+
+def _start_background_run(state, build_kwargs: dict, finalize: dict, base_layer_name: str,
+                          notices: list[dict], n_cells: int):
+    """Start the heavy build as a background job; the six outputs of ``run_rasterize``.
+
+    The worker gets a snapshot of the build inputs (``build_kwargs``), the poll callback the ``finalize``
+    keywords of :func:`finalize_rasterize` plus the lazy combination inputs made from that same snapshot
+    (they must describe the data the raster was built from). A refused start (another job runs) answers
+    with the job service's notice and changes nothing.
+    """
+    refusal = jobs.refusal_notice(state, rasterize_service.JOB_KIND)
+    if refusal is not None:
+        notices.append(refusal)
+        return (no_update, no_update, no_update, cap_notices(notices), *_NO_JOB)
+    snapshot = rasterize_service.snapshot_build_inputs(build_kwargs)
+    finalize = {**finalize, "combination": _combination_inputs(base_layer_name, snapshot)}
+    job = jobs.start_job(
+        state, rasterize_service.JOB_KIND, rasterize_service.background_build,
+        label=rasterize_service.JOB_LABEL, params={"build": snapshot, "finalize": finalize})
+    if job is None:             # another start won the race between the check and here
+        notices.append(jobs.refusal_notice(state, rasterize_service.JOB_KIND)
+                       or jobs.busy_notice(jobs.busy_label(state) or rasterize_service.JOB_LABEL))
+        return (no_update, no_update, no_update, cap_notices(notices), *_NO_JOB)
+    notices.append(Notice(
+        severity="info", title="Rasterizing runs in the background",
+        meaning=f"About {n_cells:,} cells is a large raster, so it is built in a background job and the page "
+                "stays usable.",
+        impact="The layer is added when the job has finished. " + STOP_NOTE,
+        fix="Watch the status line below the Build button; press Stop to end the run.").to_dict())
+    return (no_update, no_update, rasterize_status_text(job), cap_notices(notices),
+            False, {})
+
+
+def _held_job_outputs(state, notices: list[dict]):
+    """A Build click while the state holds a rasterize job: the six outputs of ``run_rasterize``.
+
+    While the job runs the click is refused with the job service's notice. While its outcome is being
+    handed to the page the click is refused too and the poll stays on. A job that has ended but was never
+    polled (e.g. the page was reloaded) switches the poll on, which hands its outcome over, instead of
+    refusing every later click. None when the state holds no rasterize job.
+    """
+    phase = jobs.held_phase(state, _RASTERIZE_SLOT)
+    if phase is None:
+        return None
+    if phase == jobs.HELD_RUNNING:
+        notices.append(jobs.refusal_notice(state, rasterize_service.JOB_KIND)
+                       or jobs.busy_notice(rasterize_service.JOB_LABEL))
+        return (no_update, no_update, no_update, cap_notices(notices), *_NO_JOB)
+    if phase == jobs.HELD_HANDOVER:
+        notices.append(job_poll.handover_notice(rasterize_service.JOB_LABEL))
+    else:
+        notices.append(job_poll.ended_notice("rasterize", "Build cost raster"))
+    return no_update, no_update, no_update, cap_notices(notices), False, STOP_HIDDEN
+
+
+def _cached_raster(build_kwargs: dict):
+    """The cached file a build with these inputs would reuse, else None (also when the probe fails)."""
+    try:
+        return rasterize_service.cached_raster_path(**build_kwargs)
+    except Exception:  # pylint: disable=broad-exception-caught  # the build itself reports a real problem
+        return None
+
+
 def register(app, state) -> None:
     # ------------------- rasterization pairing: dataset + COMPATIBLE tables
     @app.callback(
@@ -439,6 +589,10 @@ def register(app, state) -> None:
         Output(ids.MAP_VIEW, "data", allow_duplicate=True),
         Output(ids.RASTERIZE_LOG, "children"),
         Output(ids.NOTICES, "data", allow_duplicate=True),
+        # a heavy run is handed to a background job (callbacks/raster_job.py):
+        # these two switch its poll and its Stop button on
+        Output(ids.RASTERIZE_POLL, "disabled", allow_duplicate=True),
+        Output(ids.RASTERIZE_STOP_BTN, "style", allow_duplicate=True),
         Input(ids.GO_RASTERIZE, "data"),
         State(ids.COST_GRID, "rowData"),
         State(ids.COST_GRID_STATE, "data"),
@@ -476,6 +630,9 @@ def register(app, state) -> None:
         notices = list(notices or [])
         if not go:
             raise PreventUpdate
+        held = _held_job_outputs(state, notices)
+        if held is not None:           # one run at a time; an ended one nobody polled is collected now
+            return held
         try:
             layer, keys, rows_used = _rasterize_inputs(
                 state, grid_state, rows, dataset_sel, table_sel)
@@ -491,7 +648,7 @@ def register(app, state) -> None:
                     "its feature columns.",
                 focus_id=ids.TAB_RASTER,
                 focus_control=ids.RASTERIZE_TABLE).to_dict())
-            return no_update, no_update, no_update, notices
+            return no_update, no_update, no_update, notices, *_NO_JOB
 
         # form fields: a value that cannot be valid is named, never replaced
         problem = _rasterize_field_problem(
@@ -499,18 +656,18 @@ def register(app, state) -> None:
             buf_b, buf_l, on_thin)
         if problem is not None:
             notices.append(problem)
-            return no_update, no_update, no_update, notices
+            return no_update, no_update, no_update, notices, *_NO_JOB
 
         # a non-numeric cost cell is named in a notice (#16) instead of
         # raising a raw error; the guard below catches anything else
         cost_problem = cost_model.cost_problem_notice(rows_used, keys)
         if cost_problem is not None:
             notices.append(cost_problem)
-            return no_update, no_update, no_update, notices
+            return no_update, no_update, no_update, notices, *_NO_JOB
         assumptions, notices = guard(cost_model.assumptions_from_grid_rows,
                                      rows_used, keys, notices=notices)
         if assumptions is None:
-            return no_update, no_update, no_update, notices
+            return no_update, no_update, no_update, notices, *_NO_JOB
         polygon = data_io.study_area_polygon(state.study_area,
                                              layer.gdf.crs)
         resolution = float(number_or_default(resolution, 1.0))
@@ -530,7 +687,7 @@ def register(app, state) -> None:
         if blocker is not None:
             notices.append(blocker.to_dict())
             if blocker.severity == "error":
-                return no_update, no_update, no_update, notices
+                return no_update, no_update, no_update, notices, *_NO_JOB
         coverage = validate.validate_cost_coverage(layer.gdf, keys,
                                                    assumptions)
         if coverage is not None:
@@ -555,7 +712,7 @@ def register(app, state) -> None:
                 impact="No raster was built.",
                 fix="Fix the modifier row (dataset / zone field / values).",
                 focus_id=ids.TAB_COST).to_dict())
-            return no_update, no_update, no_update, notices
+            return no_update, no_update, no_update, notices, *_NO_JOB
 
         preproc_params = {}
         if preproc == "street_buffer":
@@ -564,51 +721,47 @@ def register(app, state) -> None:
                 "buffer_b": float(number_or_default(buf_b, 4)),
                 "buffer_l": float(number_or_default(buf_l, 2))}
 
-        result, notices = guard(
-            build_cost_raster, base_gdf=layer.gdf, assumptions=assumptions,
-            feature_keys=keys, resolution_in_m=resolution,
-            fill_value=fill, dtype=dtype,
-            geometry_buffer_m=geometry_buffer,
-            bounding_polygon=polygon, preprocessor=preproc,
-            preprocessor_params=preproc_params,
-            preprocessor_steps=preproc_steps or [], modifiers=modifiers,
-            save_path=save_path or None, work_dir=state.work_dir,
-            widen_thin_forbidden=widen_thin, all_touched=all_touched,
-            on_thin_features=on_thin, crop_border=crop_border,
-            notices=notices)
-        if result is None:
-            return no_update, no_update, no_update, notices
-        raster_path, log = result
-        new_layer, notices = add_raster_layer(
-            state, raster_path, notices,
-            name=f"Cost raster ({resolution:g} m)", colormap=colormap)
-        if new_layer is None:
-            return no_update, no_update, "\n".join(log), notices
-        new_layer.meta["rasterize_config"] = {
-            "dataset_id": layer.id,
-            "feature_keys": list(keys), "resolution_in_m": resolution,
+        build_kwargs = {
+            "base_gdf": layer.gdf, "assumptions": assumptions,
+            "feature_keys": keys, "resolution_in_m": resolution,
             "fill_value": fill, "dtype": dtype,
             "geometry_buffer_m": geometry_buffer,
-            "preprocessor": preproc, "preprocessor_params": preproc_params,
-            "preprocessor_steps": preproc_steps or [],
+            "bounding_polygon": polygon, "preprocessor": preproc,
+            "preprocessor_params": preproc_params,
+            "preprocessor_steps": preproc_steps or [], "modifiers": modifiers,
+            "save_path": save_path or None, "work_dir": state.work_dir,
             "widen_thin_forbidden": widen_thin, "all_touched": all_touched,
-            "on_thin_features": on_thin, "crop_border": crop_border,
-        }
-        # F2: the cost -> layer/feature/value combination table is now built
-        # LAZILY (perf plan phase 4): stash the inputs and let the first
-        # 📋-table / legend / map-click materialize it — the geometric
-        # overlay can take seconds on a big model and the rasterize callback
-        # shouldn't wait for it.
-        new_layer.meta["combination_inputs"] = {
-            "base_gdf": layer.gdf, "feature_keys": keys,
-            "assumptions": assumptions, "base_layer_name": layer.name,
-            "modifiers": modifiers, "base_crs": layer.gdf.crs,
-            "bounding_polygon": polygon,
-        }
-        log.append("combination table: built on first use (📋 table / "
-                   "legend / map-click)")
-        view = {"fit_bounds": new_layer.tile.bounds, "seq": go}
-        return (state.layers_view(), view, "\n".join(log), notices)
+            "on_thin_features": on_thin, "crop_border": crop_border}
+        finalize = {
+            "resolution": resolution, "colormap": colormap, "seq": go,
+            "config": {
+                "dataset_id": layer.id,
+                "feature_keys": list(keys), "resolution_in_m": resolution,
+                "fill_value": fill, "dtype": dtype,
+                "geometry_buffer_m": geometry_buffer,
+                "preprocessor": preproc, "preprocessor_params": preproc_params,
+                "preprocessor_steps": preproc_steps or [],
+                "widen_thin_forbidden": widen_thin, "all_touched": all_touched,
+                "on_thin_features": on_thin, "crop_border": crop_border,
+            },
+            "combination": _combination_inputs(layer.name, build_kwargs)}
+
+        # a big build (and not one the cache already holds) runs in the
+        # background; everything below this block is the synchronous run
+        n_cells = validate.estimate_raster_size(bounds, resolution,
+                                                dtype)["n_cells"]
+        if (rasterize_service.is_heavy(n_cells)
+                and _cached_raster(build_kwargs) is None):
+            return _start_background_run(state, build_kwargs, finalize,
+                                         layer.name, notices, n_cells)
+
+        result, notices = guard(build_cost_raster, **build_kwargs,
+                                notices=notices)
+        if result is None:
+            return no_update, no_update, no_update, notices, *_NO_JOB
+        raster_path, log = result
+        return (*finalize_rasterize(state, raster_path, log, notices,
+                                    **finalize), *_NO_JOB)
 
     # -------------------------------------------------- load existing raster
     @app.callback(

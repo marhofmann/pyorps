@@ -15,7 +15,7 @@ import threading
 import warnings
 from pathlib import Path
 
-from conftest import SOURCE, TARGET, invoke
+from conftest import SOURCE, TARGET, invoke, poll_job
 
 from pyorps.gui import ids
 
@@ -189,8 +189,7 @@ def test_background_job_completes_and_poll_finalizes(app, state, raster_path):
     assert job.status == "done"
     assert job.result is not None
 
-    invoke(app, (f"{ids.ROUTING_POLL}.disabled", "n_intervals"), 1, [],
-           triggered=[f"{ids.ROUTING_POLL}.n_intervals"])
+    poll_job(app, ids.JOB_ACK_ROUTING, [])            # round 15: claim, finalize, confirm
     routes = state.layers_of_kind("route")
     assert len(routes) == 1
     assert state.routing_job is None

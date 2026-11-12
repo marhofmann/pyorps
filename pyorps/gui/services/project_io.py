@@ -147,6 +147,29 @@ SAVE_GROUPS = ("raster", "vector", "cost_table")
 _ALWAYS_SAVED_KINDS = ("route", "study_area")
 
 
+def normalise_gui_settings(raw: Any) -> dict[str, dict]:
+    """The per-card settings of the page (``state.gui_settings``) as plain JSON.
+
+    ``{"objective": {...}, "cost_field": {...}, "corridor": {...},
+    "constrained": {...}}``: each card owns one key and normalises its own
+    values when it reads them; this only makes the whole safe to write to and
+    read from ``project.json``. Anything that is not a mapping (a project
+    saved before round 14 has no key at all) gives ``{}``; an entry that is
+    not a mapping, or does not survive JSON, is left out.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    settings: dict[str, dict] = {}
+    for key, value in raw.items():
+        if not isinstance(value, dict):
+            continue
+        try:
+            settings[str(key)] = json.loads(json.dumps(value, default=str))
+        except (TypeError, ValueError):       # tuple keys, circular refs ...
+            continue
+    return settings
+
+
 def manifest_path(path: str | Path) -> Path:
     """The ``project.json`` a save to ``path`` writes (a folder gets one)."""
     path = Path(path)
@@ -236,6 +259,8 @@ def save_project(state, path: str | Path, *,
             getattr(state, "routing_settings", None)),
         "raster_settings": rasterize.normalise_raster_settings(
             getattr(state, "raster_settings", None)),
+        "gui_settings": normalise_gui_settings(
+            getattr(state, "gui_settings", None)),
         "layers": layers,
         "skipped_layers": skipped,
         "cost_table": (cost_table or {}) if "cost_table" in include_set
@@ -443,6 +468,10 @@ def load_project(state, path: str | Path) -> dict:
         # likewise for the rasterize controls
         state.raster_settings = rasterize.normalise_raster_settings(
             manifest.get("raster_settings"))
+        # and for the cards of round 14 (objective, cost field, corridor,
+        # constrained profile): an older project gives {}
+        state.gui_settings = normalise_gui_settings(
+            manifest.get("gui_settings"))
         state.active_route_id = manifest.get("active_route_id")
         if state.active_route_id not in state.layers:
             state.active_route_id = None

@@ -418,6 +418,30 @@ def _layers_skipped_notice(message: str) -> Notice:
 
 WARNING_RULES: list[tuple[type, str, Callable[[str], Notice]]] = [
     (ProjectLayersSkippedWarning, "", _layers_skipped_notice),
+    # before the generic substring rules below: a fallback message may mention "gpu" or a maximum cost
+    (pex.AlgorithmFallbackWarning, "", _w(
+        "info", "A different search ran than the one you chose",
+        "The chosen algorithm or backend cannot do what this run needs (for example the terrain slope of a DEM), "
+        "so pyorps ran another one (Dijkstra, or the cython backend) instead.",
+        "The route is correct and is the one this request defines; only the way of finding it changed.",
+        "To silence this, choose Dijkstra as the algorithm or the cython backend in the Routes tab.",
+        "tab-routes")),
+    # a source or target moved because the terrain model (DEM) has no elevation there: the library words it
+    # twice (one table for several points, one sentence for a float weight raster); both name the DEM
+    (UserWarning, "where the dem has no elevation", _w(
+        "warning", "A start or end point was moved: the terrain model has no elevation there",
+        "A source or target lies where the terrain model (DEM) has no height value (outside the DEM or in a gap "
+        "of it), and routing cannot start on such a cell.",
+        "The point was moved to the nearest cell with elevation, so the route starts or ends slightly off your "
+        "click (the shift is in Details).",
+        "Use a DEM that covers the points, or move the points onto the DEM.", "tab-routes")),
+    (UserWarning, "cell has no dem elevation", _w(
+        "warning", "A start or end point was moved: the terrain model has no elevation there",
+        "A source or target lies where the terrain model (DEM) has no height value (outside the DEM or in a gap "
+        "of it), and routing cannot start on such a cell.",
+        "The point was moved to the nearest cell with elevation, so the route starts or ends slightly off your "
+        "click (the shift is in Details).",
+        "Use a DEM that covers the points, or move the points onto the DEM.", "tab-routes")),
     (Warning, "crs mismatch between bbox", _w(
         "info", "Reprojected your area to the data's CRS",
         "Your study area was in a different CRS than the data.",

@@ -26,6 +26,7 @@ Hard rules encoded here:
 """
 from __future__ import annotations
 
+import copy
 import importlib.util
 import math
 from dataclasses import dataclass, field
@@ -407,13 +408,20 @@ def estimate_routing(raster_path: str, *,
                      algorithm: str = "delta-stepping", hardware: str = "cpu",
                      neighborhood: str = "r2", pairwise: bool = False,
                      search_buffer_m: float | None = None,
-                     graph_api: str | None = None) -> dict:
+                     graph_api: str | None = None,
+                     stack_bands: int = 0) -> dict:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Prognosis for a routing run: cells, runtime, memory, storage.
 
     Per pair, the search window is the bounding box of its control points
     buffered by the (auto) search buffer, clipped to the raster. Numbers are
     rough, honest estimates for the confirm dialog — not promises.
+
+    ``stack_bands`` is the number of full-raster float32 bands an objective
+    run holds besides the cost raster (``objective.stack_bands``): the metric
+    stack covers the whole raster, not the window, so each band adds 4 bytes
+    per raster cell to the memory prognosis. The runtime is NOT scaled for the
+    slower slope kernels (no measurement exists for it).
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     import rasterio
@@ -455,6 +463,8 @@ def estimate_routing(raster_path: str, *,
     seconds = work_edges / EDGES_PER_SECOND.get(graph_api, 4e6)
     memory_mb = (max_cells * n_edges * _BYTES_PER_EDGE
                  + max_cells * _BYTES_PER_CELL) / 1e6
+    if stack_bands > 0:
+        memory_mb += float(raster_w) * raster_h * 4 * stack_bands / 1e6
     storage_mb = max_cells * dtype_size / 1e6      # temp window raster
 
     return {
@@ -568,9 +578,29 @@ def undo_last_edit(state, layer_id: str | None):
 
 
 # ------------------------------------------------------------ chained routing
+def plain_cost_handler(finder, raster_source: Any = None):
+    """The PLAIN cost raster of the window ``finder`` searches, as a ``RasterHandler``.
+
+    With an objective, ``finder.raster_handler`` holds the combined surface (quantised objective units, or
+    float32), so pricing a route on it gives objective units, not the euros per metre of the cost raster (and
+    float32 cannot be priced at all). A plain finder over the same points, buffer and neighbourhood has the
+    same window; no graph is built for it (only the window is read). ``raster_source`` defaults to the file
+    the finder was built from. Also usable as ``route_through_points(cost_handler=plain_cost_handler)``.
+    """
+    from pyorps import PathFinder
+
+    source = raster_source if raster_source is not None else finder.dataset.file_source
+    plain = PathFinder(
+        source, source_coords=finder.source_coords, target_coords=finder.target_coords,
+        graph_api="cython", neighborhood_str=finder.neighborhood_str,
+        search_space_buffer_m=finder.search_space_buffer_m,
+        ignore_max_cost=finder.ignore_max_cost)
+    return plain.raster_handler
+
+
 def route_through_points(finder, ordered_points: list[tuple[float, float]],
                          algorithm: str = "dijkstra", cancel=None,
-                         session=None, **algo_kwargs):
+                         session=None, cost_handler=None, **algo_kwargs):
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Least-cost path threaded through ``ordered_points`` (routing CRS).
 
@@ -581,10 +611,22 @@ def route_through_points(finder, ordered_points: list[tuple[float, float]],
     When ``session`` is a :class:`~pyorps.graph.search_session.SearchSession`,
     the first call uses ``session.route`` and later edits should call
     ``session.update`` instead of this helper.
+
+    ``cost_handler`` says what the route is priced on. None (the default):
+    the search raster of ``finder``. With an objective that is wrong, so the
+    caller passes the plain cost raster: a ``RasterHandler``, or a callable
+    that takes the finder that really searched (a session rebuilds its own
+    finder when a point leaves the window) and returns one, such as
+    :func:`plain_cost_handler`.
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if len(ordered_points) < 2:
         raise ValueError("Need at least a source and a target control point.")
+
+    def priced_on(searched_finder):
+        if cost_handler is None:
+            return searched_finder.raster_handler
+        return cost_handler(searched_finder) if callable(cost_handler) else cost_handler
 
     if session is not None:
         if cancel is not None and cancel.is_set():
@@ -592,7 +634,8 @@ def route_through_points(finder, ordered_points: list[tuple[float, float]],
         path = (session.update(ordered_points) if session.has_route
                 else session.route(ordered_points))
         line = path.path_geometry
-        route_cost = cost.evaluate_route_cost(line, finder.raster_handler)
+        route_cost = cost.evaluate_route_cost(
+            line, priced_on(session.finder if cost_handler is not None else finder))
         return line, route_cost
 
     coords: list[tuple[float, float]] = []
@@ -608,7 +651,7 @@ def route_through_points(finder, ordered_points: list[tuple[float, float]],
         coords.extend(leg)
 
     line = LineString(coords)
-    route_cost = cost.evaluate_route_cost(line, finder.raster_handler)
+    route_cost = cost.evaluate_route_cost(line, priced_on(finder))
     return line, route_cost
 
 
@@ -677,7 +720,11 @@ def run_routing(raster_source: Any, *, sources: list[tuple[float, float]],
                 delta: float = 100, num_threads: int = 0,
                 margin: float | None = None,
                 graph_api: str | None = None, full_window: bool = False,
-                cancel=None, progress=None):
+                cancel=None, progress=None,
+                objective_kwargs: dict[str, Any] | None = None,
+                objective_spec: dict[str, Any] | None = None,
+                objective_key: str | None = None,
+                force_direct: bool = False):
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Route every source/target pair through the shared, ordered waypoints.
 
@@ -698,6 +745,16 @@ def run_routing(raster_source: Any, *, sources: list[tuple[float, float]],
     before every pair AND between waypoint legs, so pressing Stop aborts
     after the segment currently in flight; routes already completed are kept.
     ``progress(done, total)`` is called before each pair.
+
+    ``objective_kwargs`` are the extra ``PathFinder`` arguments of an
+    objective run (``objective``, ``weight_precision`` and, when set, ``dem``,
+    ``gradient_options``, ``metric_layers``: ``objective.run_kwargs``).
+    Without them nothing below changes. With them: ``force_direct`` runs
+    ``find_route`` instead of a session, every route is priced on the PLAIN
+    cost raster of the same window (euros per metre, whatever the objective
+    says), and ``objective_spec`` / ``objective_key`` are stored in each
+    route's ``params`` (the finder carries ``gui_objective_key``) so that an
+    edit can rebuild the same objective.
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps import PathFinder
@@ -715,7 +772,7 @@ def run_routing(raster_source: Any, *, sources: list[tuple[float, float]],
     elif not search_buffer_m or search_buffer_m <= 0:      # F1: never blank
         search_buffer_m = default_search_buffer(sources, targets)
 
-    use_session = uses_session(graph_api, algo, margin)
+    use_session = uses_session(graph_api, algo, margin) and not force_direct
     finder_options = (None if use_session else
                       graph_api_options(graph_api, algo, delta=delta,
                                         margin=margin))
@@ -727,7 +784,13 @@ def run_routing(raster_source: Any, *, sources: list[tuple[float, float]],
         raster_source, source_coords=seed_sources, target_coords=targets,
         graph_api=graph_api, neighborhood_str=neighborhood,
         search_space_buffer_m=search_buffer_m,
-        ignore_max_cost=ignore_max_cost, **finder_kwargs)
+        ignore_max_cost=ignore_max_cost, **finder_kwargs,
+        **(objective_kwargs or {}))
+    price_kwargs: dict[str, Any] = {}
+    if objective_kwargs:
+        # an objective finder searches a combined surface: price on the plain cost raster of its window
+        finder.gui_objective_key = objective_key
+        price_kwargs["cost_handler"] = plain_cost_handler(finder, raster_source)
 
     # margin is only forwarded when the caller sets one: passing a value here
     # overrides the API's exact termination floor. A session ignores it, so a
@@ -743,6 +806,9 @@ def run_routing(raster_source: Any, *, sources: list[tuple[float, float]],
               "ignore_max_cost": ignore_max_cost,
               "hardware": hardware_of(graph_api),
               "delta": delta, "num_threads": num_threads, "margin": margin}
+    if objective_kwargs:
+        params["objective_spec"] = copy.deepcopy(objective_spec)
+        params["objective_key"] = objective_key
 
     results: list[BuiltRoute] = []
     failed: list[tuple[tuple, tuple, str]] = []
@@ -759,11 +825,11 @@ def run_routing(raster_source: Any, *, sources: list[tuple[float, float]],
                 session = finder.search_session(algorithm=algo, **algo_kwargs)
                 line, rc = route_through_points(
                     finder, pts, algorithm=algo, cancel=cancel,
-                    session=session, **algo_kwargs)
+                    session=session, **price_kwargs, **algo_kwargs)
             else:
                 line, rc = route_through_points(
                     finder, pts, algorithm=algo, cancel=cancel,
-                    **direct_kwargs)
+                    **price_kwargs, **direct_kwargs)
         except RoutingCancelled:
             if session is not None:
                 session.close()

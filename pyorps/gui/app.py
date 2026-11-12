@@ -24,7 +24,7 @@ from dash import Dash
 
 from .callbacks import register_all
 from .layout import build_layout
-from .state import ProjectState
+from .state import ProjectState, TileManager
 
 #: Custom index: Bootstrap 5.3 colour modes hang off ``data-bs-theme`` on the
 #: root element. The inline script applies the persisted choice BEFORE first
@@ -473,6 +473,7 @@ def _exit_report(state: ProjectState) -> None:
     """
     try:
         state.shutdown()
+        TileManager.stop_server()        # the shared server serves every raster
     except Exception as exc:  # pylint: disable=broad-exception-caught  # never fail at exit
         print(f"PYORPS GUI: could not stop all tile servers cleanly ({exc}).")
     try:

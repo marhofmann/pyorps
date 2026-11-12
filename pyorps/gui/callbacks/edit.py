@@ -16,8 +16,10 @@ from dash import Input, Output, State, html, no_update
 from dash.exceptions import PreventUpdate
 
 from .. import ids
+from ..services import objective as objective_service
 from ..services import routing
 from ..services.errors import Notice, guard, success
+from . import objective as objective_cb
 from .interaction import point_marker
 from .routes import add_route_layer, number_or_default, numeric_field_problem
 
@@ -150,16 +152,20 @@ def _route_plan(params: dict, finder_backend: str | None = None):
     """``(graph_api, algorithm, margin, direct)`` of a stored route.
 
     ``direct`` is True when the route runs ``find_route`` (no retained
-    session): every graph-library backend, and a delta-stepping route with a
-    termination margin. A route without a stored backend (an imported one)
+    session): every graph-library backend, a delta-stepping route with a
+    termination margin, and a route whose stored objective forces it
+    (``objective.force_direct``: 32-bit weights, extra metric layers, a DEM on
+    the GPU). A route without a stored backend (an imported one)
     keeps whatever backend the cached finder has.
     """
     graph_api = (params.get("graph_api") or finder_backend
                  or routing.DEFAULT_BACKEND)
     algorithm = params.get("algorithm", "dijkstra")
     margin = params.get("margin")
-    return (graph_api, algorithm, margin,
-            not routing.uses_session(graph_api, algorithm, margin))
+    direct = (not routing.uses_session(graph_api, algorithm, margin)
+              or objective_service.force_direct(params.get("objective_spec"),
+                                                graph_api))
+    return graph_api, algorithm, margin, direct
 
 
 def _finder_fits(finder, params: dict, points=None) -> bool:
@@ -170,7 +176,12 @@ def _finder_fits(finder, params: dict, points=None) -> bool:
     route on that finder would silently run something else. Only settings the
     route actually stored are compared. ``points`` (given for a direct route,
     which cannot leave its finder's search window) must lie inside the window.
+    A route computed with an objective (weights, metric layers, a DEM, 32-bit
+    weights) only fits the finder that carries the same ``gui_objective_key``;
+    a plain route (no key) only fits a plain finder.
     """
+    if params.get("objective_key") != getattr(finder, "gui_objective_key", None):
+        return False
     if params.get("graph_api") and finder.graph_api_name != params["graph_api"]:
         return False
     if params.get("neighborhood") and \
@@ -223,6 +234,12 @@ def _get_or_build_finder(state, layer, points, notices, *, direct=False):
 
     graph_api, algorithm, margin, _ = _route_plan(
         params, getattr(finder, "graph_api_name", None))
+    # the objective the route was computed with (weights, metric layers, DEM, precision); a layer that
+    # is no longer loaded means the finder cannot be rebuilt, so the edit is not applied
+    objective_run, missing = objective_cb.stored_run_kwargs(state, params, graph_api)
+    if objective_run is None:
+        notices.append(objective_cb.stored_layers_notice(missing))
+        return None, notices
     buffer_m = (params.get("search_space_buffer_m")
                 or routing.default_search_buffer([points[0]], [points[-1]]))
     options = (routing.graph_api_options(
@@ -236,8 +253,11 @@ def _get_or_build_finder(state, layer, points, notices, *, direct=False):
         search_space_buffer_m=buffer_m,
         ignore_max_cost=params.get("ignore_max_cost", True),
         **({"graph_api_options": options} if options else {}),
+        **objective_run.get("objective_kwargs", {}),
         notices=notices)
     if finder is not None:
+        if objective_run:
+            finder.gui_objective_key = params.get("objective_key")
         state.finders[raster_layer.id] = finder
         params.setdefault("raster_layer_id", raster_layer.id)
     return finder, notices
@@ -281,13 +301,17 @@ def recompute_variant(state, active_layer, new_points, edit_desc,
         "delta": params.get("delta", 100),
         "num_threads": params.get("num_threads", 0),
     }
+    # an objective route is priced on the plain cost raster of the window that really searched (euros per
+    # metre, not objective units); a plain route keeps pricing on the finder's own raster
+    price_kwargs = ({"cost_handler": routing.plain_cost_handler}
+                    if params.get("objective_spec") else {})
     session = None
     if direct:
         state.search_sessions.pop(active_layer.id, None)
         result, notices = guard(
             routing.route_through_points, finder,
             [tuple(p) for p in new_points], algorithm=algorithm,
-            notices=notices,
+            notices=notices, **price_kwargs,
             **routing.direct_route_kwargs(graph_api, algorithm,
                                           delta=algo_kwargs["delta"],
                                           num_threads=algo_kwargs["num_threads"],
@@ -312,7 +336,7 @@ def recompute_variant(state, active_layer, new_points, edit_desc,
         result, notices = guard(
             routing.route_through_points, finder,
             [tuple(p) for p in new_points], algorithm=algorithm,
-            session=session, notices=notices, **algo_kwargs)
+            session=session, notices=notices, **price_kwargs, **algo_kwargs)
         if result is None:
             if session is not None:
                 session.close()

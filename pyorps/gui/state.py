@@ -9,6 +9,7 @@ the refreshed view, and render callbacks derive map layers from it.
 """
 from __future__ import annotations
 
+import contextlib
 import itertools
 import logging
 import tempfile
@@ -102,25 +103,160 @@ class CostLayerConfig:
         }
 
 
+#: how long :meth:`TileManager.stop_server` lets the tile requests in flight finish
+STOP_SERVER_WAIT_S = 30.0
+#: how long it then waits for the server thread to end
+_STOP_SERVER_JOIN_S = 10.0
+
+
+def _stop_server_thread(server: Any, wait_s: float) -> None:
+    """Stop one ``server_thread.ServerThread`` without waiting for ever (see ``TileManager.stop_server``)."""
+    import time
+
+    uvicorn_server = getattr(getattr(server, "srv", None), "server", None)
+    if uvicorn_server is None or not hasattr(uvicorn_server, "force_exit"):
+        server.shutdown()                    # a WSGI server: its own stop does not wait for connections
+        return
+    tasks = getattr(getattr(uvicorn_server, "server_state", None), "tasks", None)
+    deadline = time.monotonic() + max(0.0, float(wait_s))
+    while tasks and time.monotonic() < deadline:  # the requests in flight finish first
+        time.sleep(0.05)
+    uvicorn_server.force_exit = True          # then: no waiting for idle keep-alive connections
+    uvicorn_server.should_exit = True
+    server.join(_STOP_SERVER_JOIN_S)
+    if server.is_alive():
+        # its __del__ would join again without a limit (at interpreter exit): make that a no-op
+        server._lts_initialized = False  # pylint: disable=protected-access
+        _LOG.warning("the shared tile server did not stop within %.0f s", _STOP_SERVER_JOIN_S)
+
+
 class TileManager:
-    """Tracks live localtileserver TileClients and shuts them down on removal."""
+    """The one owner of the live localtileserver TileClients of a project.
+
+    A client is registered when its raster layer is added and released exactly
+    once when the layer goes away (removed, replaced under the same id, the
+    project cleared or replaced, the state shut down). Releasing a client does
+    two things: ``client.shutdown()`` (a no-op for the shared default server of
+    the installed localtileserver, which serves every raster; older versions run
+    one server per client) and closing the client's raster reader, which is
+    what keeps the ``.tif`` open (and locked on Windows) until then.
+
+    A release that fails never breaks the user's action: it is written to the
+    logbook as a warning and kept as a notification box for the callbacks that
+    can show one (:meth:`pop_notices`).
+    """
+
+    #: failures of releases not yet shown to the user (shared by all instances:
+    #: ``shutdown_client`` is static, used by the project loader too)
+    _failures: list[dict] = []
+    _failures_lock = threading.Lock()
+    _MAX_FAILURES = 20
 
     def __init__(self) -> None:
         self._clients: dict[str, Any] = {}
 
-    def register(self, layer_id: str, tile_layer: Any) -> None:
-        self._clients[layer_id] = tile_layer.tile_client
+    def register(self, layer_id: str, tile_layer: Any) -> Any:
+        """Own ``tile_layer``'s client under ``layer_id``.
+
+        Returns a DIFFERENT client that was registered under the same id (the
+        caller must release it), else ``None``.
+        """
+        client = tile_layer.tile_client
+        previous = self._clients.get(layer_id)
+        self._clients[layer_id] = client
+        return previous if previous is not client else None
 
     @staticmethod
-    def shutdown_client(client: Any) -> None:
-        """Stop one tile server (best effort: a failed stop never blocks)."""
+    def shutdown_client(client: Any) -> bool:
+        """Release one client (server stop + reader close), once.
+
+        Returns False when there was nothing to do (no client, or already
+        released). A step that fails is reported (see the class docstring) and
+        the remaining steps still run.
+        """
+        if client is None or getattr(client, "_pyorps_released", False):
+            return False
+        with contextlib.suppress(AttributeError):    # a slotted stand-in: no flag
+            client._pyorps_released = True
+        problems: list[tuple[str, BaseException]] = []
         shutdown = getattr(client, "shutdown", None)
         if callable(shutdown):
             try:
                 shutdown()
-            except Exception:  # pragma: no cover  # nosec B110  # pylint: disable=broad-exception-caught
-                # best-effort cleanup
-                pass
+            except Exception as exc:  # pylint: disable=broad-exception-caught  # reported below, never raised
+                problems.append(("stop the tile server", exc))
+        try:
+            reader = getattr(client, "reader", None)
+            close = getattr(reader, "close", None)
+            if callable(close):
+                close()
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # reported below, never raised
+            problems.append(("close the raster reader", exc))
+        for step, exc in problems:
+            TileManager._report_failure(client, step, exc)
+        return True
+
+    @staticmethod
+    def _report_failure(client: Any, step: str, exc: BaseException) -> None:
+        """Write one failed release to the logbook and keep it for the UI."""
+        import traceback
+
+        from .services import errors, logbook
+
+        source = getattr(client, "filename", None) or "a raster"
+        notice = errors.Notice(
+            severity="warning",
+            title="A raster layer's tile server could not be released cleanly",
+            meaning=f"The GUI could not {step} for {source} "
+                    f"({type(exc).__name__}: {exc}).",
+            impact="The raster file may stay open (locked on Windows) until "
+                   "the GUI is closed. Nothing else is affected.",
+            fix="Close the GUI before you delete or overwrite that file.",
+            details="".join(traceback.format_exception(
+                type(exc), exc, exc.__traceback__)))
+        _LOG.warning("tile client release failed (%s): %s", step, exc,
+                     exc_info=exc)
+        try:
+            logbook.log_notice({**notice.to_dict(), "details": notice.details})
+        except Exception:  # pylint: disable=broad-exception-caught  # the log is best effort; the warning above stands
+            _LOG.warning("tile client failure could not be written to the logbook",
+                         exc_info=True)
+        with TileManager._failures_lock:
+            TileManager._failures.append(notice.to_dict())
+            del TileManager._failures[:-TileManager._MAX_FAILURES]
+
+    @staticmethod
+    def pop_notices() -> list[dict]:
+        """The failed releases since the last call, as notice dicts (cleared)."""
+        with TileManager._failures_lock:
+            out, TileManager._failures[:] = list(TileManager._failures), []
+        return out
+
+    @staticmethod
+    def stop_server(wait_s: float = STOP_SERVER_WAIT_S) -> None:
+        """Force-stop the shared default tile server (process exit only).
+
+        ``client.shutdown()`` leaves the shared server running for the other
+        layers; this ends it. Safe to call when it is not running.
+
+        The library's own stop (``ServerManager.shutdown_server``) is uvicorn's
+        graceful shutdown joined without a limit, and that waits until every
+        open connection has closed: a keep-alive connection that is never
+        closed made it wait for ever (seen at the end of the browser tests).
+        So the requests in flight get up to ``wait_s`` seconds to finish (a
+        tile render reads the raster with GDAL in a worker thread; cutting it
+        off at process exit can block the exit itself), then the server stops
+        without waiting for idle connections, and the join is bounded too.
+        """
+        try:
+            from server_thread import ServerManager
+        except ImportError:  # pragma: no cover  # localtileserver absent
+            return
+        try:
+            if ServerManager.is_server_live("default"):
+                _stop_server_thread(ServerManager.pop_server("default"), wait_s)
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # reported, never raised
+            TileManager._report_failure(None, "stop the shared tile server", exc)
 
     def detach(self, layer_id: str) -> Any:
         """Forget a layer's client and hand it back, WITHOUT stopping it."""
@@ -196,12 +332,30 @@ class ProjectState:
         # the same for the rasterize controls (resolution, fill value, dtype,
         # geometry buffer, thin-feature switches, crop; services.rasterize)
         self.raster_settings: dict[str, Any] = {}
+        # round 14: the settings of the newer cards, one dict per card
+        # ("objective", "cost_field", "corridor", "constrained"). Mirrored from
+        # the controls, saved raw in the project manifest, put back into the
+        # controls on open / reload; each card normalises its own key.
+        self.gui_settings: dict[str, dict] = {}
+        # background jobs by kind ("rasterize", "constrained", "cost_field",
+        # "corridor"; services.jobs). Runtime only, never saved. The worker
+        # thread only computes; the poll callback changes the state.
+        self.jobs: dict[str, Any] = {}
+        # the cost table of an opened project (project.json "cost_table"): the
+        # cost editor is client-side, so a first paint reads it from here
+        self.loaded_cost_table: dict = {}
+        # shared-trench corridor graphs by segments-layer id, kept for saving
+        self.corridor_graphs: dict[str, Any] = {}
         # set when "Open project" has just written the routing controls: the
         # backend the page was given. The algorithm list callback reads it once
         # so the opened algorithm survives the backend change (callbacks/routes)
         self.routing_restore_backend: str | None = None
         # unsaved work since the last project save (drives the close guard)
         self.dirty: bool = False
+        # the project file the project was opened from or saved to (Open, Save,
+        # the ``--project`` flag); None for a blank or new project. A page that
+        # loads later names it instead of only counting the layers.
+        self.project_path: str | None = None
         self.work_dir = Path(work_dir) if work_dir else Path(
             tempfile.mkdtemp(prefix="pyorps_gui_"))
         self.work_dir.mkdir(parents=True, exist_ok=True)
@@ -276,8 +430,11 @@ class ProjectState:
             self.layers[layer.id] = layer
             for z, lid in enumerate(order):
                 self.layers[lid].z = z
+            replaced = self.tiles.detach(layer.id) if tile is None else None
             if tile is not None:
-                self.tiles.register(layer.id, tile)
+                replaced = self.tiles.register(layer.id, tile)
+            if replaced is not None:            # the layer id was in use before
+                self._defer(lambda c=replaced: self.tiles.shutdown_client(c))
             self.dirty = True
         return layer
 
@@ -393,8 +550,19 @@ class ProjectState:
             if self.routing_job is not None:      # a running job may not touch
                 self.routing_job.cancel.set()     # the cleared state anyway
                 self.routing_job = None
+            for job in self.jobs.values():        # same for every background job
+                cancel = getattr(job, "cancel", None)
+                if cancel is not None:
+                    cancel.set()
+            self.jobs = {}
+            self.gui_settings = {}
+            self.loaded_cost_table = {}
+            self.corridor_graphs = {}
             self.dirty = False                    # nothing left to lose
+            self.project_path = None
             self.project_crs = DEFAULT_PROJECT_CRS
 
     def shutdown(self) -> None:
+        """Release every tile client (the shared server itself stays up: see
+        :meth:`TileManager.stop_server`, called once at process exit)."""
         self.tiles.shutdown_all()

@@ -7,7 +7,7 @@ converted here so the rest of the app can stay CRS-agnostic.
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025.
+Automated Power Line Routing', CIRED 2025.
 """
 from __future__ import annotations
 

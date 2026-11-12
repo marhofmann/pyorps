@@ -13,7 +13,7 @@ import json
 import geopandas as gpd
 import numpy as np
 import pytest
-from conftest import SOURCE, TARGET, TEST_CRS, invoke
+from conftest import SOURCE, TARGET, TEST_CRS, invoke, poll_job
 from dash.exceptions import PreventUpdate
 from shapely.geometry import LineString, box
 
@@ -231,12 +231,16 @@ def test_run_reaps_a_job_that_failed_while_nobody_polled(app, state):
     job.status, job.error = "failed", RuntimeError("boom")
     state.routing_job = job
     resp = _run(app, None)
-    assert state.routing_job is None                          # not "forever"
     titles = [n["title"] for n in _new_notices(resp)]
     assert "An earlier routing run was collected" in titles
+    assert resp[ids.ROUTING_POLL]["disabled"] is False        # round 15: the poll collects it
+    assert resp[ids.ROUTING_CONFIRM_MODAL]["is_open"] is False
+    resp = poll_job(app, ids.JOB_ACK_ROUTING, _new_notices(resp))
+    assert state.routing_job is None                          # not "forever"
+    titles = [n["title"] for n in _new_notices(resp)]
     assert "Something went wrong" in titles                  # the job's error
     assert resp[ids.ROUTING_STATUS]["children"] == "routing failed"
-    assert resp[ids.ROUTING_CONFIRM_MODAL]["is_open"] is False
+    assert resp[ids.ROUTING_POLL]["disabled"] is True
 
 
 def test_run_reaps_a_finished_job_and_adds_its_routes(app, state, raster_layer,
@@ -257,6 +261,9 @@ def test_run_reaps_a_finished_job_and_adds_its_routes(app, state, raster_layer,
     job.thread.join(timeout=180)
     assert job.status == "done"
     resp = _run(app, raster_layer.id)
+    assert resp[ids.ROUTING_POLL]["disabled"] is False        # round 15: the poll collects it
+    assert state.layers_of_kind("route") == []
+    resp = poll_job(app, ids.JOB_ACK_ROUTING, _new_notices(resp))
     assert state.routing_job is None
     assert len(state.layers_of_kind("route")) == 1
     assert "1 route(s) built" in resp[ids.ROUTING_STATUS]["children"]

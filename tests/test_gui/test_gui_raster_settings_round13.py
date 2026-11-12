@@ -397,7 +397,7 @@ def test_there_is_one_modal_and_no_browser_dialog(layout):
 
 
 def test_every_destructive_button_has_a_gate_and_its_action_listens_on_the_go_store(app):
-    assert len(confirm_cb.GATES) == len(ids.GO_STORES) == 10
+    assert len(confirm_cb.GATES) == len(ids.GO_STORES) == 11
     inputs_of = {}
     for spec in app._callback_list:                                           # noqa: SLF001
         for item in spec["inputs"]:
@@ -964,6 +964,42 @@ LIMITS = [
     (ids.NUM_THREADS, 0, None, 1, "auto"),
     (ids.MARGIN, 0, None, 0.1, "distance"),
     (ids.EDIT_SIMPLIFY_TOL, 0, None, 0.5, "(m)")]
+
+
+from pyorps.gui.services import profile_form as _profile_form_service
+
+# the number inputs of the constrained profile form: limits and unit come from the service's specs
+LIMITS += [(ids.OHLF_IDS[key], spec.minimum, spec.maximum, 1 if spec.whole else "any",
+            f"({spec.unit})" if spec.unit else spec.label)
+           for key, spec in _profile_form_service.FIELD_SPECS.items() if spec.kind == "number"]
+
+
+from pyorps.gui.services import corridor as _corridor_service
+
+# the number inputs of the corridor card: limits and unit come from the service's specs
+_COR_NUMBER_IDS = {"k_per_pair": ids.COR_K, "min_shared_length_m": ids.COR_MIN_SHARED,
+                   "max_pair_cost": ids.COR_MAX_PAIR_COST}
+LIMITS += [(_COR_NUMBER_IDS[key], spec.minimum, spec.maximum, 1 if spec.whole else "any",
+            f"({spec.unit})" if spec.unit else spec.label)
+           for key, spec in _corridor_service.FIELD_SPECS.items() if spec.kind == "number"]
+
+
+from pyorps.gui.services import cost_field as _cost_field_service
+
+# the number input of the cost-field card: its limit comes from the service (0 = automatic)
+LIMITS += [(ids.CF_THREADS, 0, _cost_field_service.max_threads(), 1, "0 = automatic")]
+
+
+from pyorps.gui.sections import objective as _objective_section
+from pyorps.gui.services import objective as _objective_service
+
+# the number inputs of the objective card: limits and unit come from the service's specs (unit "-" = none, so the
+# label itself is what is checked); the slope range is at least one table step wide, so its minimum is that step
+LIMITS += [(_objective_section.NUMBER_IDS[key],
+            _objective_service.FIELD_SPECS["gradient.bin_width_pct"].minimum if key == "gradient.s_max_pct"
+            else spec.minimum,
+            spec.maximum, "any", f"({spec.unit})" if spec.unit and spec.unit != "-" else spec.label)
+           for key, spec in _objective_service.FIELD_SPECS.items() if key in _objective_section.NUMBER_IDS]
 
 
 @pytest.mark.parametrize("control,minimum,maximum,step,unit", LIMITS)

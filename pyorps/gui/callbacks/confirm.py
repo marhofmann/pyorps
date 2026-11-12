@@ -202,6 +202,22 @@ def _ask_save_profile(_state, path) -> Question | None:
     return _overwrite(path, "profile file")
 
 
+def _ask_save_corridor(state, path) -> Question | None:
+    """The overwrite question of "Save graph"; None when it can go ahead or has another problem to report.
+
+    The corridor service names the refusals of a save (no graph, blank or wrong path, folder, existing file):
+    only a path that is refused for existing alone is asked about. Anything else goes ahead, and the save
+    callback reports it as a notice.
+    """
+    from ..services import corridor
+    from .corridor import latest_graph
+
+    _, graph = latest_graph(state)
+    only_exists = (not corridor.save_problems(graph, path, overwrite=True)
+                   and bool(corridor.save_problems(graph, path, overwrite=False)))
+    return _overwrite(path, "corridor GeoPackage") if only_exists else None
+
+
 GATES: tuple[Gate, ...] = (
     Gate("new_project", ids.PROJECT_NEW_BTN, ids.GO_NEW_PROJECT, (),
          _ask_new_project),
@@ -223,6 +239,8 @@ GATES: tuple[Gate, ...] = (
          ((ids.COST_EXPORT_PATH, "value"),), _ask_export_costs),
     Gate("save_profile", ids.OHL_PROFILE_SAVE_BTN, ids.GO_SAVE_PROFILE,
          ((ids.OHL_PROFILE_PATH, "value"),), _ask_save_profile),
+    Gate("save_corridor", ids.COR_SAVE_BTN, ids.GO_SAVE_CORRIDOR,
+         ((ids.COR_SAVE_PATH, "value"),), _ask_save_corridor),
 )
 GATE_BY_ACTION = {gate.action: gate for gate in GATES}
 assert tuple(gate.go for gate in GATES) == ids.GO_STORES

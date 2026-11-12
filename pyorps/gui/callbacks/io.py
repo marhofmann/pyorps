@@ -24,7 +24,8 @@ from dash.exceptions import PreventUpdate
 from .. import ids
 from ..services import cost_model, manual_cost, project_io, rasterize, routing
 from ..services.errors import Notice, cap_notices, guard, success
-from .costmodel import _coverage_text
+from ..state import TileManager
+from .costmodel import _coverage_text, register_cost_table
 from .data import _dataset_list, _study_area_info
 
 _EMPTY_FC = {"type": "FeatureCollection", "features": []}
@@ -135,6 +136,65 @@ def _manual_rows(state) -> list[dict]:
             for i, cost in enumerate(layer.gdf[manual_cost.COST_COLUMN])]
 
 
+def cost_table_view(cost_table) -> dict:
+    """What the cost editor shows for a saved ``cost_table`` (the manifest's).
+
+    ``{"keys", "dataset_id", "rows", "grid_state", "column_defs",
+    "modifiers"}``: "Open project" sends these to the browser and the first
+    paint of a page (``--project``, a reload) reads the same values, so the two
+    cannot disagree. Anything but a mapping (an old project, a broken file)
+    gives the empty table.
+    """
+    table = cost_table if isinstance(cost_table, dict) else {}
+
+    def _list(name: str) -> list:
+        value = table.get(name)
+        return value if isinstance(value, list) else []
+
+    keys = tuple(str(key) for key in _list("feature_keys"))
+    dataset_id = table.get("dataset_id")
+    return {
+        "keys": keys,
+        "dataset_id": dataset_id,
+        "rows": _list("rows"),
+        "grid_state": ({"dataset_id": dataset_id, "feature_keys": list(keys)}
+                       if (keys or dataset_id) else {}),
+        "column_defs": cost_model.grid_column_defs(keys) if keys else [],
+        "modifiers": _list("modifiers"),
+    }
+
+
+def apply_opened_project(state, manifest: dict, path=None) -> None:
+    """What follows ``project_io.load_project`` for EVERY way of opening a project.
+
+    "Open project" and the ``--project`` start flag both call this, so a project
+    opened by either is in exactly the same state:
+
+    * no route is selected, and the study area is not a shape in the (cleared)
+      draw control, so its "control is empty" echo must not delete it;
+    * the routing controls keep the opened algorithm once, instead of resetting
+      it to the backend's default as they do for a user pick;
+    * the cost table is kept for the first paint of a page (the cost editor is
+      client-side, so a reload would otherwise show an empty table) and
+      registered for the Raster tab, as a cell edit does later (``coverage``);
+    * the path of the opened file is kept (``state.project_path``) so that a page
+      loaded later says which project it shows. ``path`` is the file as the user
+      or the flag named it; without it the project has no path.
+    """
+    state.project_path = str(path) if path else None
+    state.active_route_id = None
+    state._study_area_not_drawn = state.study_area is not None
+    state.routing_restore_backend = (
+        routing.normalise_routing_settings(state.routing_settings)
+        or routing.ROUTING_SETTING_DEFAULTS)["graph_api"]
+    table = (manifest or {}).get("cost_table")
+    state.loaded_cost_table = dict(table) if isinstance(table, dict) else {}
+    view = cost_table_view(state.loaded_cost_table)
+    if view["grid_state"]:
+        register_cost_table(state, dataset_id=view["dataset_id"],
+                            feature_keys=view["keys"], rows=view["rows"])
+
+
 def client_state_values(state, status: str, notices: list, *,
                         manifest: dict | None = None,
                         tick: int | None = None):
@@ -148,12 +208,9 @@ def client_state_values(state, status: str, notices: list, *,
     raster log, the route selection and draft, the map highlights - is
     cleared, because it belonged to the project that was just replaced.
     """
-    cost_table = (manifest or {}).get("cost_table") or {}
-    keys = tuple(cost_table.get("feature_keys") or ())
-    dataset_id = cost_table.get("dataset_id")
-    rows = cost_table.get("rows") or []
-    grid_state = ({"dataset_id": dataset_id, "feature_keys": list(keys)}
-                  if (keys or dataset_id) else {})
+    cost_table = cost_table_view((manifest or {}).get("cost_table"))
+    keys, dataset_id = cost_table["keys"], cost_table["dataset_id"]
+    rows, grid_state = cost_table["rows"], cost_table["grid_state"]
     coverage, notices = guard(_coverage_text, state, dataset_id, keys, rows,
                               notices=notices)
     manual_rows, notices = guard(_manual_rows, state, notices=notices)
@@ -166,14 +223,13 @@ def client_state_values(state, status: str, notices: list, *,
         (ids.LAYERS_VIEW, "data"): state.layers_view(),
         (ids.PROJECT_STATUS, "children"): status,
         (ids.PROJECT_CRS, "value"): str(state.project_crs),
-        (ids.COST_GRID, "columnDefs"): (cost_model.grid_column_defs(keys)
-                                        if keys else []),
+        (ids.COST_GRID, "columnDefs"): cost_table["column_defs"],
         (ids.COST_GRID, "rowData"): rows,
         (ids.COST_GRID_STATE, "data"): grid_state,
         (ids.COST_COVERAGE_INFO, "children"): coverage or "",
         (ids.COST_DATASET, "value"): None,
         (ids.COST_FEATURE_KEYS, "value"): [],
-        (ids.MODIFIER_GRID, "rowData"): cost_table.get("modifiers") or [],
+        (ids.MODIFIER_GRID, "rowData"): cost_table["modifiers"],
         (ids.PREPROC_GRID, "rowData"): [],
         (ids.PPB_CONDS, "data"): [],
         (ids.MANUAL_GRID, "rowData"): manual_rows,
@@ -286,6 +342,7 @@ def register(app, state) -> None:
             notices=notices)
         if result is None:
             return "", notices
+        state.project_path = str(result)
         included = ", ".join(include) if include else "routes only"
         suffix = _skipped_suffix(_saved_skipped(result))
         notices.append(success(
@@ -340,19 +397,16 @@ def register(app, state) -> None:
                 focus_id=ids.TAB_DATA,
                 focus_control=ids.PROJECT_OPEN_PATH).to_dict())
             return untouched + (notices,)
+        TileManager.pop_notices()        # only this action's failures are shown
         manifest, notices = guard(project_io.load_project, state, path,
                                   notices=notices)
+        notices.extend(TileManager.pop_notices())    # a tile server that would not stop
         if manifest is None:
             return untouched + (notices,)
-        # the opened project has no route selected and its area is not a shape
-        # in the (now cleared) draw control
-        state.active_route_id = None
-        state._study_area_not_drawn = state.study_area is not None
-        # the algorithm list callback keeps the opened algorithm once, instead
-        # of resetting it to the backend's default as it does for a user pick
-        state.routing_restore_backend = (
-            routing.normalise_routing_settings(state.routing_settings)
-            or routing.ROUTING_SETTING_DEFAULTS)["graph_api"]
+        # no route selected, the area is not a drawn shape, the opened algorithm
+        # is kept, the cost table is remembered for a reload - the same steps
+        # as the ``--project`` start flag (see ``apply_opened_project``)
+        apply_opened_project(state, manifest, path)
         suffix = _skipped_suffix(manifest.get("load_skipped"))
         values, notices = client_state_values(
             state, f"opened: {path}{suffix}", notices, manifest=manifest)
@@ -371,7 +425,9 @@ def register(app, state) -> None:
         notices = list(notices or [])
         if not go:
             raise PreventUpdate
+        TileManager.pop_notices()
         state.clear()
+        notices.extend(TileManager.pop_notices())    # a tile server that would not stop
         state._study_area_not_drawn = False
         values, notices = client_state_values(state, "new project", notices)
         notices.append(success("New project",

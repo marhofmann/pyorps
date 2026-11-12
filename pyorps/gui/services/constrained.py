@@ -6,13 +6,22 @@ discovery, live profile validation (mirroring ``__post_init__`` so the error
 box never has to appear — 21.5), experimental-backend gating (F10), and the
 tower export. The reported terrain cost is 2-D even though the optimizer used
 3-D penalties — a known limitation the GUI labels explicitly (F9).
+
+Round 14 (gap 7): ``is_heavy`` decides which runs go to a background job,
+``snapshot_run_inputs`` / ``background_run`` / ``status_text`` are the job's
+worker side, and ``run_constrained_path`` takes ``cancel`` / ``progress``.
+The library has no cancel point inside one search, so Stop acts between the
+segments of a run (``STOP_NOTE`` says so).
 """
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
+from . import jobs, routing
 from .errors import Notice
+from .jobs import RUNNING, JobCancelled
 
 #: F10: only these backends are production-ready; the GPU variants hang /
 #: exhaust VRAM on real rasters and must be explicitly opted into.
@@ -22,6 +31,28 @@ EXPERIMENTAL_BACKENDS = ("cython_parallel", "raster_gpu", "raster_gpu_v4")
 F9_CAVEAT = ("Terrain cost shown is 2-D: the optimizer used 3-D penalties "
              "but reports the plain 2-D terrain cost (known limitation). "
              "Compare variants by length + tower cost too.")
+
+#: the key of the background job in ``ProjectState.jobs`` (the one the page's
+#: ``layout.JOB_CONTROLS`` knows) and the name the user reads in its status
+JOB_KIND = "constrained"
+JOB_LABEL = "Constrained routing"
+#: what a Stop is promised to do, for the status line and the Stop answer. The
+#: library offers no cancel point inside one search, so Stop acts between segments.
+STOP_NOTE = ("A segment (one search from a point to the next one) cannot be "
+             "interrupted: the run stops when the segment in flight has "
+             "finished (a run without waypoints is one single segment), and "
+             "then adds no route.")
+
+
+def is_heavy(est: dict | None) -> bool:
+    """Does a constrained run with this prognosis go to a background job?
+
+    ``est`` is ``routing.estimate_routing(...)``; the criterion is the one of
+    plain routing (``routing.needs_confirmation``, read when called). No
+    prognosis (the estimate itself failed, audit #35) counts as heavy: an unknown
+    effort must not block the page.
+    """
+    return est is None or routing.needs_confirmation(est)
 
 
 def profiles_dir() -> Path | None:
@@ -168,10 +199,17 @@ def run_constrained(raster_source: Any, *, source: tuple[float, float],
     return result, towers, crs
 
 
+def _cancel_point(cancel) -> None:
+    """A segment boundary: ends the run (``JobCancelled``) once Stop was pressed."""
+    if cancel is not None and cancel.is_set():
+        raise JobCancelled(f"{JOB_LABEL} was stopped")
+
+
 def run_constrained_path(raster_source: Any, *, points, profile: dict,
                          backend: str = "cython", neighborhood: str = "r2",
                          search_buffer_m: float | None = None,
-                         dem: str | None = None, dsm: str | None = None):
+                         dem: str | None = None, dsm: str | None = None,
+                         cancel=None, progress=None):
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Constrained routing through ``points`` (source, *waypoints, target).
 
@@ -179,6 +217,14 @@ def run_constrained_path(raster_source: Any, *, points, profile: dict,
     interior waypoint is a segment endpoint, i.e. a FORCED terminal tower there
     (task 46). Returns a dict with ``line, towers, crs, total_cost,
     total_length, total_cell_cost, summary`` or None if any segment has no path.
+
+    ``cancel`` (anything with ``is_set()``, e.g. a ``threading.Event``) and
+    ``progress`` are for a background run. One segment is one library call that
+    cannot be interrupted, so Stop is looked at between the segments (and once
+    more after the last one): a stopped run raises ``jobs.JobCancelled`` and
+    returns nothing, never a partial tower chain. ``progress(done, total,
+    stage)`` is called when each segment starts, with the segments finished so
+    far. Without them (the synchronous run) the function behaves as before.
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     import geopandas as gpd
@@ -191,7 +237,11 @@ def run_constrained_path(raster_source: Any, *, points, profile: dict,
     segments, tower_frames, summaries = [], [], []
     crs = None
     totals = {"total_cost": 0.0, "total_length": 0.0, "total_cell_cost": 0.0}
-    for a, b in zip(points[:-1], points[1:]):
+    n_segments = len(points) - 1
+    for index, (a, b) in enumerate(zip(points[:-1], points[1:])):
+        _cancel_point(cancel)
+        if progress is not None:
+            progress(index, n_segments, "segments done")
         result, towers, crs = run_constrained(
             raster_source, source=a, target=b, profile=profile,
             backend=backend, neighborhood=neighborhood,
@@ -206,6 +256,7 @@ def run_constrained_path(raster_source: Any, *, points, profile: dict,
         totals["total_length"] += float(getattr(result, "total_length", 0) or 0)
         totals["total_cell_cost"] += float(
             getattr(result, "total_cell_cost", 0) or 0)
+    _cancel_point(cancel)             # Stop came during the last segment
 
     # stitch the segment lines end-to-end (drop the shared vertex at joins)
     coords: list = []
@@ -255,3 +306,58 @@ def result_summary(result) -> dict:
         "tower_type_counts": dict(result.tower_type_counts or {}),
         "caveat": F9_CAVEAT,
     }
+
+
+# ------------------------------------------------------ background run (P10)
+def snapshot_run_inputs(raster_source: Any, *, points, profile: dict,
+                        backend: str, neighborhood: str,
+                        search_buffer_m: float | None, dem: str | None,
+                        dsm: str | None) -> dict[str, Any]:
+    """The ``run_constrained_path`` inputs of a background run, as the worker may keep them.
+
+    The worker thread must never see the project change under it (the user can
+    edit the profile text or move the points while a long run works), so it gets
+    its own copy of the points and of the profile dict. Everything else is a
+    string or a number. Returns the keywords of :func:`run_constrained_path`
+    plus ``raster_source``.
+    """
+    return {
+        "raster_source": raster_source,
+        "points": [tuple(float(c) for c in p) for p in points],
+        "profile": copy.deepcopy(profile), "backend": backend,
+        "neighborhood": neighborhood, "search_buffer_m": search_buffer_m,
+        "dem": dem, "dsm": dsm}
+
+
+def background_run(job) -> dict[str, Any]:
+    """Worker body of a heavy constrained run (``jobs.start_job(..., work=background_run)``).
+
+    Computes only: it reads ``job.params["run"]`` (the snapshot from
+    :func:`snapshot_run_inputs`), reports each segment with ``job.report`` and
+    stops between segments when ``job.cancel`` is set (``JobCancelled``: no
+    route). Returns ``{"result": <run_constrained_path result or None for "no
+    path">, "notices": [dict]}``; the notices are the warnings the library
+    raised, which ``errors.guard`` cannot collect from another thread. The poll
+    callback registers the route from it.
+    """
+    run = dict(job.params["run"])
+    raster_source = run.pop("raster_source")
+    result, notices = jobs.run_collecting_warnings(
+        run_constrained_path, raster_source, **run, cancel=job.cancel, progress=job.report)
+    return {"result": result, "notices": notices}
+
+
+def status_text(job) -> str:
+    """The status line of a running constrained job: its progress, and where a Stop takes effect.
+
+    The job service's own line says "Stop ends it after the current step"; for this job the step is a
+    segment, which cannot be interrupted, so the line names it. Once Stop was pressed the line says
+    that the run is ending and adds no route.
+    """
+    text = job.progress_text()
+    if job.status != RUNNING:
+        return text
+    text = text.replace("after the current step", "after the segment in flight")
+    if job.cancel.is_set():
+        text += " (stop requested, the run ends after the segment in flight and adds no route)"
+    return text

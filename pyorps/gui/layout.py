@@ -22,6 +22,11 @@ import dash_leaflet as dl
 from dash import dcc, html
 
 from . import ids
+from .sections import corridor as corridor_section
+from .sections import cost_field as cost_field_section
+from .sections import objective as objective_section
+from .sections import profile_form as profile_form_section
+from .services import jobs as jobs_service
 from .services import rasterize, routing
 from .services.tiles import COLORMAPS
 
@@ -150,6 +155,57 @@ GRID_STYLE = {"height": "260px", "width": "100%"}
 SMALL_GRID_STYLE = {"height": "170px", "width": "100%"}
 TALL_GRID_STYLE = {"height": "62vh", "width": "100%"}   # Layers list — see all
 
+#: class of the grids whose columns ``assets/grid-fit.js`` fits to the grid width the first time
+#: the grid is shown (the grids use it instead of dash-ag-grid's ``columnSize``). ``columnSize``
+#: fits at once, also in a hidden tab or a closed card where the grid has no width: AG Grid then
+#: warns (#29) or squeezes the columns and does not fit again when the card opens (round 15).
+FIT_COLUMNS = "gui-grid-fit"
+#: the same, and again whenever the grid's width changes (was ``columnSize="responsiveSizeToFit"``)
+FIT_COLUMNS_RESPONSIVE = "gui-grid-fit gui-grid-fit-responsive"
+
+
+def _row_selection(multi: bool, *, keep: bool = False) -> dict:
+    """The ``rowSelection`` option of a grid, in the AG Grid 32.2+ object form.
+
+    The string forms ("single" / "multiple") and ``suppressRowDeselection`` are
+    deprecated since AG Grid 32.2 and warn in the browser console. The object
+    form turns a checkbox column and click selection on or off by itself, so
+    both are spelled out to keep the behaviour the grids always had: a click
+    selects a row, ctrl/cmd-click adds one (``multi``), no checkbox column.
+    ``keep=True`` replaces ``suppressRowDeselection``: a click only selects, a
+    plain re-click or ctrl-click never deselects.
+    """
+    options: dict = {
+        "mode": "multiRow" if multi else "singleRow",
+        "checkboxes": False,
+        "enableClickSelection": "enableSelection" if keep else True,
+    }
+    if multi:
+        options["headerCheckbox"] = False
+    return options
+
+
+def section_grid(grid_id: str, column_defs: list, *, multi: bool = False,
+                 editable: bool = True, height: str = "160px",
+                 options: dict | None = None, responsive: bool = False):
+    """A small editable AG Grid for a section module (``pyorps.gui.sections``).
+
+    Grid options are built in this module only, so that every grid of the app
+    gets the selection options of :func:`_row_selection` (a test checks that no
+    other module builds grid options). ``options`` adds further AG Grid options;
+    ``rowSelection`` cannot be overridden through it. ``responsive=True`` fits
+    the columns again whenever the grid's width changes (:data:`FIT_COLUMNS_RESPONSIVE`).
+    """
+    grid_options = {"stopEditingWhenCellsLoseFocus": True, **(options or {}),
+                    "rowSelection": _row_selection(multi)}
+    return dag.AgGrid(
+        id=grid_id, columnDefs=column_defs, rowData=[],
+        defaultColDef={"editable": editable, "resizable": True,
+                       "sortable": False},
+        dashGridOptions=grid_options,
+        className=FIT_COLUMNS_RESPONSIVE if responsive else FIT_COLUMNS,
+        style={**GRID_STYLE, "height": height})
+
 #: a status spinner appears only after this long, so quick calls do not flicker
 _SPINNER_DELAY_MS = 300
 
@@ -159,6 +215,8 @@ OVERLAY_STATUS = "overlay-status"
 _DEFAULT_UI_STATE = {"active_tab": ids.TAB_DATA, "click_mode": "off",
                      "active_route_id": None}
 _DEFAULT_ROUTE_DRAFT = {"sources": [], "targets": [], "waypoints": []}
+#: poll interval of the rasterize / constrained / cost-field / corridor jobs
+_JOB_POLL_MS = 800
 
 
 # --------------------------------------------------------------------- stores
@@ -189,8 +247,22 @@ def _stores() -> list:
         # counter per destructive action that fires it (callbacks/confirm.py)
         dcc.Store(id=ids.CONFIRM_PENDING, data=None),
         *[dcc.Store(id=go, data=None) for go in ids.GO_STORES],
+        # round 14: mirrors of the newer cards (objective, cost field,
+        # corridor graph, constrained profile form) and the last loaded profile
+        dcc.Store(id=ids.OBJ_SETTINGS, data={}),
+        dcc.Store(id=ids.CF_SETTINGS, data={}),
+        dcc.Store(id=ids.COR_SETTINGS, data={}),
+        dcc.Store(id=ids.OHL_SETTINGS, data={}),
+        dcc.Store(id=ids.OHLF_BASE, data={}),
         # polls the background routing job while one is running
         dcc.Interval(id=ids.ROUTING_POLL, interval=600, disabled=True),
+        # the polls of the other background jobs, off until a job runs
+        *[dcc.Interval(id=poll, interval=_JOB_POLL_MS, disabled=True)
+          for poll in (ids.RASTERIZE_POLL, ids.OHL_POLL, ids.CF_POLL,
+                       ids.COR_POLL)],
+        # one per poll: the token of the job outcome the page was handed last
+        # (callbacks/job_poll.py; the next tick sends it back as the receipt)
+        *[dcc.Store(id=ack, data=None) for ack in ids.JOB_ACK_STORES],
     ]
 
 
@@ -640,9 +712,9 @@ def _cost_tab() -> html.Div:
                 id=ids.COST_GRID, columnDefs=[], rowData=[],
                 defaultColDef={"editable": True, "resizable": True,
                                "sortable": True},
-                dashGridOptions={"rowSelection": "multiple",
+                dashGridOptions={"rowSelection": _row_selection(True),
                                  "stopEditingWhenCellsLoseFocus": True},
-                columnSize="sizeToFit", style=GRID_STYLE),
+                className=FIT_COLUMNS, style=GRID_STYLE),
             dbc.ButtonGroup([
                 dbc.Button("+ Row", id=ids.COST_ADD_ROW_BTN, size="sm",
                            color="secondary"),
@@ -726,9 +798,9 @@ def _cost_tab() -> html.Div:
                                   "the forbidden zone (not 0 or empty)."},
             ],
             defaultColDef={"resizable": True},
-            dashGridOptions={"rowSelection": "single",
+            dashGridOptions={"rowSelection": _row_selection(False),
                              "stopEditingWhenCellsLoseFocus": True},
-            columnSize="sizeToFit", style=SMALL_GRID_STYLE),
+            className=FIT_COLUMNS, style=SMALL_GRID_STYLE),
         dbc.ButtonGroup([
             dbc.Button("+ Modifier", id=ids.MODIFIER_ADD_BTN, size="sm",
                        color="secondary"),
@@ -810,9 +882,9 @@ def _cost_tab() -> html.Div:
                      "editable": True, "maxWidth": 110},
                 ],
                 defaultColDef={"resizable": True},
-                dashGridOptions={"rowSelection": "single",
+                dashGridOptions={"rowSelection": _row_selection(False),
                                  "stopEditingWhenCellsLoseFocus": True},
-                columnSize="sizeToFit", style=SMALL_GRID_STYLE),
+                className=FIT_COLUMNS, style=SMALL_GRID_STYLE),
             dbc.ButtonGroup([
                 dbc.Button("+ Step", id=ids.PREPROC_ADD_BTN, size="sm",
                            color="secondary"),
@@ -938,9 +1010,9 @@ def _manual_cost_section() -> html.Details:
             ],
             getRowId="params.data.__row",
             defaultColDef={"resizable": True},
-            dashGridOptions={"rowSelection": "multiple",
+            dashGridOptions={"rowSelection": _row_selection(True),
                              "stopEditingWhenCellsLoseFocus": True},
-            columnSize="sizeToFit", style=SMALL_GRID_STYLE),
+            className=FIT_COLUMNS, style=SMALL_GRID_STYLE),
         dbc.ButtonGroup([
             dbc.Button("Snapshot drawn shapes", id=ids.MANUAL_CREATE_BTN,
                        size="sm", color="secondary", outline=True,
@@ -1061,10 +1133,17 @@ def _raster_tab() -> html.Div:
                                       "F2)"),
                 _browse(ids.RASTER_SAVE_PATH, "the raster save file"),
             ], size="sm"),
-            dbc.Button("Build cost raster", id=ids.RASTERIZE_BTN, size="sm",
-                       color="primary", className="gui-cta",
-                       title="Enabled once a cost table is seeded in the " +
-                             "Cost tab"),
+            html.Div([
+                dbc.Button("Build cost raster", id=ids.RASTERIZE_BTN,
+                           size="sm", color="primary", className="gui-cta",
+                           title="Enabled once a cost table is seeded in " +
+                                 "the Cost tab"),
+                # shown only while a heavy build runs in the background
+                dbc.Button("⏹ Stop", id=ids.RASTERIZE_STOP_BTN, size="sm",
+                           color="danger", style={"display": "none"},
+                           title="Interrupt the running build - it stops " +
+                                 "at the next stage; no raster is kept"),
+            ], className="d-flex align-items-center gap-2"),
             dcc.Loading(html.Pre(id=ids.RASTERIZE_LOG,
                                  className="small bg-light p-1",
                                  style={"maxHeight": "140px",
@@ -1221,12 +1300,11 @@ def _routes_tab() -> html.Div:
                                      "d3.format(',.0f')(params.value)"}},
                 ],
                 defaultColDef={"resizable": True},
-                dashGridOptions={"rowSelection": "multiple",
+                dashGridOptions={"rowSelection": _row_selection(True),
                                  "stopEditingWhenCellsLoseFocus": True},
-                # responsive: this grid initializes inside a hidden tab (zero
-                # width) and the sidebar is drag-resizable — a one-shot
-                # sizeToFit would leave columns overflowed/virtualized out
-                columnSize="responsiveSizeToFit", style=SMALL_GRID_STYLE),
+                # responsive: the sidebar is drag-resizable — a one-shot
+                # fit would leave columns overflowed/virtualized out
+                className=FIT_COLUMNS_RESPONSIVE, style=SMALL_GRID_STYLE),
             dbc.ButtonGroup([
                 dbc.Button("− Remove selected", id=ids.POINTS_REMOVE_BTN,
                            size="sm", color="secondary"),
@@ -1353,6 +1431,8 @@ def _routes_tab() -> html.Div:
                 id=ids.MARGIN_WRAP, title=routing.MARGIN_HELP),
         ], title="Advanced")], start_collapsed=True),
         ]),
+        # objective & terrain card (closed by default; owned by sections/objective)
+        *objective_section.section(),
         _collapsible_card("Constrained routing", [
             dbc.Switch(id=ids.OHL_ENABLE, value=False, className="small",
                        label="Constrained routing (overhead line / towers)"),
@@ -1362,6 +1442,10 @@ def _routes_tab() -> html.Div:
                        "forces a tower.", className="text-muted"),
             dbc.Collapse(_ohl_options(), id=ids.OHL_COLLAPSE, is_open=False),
         ]),
+        # cost-field and corridor-graph cards (closed by default; Q3: they live
+        # in the Routes tab, owned by sections/cost_field and sections/corridor)
+        *cost_field_section.section(),
+        *corridor_section.section(),
         _collapsible_card("Computed routes", [
         dbc.Row([
             dbc.Col([
@@ -1405,9 +1489,10 @@ def _routes_tab() -> html.Div:
             ],
             getRowId="params.data.id",
             defaultColDef={"resizable": True, "sortable": True},
-            dashGridOptions={"rowSelection": "multiple", "animateRows": True,
+            dashGridOptions={"rowSelection": _row_selection(True),
+                             "animateRows": True,
                              "stopEditingWhenCellsLoseFocus": True},
-            columnSize="sizeToFit", style=SMALL_GRID_STYLE),
+            className=FIT_COLUMNS, style=SMALL_GRID_STYLE),
         html.Small("Edit name / group / colour (hex) / line-style / " +
                    "visibility inline. Retype the group to move a route, or " +
                    "select route(s) and use 'Move to group'.",
@@ -1538,16 +1623,14 @@ def _ohl_options() -> list:
     points as normal routing drive it; each waypoint forces a tower."""
     return [
         html.Small("Tower-aware routing from an infrastructure profile " +
-                   "(angles, spans, tower costs). Edit the profile (YAML).",
+                   "(angles, spans, tower costs). Fill in the profile form " +
+                   "below; the raw YAML text is kept under “Raw YAML " +
+                   "(advanced)”.",
                    className="text-muted"),
         _lbl("Shipped profile", ids.OHL_PROFILE_PRESET),
         dcc.Dropdown(id=ids.OHL_PROFILE_PRESET, options=[],
                      placeholder="Load a shipped profile…",
                      className="small my-1"),
-        _lbl("Infrastructure profile (YAML)", ids.OHL_PROFILE_TEXT),
-        dbc.Textarea(id=ids.OHL_PROFILE_TEXT, size="sm",
-                     style={"height": "160px", "fontFamily": "monospace",
-                            "fontSize": "11px"}),
         _lbl("Profile file", ids.OHL_PROFILE_PATH),
         dbc.InputGroup([
             dbc.Input(id=ids.OHL_PROFILE_PATH, size="sm",
@@ -1558,6 +1641,10 @@ def _ohl_options() -> list:
             dbc.Button("Save", id=ids.OHL_PROFILE_SAVE_BTN, size="sm",
                        color="success", outline=True),
         ], size="sm", className="my-1"),
+        # the profile form (P6) and, below it, the raw YAML text in a
+        # "Raw YAML (advanced)" block (sections/profile_form)
+        *profile_form_section.section(),
+        *profile_form_section.yaml_block(),
         dbc.Row([
             dbc.Col([
                 _lbl("Backend", ids.OHL_BACKEND),
@@ -1582,6 +1669,12 @@ def _ohl_options() -> list:
         _lbl("DSM file (clearance, optional)", ids.OHL_DSM),
         dbc.Input(id=ids.OHL_DSM, size="sm", className="mt-1",
                   placeholder="DSM path (clearance, optional)"),
+        # shown only while a heavy constrained run works in the background
+        dbc.Button("⏹ Stop", id=ids.OHL_STOP_BTN, size="sm", color="danger",
+                   className="mt-1", style={"display": "none"},
+                   title="Interrupt the running constrained job - it stops " +
+                         "after the segment in flight; an unfinished " +
+                         "overhead line is discarded"),
         html.Div(id=ids.OHL_STATUS, className="small mt-1"),
         html.Small("Terrain cost readout is 2-D (F9) — compare routes by " +
                    "length + tower cost too.", className="text-muted"),
@@ -1605,13 +1698,12 @@ def _layers_tab() -> html.Div:
                 getRowId="params.data.id",
                 defaultColDef={"resizable": True},
                 # multiple + ctrl/cmd-click: move or remove several layers at
-                # once; suppressRowDeselection keeps a plain re-click from
-                # toggling the selection off
-                dashGridOptions={"rowSelection": "multiple",
-                                 "suppressRowDeselection": True,
+                # once; keep=True (the old suppressRowDeselection) stops a
+                # plain re-click from toggling the selection off
+                dashGridOptions={"rowSelection": _row_selection(True, keep=True),
                                  "stopEditingWhenCellsLoseFocus": True,
                                  "animateRows": True},
-                columnSize="sizeToFit",
+                className=FIT_COLUMNS,
                 style={"height": "40vh", "width": "100%"}),
             dbc.ButtonGroup([
                 dbc.Button("▲ Up", id="layer-up-btn", size="sm",
@@ -1774,6 +1866,10 @@ def _prefill_layers(state, put: _Put) -> None:
     view = state.layers_view()
     if view:
         put(ids.LAYERS_VIEW, "data", view)
+    project_path = getattr(state, "project_path", None)
+    if project_path:                    # opened (or saved) from a file: name it
+        put(ids.PROJECT_STATUS, "children", f"opened: {project_path}")
+    elif view:
         put(ids.PROJECT_STATUS, "children",
             f"session restored: {len(view)} layer(s) are still loaded on "
             "the server")
@@ -1876,6 +1972,35 @@ def _prefill_raster_settings(state, put: _Put) -> None:
     put(ids.RASTER_SETTINGS, "data", settings)
 
 
+def _prefill_cost_table(state, put: _Put) -> None:
+    """The cost table of an opened project (``--project``, "Open project").
+
+    The cost editor is client-side, so without this a reload shows an empty
+    table while the project is loaded; with it the page shows the table as it
+    was loaded (not later browser edits). A project without a table, and a blank
+    one, leave the layout's empty grids. The values come from the helper that
+    "Open project" sends to the browser with, so the two cannot disagree.
+    """
+    from .callbacks.costmodel import _coverage_text
+    from .callbacks.io import cost_table_view
+
+    table = getattr(state, "loaded_cost_table", None)
+    if not table:
+        return
+    view = cost_table_view(table)
+    try:
+        coverage = _coverage_text(state, view["dataset_id"], view["keys"],
+                                  view["rows"])
+    except Exception:  # pylint: disable=broad-exception-caught  # the coverage line is a hint; the table must still show
+        _LOG.warning("page prefill: cost coverage text failed", exc_info=True)
+        coverage = ""
+    put(ids.COST_GRID, "columnDefs", view["column_defs"])
+    put(ids.COST_GRID, "rowData", view["rows"])
+    put(ids.COST_GRID_STATE, "data", view["grid_state"])
+    put(ids.MODIFIER_GRID, "rowData", view["modifiers"])
+    put(ids.COST_COVERAGE_INFO, "children", coverage or "")
+
+
 def _prefill_routing_job(state, put: _Put) -> None:
     """A heavy routing job that outlived the page: poll it again and show Stop.
 
@@ -1886,9 +2011,102 @@ def _prefill_routing_job(state, put: _Put) -> None:
     if job is None:
         return
     put(ids.ROUTING_POLL, "disabled", False)          # also collects a finished job
-    if getattr(job, "status", "running") == "running":
+    if _handing_over(job):
+        put(ids.ROUTING_STATUS, "children", jobs_service.finalizing_text(jobs_service.ROUTING_LABEL))
+    elif getattr(job, "status", "running") == "running":
         put(ids.ROUTING_STOP_BTN, "style", {})
         put(ids.ROUTING_STATUS, "children", job.progress_text())
+
+
+def _handing_over(job: Any) -> bool:
+    """The ended job's result is being added to the project right now (a claimed or finalizing handover)."""
+    handover = getattr(job, "handover", None)
+    return handover is not None and getattr(handover, "phase", None) != jobs_service.READY
+
+
+#: the section modules of round 14; each has ``prefill(state, put)``
+_SECTION_MODULES = (objective_section, cost_field_section, corridor_section,
+                    profile_form_section)
+
+
+def _section_prefill_step(module) -> Callable[[Any, _Put], None]:
+    """One section's ``prefill`` as a step of its own, so a failing section is
+    logged under its name and skipped without taking the others down. The
+    module's ``prefill`` is looked up when the step runs, not now."""
+    def step(state, put: _Put) -> None:
+        module.prefill(state, put)
+
+    step.__name__ = f"{module.__name__.rsplit('.', maxsplit=1)[-1]}_prefill"
+    return step
+
+
+def _prefill_sections(state, put: _Put) -> None:
+    """The cards of round 14 (objective, cost field, corridor, constrained
+    profile form) put their saved settings into their controls."""
+    for module in _SECTION_MODULES:
+        staged = _run_prefill_step(_section_prefill_step(module), state)
+        for component_id, props in staged.items():
+            for prop, value in props.items():
+                put(component_id, prop, value)
+
+
+#: background job kind -> (poll id, stop button id or None, status id)
+JOB_CONTROLS: dict[str, tuple[str, str | None, str]] = {
+    "rasterize": (ids.RASTERIZE_POLL, ids.RASTERIZE_STOP_BTN, ids.RASTERIZE_LOG),
+    "constrained": (ids.OHL_POLL, ids.OHL_STOP_BTN, ids.OHL_STATUS),
+    "cost_field": (ids.CF_POLL, ids.CF_STOP_BTN, ids.CF_STATUS),
+    "corridor": (ids.COR_POLL, None, ids.COR_STATUS),
+}
+
+
+#: background job kind -> (module under ``pyorps.gui``, function) that words the status line of a RUNNING job of
+#: that kind. Each kind says honestly where its Stop takes effect (after the segment in flight, at a stage
+#: boundary, between fixed points, or that it cannot be stopped); the job service's own line is generic. The
+#: modules are imported when needed (``callbacks`` import this module, so a top-level import would be a cycle).
+JOB_STATUS_TEXT: dict[str, tuple[str, str]] = {
+    "rasterize": ("callbacks.raster", "rasterize_status_text"),
+    "constrained": ("services.constrained", "status_text"),
+    "cost_field": ("callbacks.cost_field", "status_text"),
+    "corridor": ("services.corridor", "status_text"),
+}
+
+
+def _job_status_text(kind: str, job: Any) -> str:
+    """The status line a running job of ``kind`` shows: its own wording, else the job's ``progress_text()``."""
+    target = JOB_STATUS_TEXT.get(kind)
+    if target is not None:
+        import importlib
+
+        try:
+            function = getattr(importlib.import_module(f"{__package__}.{target[0]}"), target[1])
+            return function(job)
+        except Exception:  # pylint: disable=broad-exception-caught  # a status line must never take the page down
+            _LOG.warning("status text of the %s job failed; showing the generic line", kind, exc_info=True)
+    return job.progress_text()
+
+
+def _prefill_jobs(state, put: _Put) -> None:
+    """Background jobs that outlived the page: poll them again and show Stop.
+
+    Same reason as :func:`_prefill_routing_job`: without it the poll stays off
+    while the server still holds the job, so the next start would be refused
+    for ever. A job is read duck-typed: ``status`` ("running" when missing),
+    ``progress_text()`` and ``can_stop`` (True when missing).
+    """
+    for kind, job in dict(getattr(state, "jobs", None) or {}).items():
+        controls = JOB_CONTROLS.get(kind)
+        if controls is None or job is None:
+            continue
+        poll, stop, status = controls
+        put(poll, "disabled", False)                  # also collects a finished job
+        if _handing_over(job):                         # the result is being added: say so, Stop stays hidden
+            put(status, "children", jobs_service.finalizing_text(getattr(job, "label", "") or kind))
+            continue
+        if getattr(job, "status", "running") != "running":
+            continue
+        if stop is not None and getattr(job, "can_stop", True):
+            put(stop, "style", {})
+        put(status, "children", _job_status_text(kind, job))
 
 
 def _state_prefill(state) -> dict[str, dict[str, Any]]:
@@ -1903,7 +2121,8 @@ def _state_prefill(state) -> dict[str, dict[str, Any]]:
         return values
     for step in (_prefill_layers, _prefill_data_tab, _prefill_routes,
                  _prefill_routing_settings, _prefill_raster_settings,
-                 _prefill_routing_job):
+                 _prefill_cost_table, _prefill_routing_job,
+                 _prefill_sections, _prefill_jobs):
         staged = _run_prefill_step(step, state)
         for component_id, props in staged.items():
             values.setdefault(component_id, {}).update(props)
@@ -2009,7 +2228,7 @@ def _layer_table_offcanvas() -> dbc.Offcanvas:
                 getRowId="params.data.__row",
                 defaultColDef={"resizable": True, "sortable": True,
                                "filter": True, "minWidth": 90},
-                dashGridOptions={"rowSelection": "single",
+                dashGridOptions={"rowSelection": _row_selection(False),
                                  "pagination": True,
                                  "paginationPageSize": TABLE_PAGE_SIZE},
                 columnSize="autoSize",

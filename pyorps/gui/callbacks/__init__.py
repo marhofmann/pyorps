@@ -9,6 +9,8 @@ def register_all(app, state) -> None:
         browse,
         confirm,
         constrained,
+        corridor,
+        cost_field,
         costmodel,
         data,
         edit,
@@ -18,7 +20,10 @@ def register_all(app, state) -> None:
         io,
         layers,
         notifications,
+        objective,
+        profile_form,
         raster,
+        raster_job,
         routes,
         theme,
     )
@@ -36,6 +41,13 @@ def register_all(app, state) -> None:
     io.register(app, state)
     confirm.register(app, state)
     constrained.register(app, state)
+    # round 14 modules: after the ones they extend (their Outputs on shared
+    # components use allow_duplicate, which needs the first writer registered)
+    objective.register(app, state)
+    profile_form.register(app, state)
+    raster_job.register(app, state)
+    cost_field.register(app, state)
+    corridor.register(app, state)
     browse.register(app, state)
     guide.register(app, state)
     theme.register(app, state)
