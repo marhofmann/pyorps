@@ -116,6 +116,70 @@ def test_tests_workflow_runs_the_weekly_newest_dependency_job():
     assert "--upgrade-strategy eager" in text
 
 
+_AFFINE_MUL = re.compile(r"(?:~\s*)?\b\w*(?:transform|affine)\w*\s*\*\s*\(")
+
+
+def test_no_code_multiplies_an_affine_transform_with_a_point():
+    """``transform * (x, y)`` is deprecated in affine 3 and its replacement ``@`` is missing in affine 2.
+
+    The newest affine warns on every call, and a test run with warnings as errors fails (a GUI service did,
+    on the environment with the newest dependencies only). Use the six coefficients instead:
+    ``x = t.a * col + t.b * row + t.c``, ``y = t.d * col + t.e * row + t.f``.
+    """
+    import pyorps
+
+    roots = [Path(pyorps.__file__).resolve().parent, TESTS]
+    hits = []
+    for root in roots:
+        for path in sorted(root.rglob("*.py")):
+            if path == Path(__file__).resolve():
+                continue
+            for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                code = line.split("#", 1)[0]
+                if _AFFINE_MUL.search(code):
+                    hits.append(f"{path.relative_to(root.parent)}:{number}: {line.strip()}")
+    assert not hits, "affine transform multiplied with a tuple: " + "; ".join(hits)
+
+
+_REPO = TESTS.parent
+#: file types that the library reads from its own folder at run time (CUDA sources and their headers)
+_RUNTIME_DATA_SUFFIXES = (".cu", ".cuh")
+
+
+def _pyproject():
+    path = _REPO / "pyproject.toml"
+    if not path.exists() or not (_REPO / "pyorps").is_dir():
+        pytest.skip("no source tree (installed-wheel test run)")
+    import tomllib
+    return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+def test_every_package_folder_is_listed_in_pyproject():
+    """pyproject.toml lists the packages by hand; a folder that is not listed is missing from the wheel.
+
+    An editable install does not show it: it imports from the source tree.
+    """
+    listed = set(_pyproject()["tool"]["setuptools"]["packages"])
+    on_disk = {".".join(path.parent.relative_to(_REPO).parts) for path in (_REPO / "pyorps").rglob("__init__.py")}
+    assert on_disk - listed == set(), "package folders missing from [tool.setuptools] packages"
+    assert listed - on_disk == set(), "listed packages without a folder"
+
+
+@pytest.mark.parametrize("suffix", _RUNTIME_DATA_SUFFIXES)
+def test_runtime_data_files_are_packaged(suffix):
+    """The GPU kernels are compiled at run time from files next to the modules.
+
+    The .cuh headers were once left out of the wheel and of the source distribution, so the kernels that
+    include them could not be built from an installed copy.
+    """
+    package_data = _pyproject()["tool"]["setuptools"]["package-data"]["pyorps"]
+    manifest = (_REPO / "MANIFEST.in").read_text(encoding="utf-8")
+    assert any((_REPO / "pyorps").rglob(f"*{suffix}")), f"no {suffix} file: drop the suffix from this test"
+    assert f"**/*{suffix}" in package_data, f"{suffix} files are missing from the wheel"
+    assert re.search(rf"^recursive-include pyorps \*\{suffix}$", manifest, re.MULTILINE), (
+        f"{suffix} files are missing from the source distribution")
+
+
 def test_workflows_do_not_depend_on_the_ubuntu_package_servers():
     """A run must not fail because a runner cannot reach the package server.
 
@@ -130,7 +194,7 @@ def test_workflows_do_not_depend_on_the_ubuntu_package_servers():
             continue
         assert "command -v g++" in text, f"{name}: apt-get runs without a check for an installed compiler"
         for line in commands:
-            if re.search(r"apt-get.*(update|install)", line):
+            if re.search(r"apt-get\b.*\b(update|install)\b", line):
                 assert "Acquire::Retries" in line, f"{name}: apt-get without retries: {line.strip()}"
         assert not any("libomp-dev" in line for line in commands), (
             f"{name}: libomp-dev is not needed with gcc (libgomp)")

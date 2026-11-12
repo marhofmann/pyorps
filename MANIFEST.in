@@ -8,6 +8,7 @@ recursive-include pyorps *.pyx
 recursive-include pyorps *.pxd
 recursive-include pyorps *.cpp
 recursive-include pyorps *.cu
+recursive-include pyorps *.cuh
 
 recursive-exclude pyorps *.pyc
 recursive-exclude pyorps __pycache__

@@ -189,12 +189,14 @@ packages = [
     "pyorps.gui",
     "pyorps.gui.services",
     "pyorps.gui.callbacks",
+    "pyorps.gui.sections",
+    "pyorps.utils.kernels",
 ]
 include-package-data = true
 zip-safe = false
 
 [tool.setuptools.package-data]
-pyorps = ["**/*.pyx", "**/*.pxd", "**/*.pxi", "**/*.cu"]
+pyorps = ["**/*.pyx", "**/*.pxd", "**/*.pxi", "**/*.cu", "**/*.cuh"]
 "pyorps.gui" = ["assets/*"]
 
 [tool.coverage.run]
