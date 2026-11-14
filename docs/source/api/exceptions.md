@@ -41,6 +41,8 @@ api:
   - pyorps.ProvenanceMismatch
   - pyorps.CrsReprojectionWarning
   - pyorps.AlgorithmFallbackWarning
+  - pyorps.CoverageWarning
+  - pyorps.SpanRuleWarning
 ---
 # Exceptions
 
@@ -73,8 +75,10 @@ Catch `PyorpsError` for anything the library reports. The classes that replace a
 | `InputFileNotFoundError` | A file the caller named (raster, profile, saved field) does not exist. Also a `FileNotFoundError`. |
 | `ConsistencyCheckError` | A result failed a check that must hold if the inputs are what they claim to be, for example a lower bound above an upper bound. Also an `AssertionError`. |
 | `NumericalPrecisionError` | A computation cannot be carried out exactly enough in the number format used, for example an FFT convolution too large for exact float64. Also an `ArithmeticError`. |
-| `PyorpsWarning` | Root of the warning classes (`ThinForbiddenFeatureWarning`, `SealedOpeningWarning`, `ForbiddenBurnRoutingAssessment`, `CrsReprojectionWarning`, `AlgorithmFallbackWarning`). Derives from `UserWarning`. |
+| `PyorpsWarning` | Root of the warning classes (`ThinForbiddenFeatureWarning`, `SealedOpeningWarning`, `ForbiddenBurnRoutingAssessment`, `CrsReprojectionWarning`, `AlgorithmFallbackWarning`, `CoverageWarning`, `SpanRuleWarning`). Derives from `UserWarning`. |
 | `AlgorithmFallbackWarning` | A different search runs than the one that was asked for, because the requested one cannot evaluate the request. The answer is still the one the request defines: terrain is never dropped. Once per `PathFinder` or `SearchSession`, not once per route. Cases: delta-stepping or the retained GPU field with a DEM (Dijkstra runs instead), and `graph_api="raster_fim"` with a DEM (the cython Dijkstra runs instead). See {ref}`metric-dem-3d`. |
+| `CoverageWarning` | A metric layer or the terrain model does not cover part of the search area, or a source or target was moved because the terrain model has no elevation there. The result is still valid under the documented rule: a void layer cell counts as 0, a cell without elevation is forbidden. Emitted for a layer with void cells, for a DEM with non-finite cells, and for a point moved off a cell without DEM elevation (a point moved off an ordinary forbidden cost cell stays a plain `UserWarning`). See {ref}`metric-layers-coverage`. |
+| `SpanRuleWarning` | The returned overhead line breaks a span or clearance rule of its profile. Emitted once per route, with one entry per case: the end-span rule `"remove"` took out a tower next to an end point and the merged span reaches `max_span_m`, leaves a bend without a tower or fails the clearance check; or a span of the line (an end span, or any span between two line towers) fails the report's full clearance check with the heights the report states. The search does not sample the first cell after a tower or test a span of one step between line towers, and it checks the last span only with a target connection height, so such a span can pass the search and fail the report. The route and all numbers are still returned; `ConstrainedPath.span_notes` lists every case, the warning the first six. See {ref}`constrained-path-finder-line-ends`. |
 
 The research packages add their own classes: `DesignError` (`pyorps.collector`, an `InvalidInputError`), `LoadFlowError` (`pyorps.collector.voltage`, a `PyorpsRuntimeError`) and `ManifestError` (`pyorps.siting`, an `InvalidInputError`).
 

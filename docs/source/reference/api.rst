@@ -152,6 +152,8 @@ Exceptions
    PyorpsWarning
    CrsReprojectionWarning
    AlgorithmFallbackWarning
+   CoverageWarning
+   SpanRuleWarning
 
 Packages
 --------

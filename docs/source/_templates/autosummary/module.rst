@@ -5,7 +5,7 @@
    :no-index:
 {%- endif %}
 {%- if fullname == 'pyorps.core.exceptions' %}
-   :exclude-members: PyorpsWarning, CrsReprojectionWarning, AlgorithmFallbackWarning
+   :exclude-members: PyorpsWarning, CrsReprojectionWarning, AlgorithmFallbackWarning, CoverageWarning, SpanRuleWarning
 {%- endif %}
 
    {% block attributes %}
