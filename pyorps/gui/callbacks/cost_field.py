@@ -17,6 +17,13 @@ run to the background-job service (``services/jobs``); the poll callback is the 
 
 The click reads the route draft from its store (the draft lives in the browser) and the routing settings
 (backend, neighbourhood, search buffer, whole-raster and forbidden-cells switches) from ``state.routing_settings``.
+
+The objective and terrain card applies exactly as it does to a plain route: ``state.gui_settings["objective"]``
+is checked with the helpers of ``callbacks/objective`` (:func:`check_objective`: a missing layer, a DEM in
+another CRS or not covering the fixed points, a backend or kernel without terrain support refuse the click with a
+notice that focuses the control) and translated by :func:`_finder_options` into the ``PathFinder`` keywords of
+``plan_run``. With classic settings that is None and the field is the plain one. The settings used travel with
+the job (``job.params["finalize"]["objective"]``) and are stored in the layer's ``meta["cost_field"]``.
 """
 from __future__ import annotations
 
@@ -29,8 +36,10 @@ from .. import ids
 from ..sections import cost_field as section
 from ..services import cost_field as service
 from ..services import jobs, project_io, routing
+from ..services import objective as objective_service
 from ..services.errors import Notice, cap_notices, guard
 from . import job_poll
+from . import objective as objective_cb
 
 #: the kind of the background job (the key in ``state.jobs`` and in ``layout.JOB_CONTROLS``)
 JOB_KIND = "cost_field"
@@ -48,16 +57,77 @@ _PROBLEM_LINES = 3
 _NO_VIEW = (no_update, no_update)        # LAYERS_VIEW, MAP_VIEW
 
 
-# --------------------------------------------------------------------------- hook for the objective package
-def _finder_options(state) -> dict | None:  # pylint: disable=unused-argument  # the hook takes the state by design
-    """HOOK for the objective package: the extra ``PathFinder`` keywords of the run (``dem``, ``objective`` ...).
+# --------------------------------------------------------------------------- the objective of the page
+#: what a refused objective check says about the run (the notices of ``callbacks/objective`` take it as the impact)
+OBJECTIVE_IMPACT = "No cost field was computed."
 
-    Returns None: the cost field uses the plain cost raster only (the card's help text says so). When the
-    objective card's settings (``state.gui_settings.get("objective")``) are to apply to a cost field, the
-    objective package fills this one function with the translation of those settings into the keywords
-    ``services.cost_field.plan_run(finder_options=...)`` takes. Nothing else in this module interprets them.
+
+def _finder_options(state) -> dict | None:
+    """The extra ``PathFinder`` keywords of a run: what a plain route would use now, else None.
+
+    Classic objective settings give None (the field is computed on the plain cost raster, exactly as before).
+    Otherwise it is the ``objective_kwargs`` of ``services.objective.run_kwargs``: ``objective`` (the weights),
+    ``weight_precision`` and, when set, ``dem``, ``gradient_options`` and ``metric_layers``. The settings must
+    have passed :func:`check_objective` first (a layer that is not loaded raises ``ValueError`` here).
     """
-    return None
+    settings = objective_cb.read_settings(state)
+    if objective_service.is_classic(settings):
+        return None
+    run = objective_service.run_kwargs(
+        settings, layer_path=lambda layer_id: objective_cb.layer_path(state, layer_id),
+        graph_api=routing_inputs(state)["graph_api"])
+    return dict(run["objective_kwargs"])
+
+
+def objective_info(state) -> dict | None:
+    """What the layer records about the objective: ``{"spec", "summary"}``, None for classic settings.
+
+    ``spec`` is the normalised settings (layer ids, no paths), ``summary`` the one line of the card
+    (``objective.summary``), so a later look at the layer shows which objective produced it.
+    """
+    settings = objective_cb.read_settings(state)
+    if objective_service.is_classic(settings):
+        return None
+    return {"spec": objective_service.objective_spec(settings),
+            "summary": objective_service.summary(settings, routing_inputs(state)["graph_api"],
+                                                 layer_names=objective_cb.layer_names(state))}
+
+
+def check_objective(state, raster_layer_id, raster_path, origins: list, raw: dict, notices: list):
+    """``(status_or_None, notices)``: the checks a route run makes for the objective, before a job starts.
+
+    None means the run may go on (classic settings, or an objective that passed). Otherwise ``status`` is the
+    line for the status component and a notice that names and focuses the control (the Objective & terrain card,
+    the Backend field or this card's Kernel field) was appended. The rules are those of the route run
+    (``objective_cb.prepare_run``); the backend and kernel rules are the field service's own
+    (``service.check_backend``), so the words and the focused control are the ones of a cost field.
+    """
+    settings = objective_cb.read_settings(state)
+    if objective_service.is_classic(settings):
+        return None, notices
+    inputs = routing_inputs(state)
+    algorithm = raw.get("algorithm")
+    backend = service.check_backend(
+        inputs["graph_api"], algorithm if algorithm in service.ALGORITHM_CHOICES else "auto",
+        has_dem=bool(settings["dem_layer_id"]))
+    if backend:
+        notices.append(problem_notice(backend))
+        return problems_text(backend), notices
+    try:
+        bounds = service.raster_info(raster_path)["bounds"]
+    except Exception:  # pylint: disable=broad-exception-caught  # an unreadable file is named by plan_run
+        bounds = None
+    try:
+        buffer_m = service.resolve_buffer_m(raster_path, origins, inputs["search_buffer_m"],
+                                            full_window=inputs["full_window"])
+    except Exception:  # pylint: disable=broad-exception-caught  # an unusable buffer is named by plan_run
+        buffer_m = 0.0
+    run, _meta, notices = objective_cb.prepare_run(
+        state, raster_layer=state.get(raster_layer_id), graph_api=inputs["graph_api"], algorithm="",
+        raster_bounds=bounds, points=origins, buffer_m=buffer_m, notices=notices, impact=OBJECTIVE_IMPACT)
+    if run is None:
+        return str(notices[-1].get("meaning") or "The objective settings cannot be used."), notices
+    return None, notices
 
 
 # --------------------------------------------------------------------------- what the click reads
@@ -167,6 +237,9 @@ def cost_field_outcome(state, job):
             fix="Press Compute cost field again.").to_dict())
         return (*_NO_VIEW, job.progress_text(), no_update), notices
     finalize = job.params.get("finalize") or {}
+    objective = finalize.get("objective")
+    if objective:                                  # the layer and the status line say which objective produced it
+        result = {**result, "objective_spec": objective.get("spec"), "objective_summary": objective.get("summary")}
     layer, notices = service.finalize_cost_field(
         state, result, notices, raster_layer_id=finalize.get("raster_layer_id"))
     if layer is None:                              # the file could not be served: the notice says why
@@ -182,7 +255,7 @@ def plan_click(state, raster_layer_id, draft, raw: dict, notices: list[dict]):
 
     A refused run puts its first problems into ``status`` and a notice that names the field into ``notices``.
     The fixed points come from the route draft (``raw["origins"]`` says which), the routing settings from the
-    state, the optional extra keywords from the objective hook (:func:`_finder_options`).
+    state, the objective's checks from :func:`check_objective` and its keywords from :func:`_finder_options`.
     """
     raster_path = _raster_path(state, raster_layer_id)
     if raster_path is None:
@@ -192,8 +265,12 @@ def plan_click(state, raster_layer_id, draft, raw: dict, notices: list[dict]):
         notices.append(problem_notice(problems, picking=True))
         return None, problems_text(problems), notices
     which = raw["origins"] if raw["origins"] in service.ORIGIN_CHOICES else "sources"
+    origins = service.origins_from_draft(draft, which)
+    refused, notices = check_objective(state, raster_layer_id, raster_path, origins, raw, notices)
+    if refused is not None:
+        return None, refused, notices
     plan, notices = guard(
-        service.plan_run, raster_path, raw, service.origins_from_draft(draft, which), **routing_inputs(state),
+        service.plan_run, raster_path, raw, origins, **routing_inputs(state),
         out_path=service.new_out_path(state.work_dir), study_area=state.study_area,
         finder_options=_finder_options(state), notices=notices)
     if plan is None:                               # plan_run itself failed: guard wrote the notice
@@ -246,9 +323,13 @@ def register(app, state) -> None:  # pylint: disable=too-many-statements
             state, raster_layer_id, draft, dict(zip(service.COST_FIELD_KEYS, values[:-1])), notices)
         if plan is None:
             return (*_NO_VIEW, status, no_update, cap_notices(notices), no_update, no_update)
+        finalize = {"raster_layer_id": raster_layer_id, "seq": n_clicks}
+        objective = objective_info(state)
+        if objective is not None:
+            finalize["objective"] = objective
         job = jobs.start_job(
             state, JOB_KIND, service.job_work, label=JOB_LABEL,
-            params={"compute": plan.kwargs, "finalize": {"raster_layer_id": raster_layer_id, "seq": n_clicks}})
+            params={"compute": plan.kwargs, "finalize": finalize})
         if job is None:                            # another start won the race between the check and here
             notices.append(jobs.refusal_notice(state, JOB_KIND)
                            or jobs.busy_notice(jobs.busy_label(state) or JOB_LABEL))

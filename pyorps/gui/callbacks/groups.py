@@ -38,6 +38,7 @@ def _route_row(layer) -> dict:
     points = meta.get("control_points") or []
     cost = metrics.get("total_cost")
     length = metrics.get("total_length_m")
+    terrain = metrics.get(routing.TERRAIN_LENGTH_KEY)
     return {
         "id": layer.id,
         "name": layer.name,
@@ -48,6 +49,8 @@ def _route_row(layer) -> dict:
         "wp": max(0, len(points) - 2),
         "cost": int(round(float(cost))) if cost is not None else None,
         "length": int(round(float(length))) if length is not None else None,
+        # empty for a route without a terrain model (the map length above is the 2-D one)
+        "terrain": int(round(float(terrain))) if terrain is not None else None,
         "from": _fmt_point(points[0]) if points else "",
         "to": _fmt_point(points[-1]) if points else "",
     }

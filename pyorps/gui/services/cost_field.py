@@ -86,6 +86,13 @@ FIELD_LABELS = {
 UNIT = "cost units"
 UNIT_NOTE = "cell value x metres (EUR on a raster that holds EUR per metre)"
 
+#: unit of a field computed with the objective of the Objective & terrain card: the search runs on the weighted
+#: combination of the cost raster, the length term, the slope term and the metric layers (the library's
+#: "objective units x m, not EUR"), so these values are not comparable with the plain cost units above
+OBJECTIVE_UNIT = "objective units"
+OBJECTIVE_UNIT_NOTE = ("weighted objective value x metres: the weighted sum of the cost raster, the length term, "
+                       "the slope term and any extra layers, not EUR")
+
 #: nodata of the result raster: costs are never negative, so no reachable cell can take it
 NODATA = -1.0
 
@@ -608,6 +615,33 @@ def _has_dem(finder_options: dict | None) -> bool:
     return bool(finder_options) and finder_options.get("dem") is not None
 
 
+def _has_objective(finder_options: dict | None) -> bool:
+    return bool(finder_options) and finder_options.get("objective") is not None
+
+
+def unit_for(finder_options: dict | None) -> tuple[str, str]:
+    """``(unit, unit_note)`` of the values a run with these ``finder_options`` produces.
+
+    Without an objective the plain cost units; with one the search runs on the weighted objective surface, so
+    the values are objective units (:data:`OBJECTIVE_UNIT`), not the cost units of the raster.
+    """
+    return (OBJECTIVE_UNIT, OBJECTIVE_UNIT_NOTE) if _has_objective(finder_options) else (UNIT, UNIT_NOTE)
+
+
+def _objective_scale(finder: Any, finder_options: dict | None) -> float | None:
+    """The quantisation scale of the objective's search raster (``weights ~ objective * scale``), None without one.
+
+    With an objective the search runs on a 16-bit surface that holds the weighted objective times a scale (or on
+    the untouched cost raster, scale 1 / cost weight, when only the cost is weighted); the library says to divide
+    the kernel distances by it to get the objective itself. 1.0 when the library reports no scale.
+    """
+    if not _has_objective(finder_options):
+        return None
+    combined = getattr(finder, "_combine_result", None)  # pylint: disable=protected-access  # the one public record
+    scale = float(getattr(combined, "scale", 1.0) or 1.0)
+    return scale if math.isfinite(scale) and scale > 0 else 1.0
+
+
 def _collect_problems(raster_path: Any, origins: list[tuple[float, float]], *, combine: str, algorithm: str,
                       num_threads: Any, neighborhood: Any, ignore_max_cost: bool, search_buffer_m: Any,
                       graph_api: Any, full_window: bool,
@@ -846,7 +880,10 @@ def compute_cost_field(raster_path: Any, origins: Any, *, combine: str = "sum", 
     "col", "cost"}`` or None), ``best_note``, ``estimate`` and ``notices`` (notice dicts for the poll side).
     ``forbidden_cells`` counts the window cells that are forbidden (65535) or outside the buffered search area
     (the library masks those as forbidden); ``unreachable_cells`` the other cells without a finite value;
-    ``nodata_cells`` is their sum. ``study_area`` is a shapely geometry in the raster CRS or a WGS84 GeoJSON dict.
+    ``nodata_cells`` is their sum. ``objective`` is True when ``finder_options`` carried an objective: then the
+    values are weighted objective units (the kernel's search-raster distances divided by the quantisation scale,
+    ``objective_scale``; ``unit`` / ``unit_note`` say so), else False and ``objective_scale`` None.
+    ``study_area`` is a shapely geometry in the raster CRS or a WGS84 GeoJSON dict.
     """
     points = [(float(x), float(y)) for x, y in (origins or [])]
     problems, est = _collect_problems(
@@ -867,16 +904,19 @@ def compute_cost_field(raster_path: Any, origins: Any, *, combine: str = "sum", 
         return _run_fields(finder, points, est, api, combine=combine, algorithm=algorithm,
                            num_threads=int(num_threads), neighborhood=k_text, out_path=Path(out_path),
                            study_area=study_area, cancel=cancel, progress=progress,
-                           has_dem=_has_dem(finder_options))
+                           has_dem=_has_dem(finder_options),
+                           objective_scale=_objective_scale(finder, finder_options))
     finally:
         finder.release_device_resources()
 
 
 def _run_fields(finder: Any, points: list, est: dict, api: str, *, combine: str, algorithm: str, num_threads: int,
                 neighborhood: str, out_path: Path, study_area: Any, cancel: Any, progress: Any,
-                has_dem: bool) -> dict:
+                has_dem: bool, objective_scale: float | None = None) -> dict:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     total = len(points) + 1
+    unit, unit_note = unit_for({"objective": True} if objective_scale is not None else None)
+    to_objective = np.float32(1.0 / objective_scale) if objective_scale not in (None, 1.0) else None
     kwargs = {"num_threads": num_threads} if (num_threads > 0 and api == "cython") else {}
     handler = finder.raster_handler
     crs = handler.raster_dataset.crs
@@ -897,6 +937,8 @@ def _run_fields(finder: Any, points: list, est: dict, api: str, *, combine: str,
             if refusal is None:
                 raise
             raise refusal from exc
+        if to_objective is not None:                # search-raster units -> the objective's own units
+            arr = np.multiply(arr, to_objective, out=arr) if arr.flags.writeable else arr * to_objective
         acc = _combine_into(acc, arr, combine)
         del arr
     _checkpoint(cancel, "The cost field")
@@ -916,14 +958,15 @@ def _run_fields(finder: Any, points: list, est: dict, api: str, *, combine: str,
     left, top = _apply_transform(transform, 0, 0)
     right, bottom = _apply_transform(transform, cols, rows)
     result = {
-        "path": str(out_path), "min": low, "max": high, "unit": UNIT, "unit_note": UNIT_NOTE, "nodata": NODATA,
+        "path": str(out_path), "min": low, "max": high, "unit": unit, "unit_note": unit_note, "nodata": NODATA,
         "origins": [[float(x), float(y)] for x, y in points], "n_origins": len(points), "combine": combine,
         "algorithm": used, "algorithm_requested": algorithm, "graph_api": api, "neighborhood": neighborhood,
         "rows": int(rows), "cols": int(cols), "cells": int(rows * cols), "valid_cells": n_valid,
         "nodata_cells": int(rows * cols - n_valid), "forbidden_cells": n_forbidden,
         "unreachable_cells": int(rows * cols - n_valid - n_forbidden), "resolution_m": float(abs(transform.a)),
         "bounds": [float(left), float(bottom), float(right), float(top)], "crs": str(crs) if crs else "",
-        "best": best, "best_note": best_note, "estimate": est, "threads_requested": num_threads}
+        "best": best, "best_note": best_note, "estimate": est, "threads_requested": num_threads,
+        "objective": objective_scale is not None, "objective_scale": objective_scale}
     result["notices"] = _result_notices(result, study_area_hit=area_hit, study_area=study_area, has_dem=has_dem)
     return result
 
@@ -990,15 +1033,23 @@ def best_text(result: dict) -> str:
     best = (result or {}).get("best")
     if not best:
         return (result or {}).get("best_note") or "No cheapest cell."
-    return (f"Cheapest cell: ({best['x']:,.1f}, {best['y']:,.1f}), total {best['cost']:,.0f} {UNIT}")
+    unit = result.get("unit") or UNIT
+    return (f"Cheapest cell: ({best['x']:,.1f}, {best['y']:,.1f}), total {best['cost']:,.0f} {unit}")
 
 
 def summary_text(result: dict) -> str:
     """One status line for the card after a finished run."""
     used = result.get("algorithm") or result.get("algorithm_requested")
     how = "sum over" if result["combine"] == "sum" else "lowest of"
-    return (f"Cost field done: {how} {result['n_origins']} fixed point(s), kernel {used}, {result['valid_cells']:,} "
-            f"of {result['cells']:,} cells reachable, {result['min']:,.0f} to {result['max']:,.0f} {UNIT}.")
+    unit = result.get("unit") or UNIT
+    text = (f"Cost field done: {how} {result['n_origins']} fixed point(s), kernel {used}, {result['valid_cells']:,} "
+            f"of {result['cells']:,} cells reachable, {result['min']:,.0f} to {result['max']:,.0f} {unit}.")
+    if result.get("objective"):
+        text += (" Computed with the objective of the Objective & terrain card, so the values are weighted objective "
+                 "units, not cost units.")
+        if result.get("objective_summary"):
+            text += f" {result['objective_summary']}"
+    return text
 
 
 def is_cost_field_layer(layer: Any) -> bool:
@@ -1008,6 +1059,19 @@ def is_cost_field_layer(layer: Any) -> bool:
     dropdowns that expect a cost raster leave it out. Dropdowns that accept a raster of any meaning keep it.
     """
     return bool((getattr(layer, "meta", None) or {}).get("cost_field"))
+
+
+def _objective_meta(result: dict) -> dict:
+    """What ``meta["cost_field"]`` records about the objective (nothing for a plain run).
+
+    ``objective`` holds the settings spec (layer ids, no paths) and the one-line summary the caller put into the
+    result as ``objective_spec`` / ``objective_summary``, and the scale; ``unit_note`` says what the values mean.
+    """
+    if not result.get("objective"):
+        return {}
+    return {"objective": {"spec": result.get("objective_spec"), "summary": result.get("objective_summary"),
+                          "scale": result.get("objective_scale")},
+            "unit_note": result.get("unit_note")}
 
 
 def finalize_cost_field(state: Any, result: dict, notices: list | None = None, *, name: str | None = None,
@@ -1045,7 +1109,8 @@ def finalize_cost_field(state: Any, result: dict, notices: list | None = None, *
                   "origins": result["origins"], "combine": result["combine"], "algorithm": result["algorithm"],
                   "best_xy": [best["x"], best["y"]] if best else None,
                   "best_cost": best["cost"] if best else None, "unit": result["unit"],
-                  "raster_layer_id": raster_layer_id}})
+                  "raster_layer_id": raster_layer_id,
+                  **_objective_meta(result)}})
     notices.extend(result.get("notices") or [])
     notices.append(errors.success(
         f"Cost field layer '{display}' added",

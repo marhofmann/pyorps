@@ -135,6 +135,34 @@ def _n(severity: str, title: str, meaning: str, impact: str, fix: str,
     return build
 
 
+def _line_ends_no_route_notice(exc: BaseException) -> Notice:
+    """No route under the end-span rule "enforce" or a connection height (the library's own words in Details).
+
+    The message of the library says which of the two restricted the search ("terminal_span_rule='enforce'" and/or
+    "connection_height_m"); the title and the fix name the same setting(s).
+    """
+    text = str(exc)
+    rule, heights = "terminal_span_rule='enforce'" in text, "connection_height_m" in text
+    if rule and heights:
+        what, fix = ("the end-span rule and the connection heights",
+                     "Choose another end-span rule (Remove it, Remove it only if every span stays valid, or Keep it), "
+                     "change or clear the connection heights, or move an end point.")
+    elif rule:
+        what, fix = ("the end-span rule",
+                     "Choose another end-span rule (Remove it, Remove it only if every span stays valid, or Keep it), "
+                     "move the end point, or change the span limits.")
+    else:
+        what, fix = ("the connection heights",
+                     "Change or clear the connection heights in the Line ends block, or move an end point.")
+    add = getattr(exc, "add_message", "") or ""
+    return Notice(
+        severity="error", title=f"No route satisfies {what}",
+        meaning=f"The search was restricted by {what} and found no route between the two points that meets "
+                "it. Without that setting a route may exist.",
+        impact="No route was produced for this pair; nothing in the project changed.",
+        fix=fix, details=add.strip() or text, focus_id="tab-routes")
+
+
 def _wfs_layer_notice(exc: BaseException) -> Notice:
     return Notice(
         severity="error",
@@ -276,6 +304,11 @@ EXCEPTION_RULES: list[tuple[type, str | None, _Builder]] = [
         "The cost table wasn't auto-seeded.",
         "Pick the feature column(s) manually from the dropdown.", "tab-cost")),
     # ---- routing ------------------------------------------------------------
+    # a constrained search that the line-end settings restricted: the library's message names them ("No route from
+    # ... satisfies the line-end settings of this run: ..."; the first wording said "... and no route satisfies
+    # it"), so the generic "blocked / forbidden areas" advice below would mislead
+    (pex.NoPathFoundError, "satisfies the line-end settings", _line_ends_no_route_notice),
+    (pex.NoPathFoundError, "no route satisfies it", _line_ends_no_route_notice),
     (pex.NoPathFoundError, None, _n(
         "error", "No route could be found",
         "The source/target is blocked, outside the search window, or " +
@@ -426,22 +459,63 @@ WARNING_RULES: list[tuple[type, str, Callable[[str], Notice]]] = [
         "The route is correct and is the one this request defines; only the way of finding it changed.",
         "To silence this, choose Dijkstra as the algorithm or the cython backend in the Routes tab.",
         "tab-routes")),
+    # the line-end rules of constrained routing (round 17); before the generic substring rules below, because the
+    # cell-size warning of a GPU solver contains "gpu" and would be shown as "GPU backend unavailable"
+    (pex.SpanRuleWarning, "", _w(
+        "warning", "The route breaks a span or clearance rule of its profile",
+        "At least one span of the overhead line is longer than the longest span, leaves a bend without a tower or "
+        "fails the ground-clearance check. The usual cause is the end-span rule: an end tower that was removed "
+        "leaves one long end span, and the last span is checked only when a target connection height is set. "
+        "Details name each span and its cause.",
+        "The route and all its numbers are still shown and usable; the spans named in Details do not meet the "
+        "profile.",
+        "Choose the end-span rule 'Remove it only if every span stays valid', 'Keep it' or 'Never place one' in the "
+        "Line ends block, set the connection heights, or move the end point.", "tab-routes")),
+    (pex.PyorpsWarning, "has no effect on the route", _w(
+        "info", "A connection height does not change the route",
+        "The search checks the clearance of the first and the last span from a connection height only with a "
+        "terrain model (DEM) and a profile that has tower height, conductor weight, conductor tension, minimum "
+        "clearance and span limits.",
+        "The height is only reported as the height of the end tower; the route is the one you get without it.",
+        "Add the terrain model and the missing profile settings, or clear the connection heights.", "tab-routes")),
+    (pex.PyorpsWarning, "cells are not square", _w(
+        "warning", "The raster cells are not square",
+        "Constrained routing measures every distance with the cell width, so lengths along the other direction "
+        "are off by the ratio of the two cell sizes.",
+        "Path lengths, spans, step costs and tower distances are computed as if the cells were square (the ratio "
+        "is in Details).",
+        "Resample the raster to square cells for exact lengths.", "tab-raster")),
+    (pex.PyorpsWarning, "constrained gpu solver", _w(
+        "warning", "The GPU solver prices the terrain differently on this raster",
+        "On a raster whose cell size is not 1 the constrained GPU solver prices the terrain per cell, while the "
+        "CPU backends and the report price it per metre.",
+        "The GPU route can differ from the CPU route on this raster.",
+        "Use a CPU backend (cython or cython_parallel) for cell sizes other than 1.", "tab-routes")),
     # a source or target moved because the terrain model (DEM) has no elevation there: the library words it
     # twice (one table for several points, one sentence for a float weight raster); both name the DEM
-    (UserWarning, "where the dem has no elevation", _w(
+    (pex.CoverageWarning, "where the dem has no elevation", _w(
         "warning", "A start or end point was moved: the terrain model has no elevation there",
         "A source or target lies where the terrain model (DEM) has no height value (outside the DEM or in a gap "
         "of it), and routing cannot start on such a cell.",
         "The point was moved to the nearest cell with elevation, so the route starts or ends slightly off your "
         "click (the shift is in Details).",
         "Use a DEM that covers the points, or move the points onto the DEM.", "tab-routes")),
-    (UserWarning, "cell has no dem elevation", _w(
+    (pex.CoverageWarning, "cell has no dem elevation", _w(
         "warning", "A start or end point was moved: the terrain model has no elevation there",
         "A source or target lies where the terrain model (DEM) has no height value (outside the DEM or in a gap "
         "of it), and routing cannot start on such a cell.",
         "The point was moved to the nearest cell with elevation, so the route starts or ends slightly off your "
         "click (the shift is in Details).",
         "Use a DEM that covers the points, or move the points onto the DEM.", "tab-routes")),
+    # every other coverage warning: a metric layer or the terrain model with cells that have no value
+    (pex.CoverageWarning, "", _w(
+        "warning", "A layer or the terrain model does not cover the whole search area",
+        "A metric layer or the terrain model (DEM) has no value for some cells of the area that was searched "
+        "(it is smaller than the area, or it has gaps).",
+        "The run is valid under the documented rule: cells without terrain elevation are forbidden, and cells "
+        "without a layer value count as 0 for that layer (they are forbidden if the layer has a hard limit). "
+        "The number of cells is in Details.",
+        "Use data that covers the search area, or make the search buffer smaller.", "tab-routes")),
     (Warning, "crs mismatch between bbox", _w(
         "info", "Reprojected your area to the data's CRS",
         "Your study area was in a different CRS than the data.",

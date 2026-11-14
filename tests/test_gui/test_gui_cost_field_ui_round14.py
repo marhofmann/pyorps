@@ -45,6 +45,21 @@ MIRROR = (f"{ids.CF_SETTINGS}.data",)
 RESTORE = (f"{ids.CF_ORIGINS}.value", ids.PROJECT_STATUS)
 
 
+#: thread limit that every test of this file sees, whatever machine runs it
+THREAD_LIMIT = 8
+
+
+@pytest.fixture(autouse=True)
+def _same_thread_limit_on_every_machine(monkeypatch):
+    """The card allows "cores - 1" threads, and these tests use fixed thread counts.
+
+    Without this, a test that asks for 3 threads passes on a laptop and fails on a runner with 3 cores (the
+    limit there is 2, so the setting falls back to automatic). The rule itself is tested with a patched core
+    count in the service tests.
+    """
+    monkeypatch.setattr(service, "max_threads", lambda: THREAD_LIMIT)
+
+
 # ------------------------------------------------------------------ helpers
 def _write(path, data: np.ndarray) -> str:
     rows, cols = data.shape
@@ -80,6 +95,51 @@ def _raster_layer(state, path):
 @pytest.fixture()
 def layer(state, uniform_path):
     return _raster_layer(state, uniform_path)
+
+
+#: the objective tests run on 5 x 5 cells
+SMALL = 5
+
+
+@pytest.fixture(scope="module")
+def small_path(tmp_path_factory):
+    """5 x 5 cells of 1 m, every cell costs 10."""
+    return _write(tmp_path_factory.mktemp("r3a_small") / "small.tif", np.full((SMALL, SMALL), 10, dtype=np.uint16))
+
+
+@pytest.fixture(scope="module")
+def dem_path(tmp_path_factory):
+    """A terrain model over the same 5 x 5 cells: it rises 3 m per cell to the east."""
+    rows = np.tile(np.arange(SMALL, dtype=np.float32) * 3.0, (SMALL, 1))
+    return _write(tmp_path_factory.mktemp("r3a_dem") / "dem.tif", rows)
+
+
+@pytest.fixture(scope="module")
+def small_dem_path(tmp_path_factory):
+    """A terrain model that covers only the western two columns of the 5 x 5 cells (a source can lie outside)."""
+    data = np.zeros((SMALL, 2), dtype=np.float32)
+    return _write(tmp_path_factory.mktemp("r3a_dem_small") / "dem_small.tif", data)
+
+
+@pytest.fixture()
+def small_layer(state, small_path):
+    return _raster_layer(state, small_path)
+
+
+@pytest.fixture()
+def dem_layer(state, dem_path):
+    return state.add_layer("terrain", "raster", crs=CRS, meta={"source_path": dem_path})
+
+
+def _small_pt(row: int, col: int) -> dict:
+    """The point at the centre of cell (row, col) of the 5 x 5 raster."""
+    return {"lat": 0, "lng": 0, "x": X0 + col + 0.5, "y": Y0 + SMALL - row - 0.5}
+
+
+#: one fixed point in the north-west corner, the field of which is known cell by cell
+CORNER = {"sources": [_small_pt(0, 0)], "targets": [], "waypoints": []}
+#: two fixed points at the ends of the first row: every cell of that row sums to the length of the row
+ENDS = {"sources": [_small_pt(0, 0), _small_pt(0, 4)], "targets": [], "waypoints": []}
 
 
 def _pt(row: int, col: int) -> dict:
@@ -285,10 +345,19 @@ def test_the_help_text_explains_the_field_in_plain_words(page):
     assert "Sum over the points" in text and "Lowest of the points" in text
     assert "Cells that cannot be reached, and forbidden cells, are shown as no data" in text
     assert service.UNIT in text and service.UNIT_NOTE in text
-    assert "plain cost raster" in text and "objective and terrain card is not applied" in text
     assert "Stop acts between fixed points" in text and "adds no layer" in text
     for backend in service.FIELD_BACKENDS:
         assert backend in text
+
+
+def test_the_help_text_says_what_is_applied_and_what_is_not(page):
+    text = " ".join(_text(_by_id(page, ids.CF_CARD)).split())
+    assert "objective is not applied" not in text and "card is not applied" not in text
+    assert "when the Objective & terrain card is set" in text and "terrain model" in text
+    assert "the values are then objective units" in text and "the layer remembers the objective" in text
+    assert "with the default values it is the plain cost raster" in text
+    assert "The corridor graph and constrained routing do not use the objective" in text
+    assert service.OBJECTIVE_UNIT in text and service.OBJECTIVE_UNIT_NOTE in text
 
 
 # ================================================================== the Compute button follows the page
@@ -427,10 +496,12 @@ def test_a_page_that_never_mirrored_its_routing_settings_gets_the_page_defaults(
 
 
 # ------------------------------------------------------------------ the hook for the objective package
-def test_the_objective_hook_returns_none_and_the_objective_settings_are_not_interpreted(app, state, layer,
-                                                                                         monkeypatch):
-    state.gui_settings["objective"] = {"weights": {"cost": 2.0, "length": 1.0}, "dem": "some-dem"}
+def test_classic_objective_settings_give_no_finder_options(app, state, layer, monkeypatch):
     assert cf_cb._finder_options(state) is None                                    # noqa: SLF001
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0, "length": 0.0, "gradient": 0.0}, "layers": [],
+                                       "dem_layer_id": None}                       # explicit classic values
+    assert cf_cb._finder_options(state) is None                                    # noqa: SLF001
+    assert cf_cb.objective_info(state) is None
     seen = []
 
     def spy(*_args, **kwargs):
@@ -440,6 +511,16 @@ def test_the_objective_hook_returns_none_and_the_objective_settings_are_not_inte
     monkeypatch.setattr(service, "plan_run", spy)
     _click(app, layer.id, TWO_SOURCES)
     assert seen == [None]
+
+
+def test_an_objective_becomes_the_finder_keywords_a_plain_route_would_use(state, small_layer, dem_layer):
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0, "length": 3.0}}
+    assert cf_cb._finder_options(state) == {"objective": {"cost": 1.0, "length": 3.0},   # noqa: SLF001
+                                            "weight_precision": "uint16"}
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0}, "dem_layer_id": dem_layer.id}
+    options = cf_cb._finder_options(state)                                         # noqa: SLF001
+    assert options["objective"] == {"cost": 1.0} and options["dem"] == dem_layer.meta["source_path"]
+    assert set(options) == {"objective", "weight_precision", "dem", "gradient_options"}
 
 
 def test_what_the_hook_returns_is_what_the_check_gets(app, state, layer, monkeypatch):
@@ -453,6 +534,200 @@ def test_what_the_hook_returns_is_what_the_check_gets(app, state, layer, monkeyp
     monkeypatch.setattr(cf_cb, "_finder_options", lambda _state: {"dem": "a-dem.tif"})
     _click(app, layer.id, TWO_SOURCES)
     assert seen == [{"dem": "a-dem.tif"}]
+
+
+# ------------------------------------------------------------------ the objective and terrain card is applied
+def _run_to_layer(app, state, raster_id, draft, **click):
+    """Click, wait for the job, poll: ``(job, poll answer, the newest cost-field layer)``."""
+    _click(app, raster_id, draft, **click)
+    job = _join(state)
+    assert job.status == jobs.DONE, job.error
+    resp = _poll(app)
+    return job, resp, _cost_field_layers(state)[-1]
+
+
+def _values(job) -> np.ndarray:
+    with rasterio.open(job.result["path"]) as src:
+        return src.read(1)
+
+
+def test_a_classic_run_is_the_plain_field_in_cost_units_and_records_no_objective(app, state, small_layer):
+    job, resp, field = _run_to_layer(app, state, small_layer.id, ENDS)
+    assert job.params["compute"]["finder_options"] is None and "objective" not in job.params["finalize"]
+    assert job.result["unit"] == service.UNIT and job.result["objective"] is False
+    assert _values(job)[0] == pytest.approx(np.full(SMALL, 40.0))
+    assert "objective" not in field.meta["cost_field"] and field.meta["cost_field"]["unit"] == "cost units"
+    assert "objective" not in resp[ids.CF_STATUS]["children"].lower()
+    assert resp[ids.CF_BEST_INFO]["children"].endswith("cost units")
+
+
+def test_a_length_weight_changes_the_field_and_equals_an_independent_calculation(app, state, small_layer):
+    plain_job, _resp, _plain_field = _run_to_layer(app, state, small_layer.id, CORNER)
+    plain = _values(plain_job)
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0, "length": 3.0}}
+    job, _resp, _field = _run_to_layer(app, state, small_layer.id, CORNER)
+    values = _values(job)
+    steps = np.arange(SMALL, dtype=float)
+    per_metre = 10.0 + 3.0                       # the cost of a metre plus the weight of a metre of length
+    # the cheapest way along the first row and along the diagonal is the straight line
+    assert values[0] == pytest.approx(steps * per_metre, rel=1e-4)
+    assert np.diag(values) == pytest.approx(steps * per_metre * np.sqrt(2.0), rel=1e-4)
+    assert plain[0] == pytest.approx(steps * 10.0) and not np.allclose(values, plain)
+    assert job.params["compute"]["finder_options"]["objective"] == {"cost": 1.0, "length": 3.0}
+
+
+def test_the_status_the_readout_and_the_layer_say_the_values_are_objective_units(app, state, small_layer):
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0, "length": 3.0}}
+    job, resp, field = _run_to_layer(app, state, small_layer.id, ENDS)
+    result = job.result
+    assert result["best"]["cost"] == pytest.approx(4 * 13.0, rel=1e-4)       # four metres of (cost 10 + length 3)
+    status, best = resp[ids.CF_STATUS]["children"], resp[ids.CF_BEST_INFO]["children"]
+    assert result["unit"] == service.OBJECTIVE_UNIT and result["objective"] is True
+    assert "weighted objective units, not cost units" in status and "Objective: cost 1 + length 3" in status
+    assert f"{result['max']:,.0f} {service.OBJECTIVE_UNIT}." in status
+    assert best.endswith(service.OBJECTIVE_UNIT) and "cost units" not in best
+    meta = field.meta["cost_field"]
+    assert meta["unit"] == service.OBJECTIVE_UNIT and meta["unit_note"] == service.OBJECTIVE_UNIT_NOTE
+    assert meta["objective"]["summary"].startswith("Objective: cost 1 + length 3")
+    assert meta["objective"]["spec"]["weights"]["length"] == 3.0 and meta["objective"]["spec"]["dem_layer_id"] is None
+    assert service.OBJECTIVE_UNIT_NOTE in resp[ids.NOTICES]["data"][-1]["impact"]
+    assert job.params["finalize"]["objective"]["summary"] == meta["objective"]["summary"]
+
+
+def test_a_terrain_model_runs_the_field_with_dijkstra_and_prices_the_slope(app, state, small_layer, dem_layer):
+    flat_job, _resp, _flat_field = _run_to_layer(app, state, small_layer.id, ENDS, algorithm="auto")
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0}, "dem_layer_id": dem_layer.id}
+    resp = _click(app, small_layer.id, ENDS, algorithm="auto")
+    assert "With a terrain model the cost field uses the Dijkstra solver" in _titles(resp)
+    job = _join(state)
+    assert job.status == jobs.DONE, job.error
+    resp = _poll(app)
+    assert job.result["algorithm"].startswith("dijkstra")
+    flat, sloped = _values(flat_job), _values(job)
+    assert sloped[0, 2] > flat[0, 2] + 1.0                  # the slope costs something: not the flat field
+    status = resp[ids.CF_STATUS]["children"]
+    assert "weighted objective units" in status and "DEM 'terrain'" in status and "Dijkstra" in status
+    assert resp[ids.CF_BEST_INFO]["children"].endswith(service.OBJECTIVE_UNIT)
+    assert _cost_field_layers(state)[-1].meta["cost_field"]["objective"]["spec"]["dem_layer_id"] == dem_layer.id
+
+
+def _refused_with(app, state, small_layer, *, control, fragment, **click):
+    resp = _click(app, small_layer.id, CORNER, **click)
+    notice = _refused(resp, state)
+    assert (notice["focus_id"], notice["focus_control"]) == (ids.TAB_ROUTES, control)
+    assert fragment in notice["meaning"] and fragment in resp[ids.CF_STATUS]["children"]
+    assert notice["impact"] == cf_cb.OBJECTIVE_IMPACT == "No cost field was computed."
+    return notice
+
+
+def test_a_terrain_model_on_a_gpu_backend_is_refused_before_the_job_and_focuses_the_backend(
+        app, state, small_layer, dem_layer, monkeypatch):
+    monkeypatch.setattr(routing, "backend_available", lambda _name: True)       # the refusal needs no GPU
+    state.routing_settings = {**routing.ROUTING_SETTING_DEFAULTS, "graph_api": "raster_gpu"}
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0}, "dem_layer_id": dem_layer.id}
+    _refused_with(app, state, small_layer, control=ids.GRAPH_API, fragment="terrain model (DEM)", algorithm="auto")
+
+
+def test_a_terrain_model_with_delta_stepping_is_refused_before_the_job_and_focuses_the_kernel(
+        app, state, small_layer, dem_layer):
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0}, "dem_layer_id": dem_layer.id}
+    _refused_with(app, state, small_layer, control=ids.CF_ALGORITHM, fragment="delta-stepping",
+                  algorithm="delta-stepping")
+
+
+def test_a_terrain_model_on_a_backend_without_fields_names_the_field_rule(app, state, small_layer, dem_layer,
+                                                                           monkeypatch):
+    monkeypatch.setattr(routing, "backend_available", lambda _name: True)
+    state.routing_settings = {**routing.ROUTING_SETTING_DEFAULTS, "graph_api": "raster_fim"}
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0}, "dem_layer_id": dem_layer.id}
+    resp = _click(app, small_layer.id, CORNER)
+    notice = _refused(resp, state)
+    assert notice["focus_control"] == ids.GRAPH_API and "terrain model" in notice["meaning"]
+
+
+def test_a_layer_that_was_removed_refuses_the_click_with_a_notice_and_starts_no_job(app, state, small_layer, dem_path):
+    gone = state.add_layer("slope band", "raster", crs=CRS, meta={"source_path": dem_path})
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0}, "layers": [
+        {"name": "band", "source": gone.id, "weight": 1.0}]}
+    state.remove_layer(gone.id)
+    notice = _refused_with(app, state, small_layer, control=ids.OBJ_LAYERS_GRID, fragment="band")
+    assert notice["title"].endswith("value not usable")
+
+
+def test_a_terrain_model_that_was_removed_refuses_the_click_and_focuses_the_dem_field(
+        app, state, small_layer, dem_layer):
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0}, "dem_layer_id": dem_layer.id}
+    state.remove_layer(dem_layer.id)
+    _refused_with(app, state, small_layer, control=ids.OBJ_DEM_LAYER, fragment="Terrain model (DEM)")
+
+
+def test_a_terrain_model_in_another_coordinate_system_is_refused(app, state, small_layer, dem_path):
+    other = state.add_layer("terrain wgs", "raster", crs="EPSG:4326", meta={"source_path": dem_path})
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0}, "dem_layer_id": other.id}
+    _refused_with(app, state, small_layer, control=ids.OBJ_DEM_LAYER, fragment="Terrain model (DEM)")
+
+
+def test_a_terrain_model_that_misses_a_fixed_point_is_refused(app, state, small_layer, small_dem_path):
+    narrow = state.add_layer("terrain west", "raster", crs=CRS, meta={"source_path": small_dem_path})
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0}, "dem_layer_id": narrow.id}
+    east = {"sources": [_small_pt(0, 4)], "targets": [], "waypoints": []}
+    resp = _click(app, small_layer.id, east)
+    notice = _refused(resp, state)
+    assert notice["focus_control"] == ids.OBJ_DEM_LAYER and "does not cover 1 of 1 routing point" in notice["meaning"]
+
+
+def test_32_bit_weights_on_the_cython_backend_are_refused_at_the_precision_control(app, state, small_layer):
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0, "length": 1.0}, "weight_precision": "float32"}
+    resp = _click(app, small_layer.id, CORNER)
+    notice = _refused(resp, state)
+    assert notice["focus_control"] == ids.OBJ_PRECISION
+
+
+def test_a_refused_objective_never_reaches_the_field_check(app, state, small_layer, dem_layer, monkeypatch):
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0}, "dem_layer_id": dem_layer.id}
+    state.remove_layer(dem_layer.id)
+    calls = []
+    monkeypatch.setattr(service, "plan_run", lambda *a, **k: calls.append(1))
+    _click(app, small_layer.id, CORNER)
+    assert calls == [] and state.jobs == {}
+
+
+def test_the_objective_check_is_the_one_of_the_route_run(app, state, small_layer, monkeypatch):
+    seen = []
+    original = cf_cb.objective_cb.prepare_run
+
+    def spy(state_, **kwargs):
+        seen.append(kwargs)
+        return original(state_, **kwargs)
+
+    monkeypatch.setattr(cf_cb.objective_cb, "prepare_run", spy)
+    _click(app, small_layer.id, CORNER)                                          # classic: no check at all
+    assert seen == []
+    _join(state)
+    _poll(app)
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0, "length": 2.0}}
+    _click(app, small_layer.id, CORNER)
+    (kwargs,) = seen
+    assert kwargs["graph_api"] == "cython" and kwargs["points"] == [(X0 + 0.5, Y0 + SMALL - 0.5)]
+    assert kwargs["impact"] == cf_cb.OBJECTIVE_IMPACT and kwargs["raster_bounds"] == (X0, Y0, X0 + SMALL, Y0 + SMALL)
+    _join(state)
+    _poll(app)
+
+
+def test_the_layer_keeps_the_objective_through_save_and_open(app, state, small_layer, tmp_path):
+    state.gui_settings["objective"] = {"weights": {"cost": 1.0, "length": 3.0}}
+    _job, _resp, field = _run_to_layer(app, state, small_layer.id, CORNER)
+    saved = project_io.save_project(state, tmp_path / "proj")
+    other = ProjectState(work_dir=tmp_path / "other")
+    try:
+        project_io.load_project(other, saved)
+        loaded = [ly for ly in other.layers_of_kind("raster") if (ly.meta or {}).get("cost_field")]
+        assert len(loaded) == 1
+        assert loaded[0].meta["cost_field"]["objective"] == _as_json(field.meta["cost_field"]["objective"])
+        assert loaded[0].meta["cost_field"]["unit"] == service.OBJECTIVE_UNIT
+        assert other.gui_settings["objective"]["weights"]["length"] == 3.0
+    finally:
+        other.shutdown()
 
 
 # ------------------------------------------------------------------ the check names every problem

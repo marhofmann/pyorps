@@ -68,7 +68,7 @@ def _rows(resp, grid) -> list[dict]:
 
 def _form_args(profile=None, *, edits=None, rows=None, text="", base=None, status="", notices=None,
                live=None):
-    """The positional arguments of ``form_to_yaml``: 23 field values, the 3 grids' ``rowData`` and
+    """The positional arguments of ``form_to_yaml``: 24 field values, the 3 grids' ``rowData`` and
     ``cellValueChanged``, then the states text, base, status, notices and the 3 grids' ``virtualRowData``."""
     profile = PROFILE if profile is None else profile
     values, angle, terrain, types = service.form_values(profile)
@@ -116,7 +116,7 @@ def test_the_form_has_one_field_per_key_in_the_order_of_the_keys(page):
     order = [c.id for c in _components(page) if getattr(c, "id", None) in set(ids.OHLF_IDS.values())]
     assert order == [ids.OHLF_IDS[key] for key in ids.OHLF_KEYS]
     assert ids.OHLF_KEYS == service.FORM_KEYS
-    assert len(order) == 23
+    assert len(order) == 24
 
 
 @pytest.mark.parametrize("key", service.FORM_KEYS)
@@ -211,7 +211,7 @@ def test_the_status_clearance_and_button_exist_once(page):
 
 def test_the_form_targets_cover_every_field_table_and_line():
     targets = form_section.FORM_TARGETS
-    assert len(set(targets)) == len(targets) == 23 + 3 + 4
+    assert len(set(targets)) == len(targets) == 24 + 3 + 4
     props = form_section.form_props(PROFILE)
     assert len(props) == len(targets)
 
@@ -487,7 +487,9 @@ def test_the_clearance_line_follows_the_four_settings(app):
     full = {"tower_height_m": 25, "conductor_weight_per_m": 10, "conductor_tension_n": 20000,
             "min_clearance_m": 7}
     resp = _edit(app, *_form_args(edits=full, text=text))
-    assert resp[ids.OHLF_CLEARANCE_INFO]["children"] == "Clearance check: on (the run also needs a DSM)"
+    assert resp[ids.OHLF_CLEARANCE_INFO]["children"] == (
+        "Clearance check: on, the profile is complete (the run needs a terrain model (DEM); a surface model (DSM) is "
+        "optional and adds trees and buildings)")
     resp = _edit(app, *_form_args(edits={"name": "again"}, text=text))
     assert resp[ids.OHLF_CLEARANCE_INFO]["children"] == service.clearance_status(PROFILE)
 

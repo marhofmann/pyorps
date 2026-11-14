@@ -313,7 +313,7 @@ def test_run_kwargs_for_weights_layers_derived_slope_and_dem():
     assert kw["gradient_options"]["multiplier"] == "exponential"
     assert out["objective_spec"] == obj.normalise_objective_settings(raw)
     assert out["objective_key"] == obj.objective_key(raw) and len(out["objective_key"]) == 64
-    assert out["force_direct"] is True                                     # extra layers
+    assert out["force_direct"] is False                # extra layers on cython: a retained session (round 16)
     assert set(out) == {"objective_kwargs", "objective_spec", "objective_key", "force_direct"}
 
 
@@ -355,7 +355,9 @@ def test_the_key_ignores_settings_that_are_not_read_and_follows_the_ones_that_ar
 @pytest.mark.parametrize("raw,graph_api,expected", [
     ({"weights": {"cost": 1, "length": 1}}, "cython", False),
     ({"weights": {"cost": 1, "length": 1}, "weight_precision": "float32"}, "networkx", True),
-    ({"weights": {"cost": 1}, "layers": [{"name": "a", "source": "M1"}]}, "cython", True),
+    ({"weights": {"cost": 1}, "layers": [{"name": "a", "source": "M1"}]}, "cython", False),     # round 16: proven
+    ({"weights": {"cost": 1}, "layers": [{"name": "a", "source": "M1"}]}, "raster_gpu", True),    # not run (no GPU)
+    ({"weights": {"cost": 1}, "layers": [{"name": "a", "source": "M1"}], "dem_layer_id": "DEM"}, "cython", False),
     ({"weights": {"cost": 1}, "dem_layer_id": "DEM"}, "cython", False),
     ({"weights": {"cost": 1}, "dem_layer_id": "DEM"}, "raster_gpu", True),
     ({"weights": {"cost": 1}, "dem_layer_id": "DEM"}, "networkx", False),
@@ -711,7 +713,8 @@ def test_weights_metric_layer_derived_slope_and_dem_reach_pathfinder(raster_path
     for name in ("objective", "dem", "metric_layers", "gradient_options"):
         assert name not in second
     assert finder.objective.weights == first["objective"]
-    assert built[0].session is None                                        # metric layers: no retained session
+    assert built[0].session is not None                                    # metric layers: a retained session
+    built[0].session.close()
     assert built[0].params["objective_spec"] == obj.normalise_objective_settings(settings)
     assert built[0].params["objective_key"] == finder.gui_objective_key == obj.objective_key(settings)
     json.dumps(built[0].params)                                            # the params can be saved
@@ -961,7 +964,7 @@ def test_a_heavy_objective_run_keeps_the_objective_keywords_and_counts_the_stack
     assert seen[0]["stack_bands"] == 2
     pending = state.pending_routing
     assert pending["kwargs"]["objective_kwargs"]["objective"] == {"cost": 1.0, "length": 0.2, "landscape": 0.5}
-    assert pending["kwargs"]["force_direct"] is True
+    assert pending["kwargs"]["force_direct"] is False                      # extra layers on cython: a session
     assert pending["meta"]["objective_summary"].startswith("Objective: cost 1 + length 0.2 + landscape 0.5")
     # a plain heavy run asks for nothing extra
     state.gui_settings["objective"] = {}
@@ -1040,6 +1043,11 @@ def test_a_failed_background_run_keeps_the_warnings_it_raised_and_its_error(stat
 
 
 # ============================================================ C: route edits
+def _close_all_sessions(state):
+    for session in list(state.search_sessions.values()):
+        session.close()
+
+
 def _build_route(app, state, raster, settings, **run_kwargs):
     state.gui_settings["objective"] = settings
     resp = _run(app, raster.id, **run_kwargs)
@@ -1119,20 +1127,32 @@ def test_an_edit_needs_the_layers_the_route_used(app, state, raster, layers):
     assert state.get(route.id) is route                                     # nothing was replaced
 
 
-def test_a_metric_layer_route_is_edited_directly_and_survives_a_move_out_of_the_window(
+def test_a_metric_layer_route_keeps_its_session_and_survives_a_move_out_of_the_window(
         app, state, raster, layers, monkeypatch):
+    """Round 16: a route with a metric layer is retained in a session again (``force_direct`` is False on cython);
+    the session rebuilds its window itself and the clone carries the layers (before, the edit rebuilt a direct
+    finder)."""
     settings = _settings(layers, extra=[("landscape", "stripe", 0.5)])
     route = _build_route(app, state, raster, settings, buffer=5)
-    assert route.id not in state.search_sessions                            # force_direct: no session
+    assert route.id in state.search_sessions                                # no force_direct: a retained session
     constructed = _spy(monkeypatch, PathFinder, "__init__")
     outside = [list(SOURCE), [500005.0, 5599900.0]]                         # left of the 5 m window
     new_layer, notices = edit_cb.recompute_variant(state, route, outside, "moved target", [])
     assert new_layer is not None, notices
     rebuilt = _objective_finders(constructed)
-    assert len(rebuilt) == 1 and "landscape" in rebuilt[0]["metric_layers"]
-    assert new_layer.id not in state.search_sessions
+    assert len(rebuilt) == 1 and "landscape" in rebuilt[0]["metric_layers"]  # the session's clone
+    assert new_layer.id in state.search_sessions
     assert new_layer.meta["params"]["objective_key"] == route.meta["params"]["objective_key"]
     assert new_layer.meta["metrics"]["total_cost"] > 0
+    _close_all_sessions(state)
+
+
+def test_a_metric_layer_route_on_a_gpu_backend_is_still_edited_directly():
+    """No device here, so the retained GPU/FIM session with metric layers was not run: those backends keep the
+    old safeguard (``force_direct``)."""
+    spec = {"weights": {"cost": 1}, "layers": [obj.layer_row("a", "M1")]}
+    assert edit_cb._route_plan({"graph_api": "raster_gpu", "algorithm": "dijkstra", "objective_spec": spec})[3] is True
+    assert edit_cb._route_plan({"graph_api": "raster_fim", "algorithm": "fim", "objective_spec": spec})[3] is True
 
 
 def test_a_float32_route_is_edited_directly_on_its_backend(app, state, raster, layers, monkeypatch):
@@ -1150,9 +1170,14 @@ def test_a_float32_route_is_edited_directly_on_its_backend(app, state, raster, l
 def test_route_plan_is_direct_when_the_stored_objective_forces_it():
     plan = edit_cb._route_plan({"graph_api": "cython", "algorithm": "dijkstra"})
     assert plan[3] is False
-    forced = edit_cb._route_plan({"graph_api": "cython", "algorithm": "dijkstra",
-                                  "objective_spec": {"weights": {"cost": 1}, "layers": [obj.layer_row("a", "M1")]}})
-    assert forced[3] is True
+    with_layers = edit_cb._route_plan({"graph_api": "cython", "algorithm": "dijkstra",
+                                       "objective_spec": {"weights": {"cost": 1},
+                                                          "layers": [obj.layer_row("a", "M1")]}})
+    assert with_layers[3] is False                      # round 16: extra layers on cython use the session
+    float32 = edit_cb._route_plan({"graph_api": "cython", "algorithm": "dijkstra",
+                                   "objective_spec": {"weights": {"cost": 1, "length": 1},
+                                                      "weight_precision": "float32"}})
+    assert float32[3] is True
     assert edit_cb._route_plan({"graph_api": "raster_gpu", "algorithm": "dijkstra",
                                 "objective_spec": {"dem_layer_id": "DEM"}})[3] is True
 
@@ -1274,9 +1299,10 @@ def test_assumption_raster_gpu_float32_runs_directly(raster_path, layers):
 
 def test_a_session_that_rebuilds_its_window_keeps_the_metric_layers(raster_path, layers):
     """The library carries ``metric_layers`` over when a session rebuilds its search window (it used to stop with
-    "unknown metric layer"). The GUI still routes direct for extra metric layers (``force_direct``): this test
-    pins the library side only. The buffer is several cells, so the window rebuild is not mixed up with the
-    window-snapping of a one-cell buffer."""
+    "unknown metric layer"). Since round 16 the GUI keeps such a route in a retained session on cython
+    (``force_direct`` is False for extra metric layers there): this test pins the library side, the proof that a
+    session route equals the direct route is in ``test_gui_terrain_length_round16.py``. The buffer is several
+    cells, so the window rebuild is not mixed up with the window-snapping of a one-cell buffer."""
     settings = _settings(layers, extra=[("landscape", "stripe", 0.5)])
     kwargs = obj.run_kwargs(settings, layer_path=_paths(layers))["objective_kwargs"]
     finder = PathFinder(raster_path, source_coords=[SOURCE], target_coords=[TARGET], search_space_buffer_m=8,
@@ -1288,6 +1314,8 @@ def test_a_session_that_rebuilds_its_window_keeps_the_metric_layers(raster_path,
     assert session.finder is not finder                                      # it really was rebuilt
     assert session.finder.metric_layers == kwargs["metric_layers"]           # ... and kept the layers
     assert path is not None
-    assert obj.force_direct(settings, "cython") is True                      # the GUI's own guard stays
+    assert obj.force_direct(settings, "cython") is False                     # the GUI uses the session (round 16)
+    assert obj.force_direct(settings, "raster_gpu") is True                  # not run without a device: guard stays
+    session.close()
 
 

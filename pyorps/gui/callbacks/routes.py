@@ -373,11 +373,14 @@ def finalize_routing(state, finder, built, failed, *, meta: dict,
     elif built:
         graph_api = built[0].params.get("graph_api", "?")
         objective_line = meta.get("objective_summary")
+        terrain_line = routing.terrain_length_sentence(
+            [(route.cost.total_length, getattr(route.cost, "terrain_length_m", None)) for route in built])
         notices.append(success(
             f"{len(built)} route(s) computed",
             meaning=f"{meta.get('algorithm')} on {graph_api}, chained "
                     f"through {meta.get('n_waypoints', 0)} waypoint(s)."
-                    + (f" {objective_line}" if objective_line else "")))
+                    + (f" {objective_line}" if objective_line else "")
+                    + (f" {terrain_line}" if terrain_line else "")))
     status = (f"{len(built)} route(s), {len(failed)} failed"
               if failed else f"{len(built)} route(s) built")
     if cancelled:
@@ -418,6 +421,11 @@ def add_route_layer(state, *, line: LineString, route_cost, params: dict,
         "n_forbidden_cells": route_cost.n_forbidden_cells,
         "crosses_forbidden": route_cost.crosses_forbidden,
     }
+    # the length along the terrain: only a route searched over a DEM has one (the key is left out otherwise, so
+    # a plain route's attributes, export columns and saved metrics stay exactly as they were)
+    terrain_length = getattr(route_cost, "terrain_length_m", None)
+    if terrain_length is not None:
+        metrics[routing.TERRAIN_LENGTH_KEY] = float(terrain_length)
     name = name or state.next_route_name()
     gdf = gpd.GeoDataFrame(
         [{"name": name, **metrics}], geometry=[line], crs=crs)

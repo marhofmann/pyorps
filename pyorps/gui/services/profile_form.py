@@ -36,7 +36,7 @@ from typing import Any
 
 from pyorps.core import optional_deps
 from pyorps.core.exceptions import InvalidInputError, PyorpsError
-from pyorps.core.infrastructure_profile import InfrastructureProfile
+from pyorps.core.infrastructure_profile import TERMINAL_SPAN_RULES, InfrastructureProfile
 
 from .errors import Notice
 
@@ -131,7 +131,9 @@ FIELD_SPECS: dict[str, FieldSpec] = {s.key: s for s in (
     _spec("tower_height_cost_per_increment", "Extra cost per 3 m step", unit="EUR", minimum=0,
           default=0, help="Added to a tower for each 3 m above the lowest height."),
     _spec("terminal_tower_height_m", "Height at the end points", unit="m", minimum=0,
-          allow_equal=False, maximum=300, help="Attachment height of the towers at both ends."),
+          allow_equal=False, maximum=300,
+          help="Reported only, the search does not use it: the attachment height of the towers at both ends in "
+               "the route report. The search uses the connection heights of the Line ends block."),
     _spec("terminal_tower_cost", "Cost of each end tower", unit="EUR", minimum=0, default=0,
           help="Price of one end (dead-end) tower."),
     _spec("conductor_weight_per_m", "Conductor weight", unit="N/m", minimum=0,
@@ -150,9 +152,18 @@ FIELD_SPECS: dict[str, FieldSpec] = {s.key: s for s in (
                "exact: the real footprint is summed."),
     _spec("recommended_buffer_m", "Suggested corridor width (info only)", unit="m", minimum=0,
           help="Information only: the router does not read it."),
+    # round 17 (P5): the options are the library's four values; the page words them from
+    # ``constrained_ends.RULE_LABELS`` (that module imports this one, so the labels cannot be read here)
+    _spec("terminal_span_rule", "End-span rule", kind="select", options=TERMINAL_SPAN_RULES, default="remove",
+          help="What happens to an end tower, the first or the last tower of the line next to its connection point, "
+               "when the search placed it closer to the line end than the shortest span: it can be removed "
+               "afterwards (the end span then gets longer), removed only if the line stays valid without it, or kept "
+               "(the end span stays shorter than the shortest span). 'Never place one' makes the search itself "
+               "keep every end span at least as long as the shortest span; it needs the exact search (more memory "
+               "and time) and a CPU backend. Needs both span limits."),
 )}
 
-#: the 23 form keys in form order (equal to ``ids.OHLF_KEYS``, a test checks it)
+#: the 24 form keys in form order (equal to ``ids.OHLF_KEYS``, a test checks it)
 FORM_KEYS: tuple[str, ...] = tuple(FIELD_SPECS)
 
 #: column keys of the three tables (the keys of each row dict)
@@ -866,12 +877,22 @@ def clearance_state(profile: Any) -> str:
     return "partial" if any(parts) else "off"
 
 
+#: what the RUN must bring for the clearance check to act (``ConstrainedPathFinder``: the check is on with a DEM and
+#: a profile that has the four clearance settings; a DSM is optional and read only together with a DEM)
+CLEARANCE_RUN_NEEDS = ("the run needs a terrain model (DEM); a surface model (DSM) is optional and adds trees and "
+                       "buildings")
+
+
 def clearance_status(profile: Any) -> str:
-    """One info line for the form: is the clearance check on, and what is missing."""
+    """One info line for the form: is the clearance check on, and what is missing.
+
+    The profile alone does not switch the check on: the run also needs a terrain model (DEM). A surface model (DSM)
+    is optional (it adds the height of trees and buildings to the check, and the library ignores it without a DEM).
+    """
     data = _as_dict(profile)
     state = clearance_state(data)
     if state == "on":
-        return "Clearance check: on (the run also needs a DSM)"
+        return f"Clearance check: on, the profile is complete ({CLEARANCE_RUN_NEEDS})"
     names = ("base height", "conductor weight", "conductor tension", "ground clearance")
     heights = data.get("tower_heights_m")
     have = (data.get("tower_height_m") is not None
@@ -880,10 +901,10 @@ def clearance_status(profile: Any) -> str:
             data.get("conductor_tension_n") is not None,
             data.get("min_clearance_m") is not None)
     if state == "off":
-        return ("Clearance check: off (needs base height, conductor weight, tension and "
-                "clearance, plus a DSM)")
+        return ("Clearance check: off (the profile needs base height, conductor weight, tension and "
+                f"clearance; {CLEARANCE_RUN_NEEDS})")
     missing = ", ".join(n for n, ok in zip(names, have) if not ok)
-    return f"Clearance check: off, still missing: {missing} (and a DSM)"
+    return f"Clearance check: off, still missing: {missing} ({CLEARANCE_RUN_NEEDS})"
 
 
 def unused_keys(profile: Any) -> list[str]:

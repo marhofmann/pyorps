@@ -428,6 +428,8 @@ OHLF_KEYS = (
     "terminal_tower_cost", "conductor_weight_per_m", "conductor_tension_n",
     "min_clearance_m", "tower_ground_area_m2", "tower_area_cost_mode",
     "recommended_buffer_m",
+    # round 17 (P5): the end-span rule, the 24th field; it sits in the "Line ends" group at the end of the form
+    "terminal_span_rule",
 )
 OHLF_IDS = {key: "ohlf-" + key.replace("_", "-") for key in OHLF_KEYS}
 OHLF_ANGLE_GRID = "ohlf-angle-grid"
@@ -447,6 +449,30 @@ OHLF_ANGLE_TABLE_WRAP = "ohlf-angle-table-wrap"   # the turn cost table (piecewi
 OHLF_BASE = "ohlf-base"                   # store: the last loaded profile dict
 OHLF_YAML_DETAILS = "ohlf-yaml-details"   # <details> "Raw YAML (advanced)"
 OHL_SETTINGS = "ohlf-settings"            # store: mirror of the constrained settings
+
+# ------------- objective weights of constrained routing (round 16; R3-B), prefix "ohlo-"
+# the weight keys of services/constrained_objective, in form order; the id of a
+# weight is "ohlo-w-" + the key (ohlo-w-smoothness, ohlo-w-tower)
+OHLO_KEYS = ("smoothness", "tower")
+OHLO_IDS = {key: "ohlo-w-" + key for key in OHLO_KEYS}
+OHLO_BLOCK = "ohlo-block"                 # <details> "Objective weights"
+OHLO_FIELDS = "ohlo-fields"               # <fieldset> around the number inputs (disabled with a reason)
+OHLO_STATUS = "ohlo-status"               # summary line, or the first problems
+OHLO_RESET_BTN = "ohlo-reset"             # "Reset weights": every weight back to its default
+OHLO_SETTINGS = "ohlo-settings"           # store: mirror of the weights
+
+# ------------- line ends of constrained routing (round 17; P5), prefix "ohle-"
+# the two connection heights of services/constrained_ends (the finder's own keywords), in form order; the id of a
+# height is "ohle-" + the key with dashes. The end-span rule is a PROFILE field: its select is
+# OHLF_IDS["terminal_span_rule"].
+OHLE_KEYS = ("source_connection_height_m", "target_connection_height_m")
+OHLE_IDS = {key: "ohle-" + key.replace("_", "-") for key in OHLE_KEYS}
+OHLE_BLOCK = "ohle-block"                 # <details> "Line ends" (the rule select and the two heights)
+OHLE_FIELDS = "ohle-fields"               # <fieldset> around the two heights (disabled with a reason)
+OHLE_STATUS = "ohle-status"               # summary line of the heights, or the first problems
+OHLE_RULE_STATUS = "ohle-rule-status"     # line under the rule select: why it is disabled, what a GPU backend refuses
+OHLE_CLEAR_BTN = "ohle-clear"             # "Clear heights": both heights back to blank
+OHLE_SETTINGS = "ohle-settings"           # store: mirror of the heights
 
 # --------------------------------------- background jobs (gap 7; P1, P7, P10)
 RASTERIZE_STOP_BTN = "rasterize-stop-btn"

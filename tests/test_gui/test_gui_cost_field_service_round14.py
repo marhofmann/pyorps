@@ -1095,6 +1095,102 @@ def test_a_file_that_cannot_be_served_gives_an_error_notice_and_no_layer(state, 
     assert notices[-1]["severity"] == "error" and not any(n["severity"] == "success" for n in notices)
 
 
+# ================================================================== with an objective (round 3, R3-A)
+def _objective_options(weights: dict, **extra) -> dict:
+    return {"objective": weights, "weight_precision": "uint16", **extra}
+
+
+def test_unit_for_follows_the_objective_and_leaves_plain_runs_alone():
+    assert cf.unit_for(None) == (cf.UNIT, cf.UNIT_NOTE) == ("cost units", cf.UNIT_NOTE)
+    assert cf.unit_for({}) == (cf.UNIT, cf.UNIT_NOTE)
+    assert cf.unit_for({"dem": "a.tif"}) == (cf.UNIT, cf.UNIT_NOTE)          # a bare DEM is no objective
+    assert cf.unit_for(_objective_options({"cost": 1.0})) == (cf.OBJECTIVE_UNIT, cf.OBJECTIVE_UNIT_NOTE)
+    assert cf.OBJECTIVE_UNIT == "objective units" and "not EUR" in cf.OBJECTIVE_UNIT_NOTE
+
+
+def test_a_plain_run_is_unchanged_and_says_it_is_no_objective_run(walled, tmp_path):
+    data, path = walled
+    result = _run(path, [_xy(5, 0, 0), _xy(5, 4, 4)], tmp_path / "plain.tif")
+    _assert_field(result["path"], _reference(data, (0, 0)) + _reference(data, (4, 4)))
+    assert (result["unit"], result["unit_note"]) == (cf.UNIT, cf.UNIT_NOTE)
+    assert result["objective"] is False and result["objective_scale"] is None
+    assert "objective" not in cf.summary_text(result).lower() and cf.best_text(result).endswith("cost units")
+
+
+def test_a_length_weight_gives_the_field_of_the_weighted_surface_in_objective_units(tmp_path):
+    """cost 1 + length 2 on a uniform cost of 7: every metre costs 9, the whole field is the 9-per-metre field."""
+    data = np.full((5, 5), 7, dtype=np.uint16)
+    path = _write_raster(tmp_path / "uniform7.tif", data)
+    result = _run(path, [_xy(5, 0, 0), _xy(5, 4, 4)], tmp_path / "obj.tif",
+                  finder_options=_objective_options({"cost": 1.0, "length": 2.0}))
+    expected = _reference(np.full((5, 5), 9, dtype=np.uint16), (0, 0)) + _reference(
+        np.full((5, 5), 9, dtype=np.uint16), (4, 4))
+    got = _read(result["path"])
+    np.testing.assert_allclose(got, expected, rtol=1e-4, atol=1e-3)
+    assert (result["unit"], result["objective"]) == (cf.OBJECTIVE_UNIT, True)
+    assert result["objective_scale"] == pytest.approx(65534.0 / 9.0)
+    assert result["min"] == pytest.approx(float(expected.min()), rel=1e-4)
+    assert result["max"] == pytest.approx(float(expected.max()), rel=1e-4)
+    assert result["best"]["cost"] == pytest.approx(float(expected.min()), rel=1e-4)
+    plain = _read(_run(path, [_xy(5, 0, 0), _xy(5, 4, 4)], tmp_path / "plain7.tif")["path"])
+    assert not np.allclose(got, plain)
+
+
+def test_a_cost_weight_alone_scales_the_field_like_the_objective_says(tmp_path):
+    """Only the cost is weighted: the library searches the untouched raster; the field is still in objective units."""
+    data = np.random.default_rng(5).integers(1, 20, (5, 5)).astype(np.uint16)
+    path = _write_raster(tmp_path / "random.tif", data)
+    result = _run(path, [_xy(5, 0, 0)], tmp_path / "cost2.tif", finder_options=_objective_options({"cost": 2.0}))
+    _assert_field(result["path"], 2.0 * _reference(data, (0, 0)))
+    assert result["unit"] == cf.OBJECTIVE_UNIT and result["objective_scale"] == pytest.approx(0.5)
+
+
+def test_an_objective_with_forbidden_cells_keeps_them_as_no_data(tmp_path):
+    data = np.full((5, 5), 7, dtype=np.uint16)
+    data[2, 1:4] = FORBIDDEN
+    path = _write_raster(tmp_path / "wall7.tif", data)
+    result = _run(path, [_xy(5, 0, 0)], tmp_path / "wall_obj.tif",
+                  finder_options=_objective_options({"cost": 1.0, "length": 1.0}))
+    weighted = np.where(data == FORBIDDEN, FORBIDDEN, 8).astype(np.uint16)
+    _assert_field(result["path"], _reference(weighted, (0, 0)))
+    assert result["forbidden_cells"] == 3
+
+
+def test_the_texts_name_the_unit_and_the_objective_when_the_result_carries_one(tmp_path):
+    data = np.full((5, 5), 7, dtype=np.uint16)
+    path = _write_raster(tmp_path / "texts.tif", data)
+    result = _run(path, [_xy(5, 0, 0), _xy(5, 4, 4)], tmp_path / "texts_obj.tif",
+                  finder_options=_objective_options({"cost": 1.0, "length": 2.0}))
+    summary, best = cf.summary_text(result), cf.best_text(result)
+    assert f"{result['max']:,.0f} objective units." in summary and "weighted objective units, not cost units" in summary
+    assert best.endswith("objective units") and "cost units" not in best
+    result["objective_summary"] = "Objective: cost 1 + length 2."
+    assert cf.summary_text(result).endswith(" Objective: cost 1 + length 2.")
+
+
+def test_finalize_records_the_objective_in_the_layer_meta(state, tmp_path):
+    data = np.full((5, 5), 7, dtype=np.uint16)
+    path = _write_raster(tmp_path / "meta.tif", data)
+    result = _run(path, [_xy(5, 0, 0)], tmp_path / "meta_obj.tif",
+                  finder_options=_objective_options({"cost": 1.0, "length": 2.0}))
+    result["objective_spec"] = {"weights": {"cost": 1.0, "length": 2.0}}
+    result["objective_summary"] = "Objective: cost 1 + length 2."
+    layer, notices = cf.finalize_cost_field(state, result, [])
+    meta = layer.meta["cost_field"]
+    assert meta["unit"] == cf.OBJECTIVE_UNIT and meta["unit_note"] == cf.OBJECTIVE_UNIT_NOTE
+    assert meta["objective"] == {"spec": {"weights": {"cost": 1.0, "length": 2.0}},
+                                 "summary": "Objective: cost 1 + length 2.", "scale": pytest.approx(65534.0 / 9.0)}
+    assert cf.OBJECTIVE_UNIT_NOTE in notices[-1]["impact"]
+    state.remove_layer(layer.id)
+
+
+def test_an_objective_run_with_a_terrain_model_is_refused_on_a_gpu_backend_and_with_delta_stepping():
+    options = _objective_options({"cost": 1.0}, dem="terrain.tif")
+    assert [k for k, _m in cf.check_backend("raster_gpu", "auto", has_dem=True)] == ["graph_api"]
+    assert [k for k, _m in cf.check_backend("cython", "delta-stepping", has_dem=True)] == ["algorithm"]
+    assert cf._has_dem(options) and cf._has_objective(options)                    # noqa: SLF001
+
+
 # ================================================================== GPU (skipped without a GPU)
 @pytest.mark.skipif(not GPU, reason="needs CuPy and a CUDA GPU")
 def test_raster_gpu_equals_the_independent_dijkstra(walled, tmp_path):

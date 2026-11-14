@@ -62,12 +62,17 @@ HELP = (
     "field gives the cost of the cheapest way to reach it from a fixed point. 'Sum over the points' adds that "
     "cost over all fixed points: the cheapest cell is where one station that connects all of them would cost "
     "least. 'Lowest of the points' keeps the cost from the nearest fixed point instead: a catchment map. "
-    f"The unit is {service.UNIT}: {service.UNIT_NOTE}. "
+    f"The unit is {service.UNIT}: {service.UNIT_NOTE}. With a weighted objective (see below) it is "
+    f"{service.OBJECTIVE_UNIT} instead: {service.OBJECTIVE_UNIT_NOTE}. "
     "Cells that cannot be reached, and forbidden cells, are shown as no data (transparent).")
 
 HELP_SCOPE = (
-    "The field is computed on the plain cost raster picked under 'Route on raster'. The objective and terrain "
-    "card is not applied. It reads the backend, neighbourhood order, search buffer, whole-raster switch and "
+    "The field is computed on the cost raster picked under 'Route on raster', with the same settings as a plain "
+    "route: when the Objective & terrain card is set (weights, extra layers, terrain model with its slope response, "
+    "weight precision), the field uses it, the values are then objective units and the layer remembers the "
+    "objective; with the default values it is the plain cost raster. A terrain model needs the cython backend "
+    "(the field then uses the Dijkstra kernel). The corridor graph and constrained routing do not use the "
+    "objective. It reads the backend, neighbourhood order, search buffer, whole-raster switch and "
     "forbidden-cells switch of 'Algorithm & search', and needs a backend that can compute a field "
     f"({', '.join(service.FIELD_BACKENDS)}). It runs in the background and the page stays usable. Stop acts "
     "between fixed points: the fixed point being solved always finishes, and a stopped run adds no layer.")

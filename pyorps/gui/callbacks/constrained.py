@@ -14,6 +14,22 @@ registers the route through the same ``finalize_constrained`` as a synchronous
 run and hands it to the page exactly once, and
 Stop ends the run after the segment in flight (no route is added). A light
 run stays inside ``run_constrained``, exactly as before.
+
+Round 16 (R3-B): the objective weights of the "Objective weights" block are read from
+``state.gui_settings["constrained"]["objective"]`` (``objective_settings``; the run gained no ``State``). A weight
+that is not usable, or a combination the library refuses (another backend than cython, the clearance check),
+is an error notice that focuses the field and starts nothing. Weights at their defaults pass nothing to the
+library; others go to it through ``services/constrained`` in the synchronous and the background path alike, and
+are stored with the route (``params["objective_weights"]``) and named in its status and success notice.
+
+Round 17 (P5): the connection heights of the "Line ends" group are read the same way
+(``ends_settings``; the run gained no ``State`` either), checked together with the end-span rule of the profile
+(``constrained_ends.run_problems``: a value the library refuses, a backend that cannot run them, an exact search
+that would not fit) before anything starts, and passed to the library through ``services/constrained`` in the
+synchronous and the background path alike. They are stored with the route (``params["connection_heights"]``). What
+the library reports about the line ends (the rule, the heights, a removed end tower, span and search notes, height
+premiums) is named in the status, the success notice and, for the notes, a notice of its own; a ``NoPathFoundError``
+of a restricted search ends as the notice of ``services/errors`` that names the rule or the heights.
 """
 from __future__ import annotations
 
@@ -22,7 +38,7 @@ from dash.exceptions import PreventUpdate
 
 from .. import ids
 from ..sections import profile_form as form_section
-from ..services import constrained, geo, jobs, routing
+from ..services import constrained, constrained_ends, constrained_objective, geo, jobs, routing
 from ..services import profile_form as profile_service
 from ..services.errors import Notice, cap_notices, guard, success
 from . import job_poll
@@ -33,8 +49,14 @@ from .routes import (
     raster_info_or_notice,
 )
 
-#: marker for "the run finished but found no path" (as opposed to a crash)
-_NO_PATH = object()
+
+class _NoPath:
+    """Marker for "the run finished but found no path" (as opposed to a crash); ``info`` names the segment."""
+
+    def __init__(self, info: dict | None = None):
+        self.info = info
+
+
 #: the Stop button of the constrained job is hidden unless a job runs
 STOP_HIDDEN = job_poll.STOP_HIDDEN
 #: where the state keeps the constrained job
@@ -46,12 +68,17 @@ _NO_JOB = (no_update, no_update)
 _UNCHANGED = (no_update, no_update, no_update, no_update)
 
 
-def no_route_notice() -> dict:
-    """The box for a finished run whose segment found no feasible tower-by-tower path."""
+def no_route_notice(info: dict | None = None) -> dict:
+    """The box for a finished run whose segment found no feasible tower-by-tower path.
+
+    ``info`` (``{"segment": k, "of": n}``, what ``constrained.run_constrained_path`` leaves in its ``outcome``)
+    names the segment of a chain of waypoints that found none; without it, or for a run of one segment, the
+    meaning is the general sentence.
+    """
     return Notice(
         severity="error", title="No route could be found",
-        meaning="A constrained segment found no feasible tower-by-tower "
-                "path.",
+        meaning=constrained.no_route_segment_text(info) or "A constrained segment found no feasible tower-by-tower "
+                                                           "path.",
         impact="No overhead-line route was produced.",
         fix="Loosen the profile (angles/spans), enlarge the search buffer, "
             "or move the points.", focus_id=ids.TAB_ROUTES).to_dict()
@@ -100,17 +127,101 @@ def stopped_notice() -> dict:
         fix="Press Run routing again to start over.").to_dict()
 
 
+#: why the library took an end tower out, by the rule in force (a default run says "remove")
+_REMOVED_WHY = {
+    "remove": "the search had placed it closer to a line end than the shortest span, and the rule removes such a "
+              "tower afterwards, so the end span became longer",
+    "remove_if_valid": "the search had placed it closer to a line end than the shortest span, and the line stays "
+                       "valid without it",
+}
+_HEIGHT_WORDS = {"source_connection_height_m": "source", "target_connection_height_m": "target"}
+
+
+def _short_rule(rule: str) -> str:
+    """The option text of a rule without its bracket: ``"Keep it"``."""
+    return constrained_ends.rule_label(rule).split(" (", 1)[0]
+
+
+def _heights_text(summary: dict) -> str:
+    """``"source 25 m, target 12 m"`` for the connection heights a route reports; "" when none."""
+    return ", ".join(f"{_HEIGHT_WORDS[key]} {constrained_objective.format_number(summary[key])} m"
+                     for key in constrained_ends.HEIGHT_KEYS if key in summary)
+
+
+def end_status_text(summary: dict) -> str:
+    """What the library reports about the line ends, as the parts of the status line (``"; ..."`` each).
+
+    Only where there is something to say: the rule (when not the default), the connection heights, the removed end
+    towers. A classic run whose end tower the library took out says so too (the honest state).
+    """
+    parts = []
+    rule = summary.get("terminal_span_rule")
+    if rule and rule != constrained_ends.DEFAULT_RULE:
+        parts.append(f"end-span rule: {_short_rule(rule)}")
+    heights = _heights_text(summary)
+    if heights:
+        parts.append(f"connection heights: {heights}")
+    removed = summary.get("removed_towers")
+    if removed:
+        count = int(removed["count"])
+        parts.append(f"{count} end tower{'' if count == 1 else 's'} removed")
+    return "".join(f"; {part}" for part in parts)
+
+
+def end_facts(summary: dict) -> list[str]:
+    """The sentences of the success notice about the line ends (empty for a run that has nothing to report)."""
+    out = []
+    rule = summary.get("terminal_span_rule")
+    if rule and rule != constrained_ends.DEFAULT_RULE:
+        out.append(f"End-span rule: {constrained_ends.rule_label(rule)}.")
+    heights = _heights_text(summary)
+    if heights:
+        out.append(f"Connection heights: {heights} (metres above the ground at the end point).")
+    removed = summary.get("removed_towers")
+    if removed:
+        count = int(removed["count"])
+        why = _REMOVED_WHY.get(rule or constrained_ends.DEFAULT_RULE,
+                               "the end-span rule took it out after the search")
+        out.append(f"Removed end tower{'' if count == 1 else 's'}: {count} (cost {float(removed['cost']):,.0f}, not "
+                   f"part of the route's cost). Why: {why}.")
+    if summary.get("height_premiums") is not None:
+        out.append(f"Height premiums: {float(summary['height_premiums']):,.0f} (the part of the tower cost charged "
+                   "for taller towers, already inside the tower cost).")
+    return out
+
+
+def end_notes_notice(summary: dict) -> dict | None:
+    """The notice with the span notes and the search notes of the library, or None when it has none."""
+    notes = [*summary.get("span_notes", ()), *summary.get("search_notes", ())]
+    if not notes:
+        return None
+    return Notice(
+        severity="info", title="Line ends: notes on this route",
+        meaning=" ".join(notes),
+        impact="The route is the one found; the notes say where an end span differs from the spans of the profile "
+               "or how the search ran.",
+        fix="Choose another end-span rule or set the connection heights in the Line ends group of the profile form "
+            "if you want another result.", focus_id=ids.TAB_ROUTES,
+        focus_control=ids.OHLE_BLOCK).to_dict()
+
+
 def finalize_constrained(state, result: dict, notices: list[dict], *,
                          config: dict, backend: str, neighborhood: str,
                          raster_layer_id: str, control_points: list,
-                         wp_names: list):
+                         wp_names: list, objective_weights: dict | None = None,
+                         connection_heights: dict | None = None):
     """What happens after a constrained run found a route: layers, summary, log, notices.
 
     The one path for the synchronous run (inside ``run_constrained``) and a background run (the
     poll callback). ``result`` is what ``constrained.run_constrained_path`` returned; ``config`` is
-    the profile that was run, ``control_points`` the source, the waypoints and the target. Returns
-    the five values of ``LAYERS_VIEW``, ``OHL_STATUS``, the two route-select properties and
-    ``NOTICES``.
+    the profile that was run, ``control_points`` the source, the waypoints and the target.
+    ``objective_weights`` are the weights the run used (``constrained_objective.used_weights``; None
+    or empty for classic routing): they are stored with the route and named in the status and the
+    success notice. ``connection_heights`` are the heights the run was given
+    (``constrained_ends.used_ends``; None or empty when none was set): stored with the route in its params and
+    summary. What the library reports about the line ends (``end_status_text``, ``end_facts``,
+    ``end_notes_notice``) is named in the status and the notices. Returns the five values of ``LAYERS_VIEW``,
+    ``OHL_STATUS``, the two route-select properties and ``NOTICES``.
     """
     from ..services.cost import RouteCost
 
@@ -126,6 +237,13 @@ def finalize_constrained(state, result: dict, notices: list[dict], *,
     params = {"constrained": True, "profile": config, "backend": backend,
               "raster_layer_id": raster_layer_id,
               "neighborhood": neighborhood}
+    weights_text = constrained_objective.weights_text(objective_weights)
+    if objective_weights:               # a classic run keeps the params it always had
+        params["objective_weights"] = dict(objective_weights)
+        summary = {**summary, "objective_weights": dict(objective_weights)}
+    if connection_heights:              # the heights the run was given (the summary also has the reported ones)
+        params["connection_heights"] = dict(connection_heights)
+        summary = {**summary, "connection_heights": dict(connection_heights)}
     route_layer = add_route_layer(
         state, line=line, route_cost=route_cost, params=params,
         control_points=control_points, crs=crs,
@@ -140,12 +258,15 @@ def finalize_constrained(state, result: dict, notices: list[dict], *,
             style={"color": "#7b3294", "weight": 2, "fillOpacity": 0.5},
             meta={"towers_for": route_layer.id})
 
+    facts = end_facts(summary)
     notices.append(success(
         f"Overhead line routed: {summary['n_towers']} towers"
         + (f" ({n_waypoints} forced at waypoints)" if n_waypoints else ""),
         meaning=(f"Tower cost {summary['total_tower_cost']:,.0f}, angle "
                  f"penalties {summary['total_angle_penalty_cost']:,.0f}, "
-                 f"max turn {summary['max_turn_angle_deg']:.1f} deg.")))
+                 f"max turn {summary['max_turn_angle_deg']:.1f} deg."
+                 + (f" Objective weights used: {weights_text}." if weights_text else "")
+                 + "".join(f" {fact}" for fact in facts))))
     notices.append(Notice(
         severity="info", title="Terrain cost shown is 2-D",
         meaning="The optimizer used 3-D penalties but reports the plain "
@@ -154,10 +275,15 @@ def finalize_constrained(state, result: dict, notices: list[dict], *,
                "(F9).",
         fix="Treat it as indicative; compare routes by length + tower "
             "cost too.").to_dict())
+    notes_notice = end_notes_notice(summary)
+    if notes_notice is not None:
+        notices.append(notes_notice)
     status = (f"OHL: {summary['n_towers']} towers, spans "
               f"{summary['spans_min_max_avg'][0]:.0f}-"
               f"{summary['spans_min_max_avg'][1]:.0f} m "
-              f"(avg {summary['spans_min_max_avg'][2]:.0f})")
+              f"(avg {summary['spans_min_max_avg'][2]:.0f})"
+              + end_status_text(summary)
+              + (f"; weights: {weights_text}" if weights_text else ""))
     route_options = [{"label": ly.name, "value": ly.id}
                      for ly in state.layers_of_kind("route")]
     state.active_route_id = route_layer.id
@@ -185,7 +311,7 @@ def constrained_outcome(state, job):
     outcome = job.result or {}
     notices.extend(outcome.get("notices") or [])
     if outcome.get("result") is None:
-        notices.append(no_route_notice())
+        notices.append(no_route_notice(outcome.get("no_route")))
         return (no_update, f"{job.progress_text()} No route was found.", no_update, no_update), notices
     view, status, options, newest, notices = finalize_constrained(
         state, outcome["result"], notices, **job.params["finalize"])
@@ -248,8 +374,30 @@ def _run_or_no_path(*args, **kwargs):
     already carries its own notice; the marker tells the two cases apart so a
     failure is never also blamed on the profile.
     """
-    result = constrained.run_constrained_path(*args, **kwargs)
-    return _NO_PATH if result is None else result
+    info: dict = {}
+    result = constrained.run_constrained_path(*args, **kwargs, outcome=info)
+    return _NoPath(info.get("no_route")) if result is None else result
+
+
+def objective_settings(state) -> dict:
+    """The weights of the "Objective weights" block as the project state holds them (defaults when none).
+
+    The run reads them here instead of through a new ``State`` (hard rule of the run callback): the block's
+    mirror keeps ``state.gui_settings["constrained"]["objective"]`` current.
+    """
+    held = (getattr(state, "gui_settings", None) or {}).get("constrained")
+    return constrained_objective.normalise(held.get("objective") if isinstance(held, dict) else None)
+
+
+def ends_settings(state) -> dict:
+    """The connection heights of the "Line ends" group as the project state holds them (none set when absent).
+
+    Read here instead of through a new ``State`` (hard rule of the run callback): the group's mirror keeps
+    ``state.gui_settings["constrained"]["ends"]`` current. The end-span rule is not here: it is a field of the
+    profile text the run parses.
+    """
+    held = (getattr(state, "gui_settings", None) or {}).get("constrained")
+    return constrained_ends.normalise(held.get("ends") if isinstance(held, dict) else None)
 
 
 def _parse_profile_text(text: str) -> dict:
@@ -433,6 +581,39 @@ def register(app, state) -> None:
             backend, bool(experimental))                   # F10
         if gate_notice is not None:
             notices.append(gate_notice.to_dict())
+        # the objective weights of the "Objective weights" block (from the project state, never a new State):
+        # a value or a combination the library refuses is a field notice and nothing starts
+        weights = objective_settings(state)
+        weight_problems = constrained_objective.problems(
+            weights, backend=backend,
+            clearance_on=profile_service.clearance_state(config) == "on")
+        if weight_problems:
+            notices.append(constrained_objective.problem_notice(
+                weight_problems, controls=form_section.OBJECTIVE_CONTROLS, tab=ids.TAB_ROUTES))
+            return (*stop, notices, *_NO_JOB)
+        objective = constrained_objective.library_objective(weights)       # None: classic routing
+        objective_kwargs = {"objective": objective} if objective else {}
+
+        # the line ends (round 17): the connection heights come from the project state (never a new State), the
+        # end-span rule from the profile just parsed. Whatever the library would refuse, and an exact search that
+        # would not fit the window, is a field notice and nothing starts - in the background path too.
+        raster_path = raster_layer.meta.get("source_path")
+        ends = ends_settings(state)
+        end_problems = constrained_ends.run_problems(
+            ends, raster_source=raster_path, points=points, backend=backend, profile=config, dem=dem,
+            neighborhood=neighborhood, search_buffer_m=buffer_m)
+        if end_problems:
+            notices.append(constrained_ends.problem_notice(
+                end_problems, controls=form_section.ends_controls(ends, config, dem), tab=ids.TAB_ROUTES))
+            return (*stop, notices, *_NO_JOB)
+        ends_kwargs = {} if constrained_ends.is_default(ends) else {"ends": ends}
+        surface_notes = constrained_ends.surface_model_notes(config, dem, dsm)
+        if surface_notes:           # the library ignores such a DSM without a word
+            notices.append(Notice(
+                severity="warning", title="Surface model (DSM) has no effect", meaning=" ".join(surface_notes),
+                impact="The run goes on without it; the route is the one without a DSM.",
+                fix="Give the run a terrain model (DEM) and a profile with the clearance settings, or clear the DSM.",
+                focus_id=ids.TAB_ROUTES, focus_control=ids.OHL_DSM).to_dict())
 
         # up-front effort estimate (constrained runs are the heaviest; the
         # extended tower state multiplies the plain-routing estimate): a heavy
@@ -462,7 +643,6 @@ def register(app, state) -> None:
                     "source and target in the points list each time.",
                 focus_id=ids.TAB_ROUTES).to_dict())
 
-        raster_path = raster_layer.meta.get("source_path")
         wp_names = [str(r.get("name", "")) for r in (points_rows or [])
                     if r.get("kind") == "waypoint"]
         finalize = {
@@ -470,11 +650,15 @@ def register(app, state) -> None:
             "raster_layer_id": raster_layer.id, "wp_names": wp_names,
             "control_points": ([list(sources[0])] + [list(w) for w in waypoints]
                                + [list(targets[0])])}
+        if objective:               # a classic run's finalize keywords are what they always were
+            finalize["objective_weights"] = constrained_objective.used_weights(weights)
+        if ends_kwargs:
+            finalize["connection_heights"] = constrained_ends.used_ends(ends)
         if heavy:
             snapshot = constrained.snapshot_run_inputs(
                 raster_path, points=points, profile=config, backend=backend,
                 neighborhood=neighborhood, search_buffer_m=buffer_m,
-                dem=dem, dsm=dsm)
+                dem=dem, dsm=dsm, **objective_kwargs, **ends_kwargs)
             return _start_background_run(state, snapshot, finalize, est,
                                          notices)
 
@@ -483,11 +667,12 @@ def register(app, state) -> None:
             _run_or_no_path,
             raster_path, points=points,
             profile=config, backend=backend, neighborhood=neighborhood,
-            search_buffer_m=buffer_m, dem=dem, dsm=dsm, notices=notices)
+            search_buffer_m=buffer_m, dem=dem, dsm=dsm, **objective_kwargs, **ends_kwargs,
+            notices=notices)
         if result is None:
             return (*stop, notices, *_NO_JOB)       # crashed: guard already explained
-        if result is _NO_PATH:
-            notices.append(no_route_notice())
+        if isinstance(result, _NoPath):
+            notices.append(no_route_notice(result.info))
             return (*stop, notices, *_NO_JOB)
         return (*finalize_constrained(state, result, notices, **finalize),
                 *_NO_JOB)

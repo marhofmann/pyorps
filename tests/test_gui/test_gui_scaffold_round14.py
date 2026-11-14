@@ -66,14 +66,14 @@ PLANNED_IDS: dict[str, str] = {
     "OHL_STOP_BTN": "ohl-stop-btn", "OHL_POLL": "ohl-poll",
 }
 
-#: the 23 scalar fields of the profile form, in form order (gap 5 table)
+#: the 24 scalar fields of the profile form, in form order (gap 5 table; round 17 added the end-span rule)
 OHLF_KEYS = (
     "name", "description", "soft_angle_limit_deg", "hard_angle_limit_deg", "angle_cost_function",
     "angle_cost_scale", "min_span_m", "max_span_m", "span_bin_size_m", "terrain_interpolation",
     "max_gradient_percent", "gradient_scale", "tower_height_m", "tower_heights_m",
     "tower_height_cost_per_increment", "terminal_tower_height_m", "terminal_tower_cost",
     "conductor_weight_per_m", "conductor_tension_n", "min_clearance_m", "tower_ground_area_m2",
-    "tower_area_cost_mode", "recommended_buffer_m",
+    "tower_area_cost_mode", "recommended_buffer_m", "terminal_span_rule",
 )
 
 #: fragments of ids that existing tests and callbacks match by substring
@@ -132,11 +132,12 @@ def test_each_planned_id_carries_its_package_prefix(name, value):
 
 def test_the_profile_form_keys_and_their_ids():
     assert ids.OHLF_KEYS == OHLF_KEYS
-    assert len(ids.OHLF_KEYS) == 23
+    assert len(ids.OHLF_KEYS) == 24 and ids.OHLF_KEYS[-1] == "terminal_span_rule"
     assert tuple(ids.OHLF_IDS) == ids.OHLF_KEYS
     assert ids.OHLF_IDS == {k: "ohlf-" + k.replace("_", "-") for k in OHLF_KEYS}
     assert ids.OHLF_IDS["soft_angle_limit_deg"] == "ohlf-soft-angle-limit-deg"
-    assert len(set(ids.OHLF_IDS.values())) == 23
+    assert ids.OHLF_IDS["terminal_span_rule"] == "ohlf-terminal-span-rule"
+    assert len(set(ids.OHLF_IDS.values())) == 24
 
 
 # ===================================================================== the page

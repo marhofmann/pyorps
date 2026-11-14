@@ -1481,6 +1481,12 @@ def _routes_tab() -> html.Div:
                  "type": "numericColumn", "maxWidth": 90},
                 {"field": "length", "headerName": "len m", "editable": False,
                  "type": "numericColumn", "maxWidth": 90},
+                {"field": "terrain", "headerName": "Terrain length (m)",
+                 "editable": False, "type": "numericColumn", "maxWidth": 110,
+                 "wrapHeaderText": True, "autoHeaderHeight": True,
+                 "headerTooltip": "Length along the terrain model (3-D), in "
+                                  "metres; empty for a route computed without "
+                                  "a terrain model. 'len m' is the map length."},
                 {"field": "from", "headerName": "source", "editable": False,
                  "minWidth": 120},
                 {"field": "to", "headerName": "target", "editable": False,
@@ -1663,12 +1669,20 @@ def _ohl_options() -> list:
                 label="allow experimental backends (F10)",
                 className="small mt-4"), width=5),
         ], className="g-1"),
-        _lbl("DEM file (slope, optional)", ids.OHL_DEM),
-        dbc.Input(id=ids.OHL_DEM, size="sm", className="mt-1",
-                  placeholder="DEM path (slope, optional)"),
-        _lbl("DSM file (clearance, optional)", ids.OHL_DSM),
-        dbc.Input(id=ids.OHL_DSM, size="sm", className="mt-1",
-                  placeholder="DSM path (clearance, optional)"),
+        html.Div([
+            _lbl("DEM file (slope and clearance, optional)", ids.OHL_DEM),
+            dbc.Input(id=ids.OHL_DEM, size="sm", className="mt-1",
+                      placeholder="DEM path (slope and clearance, optional)"),
+        ], title="Terrain model: the ground height. The search uses it for slopes and, with a profile that has "
+                 "tower height, conductor weight, conductor tension and ground clearance, for the clearance "
+                 "check, which is off without a DEM."),
+        html.Div([
+            _lbl("DSM file (trees and buildings, needs the DEM)", ids.OHL_DSM),
+            dbc.Input(id=ids.OHL_DSM, size="sm", className="mt-1",
+                      placeholder="DSM path (trees and buildings, needs the DEM)"),
+        ], title="Surface model, optional: read only together with the DEM. DSM minus DEM is the height of trees "
+                 "and buildings, which the clearance check then counts as well. With a DEM alone the check "
+                 "counts the bare ground; a DSM without a DEM is ignored."),
         # shown only while a heavy constrained run works in the background
         dbc.Button("⏹ Stop", id=ids.OHL_STOP_BTN, size="sm", color="danger",
                    className="mt-1", style={"display": "none"},

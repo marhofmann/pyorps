@@ -59,7 +59,7 @@ def test_form_keys_follow_ids_and_every_key_has_a_spec():
 
     assert pf.FORM_KEYS == ids.OHLF_KEYS
     assert list(pf.FIELD_SPECS) == list(pf.FORM_KEYS)
-    assert len(pf.FORM_KEYS) == 23
+    assert len(pf.FORM_KEYS) == 24
     for key, spec in pf.FIELD_SPECS.items():
         assert spec.key == key and spec.label and spec.help
         assert spec.path and spec.path[-1] in (key, "scale", "terrain_interpolation")
@@ -477,8 +477,8 @@ def test_clearance_status_on_off_partial():
     assert pf.clearance_status(_base()).startswith("Clearance check: on")
     off = {"name": "x"}
     assert pf.clearance_state(off) == "off"
-    assert "needs base height, conductor weight, tension and clearance, plus a DSM" in \
-        pf.clearance_status(off)
+    assert "the profile needs base height, conductor weight, tension and clearance" in pf.clearance_status(off)
+    assert "the run needs a terrain model (DEM)" in pf.clearance_status(off)      # round 17: not "plus a DSM"
     partial = {"tower_height_m": 20, "conductor_weight_per_m": 5}
     assert pf.clearance_state(partial) == "partial"
     text = pf.clearance_status(partial)

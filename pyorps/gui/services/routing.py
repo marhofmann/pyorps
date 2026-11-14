@@ -598,6 +598,82 @@ def plain_cost_handler(finder, raster_source: Any = None):
     return plain.raster_handler
 
 
+#: the metrics key of a route's length along the terrain model (a route without a DEM has none); the map
+#: length stays ``total_length_m``
+TERRAIN_LENGTH_KEY = "terrain_length_m"
+
+
+def window_dem(finder):
+    """The elevation grid ``finder`` searched over (float32, aligned to its search window), or None.
+
+    None for a finder without a terrain model. This is the array the search itself read (the library aligns the
+    DEM to the window once, with bilinear resampling, and keeps it: ``PathFinder._gradient_dem``), so a length
+    taken from it agrees with the library's own ``Path.total_length_3d``. A finder that has not built its graph
+    yet gets the library's own alignment (cached in the finder, so a later search reads the same grid).
+    """
+    handler = getattr(finder, "raster_handler", None)
+    if handler is None or getattr(finder, "dem_dataset", None) is None \
+            or getattr(finder, "dem_raster_handler", None) is None:
+        return None
+    dem = getattr(finder, "_gradient_dem", None)
+    if dem is None:
+        data = handler.data[0] if handler.data.ndim == 3 else handler.data
+        dem = finder._align_dem_to_window(data)[0]  # pylint: disable=protected-access  # same-package collaborator
+    return dem
+
+
+def terrain_length_m(line: LineString, finder) -> float | None:
+    """Length of ``line`` along the terrain model ``finder`` searched over, in metres; None without a DEM.
+
+    Every step of the route (from one vertex to the next: the vertices of a routed line are the nodes of the
+    least-cost path) is measured as ``hypot(map length, elevation difference)``, the elevation read from the
+    window-aligned DEM (:func:`window_dem`) at the two cells. That is the formula of the library's 3-D length
+    (``pyorps.utils.metric_eval``: ``Path.total_length_3d``, which is ``Path.total_length`` over a DEM), so the
+    number is the length the search itself measured, not a second reading of the DEM. The map length
+    (``RouteCost.total_length``, metres on the plain raster) stays the 2-D length. Also None when a vertex lies
+    outside the search window (the length cannot be told).
+    """
+    import numpy as np
+
+    dem = window_dem(finder)
+    if dem is None:
+        return None
+    handler = finder.raster_handler
+    coords = [(float(x), float(y)) for x, y in line.coords]
+    if len(coords) < 2:
+        return 0.0
+    cells = np.atleast_2d(np.asarray(handler.coords_to_indices(coords)))
+    rows, cols = cells[:, 0].astype(np.int64), cells[:, 1].astype(np.int64)
+    height, width = dem.shape[-2:]
+    if rows.min() < 0 or cols.min() < 0 or rows.max() >= height or cols.max() >= width:
+        return None
+    cell_size = float(abs(handler.window_transform.a))
+    map_steps = np.hypot(np.diff(rows).astype(np.float64), np.diff(cols).astype(np.float64)) * cell_size
+    rise = np.abs(np.diff(np.asarray(dem)[rows, cols].astype(np.float64)))
+    return float(np.hypot(map_steps, rise).sum())
+
+
+def terrain_length_sentence(lengths) -> str:
+    """One sentence for the success notice: the length along the terrain of the routes that have one.
+
+    ``lengths`` is a list of ``(map_length_m, terrain_length_m)`` pairs, one per route; a pair whose terrain
+    length is None (a route without a DEM) is left out, and nothing at all gives ``""``. One route reads
+    ``"Terrain length 1,010 m (map length 1,000 m)."``, several ``"Terrain length of the 3 routes 980 to 1,010 m
+    (the map lengths are 2-D)."``.
+    """
+    known = [(plain, terrain) for plain, terrain in lengths if terrain is not None]
+    if not known:
+        return ""
+    if len(known) == 1:
+        plain, terrain = known[0]
+        map_part = "" if plain is None else f" (map length {float(plain):,.0f} m)"
+        return f"Terrain length {float(terrain):,.0f} m{map_part}."
+    shortest = min(float(terrain) for _plain, terrain in known)
+    longest = max(float(terrain) for _plain, terrain in known)
+    return (f"Terrain length of the {len(known)} routes {shortest:,.0f} to {longest:,.0f} m "
+            "(the map lengths are 2-D).")
+
+
 def route_through_points(finder, ordered_points: list[tuple[float, float]],
                          algorithm: str = "dijkstra", cancel=None,
                          session=None, cost_handler=None, **algo_kwargs):
@@ -606,7 +682,9 @@ def route_through_points(finder, ordered_points: list[tuple[float, float]],
 
     ``ordered_points`` is ``[source, *waypoints, target]`` with at least two
     entries; consecutive pairs are routed and stitched (C13). Returns
-    ``(stitched_line, RouteCost)`` with the cost from pyorps' own metric.
+    ``(stitched_line, RouteCost)`` with the cost from pyorps' own metric. ``RouteCost.total_length`` is the map
+    length (2-D); a route searched over a DEM also carries ``RouteCost.terrain_length_m``, the length along the
+    terrain (:func:`terrain_length_m`), and every other route has None there.
     ``cancel`` (threading.Event) aborts between legs with RoutingCancelled.
     When ``session`` is a :class:`~pyorps.graph.search_session.SearchSession`,
     the first call uses ``session.route`` and later edits should call
@@ -636,6 +714,8 @@ def route_through_points(finder, ordered_points: list[tuple[float, float]],
         line = path.path_geometry
         route_cost = cost.evaluate_route_cost(
             line, priced_on(session.finder if cost_handler is not None else finder))
+        # a session that rebuilt its window searched on its own finder, so the terrain is read from that one
+        route_cost.terrain_length_m = terrain_length_m(line, session.finder)
         return line, route_cost
 
     coords: list[tuple[float, float]] = []
@@ -652,6 +732,7 @@ def route_through_points(finder, ordered_points: list[tuple[float, float]],
 
     line = LineString(coords)
     route_cost = cost.evaluate_route_cost(line, priced_on(finder))
+    route_cost.terrain_length_m = terrain_length_m(line, finder)
     return line, route_cost
 
 

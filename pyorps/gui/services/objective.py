@@ -854,19 +854,25 @@ def force_direct(settings: Any, graph_api: str | None = "cython") -> bool:
 
     - 32-bit weights: a session on the cython trees refuses a float32 finder, and one with a DEM refuses it on
       every backend.
-    - extra metric layers: kept as a safeguard. A session that rebuilds its search window (a point moved out
-      of it) used to build a finder without the metric layers; the library carries them over now (pinned in
-      ``test_a_session_that_rebuilds_its_window_keeps_the_metric_layers``), but a direct run needs no retained
-      tree for them, so the GUI keeps routing direct.
+    - extra metric layers (file layers and the slope derived from the DEM): a session on cython routes them like
+      ``find_route`` does, so such a route is retained again and an edit is fast. The reason it was direct was
+      a session that rebuilt its search window (a point moved out of it) and lost the metric layers; the library
+      carries every finder setting over now. Proven by test (``tests/test_gui/test_gui_terrain_length_round16.py``,
+      section B): for file layers and the derived slope, without and with a DEM, a session route has the cells
+      of the direct route as a new route, after a window rebuild and after route edits. Only cython was run: a
+      GPU or FIM session was not (no device), so on those backends the layers keep forcing a direct route.
     - a DEM on raster_gpu: a retained GPU field has no slope terms, the session would run the cython Dijkstra
       instead of the GPU.
     """
     s = normalise_objective_settings(settings)
     if is_classic(s):
         return False
-    if s["weight_precision"] == "float32" or s["layers"]:
+    api = graph_api or "cython"
+    if s["weight_precision"] == "float32":
         return True
-    return bool(s["dem_layer_id"]) and (graph_api or "cython") == "raster_gpu"
+    if s["dem_layer_id"] and api == "raster_gpu":
+        return True
+    return bool(s["layers"]) and api != "cython"
 
 
 def run_kwargs(settings: Any, *, layer_path: Callable[[str], str | None] | Mapping[str, str],

@@ -131,8 +131,11 @@ def cost_readout(layer):
     if not metrics:
         return html.Small("No metrics stored (imported route — edit it to "
                           "compute).", className="text-muted")
+    terrain = metrics.get(routing.TERRAIN_LENGTH_KEY)
     rows = [
-        ("Length", f"{metrics.get('total_length_m', 0):,.0f} m"),
+        ("Length" if terrain is None else "Length (map)", f"{metrics.get('total_length_m', 0):,.0f} m"),
+        # only a route that was searched over a terrain model has this line: the length along the terrain
+        *([] if terrain is None else [("Terrain length", f"{terrain:,.0f} m")]),
         ("Cost (distance-weighted)", f"{metrics.get('total_cost', 0):,.0f}"),
         ("Raw cell cost", f"{metrics.get('total_cell_cost', 0):,.0f}"),
         ("Geodesic length", f"{metrics.get('geodesic_length_m', 0):,.0f} m"),
@@ -154,8 +157,8 @@ def _route_plan(params: dict, finder_backend: str | None = None):
     ``direct`` is True when the route runs ``find_route`` (no retained
     session): every graph-library backend, a delta-stepping route with a
     termination margin, and a route whose stored objective forces it
-    (``objective.force_direct``: 32-bit weights, extra metric layers, a DEM on
-    the GPU). A route without a stored backend (an imported one)
+    (``objective.force_direct``: 32-bit weights, extra metric layers on a GPU
+    or FIM backend, a DEM on the GPU). A route without a stored backend (an imported one)
     keeps whatever backend the cached finder has.
     """
     graph_api = (params.get("graph_api") or finder_backend
@@ -367,10 +370,13 @@ def recompute_variant(state, active_layer, new_points, edit_desc,
     if session is not None:
         state.search_sessions[new_layer.id] = session
     state.active_route_id = new_layer.id
+    terrain_line = routing.terrain_length_sentence(
+        [(route_cost.total_length, getattr(route_cost, "terrain_length_m", None))])
     notices.append(success(
         f"Route updated: {name}",
         meaning="Editing replaces the route (the old one is removed). Use "
-                "'Run routing' / 'New' to create additional routes."))
+                "'Run routing' / 'New' to create additional routes."
+                + (f" {terrain_line}" if terrain_line else "")))
     return new_layer, notices
 
 

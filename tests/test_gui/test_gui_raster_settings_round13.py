@@ -1002,6 +1002,22 @@ LIMITS += [(_objective_section.NUMBER_IDS[key],
            for key, spec in _objective_service.FIELD_SPECS.items() if key in _objective_section.NUMBER_IDS]
 
 
+from pyorps.gui.services import constrained_objective as _constrained_objective_service
+
+# the number inputs of the "Objective weights" block of the constrained card (round 16): limits and unit come from
+# the service's specs
+LIMITS += [(ids.OHLO_IDS[key], spec.minimum, spec.maximum, "any", f"({spec.unit})")
+           for key, spec in _constrained_objective_service.FIELD_SPECS.items()]
+
+
+from pyorps.gui.services import constrained_ends as _constrained_ends_service
+
+# the two connection heights of the "Line ends" group of the constrained card (round 17): limits and unit come from
+# the service's specs
+LIMITS += [(ids.OHLE_IDS[key], spec.minimum, spec.maximum, "any", f"({spec.unit})")
+           for key, spec in _constrained_ends_service.FIELD_SPECS.items()]
+
+
 @pytest.mark.parametrize("control,minimum,maximum,step,unit", LIMITS)
 def test_numeric_inputs_state_their_limits_and_their_unit(layout, control, minimum, maximum, step, unit):
     component = _by_id(layout)[control]
