@@ -33,7 +33,7 @@ from rasterio.windows import transform as window_transform
 
 from .exceptions import MetricStackError
 from .objective import RESERVED_LAYERS, Objective
-from .warning_types import PyorpsWarning
+from .warning_types import CoverageWarning, PyorpsWarning
 
 #: Frames of the pyorps package are skipped when a warning picks the line it
 #: is attributed to, so it names the caller's own code.
@@ -390,7 +390,7 @@ class MetricStack:
                 f"without elevation (not covered by the DEM, nodata or NaN) "
                 f"— marked forbidden and filled with the mean height "
                 f"({fill:.1f} m) for kernel safety.",
-                PyorpsWarning, skip_file_prefixes=_PACKAGE_PREFIXES)
+                CoverageWarning, skip_file_prefixes=_PACKAGE_PREFIXES)
         self.dem = dem
 
     def derive_terrain_slope(self) -> np.ndarray:
@@ -553,11 +553,13 @@ class MetricStack:
         if f_max <= 0.0:
             warnings.warn(
                 "The objective evaluates to 0 on every traversable cell "
-                "(no positively weighted layer varies here). Using a "
-                "uniform minimal weight — the search degenerates to a "
-                "shortest-step path. Add a small 'length' weight to make "
+                "(no positively weighted layer is nonzero here and there "
+                "is no 'length' weight). Using a uniform minimal weight — "
+                "the search degenerates to a shortest-step path "
+                "(constrained routing prices the ground at 0 instead and "
+                "warns separately). Add a small 'length' weight to make "
                 "this explicit.",
-                UserWarning, stacklevel=2)
+                PyorpsWarning, stacklevel=2)
             weight_raster = np.ones(shape, dtype=np.uint16)
             scale = 1.0
             resolution = 0.0

@@ -64,7 +64,7 @@ from pyorps.core.types import (
     NodePathList,
     NormalizedCoordinate,
 )
-from pyorps.core.warning_types import AlgorithmFallbackWarning, PyorpsWarning
+from pyorps.core.warning_types import AlgorithmFallbackWarning, CoverageWarning
 from pyorps.graph.api.graph_api import GraphAPI
 from pyorps.graph.api.graph_library_api import reject_unknown_options
 from pyorps.io.geo_dataset import (
@@ -1773,7 +1773,7 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                 else ", and are not forbidden.")
              + " Pass a source that covers the whole grid to remove "
                "the gap.",
-             PyorpsWarning, skip_file_prefixes=_INTERNAL_FILE_PREFIXES)
+             CoverageWarning, skip_file_prefixes=_INTERNAL_FILE_PREFIXES)
         return void
 
     def _load_layer_source(
@@ -3069,7 +3069,8 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                 )
             note = self._dem_gap_note([(c[1], c[2]) for c in corrections])
             warn(header + table + (note + "\n" if note else ""),
-                 UserWarning, skip_file_prefixes=_INTERNAL_FILE_PREFIXES)
+                 CoverageWarning if note else UserWarning,
+                 skip_file_prefixes=_INTERNAL_FILE_PREFIXES)
 
         return corrected_indices
 
@@ -3097,7 +3098,8 @@ class PathFinder:  # pylint: disable=too-many-public-methods  # facade API
                         "any other." if note else "")
             warn(f"Position [{row}, {col}] lies on a forbidden cell and "
                  f"was corrected to [{nearest[0]}, {nearest[1]}]." + dem_hint,
-                 UserWarning, skip_file_prefixes=_INTERNAL_FILE_PREFIXES)
+                 CoverageWarning if note else UserWarning,
+                 skip_file_prefixes=_INTERNAL_FILE_PREFIXES)
             corrected[i] = nearest
         return corrected
 

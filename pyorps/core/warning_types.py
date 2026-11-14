@@ -35,3 +35,28 @@ class AlgorithmFallbackWarning(PyorpsWarning):
     per ``PathFinder`` or ``SearchSession``, not once per route. Typical case:
     delta-stepping cannot evaluate slope terms, so Dijkstra runs instead.
     """
+
+
+class CoverageWarning(PyorpsWarning):
+    """A layer or the terrain model does not cover part of the search area.
+
+    Raised for a metric layer with cells that have no value (outside its
+    source, nodata or NaN), for a terrain model (DEM) with cells that have no
+    elevation, and when a source or target is moved because the terrain model
+    has no elevation there. The result is still valid under the documented
+    rule (a void layer cell counts as 0, a cell without elevation is
+    forbidden); the warning says that the data has a gap.
+    """
+
+
+class SpanRuleWarning(PyorpsWarning):
+    """The returned overhead line breaks a span or clearance rule of its profile.
+
+    Raised once per route, by ``ConstrainedPathFinder``, with one line per
+    case: ``terminal_span_rule="remove"`` took out a tower next to an end
+    point and the merged span reaches ``max_span_m``, leaves a bend without a
+    tower or fails the clearance check; or an end span (the last span is never
+    checked by the search) fails the clearance check with the heights the
+    report states. The route and all its numbers are still returned; the
+    warning names the rule, the span and the cause.
+    """

@@ -63,7 +63,7 @@ from .types import (
                                InputDataType,
                                NormalizedCoordinate,
 )
-from .warning_types import AlgorithmFallbackWarning
+from .warning_types import AlgorithmFallbackWarning, CoverageWarning, SpanRuleWarning
 
 __all__ = [
     # Cost assumptions
@@ -109,4 +109,5 @@ __all__ = [
 
     # Warning root
     "PyorpsWarning", "CrsReprojectionWarning", "AlgorithmFallbackWarning",
+    "CoverageWarning", "SpanRuleWarning",
 ]

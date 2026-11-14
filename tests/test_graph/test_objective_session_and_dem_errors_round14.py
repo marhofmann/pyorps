@@ -343,6 +343,36 @@ def test_a_target_in_a_dem_void_is_corrected_on_the_first_route_like_on_every_la
     assert "DEM" in " ".join(caught[1])
 
 
+def test_only_the_dem_correction_is_a_coverage_warning(files, tmp_path):
+    """``simplefilter("error", CoverageWarning)`` stops the DEM case, not the forbidden-cost-cell correction."""
+    from pyorps.core.warning_types import CoverageWarning
+    finder = _finder(files, dem=files["dem_nan_hole"])
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        finder.find_route()
+    moved = [w for w in record if "DEM" in str(w.message)
+             and ("forbidden" in str(w.message) or "maximum cost" in str(w.message))]
+    assert moved and all(w.category is CoverageWarning for w in moved)
+    assert all(issubclass(w.category, UserWarning) for w in moved)
+
+    finder = _finder(files, dem=files["dem_nan_hole"])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", CoverageWarning)
+        with pytest.raises(CoverageWarning):
+            finder.find_route()
+
+    cost = np.full((N, N), 10, np.uint16)
+    cost[3:8, 28:33] = 65535
+    path = _write(tmp_path / "blocked_cov.tif", cost)
+    plain = PathFinder(path, SOURCE, TARGET, search_space_buffer_m=80, neighborhood_str="r1")
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("error", CoverageWarning)
+        warnings.simplefilter("always", UserWarning)
+        plain.find_route()
+    corrected = [w for w in record if "had maximum cost value" in str(w.message)]
+    assert len(corrected) == 1 and corrected[0].category is UserWarning
+
+
 @pytest.mark.parametrize("variant", VARIANTS)
 def test_a_source_outside_the_dem_is_corrected_too(files, variant):
     finder = _finder(files, source=_xy(5, 30), target=_xy(5, 5), dem=files["dem_nan_hole"], **variant)

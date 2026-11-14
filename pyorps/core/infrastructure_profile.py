@@ -9,6 +9,19 @@ import numpy as np
 
 from pyorps.core.exceptions import InputFileNotFoundError, InvalidInputError
 
+#: What happens to a line tower the search placed closer than ``min_span_m`` to an end point (source or target):
+#:
+#: - ``"remove"`` (default, the behaviour of every earlier version): the tower is removed from the result. The merged
+#:   end span can then reach ``max_span_m`` or leave a bend without a tower; a ``SpanRuleWarning`` says so.
+#: - ``"remove_if_valid"``: removed only when the result stays valid (the tower stands on a straight stretch, the
+#:   merged span stays below ``max_span_m`` and, with the clearance check on, clears the ground); otherwise kept
+#:   and flagged.
+#: - ``"keep"``: every tower the search placed is kept; a short end span is flagged (``Tower.note``).
+#: - ``"enforce"``: the search itself keeps every end span at least ``min_span_m`` (a line without a tower is
+#:   exempt). The finder runs it on exact span bins, so it can return a CHEAPER route than ``"keep"`` or
+#:   ``"remove"`` on the same problem: those rules keep the coarse default bins, which can miss the optimum.
+TERMINAL_SPAN_RULES = ("remove", "remove_if_valid", "keep", "enforce")
+
 
 @dataclass
 class InfrastructureProfile:
@@ -17,6 +30,13 @@ class InfrastructureProfile:
     Defines turn-angle limits, intermediate structure (tower) placement
     constraints, tower cost models, and gradient limits. Can be loaded
     from YAML/JSON config files or created programmatically.
+
+    ``terminal_span_rule`` (see ``TERMINAL_SPAN_RULES``) says what a line
+    tower closer than ``min_span_m`` to an end point becomes. ``"enforce"``
+    makes the search itself keep every end span at least ``min_span_m``, on
+    exact span bins; it can therefore return a CHEAPER route than ``"keep"``
+    or ``"remove"`` on the same problem, because those two keep the coarse
+    default bins, which can miss the optimum.
     """
 
     name: str
@@ -32,6 +52,11 @@ class InfrastructureProfile:
     min_span_m: float | None = None
     max_span_m: float | None = None
     span_bin_size_m: float | None = None
+    # What a line tower closer than min_span_m to an end point becomes (see TERMINAL_SPAN_RULES). No effect without
+    # span limits. A profile without this key means "remove". "enforce" (exact span bins) can return a CHEAPER
+    # route than "keep" or "remove" on the same problem, because those two keep the coarse default bins, which can
+    # miss the optimum.
+    terminal_span_rule: str = "remove"
 
     # Tower/structure cost
     tower_cost_function: str = "terrain_plus_angle"
@@ -121,6 +146,10 @@ class InfrastructureProfile:
 
     def __post_init__(self):
         """Validate profile configuration."""
+        if not isinstance(self.terminal_span_rule, str) or self.terminal_span_rule not in TERMINAL_SPAN_RULES:
+            raise InvalidInputError(
+                f"terminal_span_rule must be one of {', '.join(repr(v) for v in TERMINAL_SPAN_RULES)}, "
+                f"got {self.terminal_span_rule!r}")
         if self.has_span_constraints:
             if self.span_bin_size_m is None or self.span_bin_size_m <= 0:
                 raise InvalidInputError("span_bin_size_m must be positive when span constraints are set")

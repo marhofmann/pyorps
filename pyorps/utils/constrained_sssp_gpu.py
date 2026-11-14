@@ -67,6 +67,7 @@ CONSTRAINED_GPU_CHECKED_SETTINGS = (
     "dem", "obstacle_heights", "min_clearance", "max_gradient_pct", "gradient_scale",
     "area_offsets", "area_offset_starts", "area_offset_counts",
     "n_span_bins", "span_bin_size", "max_span",
+    "target_min_span", "source_attach_height", "target_attach_height",
 )
 
 
@@ -84,6 +85,9 @@ def constrained_gpu_ignored_settings(
         n_span_bins: int | None = None,
         span_bin_size: float | None = None,
         max_span: float | None = None,
+        target_min_span: float | None = 0.0,
+        source_attach_height: float | None = None,
+        target_attach_height: float | None = None,
 ) -> list[str]:
     """Constraint settings with a non-neutral value that ``solver`` would not enforce.
 
@@ -91,6 +95,9 @@ def constrained_gpu_ignored_settings(
         solver: A key of :data:`CONSTRAINED_GPU_SOLVERS`.
         dem ... max_span: The values that would be handed to the solver's entry function. The defaults are the
             neutral values (no DEM, no clearance, no gradient limit, single-cell tower footprint, no span check).
+        target_min_span, source_attach_height, target_attach_height: The line-end settings of the CPU kernels (the
+            shortest last span, ``terminal_span_rule="enforce"``, and the connection-point heights). No GPU solver
+            has them, so every non-neutral value (above 0, not None) is reported for every solver.
 
     Returns:
         One description per ignored setting; empty when the solver enforces everything that was asked for.
@@ -120,6 +127,15 @@ def constrained_gpu_ignored_settings(
                 f"{n_span_bins} * {span_bin_size:g} = {tracked:g} m, so spans up to that length are accepted; "
                 f"max_span is only enforced when that product equals it - with ConstrainedPathFinder, when "
                 f"max_span_m is a multiple of min_span_m and at least twice min_span_m)")
+    if target_min_span is not None and target_min_span > 0.0:
+        ignored.append(f"target_min_span={target_min_span:g} (terminal_span_rule='enforce': every end span at "
+                       f"least min_span_m long)")
+    if source_attach_height is not None:
+        ignored.append(f"source_attach_height={source_attach_height:g} (source_connection_height_m: the first "
+                       f"span is checked from that height)")
+    if target_attach_height is not None:
+        ignored.append(f"target_attach_height={target_attach_height:g} (target_connection_height_m: the last "
+                       f"span is checked to that height)")
     return ignored
 
 

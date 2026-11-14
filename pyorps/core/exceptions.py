@@ -58,9 +58,17 @@ Hierarchy (a name in brackets is the builtin the class also derives from)::
     +-- SealedOpeningWarning               (pyorps.raster.thinness)
     +-- CrsReprojectionWarning             (pyorps.core.warning_types)
     +-- AlgorithmFallbackWarning           (pyorps.core.warning_types)
+    +-- CoverageWarning                    (pyorps.core.warning_types)
+    +-- SpanRuleWarning                    (pyorps.core.warning_types)
 """
 
-from .warning_types import AlgorithmFallbackWarning, CrsReprojectionWarning, PyorpsWarning
+from .warning_types import (
+    AlgorithmFallbackWarning,
+    CoverageWarning,
+    CrsReprojectionWarning,
+    PyorpsWarning,
+    SpanRuleWarning,
+)
 
 __all__ = [
     # Root
@@ -82,6 +90,7 @@ __all__ = [
     "ConsistencyCheckError", "NumericalPrecisionError",
     # Warnings
     "PyorpsWarning", "CrsReprojectionWarning", "AlgorithmFallbackWarning",
+    "CoverageWarning", "SpanRuleWarning",
 ]
 
 
@@ -209,19 +218,33 @@ class RasterShapeError(PyorpsError):
 class NoPathFoundError(PyorpsError):
     """
     Custom exception if no path can be found in the graph for source and target
+
+    ``complete_message`` replaces the whole text. It is for a search whose
+    result a setting restricted (the constrained finder's line-end settings),
+    where the standard hint to choose other points or to increase the buffer
+    does not help. Without it the text is the standard sentence plus
+    ``add_message``, as for every other raise.
     """
-    def __init__(self, source: int, target: int, add_message: str = '') -> None:
+    def __init__(self, source: int, target: int, add_message: str = '',
+                 complete_message: str | None = None) -> None:
         self.source = source
         self.target = target
         self.add_message = add_message
-        message = (f"No path found from {source} to {target}! Choose different "
-                   f"source and target or increase buffer!")
-        message = message + add_message
+        if complete_message is not None:
+            self.complete_message = complete_message
+            message = complete_message
+        else:
+            message = (f"No path found from {source} to {target}! Choose different "
+                       f"source and target or increase buffer!")
+            message = message + add_message
         super().__init__(message)
 
     def __reduce__(self):
-        return (type(self), (self.source, self.target, self.add_message),
-                self.__dict__ or None)
+        args = (self.source, self.target, self.add_message)
+        complete = self.__dict__.get("complete_message")
+        if complete is not None:
+            args += (complete,)
+        return (type(self), args, self.__dict__ or None)
 
 
 class AlgorithmNotImplementedError(PyorpsError):

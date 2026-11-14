@@ -34,7 +34,19 @@ from pyorps.utils._constrained_context cimport (
     _build_valid_neighbors, _flatten_valid_neighbors,
     _precompute_intermediate_cache, _precompute_gradient_cache,
     _tower_terrain, _tower_terrain_cell,
+    _end_span_ok, _check_exact_span_bins,
 )
+from pyorps.utils._constrained_context import line_end_target_min_span
+
+
+def _validate_target_min_span(target_min_span):
+    """The validated target_min_span as float32 (0 = off).
+
+    TypeError for bool, str and other non-numbers; ValueError for a
+    negative, non-finite, too large or float32-underflowing value (see
+    _constrained_context.line_end_target_min_span).
+    """
+    return line_end_target_min_span(target_min_span)
 
 
 def constrained_dijkstra_2d(
@@ -63,6 +75,7 @@ def constrained_dijkstra_2d(
     np.ndarray[np.float32_t, ndim=2] tower_cost_raster=None,
     int force_sparse=0,
     int return_dist=0,
+    target_min_span=0.0,
 ):
     """Find constrained shortest path with tower placement.
 
@@ -99,6 +112,24 @@ def constrained_dijkstra_2d(
     return_dist : int, optional
         Nonzero appends the optimal path cost (float) to the return tuple:
         (path, towers, dist). Unreachable targets report inf.
+    target_min_span : float, optional
+        End-span rule in metres (same unit as ``min_span``); 0 (default)
+        switches it off and the search behaves exactly as before. When
+        positive, a state that reaches the target is accepted only when its
+        last span (last line tower to the target) is at least
+        ``target_min_span``, compared exactly as the tower placement compares
+        a span with ``min_span``; a line without any line tower (one span
+        from the source) is exempt. Rejected target states are not expanded.
+        While the rule is on, no line tower is placed on the source cell
+        (only a route that returns to its source could do so), so a span
+        that ends ``round(span / step)`` steps from the source started
+        there. Negative, non-finite or too large values (above 1e6 m) and
+        a positive value that is 0 in float32 raise ``ValueError``; bool and
+        str raise ``TypeError``. The rule needs one search state per span
+        length: while it is on, span bins in which two span lengths of one
+        direction (accumulated in float32 as the search does) share a bin
+        raise ``ValueError`` (see
+        ``_constrained_context.check_exact_span_bins``).
     """
     if <double>n_span_bins * <double>span_bin_size < <double>max_span - 1e-6:
         raise ValueError(
@@ -106,6 +137,9 @@ def constrained_dijkstra_2d(
             f"must cover max_span ({max_span}); otherwise span bins alias "
             f"into neighboring states and silently corrupt the search."
         )
+    cdef float tms = _validate_target_min_span(target_min_span)
+    if tms > 0.0:
+        _check_exact_span_bins(step_distances, span_bin_size, max_span, n_span_bins)
     cdef int rows = raster.shape[0]
     cdef int cols = raster.shape[1]
     cdef int n_dirs = steps.shape[0]
@@ -150,7 +184,7 @@ def constrained_dijkstra_2d(
             initial_best_dist, dem_data, cell_size, max_gradient_pct,
             gradient_scale,
             use_area_cost_flag, area_offsets_ptr, area_starts_ptr, area_counts_ptr,
-            tower_cost_ptr, return_dist,
+            tower_cost_ptr, return_dist, tms,
         )
     else:
         return _dijkstra_sparse(
@@ -161,7 +195,7 @@ def constrained_dijkstra_2d(
             initial_best_dist, dem_data, cell_size, max_gradient_pct,
             gradient_scale,
             use_area_cost_flag, area_offsets_ptr, area_starts_ptr, area_counts_ptr,
-            tower_cost_ptr, return_dist,
+            tower_cost_ptr, return_dist, tms,
         )
 
 
@@ -188,6 +222,7 @@ cdef _dijkstra_dense(
     const int32_t* area_counts_arg=NULL,
     const float* tower_cost_ptr=NULL,
     int return_dist=0,
+    float target_min_span=0.0,
 ):
     """Dense bucket-queue Dijkstra with AoS state layout for cache locality."""
     cdef int rows = raster.shape[0]
@@ -343,6 +378,10 @@ cdef _dijkstra_dense(
     cdef size_t cache_idx
     cdef uint64_t base_nb_state
     cdef int skip_nb, sb
+    # End-span rule (0 = off: the search is unchanged). While it is on, no
+    # line tower stands on the source cell (see constrained_dijkstra_2d).
+    cdef int end_rule = 1 if target_min_span > 0.0 else 0
+    cdef int src_blk = 0
 
     while current_logical <= max_logical:
         if <double>current_logical * delta > best_target_dist:
@@ -385,11 +424,19 @@ cdef _dijkstra_dense(
                 cur_dir = <uint8_t>(remainder / n_span_bins)
 
                 if cur_cell == target_cell:
+                    if end_rule != 0 and _end_span_ok(
+                            target_row, target_col, states[cur_state].span_dist,
+                            cur_dir, source_row, source_col, target_min_span,
+                            0, 0.0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, NULL, NULL,
+                            rows, cols, directions, cached_steps,
+                            step_dist_view[cur_dir]) == 0:
+                        continue  # end-span rule: not a valid line end
                     if cur_dist < best_target_dist:
                         best_target_dist = cur_dist
                         best_target_state = cur_state
                     continue
 
+                src_blk = 1 if (end_rule != 0 and cur_cell == source_cell) else 0
                 cur_row = <int>(cur_cell / cols)
                 cur_col = <int>(cur_cell % cols)
                 cur_span_m = <double>states[cur_state].span_dist
@@ -460,7 +507,7 @@ cdef _dijkstra_dense(
                                     if new_logical > max_logical:
                                         max_logical = new_logical
 
-                        if n_span_bins > 1 and cur_span_m >= <double>min_span:
+                        if n_span_bins > 1 and cur_span_m >= <double>min_span and src_blk == 0:
                             if tower_cost_ptr != NULL:
                                 tower_cost = _tower_terrain_cell(
                                     use_area_cost, cur_row, cur_col,
@@ -495,7 +542,7 @@ cdef _dijkstra_dense(
                                     if new_logical > max_logical:
                                         max_logical = new_logical
                     else:
-                        if n_span_bins > 1 and cur_span_m >= <double>min_span:
+                        if n_span_bins > 1 and cur_span_m >= <double>min_span and src_blk == 0:
                             if tower_cost_ptr != NULL:
                                 tower_cost = _tower_terrain_cell(
                                     use_area_cost, cur_row, cur_col,
@@ -577,8 +624,11 @@ cdef _dijkstra_dense(
             _unpack_state(prev_state_val, n_dirs, n_span_bins,
                          &prev_cell, &prev_dir, &prev_span)
             if (prev_span >= 1 and walk_span < prev_span) or (walk_dir != prev_dir):
-                if <int>prev_cell not in tower_cells:
-                    tower_cells.append(<int>prev_cell)
+                # One state transition places at most one tower. A route
+                # that crosses itself can stand a second tower on a cell
+                # it passed before: it is reported again (the distance
+                # pays for every tower), so a cell may repeat in the list.
+                tower_cells.append(<int>prev_cell)
 
     free(states); free(icache_status); free(icache_cost)
     if grad_penalty_ptr != NULL: free(grad_penalty_ptr)
@@ -618,6 +668,7 @@ cdef _dijkstra_sparse(
     const int32_t* area_counts_arg=NULL,
     const float* tower_cost_ptr=NULL,
     int return_dist=0,
+    float target_min_span=0.0,
 ):
     """Sparse Dijkstra — for state spaces too large for dense arrays."""
     cdef int rows = raster.shape[0]
@@ -752,6 +803,10 @@ cdef _dijkstra_sparse(
     cdef unordered_map[uint64_t, float].iterator span_it
 
     cdef size_t cache_idx
+    # End-span rule (0 = off: the search is unchanged). While it is on, no
+    # line tower stands on the source cell (see constrained_dijkstra_2d).
+    cdef int end_rule = 1 if target_min_span > 0.0 else 0
+    cdef int src_blk = 0
 
     while not heap64_empty(&heap):
         top_node = heap64_top(&heap)
@@ -774,11 +829,21 @@ cdef _dijkstra_sparse(
         cur_dir = <uint8_t>(remainder / n_span_bins)
 
         if cur_cell == target_cell:
+            if end_rule != 0:
+                span_it = span_dist_map.find(cur_state)
+                if _end_span_ok(
+                        target_row, target_col, deref(span_it).second,
+                        cur_dir, source_row, source_col, target_min_span,
+                        0, 0.0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, NULL, NULL,
+                        rows, cols, directions, cached_steps,
+                        step_dist_view[cur_dir]) == 0:
+                    continue  # end-span rule: not a valid line end
             if cur_dist < best_target_dist:
                 best_target_dist = cur_dist
                 best_target_state = cur_state
             continue
 
+        src_blk = 1 if (end_rule != 0 and cur_cell == source_cell) else 0
         cur_row = <int>(cur_cell / cols)
         cur_col = <int>(cur_cell % cols)
 
@@ -835,7 +900,7 @@ cdef _dijkstra_sparse(
                             span_dist_map[new_state] = <float>new_span_m
                             heap64_push(&heap, new_state, new_dist_val)
 
-                if n_span_bins > 1 and cur_span_m >= <double>min_span:
+                if n_span_bins > 1 and cur_span_m >= <double>min_span and src_blk == 0:
                     if tower_cost_ptr != NULL:
                         tower_cost = _tower_terrain_cell(
                             use_area_cost, cur_row, cur_col,
@@ -864,7 +929,7 @@ cdef _dijkstra_sparse(
                             span_dist_map[new_state] = <float>reset_span_m
                             heap64_push(&heap, new_state, new_dist_val)
             else:
-                if n_span_bins > 1 and cur_span_m >= <double>min_span:
+                if n_span_bins > 1 and cur_span_m >= <double>min_span and src_blk == 0:
                     if tower_cost_ptr != NULL:
                         tower_cost = _tower_terrain_cell(
                             use_area_cost, cur_row, cur_col,
@@ -935,8 +1000,11 @@ cdef _dijkstra_sparse(
             _unpack_state(prev_state_val, n_dirs, n_span_bins,
                          &prev_cell, &prev_dir, &prev_span)
             if (prev_span >= 1 and walk_span < prev_span) or (walk_dir != prev_dir):
-                if <int>prev_cell not in tower_cells:
-                    tower_cells.append(<int>prev_cell)
+                # One state transition places at most one tower. A route
+                # that crosses itself can stand a second tower on a cell
+                # it passed before: it is reported again (the distance
+                # pays for every tower), so a cell may repeat in the list.
+                tower_cells.append(<int>prev_cell)
 
     heap64_free(&heap)
     free(icache_status); free(icache_cost)

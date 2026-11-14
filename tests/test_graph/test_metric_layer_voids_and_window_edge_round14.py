@@ -29,7 +29,7 @@ from shapely.geometry import MultiPoint
 from pyorps import PathFinder
 from pyorps.core.exceptions import PyorpsError
 from pyorps.core.metric_stack import MetricStack, reproject_to_grid
-from pyorps.core.warning_types import PyorpsWarning
+from pyorps.core.warning_types import CoverageWarning, PyorpsWarning
 from pyorps.raster.handler import RasterHandler
 
 N = 40
@@ -116,6 +116,7 @@ def test_a_layer_file_that_covers_the_grid_partly_warns_once_with_name_and_count
     message = str(about[0].message)
     assert f"{N * 20} of {N * N} cell(s)" in message
     assert issubclass(about[0].category, PyorpsWarning) and issubclass(about[0].category, UserWarning)
+    assert about[0].category is CoverageWarning
     assert about[0].filename == __file__, "the warning names the line of the caller"
     land = finder.metric_stack["land"]
     assert np.array_equal(land[:, :20], _land()[:, :20])
@@ -282,6 +283,7 @@ def test_a_slope_layer_from_a_dem_that_covers_the_grid_partly_forbids_the_uncove
     assert len(about) >= 1
     assert f"{N * 20} non-finite cell(s) without elevation" in str(about[0].message)
     assert issubclass(about[0].category, PyorpsWarning)
+    assert about[0].category is CoverageWarning
     assert about[0].filename == __file__
     stack = finder.metric_stack
     assert stack.forbidden_mask[:, 20:].all()

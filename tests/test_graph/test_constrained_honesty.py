@@ -141,7 +141,8 @@ class TestKeywordsProfileAndBounds:
 
     def test_find_route_rejects_pathfinder_options_it_never_read(self, finder):
         """``algorithm=`` was accepted and dropped; the message now lists what is accepted."""
-        with pytest.raises(TypeError, match=r"'algorithm'.*Accepted here: 'source', 'target'"):
+        with pytest.raises(TypeError, match=r"'algorithm'.*Accepted here: 'source', 'source_connection_height_m', "
+                                            r"'target', 'target_connection_height_m'"):
             finder.find_route(algorithm="delta-stepping")
 
     def test_find_route_still_takes_source_and_target(self, finder, cython_cost):
@@ -628,3 +629,87 @@ def test_real_constrained_gpu_run_with_default_settings_is_unchanged(raster_path
     assert not [m for m in messages if "falling back to Cython" in m or "does not enforce" in m], messages
     assert len(result.path_indices) > 0
     assert 0.8 < float(result.total_cost) / cython_cost < 1.2
+
+
+# ---------------------------------------------------------------------------
+# Line-end settings (round 17, P3): no GPU solver has them, so every GPU solver refuses them  (CPU only)
+# ---------------------------------------------------------------------------
+
+#: (keyword of the settings check, a non-neutral value, text the error must contain)
+LINE_END_SETTINGS = [
+    ("target_min_span", 3.0, "target_min_span=3 (terminal_span_rule='enforce'"),
+    ("source_attach_height", 12.0, "source_attach_height=12 (source_connection_height_m"),
+    ("target_attach_height", 15.5, "target_attach_height=15.5 (target_connection_height_m"),
+]
+
+
+class TestLineEndSettings:
+
+    @pytest.mark.parametrize("solver", sorted(gpu_v1.CONSTRAINED_GPU_SOLVERS))
+    @pytest.mark.parametrize("keyword,value,expected", LINE_END_SETTINGS, ids=[row[0] for row in LINE_END_SETTINGS])
+    def test_every_solver_refuses_each_line_end_setting(self, solver, keyword, value, expected):
+        with pytest.raises(AlgorithmNotImplementedError) as caught:
+            gpu_v1.check_constrained_gpu_settings(solver, **{keyword: value})
+        message = str(caught.value)
+        assert expected in message
+        assert f"'{solver}'" in message and "graph_api='cython'" in message
+        assert isinstance(caught.value, PyorpsError)
+
+    @pytest.mark.parametrize("solver", sorted(gpu_v1.CONSTRAINED_GPU_SOLVERS))
+    def test_the_neutral_values_pass(self, solver):
+        gpu_v1.check_constrained_gpu_settings(
+            solver, target_min_span=0.0, source_attach_height=None, target_attach_height=None)
+        gpu_v1.check_constrained_gpu_settings(solver, target_min_span=None)
+
+    def test_all_three_are_named_at_once(self):
+        with pytest.raises(AlgorithmNotImplementedError,
+                           match=r"target_min_span=3 .*source_attach_height=12 .*target_attach_height=15"):
+            gpu_v1.check_constrained_gpu_settings(
+                "raster_gpu", target_min_span=3.0, source_attach_height=12.0, target_attach_height=15.0)
+
+    def test_the_three_settings_are_in_the_table_of_checked_settings(self):
+        assert {"target_min_span", "source_attach_height", "target_attach_height"} <= set(
+            gpu_v1.CONSTRAINED_GPU_CHECKED_SETTINGS)
+
+    @pytest.mark.parametrize("backend", ["raster_gpu", "raster_gpu_v4"])
+    def test_enforce_is_refused_before_the_gpu_solver_is_reached(self, monkeypatch, raster_path, backend):
+        finder = _finder(raster_path, profile=_profile(terminal_span_rule="enforce"))
+        entry = _force_gpu_backend(monkeypatch, finder, backend)
+        with pytest.raises(AlgorithmNotImplementedError, match=r"does not enforce: target_min_span=10 "):
+            finder.find_route()
+        assert entry.calls == []
+
+    @pytest.mark.parametrize("backend", ["raster_gpu", "raster_gpu_v4"])
+    def test_a_connection_height_the_search_would_use_is_refused(self, monkeypatch, raster_path, backend):
+        finder = _finder(raster_path, profile=_profile(
+            conductor_weight_per_m=15.0, conductor_tension_n=30000.0, min_clearance_m=7.0, tower_height_m=30.0))
+        entry = _force_gpu_backend(monkeypatch, finder, backend)
+        dem_kwargs = {"dem_data": _DEM, "cell_size": 1.0, "max_gradient_pct": 100.0, "gradient_scale": 2.0}
+        monkeypatch.setattr(finder, "_prepare_dem_data", lambda raster: (_DEM, dem_kwargs))
+        # the DEM and the clearance data alone would be fine for v2 (it enforces them), not for v4
+        with pytest.raises(AlgorithmNotImplementedError, match=r"target_attach_height=14 \(target_connection_height_m"):
+            finder.find_route(target_connection_height_m=14.0)
+        assert entry.calls == []
+
+    def test_a_connection_height_that_cannot_act_is_no_reason_to_refuse_a_gpu_solver(self, monkeypatch, finder):
+        """Without a DEM the height changes nothing in any backend: the solver is reached (and warns once that the
+        height has no effect)."""
+        entry = _force_gpu_backend(monkeypatch, finder, "raster_gpu_v4", ImportError("fake: no CuPy here"))
+        with pytest.warns(UserWarning, match="has no effect"):
+            finder.find_route(target_connection_height_m=14.0)
+        assert len(entry.calls) == 1
+
+    def test_the_gpu_solver_prices_per_cell_warning_is_given_once_per_finder_and_backend(self, monkeypatch, finder):
+        finder._cell_size = 5.0
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            finder._warn_gpu_cell_size("raster_gpu")
+            finder._warn_gpu_cell_size("raster_gpu")
+            finder._warn_gpu_cell_size("raster_gpu_v4")
+        messages = [str(w.message) for w in caught]
+        assert len(messages) == 2 and "'raster_gpu'" in messages[0] and "'raster_gpu_v4'" in messages[1]
+        assert all("per cell" in m and "per metre" in m for m in messages)
+        finder._cell_size = 1.0
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            finder._warn_gpu_cell_size("raster_gpu")      # cell size 1: nothing to say (and already said)

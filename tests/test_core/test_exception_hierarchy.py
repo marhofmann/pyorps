@@ -153,6 +153,23 @@ def test_every_warning_class_derives_from_the_warning_root(qualified_name):
     assert issubclass(cls, UserWarning)          # the bases the classes had before
 
 
+def test_coverage_warning_is_exported_everywhere():
+    from pyorps.core.warning_types import CoverageWarning
+    assert pex.CoverageWarning is CoverageWarning is pyorps.CoverageWarning
+    assert "CoverageWarning" in pyorps.__all__ and "CoverageWarning" in pex.__all__
+    assert issubclass(CoverageWarning, PyorpsWarning) and issubclass(CoverageWarning, UserWarning)
+    assert "CoverageWarning" in {c.__name__ for c in WARNING_CLASSES.values()}
+
+
+def test_span_rule_warning_is_exported_everywhere():
+    from pyorps.core.warning_types import SpanRuleWarning
+    assert pex.SpanRuleWarning is SpanRuleWarning is pyorps.SpanRuleWarning is pyorps.core.SpanRuleWarning
+    for namespace in (pyorps.__all__, pex.__all__, pyorps.core.__all__):
+        assert "SpanRuleWarning" in namespace
+    assert issubclass(SpanRuleWarning, PyorpsWarning) and issubclass(SpanRuleWarning, UserWarning)
+    assert "SpanRuleWarning" in {c.__name__ for c in WARNING_CLASSES.values()}
+
+
 def test_the_warning_root_is_one_class_in_two_places():
     assert pex.PyorpsWarning is _WarningRoot is pyorps.PyorpsWarning
     assert issubclass(PyorpsWarning, UserWarning)
