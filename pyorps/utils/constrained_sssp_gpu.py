@@ -20,16 +20,148 @@ Algorithm:
 from __future__ import annotations
 
 import warnings
-from typing import Tuple
 
 import numpy as np
 
-from pyorps.utils.traversal_gpu import (
-    GPU_AVAILABLE, prepare_step_lookup_tables
-)
+from pyorps.core.exceptions import AlgorithmNotImplementedError, InsufficientMemoryError, InvalidInputError
+from pyorps.utils.traversal_gpu import GPU_AVAILABLE, gpu_not_available_error, prepare_step_lookup_tables
 
 if GPU_AVAILABLE:
     import cupy as cp
+
+
+# ============================================================================
+# Which constraint settings each constrained GPU solver enforces
+# ============================================================================
+
+#: Solver name -> (entry function, what to use instead for the settings this solver does not enforce).
+#: The names are the ``graph_api`` values of ``ConstrainedPathFinder``; ``"raster_gpu_v1"`` is the first solver
+#: (this module), which no ``graph_api`` selects.
+#:
+#: Read from the solver sources, 2026-11-10 (kernel = the CUDA source the entry function launches):
+#:
+#: ====================================  =========================  =========================  ==============
+#: setting                               raster_gpu_v1              raster_gpu (v2)            raster_gpu_v4
+#: ====================================  =========================  =========================  ==============
+#: dem (gradient penalty)                not in the signature       enforced                   NOT enforced
+#: max_gradient_pct, gradient_scale      not in the signature       enforced (with a dem)      NOT enforced
+#: min_clearance, obstacle_heights       not in the signature       enforced (with a dem)      NOT enforced
+#: area_offsets (exact tower footprint)  not in the signature       enforced                   NOT enforced
+#: max_span                              bin grid only (see below)  bin grid only (see below)  enforced
+#: ====================================  =========================  =========================  ==============
+#:
+#: "bin grid only": the v1 and v2 kernels never receive ``max_span``. They stop a span when its bin index reaches
+#: ``n_span_bins``, i.e. at ``n_span_bins * span_bin_size`` metres, which is longer than ``max_span`` whenever the
+#: bin grid does not end exactly at ``max_span``.
+CONSTRAINED_GPU_SOLVERS = {
+    "raster_gpu_v1": ("constrained_sssp_raster_gpu",
+                      "graph_api='cython', 'cython_parallel' or 'raster_gpu_v4'"),
+    "raster_gpu": ("constrained_sssp_raster_gpu_v2",
+                   "graph_api='cython', 'cython_parallel' or 'raster_gpu_v4'"),
+    "raster_gpu_v4": ("constrained_sssp_raster_gpu_v4",
+                      "graph_api='cython' or 'cython_parallel' (CPU) or 'raster_gpu' (GPU v2)"),
+}
+
+#: The keyword arguments :func:`constrained_gpu_ignored_settings` looks at.
+CONSTRAINED_GPU_CHECKED_SETTINGS = (
+    "dem", "obstacle_heights", "min_clearance", "max_gradient_pct", "gradient_scale",
+    "area_offsets", "area_offset_starts", "area_offset_counts",
+    "n_span_bins", "span_bin_size", "max_span",
+    "target_min_span", "source_attach_height", "target_attach_height",
+)
+
+
+def constrained_gpu_ignored_settings(
+        solver: str,
+        *,
+        dem=None,
+        obstacle_heights=None,
+        min_clearance: float | None = 0.0,
+        max_gradient_pct: float | None = 100.0,
+        gradient_scale: float | None = 2.0,
+        area_offsets=None,
+        area_offset_starts=None,
+        area_offset_counts=None,
+        n_span_bins: int | None = None,
+        span_bin_size: float | None = None,
+        max_span: float | None = None,
+        target_min_span: float | None = 0.0,
+        source_attach_height: float | None = None,
+        target_attach_height: float | None = None,
+) -> list[str]:
+    """Constraint settings with a non-neutral value that ``solver`` would not enforce.
+
+    Parameters:
+        solver: A key of :data:`CONSTRAINED_GPU_SOLVERS`.
+        dem ... max_span: The values that would be handed to the solver's entry function. The defaults are the
+            neutral values (no DEM, no clearance, no gradient limit, single-cell tower footprint, no span check).
+        target_min_span, source_attach_height, target_attach_height: The line-end settings of the CPU kernels (the
+            shortest last span, ``terminal_span_rule="enforce"``, and the connection-point heights). No GPU solver
+            has them, so every non-neutral value (above 0, not None) is reported for every solver.
+
+    Returns:
+        One description per ignored setting; empty when the solver enforces everything that was asked for.
+    """
+    if solver not in CONSTRAINED_GPU_SOLVERS:
+        raise InvalidInputError(
+            f"Unknown constrained GPU solver {solver!r}; expected one of {sorted(CONSTRAINED_GPU_SOLVERS)}")
+    ignored = []
+    if solver == "raster_gpu_v4":
+        if dem is not None:
+            ignored.append("dem (terrain gradient penalty, gradient limit and clearance checks)")
+        if obstacle_heights is not None:
+            ignored.append("obstacle_heights (clearance above obstacles)")
+        if min_clearance is not None and min_clearance > 0.0:
+            ignored.append(f"min_clearance={min_clearance:g}")
+        if max_gradient_pct is not None and max_gradient_pct != 100.0:
+            ignored.append(f"max_gradient_pct={max_gradient_pct:g}")
+        if gradient_scale is not None and gradient_scale != 2.0:
+            ignored.append(f"gradient_scale={gradient_scale:g}")
+        if area_offsets is not None or area_offset_starts is not None or area_offset_counts is not None:
+            ignored.append("area_offsets (exact tower footprint, tower_area_cost_mode='exact')")
+    elif n_span_bins is not None and span_bin_size is not None and max_span is not None:
+        tracked = float(n_span_bins) * float(span_bin_size)
+        if tracked > float(max_span) * (1.0 + 1e-6):
+            ignored.append(
+                f"max_span={max_span:g} (the kernel only stops a span at n_span_bins * span_bin_size = "
+                f"{n_span_bins} * {span_bin_size:g} = {tracked:g} m, so spans up to that length are accepted; "
+                f"max_span is only enforced when that product equals it - with ConstrainedPathFinder, when "
+                f"max_span_m is a multiple of min_span_m and at least twice min_span_m)")
+    if target_min_span is not None and target_min_span > 0.0:
+        ignored.append(f"target_min_span={target_min_span:g} (terminal_span_rule='enforce': every end span at "
+                       f"least min_span_m long)")
+    if source_attach_height is not None:
+        ignored.append(f"source_attach_height={source_attach_height:g} (source_connection_height_m: the first "
+                       f"span is checked from that height)")
+    if target_attach_height is not None:
+        ignored.append(f"target_attach_height={target_attach_height:g} (target_connection_height_m: the last "
+                       f"span is checked to that height)")
+    return ignored
+
+
+def unsupported_constrained_gpu_settings_error(solver: str, ignored: list[str]) -> AlgorithmNotImplementedError:
+    """The error for settings that ``solver`` would silently ignore (see :func:`constrained_gpu_ignored_settings`)."""
+    function, alternatives = CONSTRAINED_GPU_SOLVERS[solver]
+    error = AlgorithmNotImplementedError("constrained routing with " + "; ".join(ignored), solver)
+    error.args = (
+        f"The constrained GPU solver {solver!r} ({function}) does not enforce: {'; '.join(ignored)}. "
+        f"It would return a route that ignores these settings. Use {alternatives}, which enforce them.",)
+    return error
+
+
+def check_constrained_gpu_settings(solver: str, **settings) -> None:
+    """Raise when ``solver`` would ignore a constraint setting that has a non-neutral value.
+
+    Parameters:
+        solver: A key of :data:`CONSTRAINED_GPU_SOLVERS`.
+        **settings: Any of :data:`CONSTRAINED_GPU_CHECKED_SETTINGS`.
+
+    Raises:
+        AlgorithmNotImplementedError: Names the settings, the solver and the backends that enforce them.
+    """
+    ignored = constrained_gpu_ignored_settings(solver, **settings)
+    if ignored:
+        raise unsupported_constrained_gpu_settings_error(solver, ignored)
 
 
 # ============================================================================
@@ -292,7 +424,7 @@ def _check_vram(total_states, n_steps, buf_size):  # pylint: disable=unused-argu
     # Leave 256MB headroom
     available = free_mem - 256 * 1024 * 1024
     if total_needed > available:
-        raise MemoryError(
+        raise InsufficientMemoryError(
             f"Constrained GPU SSSP needs {total_needed / 1e9:.1f} GB VRAM "
             f"but only {available / 1e9:.1f} GB available. "
             f"State space: {total_states:,} states."
@@ -547,7 +679,7 @@ def _extract_best_path_v1(d_dist, d_pred, target_cell, states_per_cell,
     best_dist = float(target_dists[best_offset])
 
     if best_dist >= 1e29:
-        warnings.warn("GPU constrained SSSP found no path to target")
+        warnings.warn("GPU constrained SSSP found no path to target", stacklevel=2)
         return (np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32))
 
     best_state = target_start + best_offset
@@ -597,7 +729,7 @@ def constrained_sssp_raster_gpu(
     exclude_mask: np.ndarray = None,
     threads_per_block: int = 256,
     max_iterations: int = 10000,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Find constrained shortest path on GPU with tower placement.
 
@@ -614,17 +746,27 @@ def constrained_sssp_raster_gpu(
         n_span_bins: number of span discretization bins
         span_bin_size: physical distance per span bin (meters)
         min_span: minimum allowed span between towers (meters)
-        max_span: maximum allowed span between towers (meters)
+        max_span: maximum allowed span between towers (meters). NOT passed to
+            the kernel: a span ends at ``n_span_bins * span_bin_size``. A
+            UserWarning is emitted when that is longer than ``max_span``.
         exclude_mask: optional uint8 mask (1=traversable, 0=blocked)
         threads_per_block: CUDA threads per block
         max_iterations: maximum outer loop iterations
 
     Returns:
         tuple: (path_cell_indices as uint32[], tower_cell_indices as uint32[])
+
+    Raises:
+        RuntimeError: if CuPy cannot be imported (the import error is the cause)
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+    # max_span never reaches the kernel: say so when the bin grid allows longer spans than the caller asked for.
+    for ignored in constrained_gpu_ignored_settings(
+            "raster_gpu_v1", n_span_bins=n_span_bins, span_bin_size=span_bin_size, max_span=max_span):
+        warnings.warn(f"constrained_sssp_raster_gpu does not enforce {ignored}", UserWarning, stacklevel=2)
+
     if not GPU_AVAILABLE:
-        raise RuntimeError(
+        raise gpu_not_available_error(
             "CUDA GPU not available. Install cupy: pip install cupy-cuda12x")
 
     rows, cols = raster.shape

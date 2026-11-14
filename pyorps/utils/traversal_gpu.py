@@ -7,13 +7,85 @@ formatted for GPU kernel consumption. Pure Python/NumPy (no Numba/Cython).
 # ruff: noqa: F401
 # pylint: disable=unused-import
 import math
+
 import numpy as np
 
+#: True when CuPy could be imported. It says nothing about a device being present: that is only known once a
+#: kernel is compiled or launched, and the errors of that step are reported by the code that hits them.
+#: ``GPU_IMPORT_ERROR`` keeps the reason for ``False`` so that "GPU not available" messages can name it.
 try:
     import cupy as cp
     GPU_AVAILABLE = True
-except ImportError:
+    GPU_IMPORT_ERROR = None
+except ImportError as _import_error:
     GPU_AVAILABLE = False
+    GPU_IMPORT_ERROR = _import_error
+
+
+def describe_gpu_error(err: BaseException) -> str:
+    """``"<ExceptionType>: <message>"`` for warnings and messages that report a GPU failure."""
+    return f"{type(err).__name__}: {err}"
+
+
+def gpu_probe_errors() -> tuple[type[BaseException], ...]:
+    """Exception types that mean "this GPU stack cannot compile or run the kernel" in an availability probe.
+
+    ``ImportError`` (CuPy or an NVIDIA wheel is missing), ``OSError`` (a CUDA library or kernel source file cannot
+    be loaded), ``RuntimeError`` (the base of CuPy's ``CUDARuntimeError``, ``CUDADriverError`` and ``NVRTCError``,
+    and what CuPy raises when the CUDA toolkit or ``cudadevrt`` is not found) and CuPy's ``CompileException``.
+    Everything else (``TypeError``, ``ZeroDivisionError``, ``AttributeError``, ...) is a programming error and must
+    propagate. A caught error can still be an out-of-memory condition: check :func:`is_gpu_out_of_memory` first.
+    """
+    errors: list[type[BaseException]] = [ImportError, OSError, RuntimeError]
+    if GPU_AVAILABLE:
+        try:
+            from cupy.cuda.compiler import CompileException
+            errors.append(CompileException)
+        except ImportError:  # pragma: no cover - a CuPy build without the NVRTC compiler module
+            pass
+    return tuple(errors)
+
+
+def is_gpu_out_of_memory(err: BaseException) -> bool:
+    """True when ``err`` reports exhausted device (or host) memory.
+
+    CuPy's pool raises ``cupy.cuda.memory.OutOfMemoryError`` (a ``MemoryError``); a raw CUDA allocation raises
+    ``CUDARuntimeError: cudaErrorMemoryAllocation: out of memory`` or ``CUDADriverError: CUDA_ERROR_OUT_OF_MEMORY``.
+    """
+    if isinstance(err, MemoryError):
+        return True
+    if not isinstance(err, RuntimeError):
+        return False
+    text = str(err).lower()
+    return "out of memory" in text or "out_of_memory" in text or "memoryallocation" in text
+
+
+def gpu_out_of_memory_error(err: BaseException, what: str, shape=None, nbytes=None) -> MemoryError:
+    """A ``MemoryError`` that says the GPU ran out of memory while doing ``what``; raise it ``from err``.
+
+    ``shape`` and ``nbytes`` describe the array the caller was working on, when it knows them.
+    """
+    details = []
+    if shape is not None:
+        details.append(f"array shape {tuple(int(n) for n in shape)}")
+    if nbytes is not None:
+        details.append(f"{int(nbytes):,} bytes")
+    where = f" ({', '.join(details)})" if details else ""
+    return MemoryError(f"GPU out of memory while {what}{where}: {describe_gpu_error(err)}")
+
+
+def gpu_not_available_error(message: str, cause: BaseException | None = None) -> RuntimeError:
+    """The ``RuntimeError`` for "no usable GPU", with the reason appended and kept as ``__cause__``.
+
+    ``cause`` defaults to the error of the failed ``import cupy``.
+    """
+    if cause is None:
+        cause = GPU_IMPORT_ERROR
+    if cause is None:
+        return RuntimeError(message)
+    error = RuntimeError(f"{message} (cause: {describe_gpu_error(cause)})")
+    error.__cause__ = cause
+    return error
 
 
 def _intermediate_steps_cpu(dr: int, dc: int) -> np.ndarray:

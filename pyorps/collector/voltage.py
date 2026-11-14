@@ -4,7 +4,8 @@ The collector engines optimise ``D_share`` without a voltage limit, so their
 values are lower bounds for the problem with it. This module checks a traced
 design against the limit with an exact AC load flow; the relax-and-verify
 driver (:mod:`pyorps.certify.rv`) closes a site's bracket when its argmin
-passes (see :mod:`pyorps.collector.voltage_rv`).
+passes (see :mod:`pyorps.certify.voltage`; the repair of a failing design is
+:mod:`pyorps.collector.voltage_rv`).
 
 The electrical network
 ----------------------
@@ -59,6 +60,7 @@ import numpy as np
 
 from pyorps.collector.design import Design, layout
 from pyorps.collector.model import CollectorModel
+from pyorps.core.exceptions import InvalidInputError, PyorpsRuntimeError
 
 __all__ = [
     "Branch",
@@ -85,7 +87,7 @@ __all__ = [
 _SQRT3 = math.sqrt(3.0)
 
 
-class LoadFlowError(RuntimeError):
+class LoadFlowError(PyorpsRuntimeError):
     """The backward--forward sweep did not converge."""
 
 
@@ -111,7 +113,7 @@ class CableElectrical:
     def __post_init__(self):
         if not (self.r_ohm_per_m >= 0 and self.x_ohm_per_m >= 0
                 and self.c_f_per_m >= 0):
-            raise ValueError(f"{self.name}: r, x and c must be >= 0")
+            raise InvalidInputError(f"{self.name}: r, x and c must be >= 0")
 
 
 @dataclass(frozen=True)
@@ -129,9 +131,9 @@ class TurbineTransformer:
 
     def __post_init__(self):
         if not (self.s_r_mva > 0 and 0 < self.uk < 1 and self.p_cu_kw >= 0):
-            raise ValueError("need s_r_mva > 0, 0 < uk < 1, p_cu_kw >= 0")
+            raise InvalidInputError("need s_r_mva > 0, 0 < uk < 1, p_cu_kw >= 0")
         if self.p_cu_kw / 1e3 / self.s_r_mva > self.uk:
-            raise ValueError("load losses exceed the short-circuit voltage")
+            raise InvalidInputError("load losses exceed the short-circuit voltage")
 
     @property
     def z_pu(self) -> complex:
@@ -159,9 +161,9 @@ class Corner:
 
     def __post_init__(self):
         if len(self.p_mw) != len(self.q_mvar):
-            raise ValueError(f"corner {self.name}: p and q lengths differ")
+            raise InvalidInputError(f"corner {self.name}: p and q lengths differ")
         if not self.bus_pu > 0:  # pylint: disable=unnecessary-negation  # must also reject NaN
-            raise ValueError(f"corner {self.name}: bus_pu must be > 0")
+            raise InvalidInputError(f"corner {self.name}: bus_pu must be > 0")
 
 
 def standard_corners(p_rated_mw: Sequence[float], *, q_over_p: float,
@@ -177,7 +179,7 @@ def standard_corners(p_rated_mw: Sequence[float], *, q_over_p: float,
     * ``N1`` no output, busbar ``U_MS (1 + B)`` (cable charging only).
     """
     if not (q_over_p >= 0 and q_under_p >= 0 and 0 <= deadband < 1):
-        raise ValueError("q ratios must be >= 0 and 0 <= deadband < 1")
+        raise InvalidInputError("q ratios must be >= 0 and 0 <= deadband < 1")
     p = tuple(float(x) for x in p_rated_mw)
     zero = tuple(0.0 for _ in p)
     hi, lo = u_ms_pu * (1 + deadband), u_ms_pu * (1 - deadband)
@@ -225,16 +227,16 @@ class VoltageModel:
     def __post_init__(self):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not (self.u_kv > 0 and self.u_m_kv > 0 and self.s_base_mva > 0):
-            raise ValueError("u_kv, u_m_kv and s_base_mva must be > 0")
+            raise InvalidInputError("u_kv, u_m_kv and s_base_mva must be > 0")
         if not self.cables or not self.corners or not self.taps_kv:
-            raise ValueError("need cables, corners and taps")
+            raise InvalidInputError("need cables, corners and taps")
         if not 0 < self.lv_band[0] < self.lv_band[1]:
-            raise ValueError("lv_band must be (lo, hi) with 0 < lo < hi")
+            raise InvalidInputError("lv_band must be (lo, hi) with 0 < lo < hi")
         if any(not t > 0 for t in self.taps_kv):
-            raise ValueError("taps must be > 0")
+            raise InvalidInputError("taps must be > 0")
         n = {len(c.p_mw) for c in self.corners}
         if len(n) != 1:
-            raise ValueError("every corner needs the same turbine count")
+            raise InvalidInputError("every corner needs the same turbine count")
 
     @property
     def n(self) -> int:
@@ -310,11 +312,11 @@ class ElectricalTree:
         self.out_branch = [-1] * N
         for bi, b in enumerate(self.branches):
             if not (0 <= b.child < N and 0 <= b.parent < N):
-                raise ValueError(f"branch {bi} leaves the network")
+                raise InvalidInputError(f"branch {bi} leaves the network")
             if b.child == 0:
-                raise ValueError("the root has no out-branch")
+                raise InvalidInputError("the root has no out-branch")
             if self.out_branch[b.child] != -1:
-                raise ValueError(f"node {b.child} has two out-branches")
+                raise InvalidInputError(f"node {b.child} has two out-branches")
             self.parent[b.child] = b.parent
             self.out_branch[b.child] = bi
         depth = {0: 0}
@@ -322,9 +324,9 @@ class ElectricalTree:
             path, y = [], x
             while y not in depth:
                 if self.out_branch[y] == -1:
-                    raise ValueError(f"node {y} is not connected to the root")
+                    raise InvalidInputError(f"node {y} is not connected to the root")
                 if y in path:
-                    raise ValueError("the network has a cycle")
+                    raise InvalidInputError("the network has a cycle")
                 path.append(y)
                 y = self.parent[y]
             d = depth[y]
@@ -349,12 +351,12 @@ def electrical_tree(design: Design, graph, turbines, model: CollectorModel,
     routing the re-pricer uses; the design is validated on the way.
     """
     if len(vmodel.cables) != len(model.types):
-        raise ValueError(f"the voltage model has {len(vmodel.cables)} "
-                         f"cable types, the collector model "
-                         f"{len(model.types)}")
+        raise InvalidInputError(f"the voltage model has {len(vmodel.cables)} "
+                                f"cable types, the collector model "
+                                f"{len(model.types)}")
     if vmodel.n != model.n:
-        raise ValueError("the voltage model and the design differ in the "
-                         "number of turbines")
+        raise InvalidInputError("the voltage model and the design differ in the "
+                                "number of turbines")
     lay = layout(design, graph, turbines, model, root_transit=root_transit)
     labels: list[tuple[str, int]] = [("root", 0)]
     labels += [("turbine", i) for i in range(model.n)]
@@ -405,7 +407,7 @@ def load_flow(tree: ElectricalTree, s_mva: Sequence[complex],
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     N = tree.n_nodes
     if len(s_mva) != N:
-        raise ValueError(f"need {N} injections, got {len(s_mva)}")
+        raise InvalidInputError(f"need {N} injections, got {len(s_mva)}")
     zb = tree.u_kv ** 2 / s_base_mva
     S = [complex(s) / s_base_mva for s in s_mva]
     S[0] = 0j
@@ -424,7 +426,7 @@ def load_flow(tree: ElectricalTree, s_mva: Sequence[complex],
     rev = order[::-1]
     par = tree.parent
     J = [0j] * N
-    for it in range(1, max_iter + 1):
+    for it in range(1, max_iter + 1):  # noqa: B007  (the last value is returned as iterations)
         acc = [0j] * N
         for i in rev:
             if i == 0:
@@ -577,7 +579,7 @@ def evaluate_limits(v_turb, s_turb_mva, vmax_pu, vmodel: VoltageModel, *,
     apply one limit.
     """
     if tap_policy not in ("per_turbine", "common"):
-        raise ValueError("tap_policy must be 'per_turbine' or 'common'")
+        raise InvalidInputError("tap_policy must be 'per_turbine' or 'common'")
     v = np.asarray(v_turb, dtype=np.complex128)
     C, B, n = v.shape  # pylint: disable=unused-variable
     s = np.asarray(s_turb_mva, dtype=np.complex128) / vmodel.s_base_mva
@@ -610,7 +612,7 @@ def decide_taps(tap_margin, um_margin_kv, *, tap_policy: str = "per_turbine",
     itself.
     """
     if tap_policy not in ("per_turbine", "common"):
-        raise ValueError("tap_policy must be 'per_turbine' or 'common'")
+        raise InvalidInputError("tap_policy must be 'per_turbine' or 'common'")
     tap_margin = np.asarray(tap_margin)
     B, n, _K = tap_margin.shape
     if tap_policy == "per_turbine":
@@ -660,7 +662,7 @@ def check_tree(tree: ElectricalTree, vmodel: VoltageModel, *,
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if tap_policy not in ("per_turbine", "common"):
-        raise ValueError("tap_policy must be 'per_turbine' or 'common'")
+        raise InvalidInputError("tap_policy must be 'per_turbine' or 'common'")
     n = vmodel.n
     tn = [tree.turbine_node[t] for t in range(n)]
     runs = []
@@ -746,15 +748,41 @@ DEFAULT_TRANSFORMER_KV = {20: "20", 30: "30", 33: "30"}
 #: Equipment rating U_m per collector voltage: 12/20 kV cable and 24 kV
 #: switchgear; 18/30 and 19/33 kV cable and 36 kV switchgear.
 DEFAULT_UM_KV = {20: 24.0, 30: 36.0, 33: 36.0}
-#: Cable data class per collector voltage (33 kV falls back to ``kv30``
-#: until 19/33 kV data are in the file; the model is then flagged
-#: ``provisional``).
+#: Cable data class per collector voltage (German defaults: 20, 30 and 33 kV
+#: collectors; ``voltage_model_from_yaml(default_cable_class=...)`` overrides them).
 DEFAULT_CABLE_CLASS = {20: "kv20", 30: "kv30", 33: "kv33"}
+#: Cable class that stands in when the default class of a voltage is missing
+#: from the file (33 kV falls back to ``kv30``; the model is then flagged
+#: ``provisional``). The shipped ``voltage_2026.yaml`` has ``kv33``, so the
+#: fallback does not apply to it.
+CABLE_CLASS_FALLBACK = {33: "kv30"}
 
 
 def _pick(v):
     """First entry of a per-source list (the file lists Suedkabel first)."""
     return float(v[0]) if isinstance(v, (list, tuple)) else float(v)
+
+
+def q_capability_at_mv(q_over_p: float, q_under_p: float,
+                       tr: TurbineTransformer, p_rated_mw: float
+                       ) -> tuple[float, float]:
+    """A reactive capability stated at the LV terminals, seen at the MV ones.
+
+    ``q_over_p`` / ``q_under_p`` are Mvar per MW at rated power (positive
+    magnitudes) at the turbine's LV terminals. The turbine transformer's
+    series reactance consumes ``x (P^2 + Q^2) / S_r`` at 1.0 p.u. LV voltage
+    (magnetising branch neglected, as in :class:`TurbineTransformer`), so the
+    over-excited range shrinks and the under-excited one grows at the MV
+    terminals: ``q_mv = q_lv - x (P / S_r) (1 + q_lv^2)`` per MW, with ``q_lv``
+    signed.
+    """
+    x = tr.z_pu.imag
+    k = x * p_rated_mw / tr.s_r_mva
+
+    def at_mv(q_lv: float) -> float:
+        return q_lv - k * (1.0 + q_lv ** 2)
+
+    return at_mv(q_over_p), -at_mv(-q_under_p)
 
 
 def voltage_model_from_yaml(path, *, u_kv: float, cable_mm2: Sequence[int],
@@ -767,7 +795,12 @@ def voltage_model_from_yaml(path, *, u_kv: float, cable_mm2: Sequence[int],
                             include_transformer: bool = True,
                             corners: Sequence[str] = ("H1", "L1", "H0", "N1"),
                             cable_class: str | None = None,
-                            u_m_kv: float | None = None) -> VoltageModel:
+                            u_m_kv: float | None = None,
+                            q_reference: str = "mv",
+                            default_transformer_kv: dict | None = None,
+                            default_um_kv: dict | None = None,
+                            default_cable_class: dict | None = None,
+                            cable_class_fallback: dict | None = None) -> VoltageModel:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Build a :class:`VoltageModel` from ``voltage_2026.yaml``.
 
@@ -787,9 +820,26 @@ def voltage_model_from_yaml(path, *, u_kv: float, cable_mm2: Sequence[int],
         cable_class: ``"kv20"``, ``"kv30"``, ``"kv33"`` (default by level;
             a missing ``kv33`` falls back to ``kv30`` and sets
             ``meta["provisional"]``).
+        q_reference: Where the turbine's published reactive limits hold:
+            ``"mv"`` (default; an assumption, user decision D3 of
+            2026-10-05, not verified against the datasheet) or ``"lv"``
+            (converted by :func:`q_capability_at_mv`; needs the transformer).
+        default_transformer_kv, default_um_kv, default_cable_class: Per-voltage
+            tables (``{collector kV: value}``) used when ``transformer_hv_kv``,
+            ``u_m_kv`` or ``cable_class`` is not given. Defaults: the German
+            levels, :data:`DEFAULT_TRANSFORMER_KV`, :data:`DEFAULT_UM_KV` and
+            :data:`DEFAULT_CABLE_CLASS`.
+        cable_class_fallback: ``{collector kV: class}``. Applies only when
+            ``cable_class`` is not given and the default class of that voltage
+            is missing from the file; the class then stands in and
+            ``meta["provisional"]`` is set. Default :data:`CABLE_CLASS_FALLBACK`
+            (33 kV to ``kv30``; never applies to the shipped file, which has
+            ``kv33``). Pass ``{}`` to make a missing class an error.
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    import yaml
+    from pyorps.core.optional_deps import import_yaml
+
+    yaml = import_yaml()
 
     from pyorps.io.provenance import sha256_file
 
@@ -801,15 +851,19 @@ def voltage_model_from_yaml(path, *, u_kv: float, cable_mm2: Sequence[int],
     tb = data["turbine"]
     if p_rated_mw is None:
         if n_turbines is None:
-            raise ValueError("give n_turbines or p_rated_mw")
+            raise InvalidInputError("give n_turbines or p_rated_mw")
         p_rated_mw = [tb["rated_power_kw"]["value"] / 1e3] * n_turbines
     pf = tb["power_factor_at_rated"]
     q_over = float(pf["over_excited"]["q_over_p"])
     q_under = float(pf["under_excited"]["q_over_p"])
     trd = tb["transformer"]
-    hv = transformer_hv_kv or DEFAULT_TRANSFORMER_KV.get(key)
+    tr_table = DEFAULT_TRANSFORMER_KV if default_transformer_kv is None else default_transformer_kv
+    um_table = DEFAULT_UM_KV if default_um_kv is None else default_um_kv
+    cls_table = DEFAULT_CABLE_CLASS if default_cable_class is None else default_cable_class
+    fallback = CABLE_CLASS_FALLBACK if cable_class_fallback is None else cable_class_fallback
+    hv = transformer_hv_kv or tr_table.get(key)
     if hv is None:
-        raise ValueError(f"no default turbine transformer for {u_kv} kV")
+        raise InvalidInputError(f"no default turbine transformer for {u_kv} kV")
     taps = tuple(float(t) for t in trd["hv_taps"]["value"][str(hv)])
     tr = None
     if include_transformer:
@@ -818,23 +872,34 @@ def voltage_model_from_yaml(path, *, u_kv: float, cable_mm2: Sequence[int],
             uk=trd["impedance_pct"]["value"] / 100.0,
             p_cu_kw=trd["losses_w"]["load"] / 1e3,
             lv_kv=tb["lv_nominal_v"]["value"] / 1e3)
+    if q_reference not in ("mv", "lv"):
+        raise InvalidInputError("q_reference must be 'mv' or 'lv'")
+    meta["q_reference"] = q_reference
+    if q_reference == "lv":
+        if tr is None:
+            raise InvalidInputError("q_reference='lv' needs the turbine transformer "
+                                    "(include_transformer=True)")
+        meta["q_over_p_lv"], meta["q_under_p_lv"] = q_over, q_under
+        q_over, q_under = q_capability_at_mv(
+            q_over, q_under, tr, tb["rated_power_kw"]["value"] / 1e3)
     lv_tol = tb["lv_nominal_v"]["tolerance_pct"] / 100.0
     cab = data["cables"]
-    cls = cable_class or DEFAULT_CABLE_CLASS.get(key)
+    cls = cable_class or cls_table.get(key)
     if cls not in cab:
-        if cable_class is None and key == 33 and "kv30" in cab:
-            cls = "kv30"
+        if cable_class is None and fallback.get(key) in cab:
+            cls = fallback[key]
             meta["provisional"] = True
-            meta["provisional_reason"] = ("no 19/33 kV cable data in the "
-                                          "file; 18/30 kV values stand in")
+            meta["provisional_reason"] = (
+                "no 19/33 kV cable data in the file; 18/30 kV values stand in" if key == 33 else
+                f"no data for the default cable class of {key} kV in the file; {cls!r} stands in")
         else:
-            raise ValueError(f"cable class {cls!r} not in {path.name}")
+            raise InvalidInputError(f"cable class {cls!r} not in {path.name}")
     table = cab[cls]
     r90 = cab["r_ac90_ohm_per_km"]["value"]
     lkey = {"trefoil": "l_trefoil_mh_per_km",
             "flat": "l_flat_mh_per_km"}.get(laying)
     if lkey is None or lkey not in table:
-        raise ValueError(f"no {laying!r} inductance for {cls}")
+        raise InvalidInputError(f"no {laying!r} inductance for {cls}")
     omega = 2.0 * math.pi * 50.0
     cables = []
     for mm2 in cable_mm2:
@@ -858,6 +923,6 @@ def voltage_model_from_yaml(path, *, u_kv: float, cable_mm2: Sequence[int],
                                  q_under_p=q_under, u_ms_pu=u_ms_pu,
                                  deadband=deadband, names=corners),
         taps_kv=taps,
-        u_m_kv=float(u_m_kv if u_m_kv is not None else DEFAULT_UM_KV[key]),
+        u_m_kv=float(u_m_kv if u_m_kv is not None else um_table[key]),
         transformer=tr, lv_band=(1.0 - lv_tol, 1.0 + lv_tol), meta=meta)
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

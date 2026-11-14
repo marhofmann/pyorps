@@ -12,18 +12,17 @@ are marked nodata and render transparent.
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025.
+Automated Power Line Routing', CIRED 2025.
 """
 from __future__ import annotations
 
 import logging
 import os
 import uuid
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-import warnings
 
 import numpy as np
 import rasterio
@@ -113,6 +112,78 @@ def _band_hw(data: np.ndarray) -> tuple[np.ndarray, int, int]:
     raise ValueError(f"Unsupported raster ndim={data.ndim}; expected 2 or 3.")
 
 
+#: a value range / class sample never needs more than this many cells: bigger
+#: rasters are read DECIMATED (rasterio resamples straight from the file's
+#: overviews when it has them) instead of loading every cell into RAM.
+MAX_STATS_CELLS = 2_000_000
+
+
+def decimated_shape(height: int, width: int,
+                    max_cells: int | None = None) -> tuple[int, int]:
+    """``(rows, cols)`` of a read that keeps the aspect ratio in ``max_cells``
+    (default :data:`MAX_STATS_CELLS`)."""
+    max_cells = MAX_STATS_CELLS if max_cells is None else max_cells
+    if height * width <= max_cells:
+        return height, width
+    scale = (max_cells / float(height * width)) ** 0.5
+    return max(1, int(height * scale)), max(1, int(width * scale))
+
+
+def read_band_decimated(src: Any, index: int = 1,
+                        max_cells: int | None = None) -> np.ndarray:
+    """One band of an open rasterio dataset as a 2D array of at most
+    ``max_cells`` cells (full resolution when the raster is small enough).
+
+    Only the requested band is read, and a big raster is decimated by
+    rasterio (``out_shape``), so memory stays bounded whatever the file size.
+    """
+    rows, cols = decimated_shape(src.height, src.width, max_cells)
+    if (rows, cols) == (src.height, src.width):
+        return src.read(index)
+    return src.read(index, out_shape=(rows, cols),
+                    resampling=Resampling.nearest)
+
+
+def default_nodata(dtype: Any) -> float:
+    """The nodata a raster WITHOUT a declared one is served with: the integer
+    dtype's max (the cost rasters' "forbidden" sentinel) or NaN for floats."""
+    if np.issubdtype(dtype, np.integer):
+        return float(np.iinfo(dtype).max)
+    return float("nan")
+
+
+def dataset_nodata(path: Any, dtype: Any) -> float:
+    """The file's OWN nodata value (``src.nodata``), else :func:`default_nodata`.
+
+    A DEM declaring -9999 / -32768 / 3.4e38 must have those cells left out of
+    the colour range and painted transparent; the tile server then gets this
+    value instead of the dtype default.
+    """
+    with rasterio.open(path) as src:
+        declared = src.nodata
+    return default_nodata(dtype) if declared is None else float(declared)
+
+
+def valid_mask(band: np.ndarray, nodata: float | None) -> np.ndarray:
+    """Boolean mask of the usable cells: not nodata and, for floats, finite."""
+    if nodata is None or np.isnan(nodata):
+        mask = np.ones(band.shape, dtype=bool)
+    elif np.issubdtype(band.dtype, np.integer):
+        info = np.iinfo(band.dtype)
+        if float(nodata).is_integer() and info.min <= nodata <= info.max:
+            mask = band != int(nodata)
+        else:                       # no cell of this dtype can hold that value
+            mask = np.ones(band.shape, dtype=bool)
+    elif np.issubdtype(band.dtype, np.floating):
+        with np.errstate(all="ignore"):       # compare in the band's precision
+            mask = band != band.dtype.type(nodata)
+    else:
+        mask = band != nodata
+    if np.issubdtype(band.dtype, np.floating):
+        mask &= np.isfinite(band)
+    return mask
+
+
 def _write_tiled_geotiff(data: np.ndarray, crs: Any, transform: Any,
                          nodata: float, out_path: Path) -> None:
     """Write a single-band, tiled, overviewed GeoTIFF for fast tile serving."""
@@ -155,7 +226,10 @@ def _resolve_source(raster_source: Any, crs: Any, transform: Any,
 
     if isinstance(raster_source, (str, Path)):
         with rasterio.open(raster_source) as src:
-            band, _, _ = _band_hw(src.read())
+            # first band only, decimated to MAX_STATS_CELLS: this array only
+            # feeds the min/max of the colour ramp, so min/max come from a
+            # decimated read for big rasters (never the whole file in RAM)
+            band = read_band_decimated(src, 1)
         return Path(raster_source), band, None, None
 
     if isinstance(raster_source, RasterHandler):
@@ -197,9 +271,7 @@ def _resolve_source(raster_source: Any, crs: Any, transform: Any,
 
 def _valid_range(band: np.ndarray, nodata: float) -> tuple[float, float]:
     """Min/max of the band excluding nodata and non-finite values."""
-    valid = band[band != nodata]
-    if np.issubdtype(band.dtype, np.floating):
-        valid = valid[np.isfinite(valid)]
+    valid = band[valid_mask(band, nodata)]
     if valid.size == 0:
         return 0.0, 1.0
     return float(valid.min()), float(valid.max())
@@ -224,10 +296,13 @@ def build_tile_layer(raster_source: Any, *, name: str = "Cost raster",
     work_dir = Path(work_dir)
     tif_path, band, _, _ = _resolve_source(raster_source, crs, transform, work_dir)
 
-    if np.issubdtype(band.dtype, np.integer):
-        nodata: float = float(np.iinfo(band.dtype).max)
+    # A file keeps its OWN nodata (src.nodata); the dtype default (int max /
+    # NaN) only applies to rasters that declare none, and to the arrays this
+    # module writes itself (their file declares exactly that default).
+    if isinstance(raster_source, (str, Path)):
+        nodata: float = dataset_nodata(tif_path, band.dtype)
     else:
-        nodata = float("nan")
+        nodata = default_nodata(band.dtype)
 
     lo, hi = _valid_range(band, nodata)
     vmin = lo if vmin is None else vmin
@@ -235,16 +310,24 @@ def build_tile_layer(raster_source: Any, *, name: str = "Cost raster",
     if vmax <= vmin:
         vmax = vmin + 1.0
 
-    client = TileClient(str(tif_path), cors_all=True)
-    # Advertise "localhost" rather than the raw server host. The background
-    # server often binds to the IPv6 loopback "::1", which produces an
-    # unbracketed (invalid) URL; "localhost" resolves to whichever loopback the
-    # server is actually listening on and is browser-friendly.
-    client.client_host = "localhost"
-    client.client_port = client.server_port
-    tile_url = client.get_tile_url(colormap=colormap, vmin=vmin, vmax=vmax,
-                                   nodata=nodata, client=True)
-    bottom, top, left, right = client.bounds("EPSG:4326")
+    # The client's reader opens the file and keeps it open. Opened without a
+    # surrounding rasterio environment it would also keep an environment open
+    # in THIS thread until the client is garbage collected, and when that
+    # happens inside another raster read, the read loses its environment
+    # ("No GDAL environment exists"). Opened inside this block it holds none.
+    import rasterio
+
+    with rasterio.Env():
+        client = TileClient(str(tif_path), cors_all=True)
+        # Advertise "localhost" rather than the raw server host. The background
+        # server often binds to the IPv6 loopback "::1", which produces an
+        # unbracketed (invalid) URL; "localhost" resolves to whichever loopback
+        # the server is actually listening on and is browser-friendly.
+        client.client_host = "localhost"
+        client.client_port = client.server_port
+        tile_url = client.get_tile_url(colormap=colormap, vmin=vmin, vmax=vmax,
+                                       nodata=nodata, client=True)
+        bottom, top, left, right = client.bounds("EPSG:4326")
     bounds = [[float(bottom), float(left)], [float(top), float(right)]]
 
     return RasterTileLayer(

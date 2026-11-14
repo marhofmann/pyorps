@@ -15,14 +15,14 @@ of the recorded "cython Dijkstra traverses impassable cells" report.
 
 import numpy as np
 import pytest
-
-from pyorps.core.types import IMPASSABLE_CELL_COST
-from pyorps.graph.api.cython_api import CythonAPI
 from pyorps.utils._raster_context import (
     NO_EXCLUSION_VALUE,
     RasterContext,
     py_create_exclude_mask,
 )
+
+from pyorps.core.types import IMPASSABLE_CELL_COST
+from pyorps.graph.api.cython_api import CythonAPI
 
 STEPS4 = np.array([[-1, 0], [1, 0], [0, -1], [0, 1]], dtype=np.int8)
 

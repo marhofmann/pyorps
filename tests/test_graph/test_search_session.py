@@ -9,7 +9,6 @@ import numpy as np
 import pytest
 from rasterio.transform import from_origin
 
-from pyorps.core.exceptions import NoPathFoundError
 from pyorps.core.types import IMPASSABLE_CELL_COST
 from pyorps.graph.path_finder import PathFinder
 

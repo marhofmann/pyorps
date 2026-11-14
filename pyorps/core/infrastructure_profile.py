@@ -4,9 +4,23 @@ import json
 import math
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
+
+from pyorps.core.exceptions import InputFileNotFoundError, InvalidInputError
+
+#: What happens to a line tower the search placed closer than ``min_span_m`` to an end point (source or target):
+#:
+#: - ``"remove"`` (default, the behaviour of every earlier version): the tower is removed from the result. The merged
+#:   end span can then reach ``max_span_m`` or leave a bend without a tower; a ``SpanRuleWarning`` says so.
+#: - ``"remove_if_valid"``: removed only when the result stays valid (the tower stands on a straight stretch, the
+#:   merged span stays below ``max_span_m`` and, with the clearance check on, clears the ground); otherwise kept
+#:   and flagged.
+#: - ``"keep"``: every tower the search placed is kept; a short end span is flagged (``Tower.note``).
+#: - ``"enforce"``: the search itself keeps every end span at least ``min_span_m`` (a line without a tower is
+#:   exempt). The finder runs it on exact span bins, so it can return a CHEAPER route than ``"keep"`` or
+#:   ``"remove"`` on the same problem: those rules keep the coarse default bins, which can miss the optimum.
+TERMINAL_SPAN_RULES = ("remove", "remove_if_valid", "keep", "enforce")
 
 
 @dataclass
@@ -16,6 +30,13 @@ class InfrastructureProfile:
     Defines turn-angle limits, intermediate structure (tower) placement
     constraints, tower cost models, and gradient limits. Can be loaded
     from YAML/JSON config files or created programmatically.
+
+    ``terminal_span_rule`` (see ``TERMINAL_SPAN_RULES``) says what a line
+    tower closer than ``min_span_m`` to an end point becomes. ``"enforce"``
+    makes the search itself keep every end span at least ``min_span_m``, on
+    exact span bins; it can therefore return a CHEAPER route than ``"keep"``
+    or ``"remove"`` on the same problem, because those two keep the coarse
+    default bins, which can miss the optimum.
     """
 
     name: str
@@ -28,42 +49,47 @@ class InfrastructureProfile:
     angle_cost_params: dict = field(default_factory=dict)
 
     # Span constraints (intermediate structures)
-    min_span_m: Optional[float] = None
-    max_span_m: Optional[float] = None
-    span_bin_size_m: Optional[float] = None
+    min_span_m: float | None = None
+    max_span_m: float | None = None
+    span_bin_size_m: float | None = None
+    # What a line tower closer than min_span_m to an end point becomes (see TERMINAL_SPAN_RULES). No effect without
+    # span limits. A profile without this key means "remove". "enforce" (exact span bins) can return a CHEAPER
+    # route than "keep" or "remove" on the same problem, because those two keep the coarse default bins, which can
+    # miss the optimum.
+    terminal_span_rule: str = "remove"
 
     # Tower/structure cost
     tower_cost_function: str = "terrain_plus_angle"
     tower_cost_params: dict = field(default_factory=dict)
 
     # Gradient constraints
-    max_gradient_percent: Optional[float] = None
-    gradient_cost_function: Optional[str] = None
-    gradient_cost_params: Optional[dict] = None
+    max_gradient_percent: float | None = None
+    gradient_cost_function: str | None = None
+    gradient_cost_params: dict | None = None
 
     # Catenary / clearance constraints
-    tower_height_m: Optional[float] = None
-    conductor_weight_per_m: Optional[float] = None  # N/m
-    conductor_tension_n: Optional[float] = None  # N
-    min_clearance_m: Optional[float] = None  # meters above ground + obstacles
+    tower_height_m: float | None = None
+    conductor_weight_per_m: float | None = None  # N/m
+    conductor_tension_n: float | None = None  # N
+    min_clearance_m: float | None = None  # meters above ground + obstacles
 
     # Variable tower heights (overrides tower_height_m when set with >1 entry)
-    tower_heights_m: Optional[list[float]] = None
+    tower_heights_m: list[float] | None = None
     tower_height_cost_per_increment: float = 0.0  # cost per height step above base
 
     # Terminal towers (start/end anchors connecting to substation/transformer)
-    terminal_tower_height_m: Optional[float] = None  # height at substations
+    terminal_tower_height_m: float | None = None  # height at substations
     terminal_tower_cost: float = 0.0  # total cost for terminal dead-end tower
 
     # Cost model
-    cost_assumptions_path: Optional[str] = None
+    cost_assumptions_path: str | None = None
 
     # Tower ground area (foundation footprint)
     tower_ground_area_m2: float = 1.0  # square footprint area in m²
     tower_area_cost_mode: str = "uniform"  # "uniform" or "exact"
 
     # Corridor width (informational)
-    recommended_buffer_m: Optional[float] = None
+    recommended_buffer_m: float | None = None
 
     @property
     def has_span_constraints(self) -> bool:
@@ -113,24 +139,28 @@ class InfrastructureProfile:
         return premiums
 
     @property
-    def n_span_bins(self) -> Optional[int]:
+    def n_span_bins(self) -> int | None:
         if not self.has_span_constraints:
             return None
         return int(self.max_span_m / self.span_bin_size_m) + 1
 
     def __post_init__(self):
         """Validate profile configuration."""
+        if not isinstance(self.terminal_span_rule, str) or self.terminal_span_rule not in TERMINAL_SPAN_RULES:
+            raise InvalidInputError(
+                f"terminal_span_rule must be one of {', '.join(repr(v) for v in TERMINAL_SPAN_RULES)}, "
+                f"got {self.terminal_span_rule!r}")
         if self.has_span_constraints:
             if self.span_bin_size_m is None or self.span_bin_size_m <= 0:
-                raise ValueError("span_bin_size_m must be positive when span constraints are set")
+                raise InvalidInputError("span_bin_size_m must be positive when span constraints are set")
             if self.min_span_m > self.max_span_m:
-                raise ValueError(f"min_span_m ({self.min_span_m}) must be <= max_span_m ({self.max_span_m})")
+                raise InvalidInputError(f"min_span_m ({self.min_span_m}) must be <= max_span_m ({self.max_span_m})")
         if self.hard_angle_limit_deg < self.soft_angle_limit_deg:
-            raise ValueError("hard_angle_limit_deg must be >= soft_angle_limit_deg")
+            raise InvalidInputError("hard_angle_limit_deg must be >= soft_angle_limit_deg")
         if self.tower_ground_area_m2 < 1.0:
-            raise ValueError("tower_ground_area_m2 must be >= 1.0")
+            raise InvalidInputError("tower_ground_area_m2 must be >= 1.0")
         if self.tower_area_cost_mode not in ("uniform", "exact"):
-            raise ValueError(
+            raise InvalidInputError(
                 f"tower_area_cost_mode must be 'uniform' or 'exact', "
                 f"got '{self.tower_area_cost_mode}'"
             )
@@ -146,11 +176,12 @@ class InfrastructureProfile:
     def load(cls, path: str) -> "InfrastructureProfile":
         """Load profile from YAML or JSON file."""
         if not os.path.exists(path):
-            raise FileNotFoundError(f"Profile file not found: {path}")
+            raise InputFileNotFoundError(f"Profile file not found: {path}")
 
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             if path.endswith((".yaml", ".yml")):
-                import yaml
+                from pyorps.core.optional_deps import import_yaml
+                yaml = import_yaml()
                 config = yaml.safe_load(f)
             else:
                 config = json.load(f)
@@ -165,9 +196,13 @@ class InfrastructureProfile:
     def save(self, path: str) -> None:
         """Save profile to YAML or JSON file."""
         data = self.to_dict()
+        as_yaml = path.endswith((".yaml", ".yml"))
+        if as_yaml:
+            # before the file is opened: a missing PyYAML must not leave an empty file behind
+            from pyorps.core.optional_deps import import_yaml
+            yaml = import_yaml()
         with open(path, "w", encoding="utf-8") as f:
-            if path.endswith((".yaml", ".yml")):
-                import yaml
+            if as_yaml:
                 yaml.dump(data, f, default_flow_style=False, sort_keys=False)
             else:
                 json.dump(data, f, indent=2)
@@ -185,7 +220,7 @@ class InfrastructureProfile:
             breakpoints = params["breakpoints"]
             costs = params["costs"]
             return float(np.interp(angle_deg, breakpoints, costs))
-        raise ValueError(f"Unknown angle cost function: {self.angle_cost_function}")
+        raise InvalidInputError(f"Unknown angle cost function: {self.angle_cost_function}")
 
     def precompute_angle_lut(
         self, steps: np.ndarray

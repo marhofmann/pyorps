@@ -12,6 +12,7 @@ import math
 import numpy as np
 import pytest
 
+from pyorps.core.exceptions import ConsistencyCheckError
 from pyorps.core.infrastructure_profile import InfrastructureProfile
 from pyorps.graph.tower_field import (
     TowerFieldModel,
@@ -242,6 +243,7 @@ def test_unmatched_tier1_is_refused():
                           blocked=more).solve(seed_chain=seed)
     with pytest.raises(AssertionError) as info:
         assert_matched_tier1(f1, f2)
+    assert isinstance(info.value, ConsistencyCheckError)
     text = str(info.value)
     assert "terrain values" in text and "placement" in text \
         and "crossing" in text

@@ -1,0 +1,261 @@
+window   : farm
+bounds   : 441701 5584764 446075 5587711  (4374 x 2947 m)
+cells    : 12.9 M at 1.0 m (26 MB as uint16)
+fetch box: padded by 300 m so a setback drawn from outside the window still reaches into it
+
+constraint model (premiums first, then exclusions; a premium after an exclusion would multiply the 65535 sentinel back into a price)
+  key                    treat     buffer  basis
+  soil                   premium       0 m  no buffer
+  wsg_zone_3             premium       0 m  no buffer
+  wsg_zone_3b            premium       0 m  no buffer
+  lsg                    premium       0 m  no buffer
+  biotope_all            premium       0 m  no buffer
+  kompensation           premium       0 m  no buffer
+  hq_extrem              premium       0 m  no buffer
+  road_zustimmung_autobahn premium     100 m  Sec. 9(2) FStrG Zustimmungszone Bundesautobahn: 100 m (statute)
+  road_zustimmung        premium      40 m  Sec. 9(2) FStrG / Sec. 23(2) HStrG Zustimmungszone B/L/K: 40 m (statut
+  buildings              exclude       0 m  footprint itself, no buffer
+  residential_parcels    exclude     300 m! ENGINEERING JUDGEMENT, not statute. Back-calculated from L_WA = 88 dB(
+  residential_buildings  exclude     300 m! ENGINEERING JUDGEMENT -- identical to residential_parcels
+  gewaesserrandstreifen  exclude      10 m  Sec. 23(1) HWG: 10 m im Aussenbereich (statute)
+  road_verbotszone_autobahn exclude      40 m  Sec. 9(1) Nr. 1 FStrG Bundesautobahn: 40 m (statute)
+  road_verbotszone       exclude      20 m  Sec. 9(1) Nr. 1 FStrG (Bundesstr.) / Sec. 23(1) Nr. 1 HStrG (L, K): 20
+  rail                   exclude      20 m! ASSUMPTION, NOT STATUTE. German law contains no Anbauverbotszone for r
+  turbines               exclude      60 m! ENGINEERING JUDGEMENT, not statute. Physical clearance for the turbine
+  wsg_zone_1             exclude       0 m  no buffer
+  wsg_zone_2             exclude       0 m  no buffer
+  nsg                    exclude       0 m  statutory: BNatSchG creates NO buffer around an NSG. A 50-100 m screen
+  ffh                    exclude     300 m! ENGINEERING JUDGEMENT, not statute. Sec. 34 BNatSchG creates NO buffer
+  spa                    exclude     300 m! ENGINEERING JUDGEMENT -- identical to ffh
+  ueg_hq100              exclude       0 m  statutory designation boundary; WHG creates no buffer
+  abflussgebiet_hq100    exclude       0 m  no buffer
+  gesch_biotope          exclude       0 m  no buffer
+  gesch_komplexe         exclude       0 m  no buffer
+  naturdenkmal           exclude      25 m! ENGINEERING JUDGEMENT, not statute. Sec. 28(2) BNatSchG protects the r
+  naturpark              ignore        0 m  no buffer
+  (! = the setback is engineering judgement or an assumption, not statute)
+
+fetching ALKIS land use ...
+  NOTE: 4 Strassenverkehr polygon(s) (39,917 m2) have a null ALKIS name and cannot be classified, so they carry NO Anbauverbotszone. If any is a B/L/K carriageway rather than Verkehrsbegleitflaeche, the raster is permissive there.
+  1452 features
+    Fließgewässer                                     55 feat  forbidden
+    Fläche besonderer funktionaler Prägung            11 feat  forbidden
+    Fläche gemischter Nutzung                         62 feat  forbidden
+    Friedhof                                           3 feat  forbidden
+    Gehölz                                            23 feat  1200 EUR/m2
+    Industrie- und Gewerbefläche                      21 feat  forbidden
+    Landwirtschaft                                   571 feat  300 EUR/m2
+    Platz                                              3 feat  forbidden
+    Sport-, Freizeit- und Erholungsfläche             53 feat  forbidden
+    Stehendes Gewässer                                 3 feat  forbidden
+    Straßenverkehr                                    71 feat  forbidden
+    Tagebau, Grube, Steinbruch                         2 feat  forbidden
+    Unland/Vegetationslose Fläche                     58 feat  250 EUR/m2
+    Wald                                              91 feat  1500 EUR/m2
+    Weg                                              312 feat  forbidden
+    Wohnbaufläche                                    113 feat  forbidden
+burning base land use ...
+C:\Users\mhnn82\Documents\2_python_projects\TopoMILP\examples\cired2027\build_site_raster.py:1317: ThinForbiddenFeatureWarning: Forbidden-feature burn audit (1 m cells, 709 forbidden feature(s))
+Severity: CRITICAL | Route planning: NOT RELIABLE for route planning at this cell size
+
+Practical takeaways:
+  • 4 forbidden feature(s) burned zero cells — routes can cross land your vector data marks as excluded.
+  • 1 forbidden feature(s) have sub-cell holes — part of the geometry is missing from the cost surface.
+  • Do not rely on this raster for compliance-critical exclusion routing until you use a finer cell size or repair the geometry.
+  • Cadastral land-use polygons often need a small outward buffer before rasterization: try geometry_buffer_m=1 m (one cell) or 0.5 m (half a cell) on ALKIS-style data before raising the cell size.
+  • Suggested cell size from the narrowest feature: 0.0538 m.
+
+Forbidden features did not survive rasterization at 1 m: 4 of 709 forbidden features burned NO cells at all (e.g. index 194) - they are absent from the cost surface and cannot block a route; 1 of 709 forbidden features burned only in part (e.g. index 195): a sub-cell portion of the geometry burned no cells at all, so the barrier has a hole exactly where that portion runs; 4 of 709 forbidden features burned into cells that touch only at their corners (e.g. index 130) - such a barrier is 8- but not 4-connected; 25 of 709 forbidden features are narrower than 1.41 m somewhere and would break under a different sub-pixel alignment. the narrowest forbidden feature is 0.076 m wide (index 519), but a feature must be at least 1.41 m (sqrt(2) cells) wide to survive a 1 m burn at every alignment; resolving it needs a cell size of 0.0538 m, which is 1.28e+10 cells over the same extent. The only fix that is correct rather than a trade is a finer cell size. Both repairs are OPT-IN because both close legitimate sub-cell OPENINGS - a gate, a culvert, a gap between parcels - while they seal barriers: swept over 8 gate widths x 8 sub-pixel offsets under four different gate-width sets (see raster.thinness), and counting only the configurations the plain rule leaves passable, widen_thin_forbidden=True sealed 38-100 % of them in a 0.4 m wall and 0 % in a 2 m wall, all_touched=True 31-100 % and 17-100 %.
+  rasterizer.rasterize(
+  buildable 11,749,428 cells (91.15% of window), mean 819 EUR/m2
+
+soil (premium, 0 m buffer): Bodeneinheiten 1:500k (AUSGANGSGESTEIN)
+  4 features after filtering
+    Lösslehm, Löss                                       x1.0  (1 feat)
+    Auenlehm                                             x1.0  (1 feat)
+    Tonschiefer, Grauwackenschiefer, Phyllit             x1.15  (1 feat)
+    Schalstein, Diabas                                   x1.15  (1 feat)
+  buildable 11,749,428 -> 11,749,428 cells (91.15% of window), -0 (0.00 pts), mean 819 -> 907 EUR/m2
+
+wsg_zone_3 (premium, 0 m buffer): Trinkwasserschutzgebiet Zone III / IIIA (TWS_HQS_ALK)
+  4 features after filtering
+  buildable 11,749,428 -> 11,749,428 cells (91.15% of window), -0 (0.00 pts), mean 907 -> 909 EUR/m2
+
+wsg_zone_3b (premium, 0 m buffer): Trinkwasserschutzgebiet Zone IIIB (TWS_HQS_ALK)
+  1 features after filtering
+  buildable 11,749,428 -> 11,749,428 cells (91.15% of window), -0 (0.00 pts), mean 909 -> 909 EUR/m2
+
+lsg (premium, 0 m buffer): Landschaftsschutzgebiet
+  1 features after filtering
+  buildable 11,749,428 -> 11,749,428 cells (91.15% of window), -0 (0.00 pts), mean 909 -> 910 EUR/m2
+
+biotope_all (premium, 0 m buffer): Biotopkartierung 1992-2006 (unprotected superset)
+  141 features after filtering
+  buildable 11,749,428 -> 11,749,428 cells (91.15% of window), -0 (0.00 pts), mean 910 -> 911 EUR/m2
+
+kompensation (premium, 0 m buffer): Kompensationsflaechen (natureg REST)
+  2 features after filtering
+  buildable 11,749,428 -> 11,749,428 cells (91.15% of window), -0 (0.00 pts), mean 911 -> 911 EUR/m2
+
+hq_extrem (premium, 0 m buffer): Hochwasser niedriger Wahrscheinlichkeit (HQextrem, HWRM)
+  0 features after filtering
+  no features in this window -- nothing burned
+  buildable 11,749,428 -> 11,749,428 cells (91.15% of window), -0 (0.00 pts), mean 911 -> 911 EUR/m2
+
+road_zustimmung_autobahn (premium, 100 m buffer): Autobahn-Anbaubeschraenkungszone 100 m (Zustimmung)
+  WARNING: road_zustimmung_autobahn: filter on 'name' matched none of 71 features. Present values include ['Alte Heerstraße', 'Am Kapellchen', 'Am Rosenberg', 'Am Steinernen Haus', 'Am Wiesengrund', 'Auerweg', 'Auf der Dreispitz', 'Aumenauer Weg', 'Bahnhofstraße (K 431)', 'Bahnhofstraße (K 469)', 'Bergstraße', 'Bergstraße (K 431)']. If this is a re-spelling rather than a genuinely empty window, the constraint has silently vanished.
+  0 features after filtering
+  no features in this window -- nothing burned
+  buildable 11,749,428 -> 11,749,428 cells (91.15% of window), -0 (0.00 pts), mean 911 -> 911 EUR/m2
+
+road_zustimmung (premium, 40 m buffer): Strassen-Anbaubeschraenkungszone 40 m (Zustimmung required)
+  18 features after filtering
+  buildable 11,749,428 -> 11,749,428 cells (91.15% of window), -0 (0.00 pts), mean 911 -> 916 EUR/m2
+
+buildings (exclude, 0 m buffer): ALKIS Gebaeude und Bauwerke
+  1534 features after filtering
+  buildable 11,749,428 -> 11,749,115 cells (91.15% of window), -313 (0.00 pts), mean 916 -> 916 EUR/m2
+
+residential_parcels (exclude, 300 m buffer): Wohnbauflaeche + 300 m (TA Laerm back-calculation)
+  113 features after filtering
+  buildable 11,749,115 -> 10,627,495 cells (82.45% of window), -1,121,620 (8.70 pts), mean 916 -> 959 EUR/m2
+
+residential_buildings (exclude, 300 m buffer): Wohngebaeude + 300 m
+  1169 features after filtering
+  buildable 10,627,495 -> 9,708,357 cells (75.32% of window), -919,138 (7.13 pts), mean 959 -> 986 EUR/m2
+
+gewaesserrandstreifen (exclude, 10 m buffer): Gewaesserrandstreifen 10 m (Sec. 23 HWG)
+  58 features after filtering
+  buildable 9,708,357 -> 9,515,430 cells (73.82% of window), -192,927 (1.50 pts), mean 986 -> 990 EUR/m2
+
+road_verbotszone_autobahn (exclude, 40 m buffer): Autobahn-Anbauverbotszone 40 m
+  WARNING: road_verbotszone_autobahn: filter on 'name' matched none of 71 features. Present values include ['Alte Heerstraße', 'Am Kapellchen', 'Am Rosenberg', 'Am Steinernen Haus', 'Am Wiesengrund', 'Auerweg', 'Auf der Dreispitz', 'Aumenauer Weg', 'Bahnhofstraße (K 431)', 'Bahnhofstraße (K 469)', 'Bergstraße', 'Bergstraße (K 431)']. If this is a re-spelling rather than a genuinely empty window, the constraint has silently vanished.
+  0 features after filtering
+  no features in this window -- nothing burned
+  buildable 9,515,430 -> 9,515,430 cells (73.82% of window), -0 (0.00 pts), mean 990 -> 990 EUR/m2
+
+road_verbotszone (exclude, 20 m buffer): Strassen-Anbauverbotszone 20 m (B, L, K)
+  18 features after filtering
+  buildable 9,515,430 -> 9,325,163 cells (72.34% of window), -190,267 (1.48 pts), mean 990 -> 978 EUR/m2
+
+rail (exclude, 20 m buffer): Bahnverkehr + 20 m
+  WARNING: rail: filter on 'nutzart' matched none of 1452 features. Present values include ['Fließgewässer', 'Fläche besonderer funktionaler Prägung', 'Fläche gemischter Nutzung', 'Friedhof', 'Gehölz', 'Industrie- und Gewerbefläche', 'Landwirtschaft', 'Platz', 'Sport-, Freizeit- und Erholungsfläche', 'Stehendes Gewässer', 'Straßenverkehr', 'Tagebau, Grube, Steinbruch']. If this is a re-spelling rather than a genuinely empty window, the constraint has silently vanished.
+  0 features after filtering
+  no features in this window -- nothing burned
+  buildable 9,325,163 -> 9,325,163 cells (72.34% of window), -0 (0.00 pts), mean 978 -> 978 EUR/m2
+
+turbines (exclude, 60 m buffer): Wind turbines + 60 m
+  7 features after filtering
+  buildable 9,325,163 -> 9,248,949 cells (71.75% of window), -76,214 (0.59 pts), mean 978 -> 983 EUR/m2
+
+wsg_zone_1 (exclude, 0 m buffer): Trinkwasserschutzgebiet Zone I (Fassungsbereich)
+  1 features after filtering
+  buildable 9,248,949 -> 9,245,362 cells (71.72% of window), -3,587 (0.03 pts), mean 983 -> 983 EUR/m2
+
+wsg_zone_2 (exclude, 0 m buffer): Trinkwasserschutzgebiet Zone II (engere Zone)
+  1 features after filtering
+  buildable 9,245,362 -> 9,223,674 cells (71.56% of window), -21,688 (0.17 pts), mean 983 -> 984 EUR/m2
+
+nsg (exclude, 0 m buffer): Naturschutzgebiet
+  3 features after filtering
+  buildable 9,223,674 -> 9,107,957 cells (70.66% of window), -115,717 (0.90 pts), mean 984 -> 983 EUR/m2
+
+ffh (exclude, 300 m buffer): Fauna-Flora-Habitat (Natura 2000)
+  1 features after filtering
+  buildable 9,107,957 -> 8,329,690 cells (64.62% of window), -778,267 (6.04 pts), mean 983 -> 969 EUR/m2
+
+spa (exclude, 300 m buffer): Vogelschutzgebiet (SPA, Natura 2000)
+  0 features after filtering
+  no features in this window -- nothing burned
+  buildable 8,329,690 -> 8,329,690 cells (64.62% of window), -0 (0.00 pts), mean 969 -> 969 EUR/m2
+
+ueg_hq100 (exclude, 0 m buffer): Festgesetztes Ueberschwemmungsgebiet HQ100 (HWG)
+  1 features after filtering
+  buildable 8,329,690 -> 8,329,690 cells (64.62% of window), -0 (0.00 pts), mean 969 -> 969 EUR/m2
+
+abflussgebiet_hq100 (exclude, 0 m buffer): Abflussgebiet HQ100 (HWG)
+  1 features after filtering
+  buildable 8,329,690 -> 8,329,690 cells (64.62% of window), -0 (0.00 pts), mean 969 -> 969 EUR/m2
+
+gesch_biotope (exclude, 0 m buffer): Gesetzlich geschuetzte Biotope (Sec. 30 BNatSchG)
+  52 features after filtering
+  buildable 8,329,690 -> 8,307,207 cells (64.45% of window), -22,483 (0.17 pts), mean 969 -> 969 EUR/m2
+
+gesch_komplexe (exclude, 0 m buffer): Gesetzlich geschuetzte Biotopkomplexe
+  4 features after filtering
+  buildable 8,307,207 -> 8,298,861 cells (64.38% of window), -8,346 (0.06 pts), mean 969 -> 970 EUR/m2
+
+naturdenkmal (exclude, 25 m buffer): Naturdenkmal + 25 m
+  1 features after filtering
+  buildable 8,298,861 -> 8,298,861 cells (64.38% of window), -0 (0.00 pts), mean 970 -> 970 EUR/m2
+
+naturpark: NOT applied -- Sec. 27 BNatSchG carries no building prohibition; 100% of the window
+
+shrinkage by constraint (exclusions move cells, premiums move price)
+  constraint             treat      feat  buildable before        after        lost  lost %     mean EUR/m2
+  soil                   premium       4        11,749,428   11,749,428           0   0.00%    819 ->    907
+  wsg_zone_3             premium       4        11,749,428   11,749,428           0   0.00%    907 ->    909
+  wsg_zone_3b            premium       1        11,749,428   11,749,428           0   0.00%    909 ->    909
+  lsg                    premium       1        11,749,428   11,749,428           0   0.00%    909 ->    910
+  biotope_all            premium     141        11,749,428   11,749,428           0   0.00%    910 ->    911
+  kompensation           premium       2        11,749,428   11,749,428           0   0.00%    911 ->    911
+  hq_extrem              premium       0        11,749,428   11,749,428           0   0.00%    911 ->    911
+  road_zustimmung_autobahn premium       0        11,749,428   11,749,428           0   0.00%    911 ->    911
+  road_zustimmung        premium      18        11,749,428   11,749,428           0   0.00%    911 ->    916
+  buildings              exclude    1534        11,749,428   11,749,115         313   0.00%    916 ->    916
+  residential_parcels    exclude     113        11,749,115   10,627,495   1,121,620   8.70%    916 ->    959
+  residential_buildings  exclude    1169        10,627,495    9,708,357     919,138   7.13%    959 ->    986
+  gewaesserrandstreifen  exclude      58         9,708,357    9,515,430     192,927   1.50%    986 ->    990
+  road_verbotszone_autobahn exclude       0         9,515,430    9,515,430           0   0.00%    990 ->    990
+  road_verbotszone       exclude      18         9,515,430    9,325,163     190,267   1.48%    990 ->    978
+  rail                   exclude       0         9,325,163    9,325,163           0   0.00%    978 ->    978
+  turbines               exclude       7         9,325,163    9,248,949      76,214   0.59%    978 ->    983
+  wsg_zone_1             exclude       1         9,248,949    9,245,362       3,587   0.03%    983 ->    983
+  wsg_zone_2             exclude       1         9,245,362    9,223,674      21,688   0.17%    983 ->    984
+  nsg                    exclude       3         9,223,674    9,107,957     115,717   0.90%    984 ->    983
+  ffh                    exclude       1         9,107,957    8,329,690     778,267   6.04%    983 ->    969
+  spa                    exclude       0         8,329,690    8,329,690           0   0.00%    969 ->    969
+  ueg_hq100              exclude       1         8,329,690    8,329,690           0   0.00%    969 ->    969
+  abflussgebiet_hq100    exclude       1         8,329,690    8,329,690           0   0.00%    969 ->    969
+  gesch_biotope          exclude      52         8,329,690    8,307,207      22,483   0.17%    969 ->    969
+  gesch_komplexe         exclude       4         8,307,207    8,298,861       8,346   0.06%    969 ->    970
+  naturdenkmal           exclude       1         8,298,861    8,298,861           0   0.00%    970 ->    970
+  naturpark              ignore        0         8,298,861    8,298,861           0   0.00%    970 ->    970
+  TOTAL                                         11,749,428    8,298,861   3,450,567  26.77%
+  land use alone left 91.15% of the window buildable; the constraint model leaves 64.38%. Largest single bite: residential_parcels (8.70 pts).
+
+written  : case_studies\runkel_free_siting\data\rasters\site_cost_farm_eur_m2.tif
+shape    : 2947 x 4374
+forbidden: 4,591,317 cells (35.6%)
+buildable: 8,298,861 cells (64.38%), 22 distinct prices, 250-2242 EUR/m2
+      1725 EUR/m2 :    3,293,811 cells (25.55% of window)
+       300 EUR/m2 :    2,290,621 cells (17.77% of window)
+       345 EUR/m2 :    1,727,911 cells (13.40% of window)
+      1500 EUR/m2 :      475,802 cells (3.69% of window)
+       375 EUR/m2 :      291,322 cells (2.26% of window)
+      1898 EUR/m2 :      111,985 cells (0.87% of window)
+       380 EUR/m2 :       49,528 cells (0.38% of window)
+       330 EUR/m2 :       16,949 cells (0.13% of window)
+       431 EUR/m2 :       15,011 cells (0.12% of window)
+       250 EUR/m2 :       12,111 cells (0.09% of window)
+      1380 EUR/m2 :        2,995 cells (0.02% of window)
+       413 EUR/m2 :        2,927 cells (0.02% of window)
+
+candidate screen against substation_sites_points.geojson (60 x 80 m, 36 rotations, pass = every footprint cell buildable)
+  Substation_0   FAIL  best theta 125.0 deg, 4794/4794 footprint cells forbidden
+                 touches : biotope_all [premium], ffh [exclude, 300 m], gesch_biotope [exclude], residential_buildings [exclude, 300 m], residential_parcels [exclude, 300 m], soil [premium]
+                 land use: Landwirtschaft, Unland/Vegetationslose Fläche, Weg
+  Substation_1   FAIL  best theta   0.0 deg, 4732/4800 footprint cells forbidden
+                 touches : soil [premium]
+                 land use: Landwirtschaft, Sport-, Freizeit- und Erholungsfläche, Weg
+  Substation_2   FAIL  best theta  65.0 deg, 4059/4798 footprint cells forbidden
+                 touches : gesch_komplexe [exclude], gewaesserrandstreifen [exclude, 10 m], residential_buildings [exclude, 300 m], residential_parcels [exclude, 300 m], soil [premium], wsg_zone_2 [exclude], wsg_zone_3 [premium]
+                 land use: Fließgewässer, Gehölz, Landwirtschaft, Weg
+  Substation_3   OUTSIDE the raster window
+  Substation_4   FAIL  best theta  15.0 deg, 354/4800 footprint cells forbidden
+                 touches : soil [premium]
+                 land use: Landwirtschaft, Weg
+  Substation_5   FAIL  best theta 110.0 deg, 309/4797 footprint cells forbidden
+                 touches : road_verbotszone [exclude, 20 m], road_zustimmung [premium, 40 m], soil [premium]
+                 land use: Landwirtschaft
+exit 0

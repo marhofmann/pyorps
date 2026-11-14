@@ -14,7 +14,6 @@ import json
 import os
 
 from sphinx.util import logging
-
 from status import pages
 
 logger = logging.getLogger(__name__)

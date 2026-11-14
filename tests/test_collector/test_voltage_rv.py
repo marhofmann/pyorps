@@ -15,6 +15,7 @@ import math
 import numpy as np
 import pytest
 
+from pyorps.certify.voltage import certify_voltage
 from pyorps.collector import CableType, CollectorModel
 from pyorps.collector.design import reprice
 from pyorps.collector.exact import exact_collector_field
@@ -26,7 +27,7 @@ from pyorps.collector.voltage import (
     VoltageModel,
     check_voltage,
 )
-from pyorps.collector.voltage_rv import certify_voltage, repair_design
+from pyorps.collector.voltage_rv import repair_design
 from pyorps.utils.neighborhood import get_neighborhood_steps
 
 INF = math.inf

@@ -1,12 +1,12 @@
-import os
 import tempfile
-from pathlib import Path
 import unittest
-import numpy as np
+from pathlib import Path
+
 import geopandas as gpd
-from shapely.geometry import Point
+import numpy as np
 import rasterio
 from rasterio.transform import Affine
+from shapely.geometry import Point
 
 
 class GeoTestCase(unittest.TestCase):

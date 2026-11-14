@@ -1,12 +1,20 @@
 import unittest
-import numpy as np
-from shapely.geometry import Polygon, Point, MultiPoint
-import geopandas as gpd
 
-from pyorps.core.types import (
-    InputDataType, CostAssumptionsType, BboxType, GeometryMaskType, CoordinateTuple, CoordinateList, CoordinateInput, NormalizedCoordinate
-)
+import geopandas as gpd
+import numpy as np
+from shapely.geometry import MultiPoint, Point, Polygon
+
 from pyorps.core.cost_assumptions import CostAssumptions
+from pyorps.core.types import (
+    BboxType,
+    CoordinateInput,
+    CoordinateList,
+    CoordinateTuple,
+    CostAssumptionsType,
+    GeometryMaskType,
+    InputDataType,
+    NormalizedCoordinate,
+)
 
 
 class TestTypes(unittest.TestCase):

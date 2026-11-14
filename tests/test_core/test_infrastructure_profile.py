@@ -1,15 +1,17 @@
-import unittest
-import numpy as np
-import tempfile
-import os
 import json
 import math
+import os
+import tempfile
+import unittest
 
-from pyorps.core.infrastructure_profile import InfrastructureProfile
+import numpy as np
+import pytest
+
 from pyorps.core.constrained_path import ConstrainedPath
+from pyorps.core.infrastructure_profile import InfrastructureProfile
 
 try:
-    import cupy as cp
+    import cupy as cp  # noqa: F401
     HAS_CUPY = True
 except ImportError:
     HAS_CUPY = False
@@ -255,6 +257,7 @@ class TestConstrainedPathFinder(unittest.TestCase):
 
     def test_end_to_end_with_380kv_profile(self):
         """Full workflow: load profile YAML, find route, export towers."""
+        pytest.importorskip("yaml")
         from pyorps.graph.constrained_path_finder import ConstrainedPathFinder
 
         profile_path = os.path.join(
@@ -329,6 +332,7 @@ class TestConstrainedPathFinder(unittest.TestCase):
 
     def test_end_to_end_with_rural_road_profile(self):
         """Rural road profile: direction-only, no towers."""
+        pytest.importorskip("yaml")
         from pyorps.graph.constrained_path_finder import ConstrainedPathFinder
 
         profile_path = os.path.join(

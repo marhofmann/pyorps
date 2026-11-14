@@ -15,10 +15,14 @@ from dash import ALL, Input, Output, State, ctx, html, no_update
 from dash.exceptions import PreventUpdate
 
 from .. import ids
-from ..layout import (RASTER_TILE_ZINDEX, ROUTE_STYLE, STUDY_AREA_STYLE,
-                      TABLE_PAGE_SIZE, VECTOR_STYLE)
+from ..layout import RASTER_TILE_ZINDEX, ROUTE_STYLE, STUDY_AREA_STYLE, TABLE_PAGE_SIZE, VECTOR_STYLE
+from ..services.errors import Notice, guard
 
 _EMPTY_FC = {"type": "FeatureCollection", "features": []}
+
+#: the last action of the map's draw tool ends in "Start" while a shape is
+#: being drawn / edited / deleted (dash-leaflet EditControl ``action.type``)
+_DRAW_ACTIVE_TYPES = frozenset({"drawStart", "editStart", "deleteStart"})
 
 #: synthetic Layers-grid row id for a whole route group ("group::<label>")
 GROUP_ROW_PREFIX = "group::"
@@ -159,20 +163,56 @@ def _raster_style(layer):
     return colormap, meta.get("vmin"), meta.get("vmax")
 
 
-def _combination_table_payload(layer):
-    """(columnDefs, rowData, title) for a raster's cost-combination table (F2).
+def _combination_for(layer, notices: list):
+    """``(combination table or None, notices)``: the lazy build, guarded.
 
-    Returns None when the raster layer has no stored combination table (loaded
-    or combined rasters have none — only rasters built from the Cost tab do).
+    ``ensure_combination_gdf`` never raises; a failed build keeps its inputs and
+    leaves ``meta["combination_error"]``, which becomes a visible notice here
+    (it used to vanish: "no table" and nothing said why).
     """
     from ..services import combinations
 
-    combo = combinations.ensure_combination_gdf(layer)   # lazy build (perf)
+    combo, notices = guard(combinations.ensure_combination_gdf, layer,
+                           notices=notices)
+    error = (layer.meta or {}).get("combination_error") if layer else None
+    if combo is None and error:
+        box = Notice(
+            severity="warning", title="The cost-combination table could not "
+                                      "be built",
+            meaning="The table that links raster values to layers and "
+                    "features is not available for this raster.",
+            impact="No table and no click lookup for it; nothing else is "
+                   "affected.",
+            fix="Try again (the cause may be temporary, e.g. low memory); "
+                "details are in the log.",
+            details=str(error), focus_id=ids.TAB_LAYERS).to_dict()
+        last = notices[-1] if notices else {}
+        # every map click retries the build while the panel is open: do not
+        # stack the same box again and again
+        if (last.get("title"), last.get("details")) != (box["title"],
+                                                        box["details"]):
+            notices.append(box)
+    return combo, notices
+
+
+def _combination_table_payload(layer, notices: list):
+    """``((columnDefs, rowData, title) | None, notices)`` for a raster's
+    cost-combination table (F2).
+
+    The payload is None when the raster layer has no stored combination table
+    (loaded or combined rasters have none — only rasters built from the Cost
+    tab do) or when the lazy build failed (then a notice says so).
+    """
+    from ..services import combinations
+
+    combo, notices = _combination_for(layer, notices)   # lazy build (perf)
     if combo is None or getattr(combo, "empty", True):
-        return None
+        return None, notices
     colormap, vmin, vmax = _raster_style(layer)
-    return combinations.grid_payload(combo, layer.name, colormap=colormap,
-                                     vmin=vmin, vmax=vmax)
+    payload, notices = guard(combinations.grid_payload, combo, layer.name,
+                             colormap=colormap, vmin=vmin, vmax=vmax,
+                             notices=notices)
+    return payload, notices
 
 
 def _feature_highlight(layer, row_index: int):
@@ -469,16 +509,27 @@ def register(app, state) -> None:
     @app.callback(Output(ids.LAYERS_VIEW, "data", allow_duplicate=True),
                   Output(ids.SELECTED_FEATURE_LAYER, "data",
                          allow_duplicate=True),
-                  Input(ids.LAYER_REMOVE_BTN, "n_clicks"),
+                  Output(ids.STUDY_AREA_INFO, "children",
+                         allow_duplicate=True),
+                  Input(ids.GO_REMOVE_LAYERS, "data"),
                   State(ids.LAYERS_GRID, "selectedRows"),
                   prevent_initial_call=True)
-    def remove_layer(n_clicks, selected):
-        if not n_clicks or not selected:
+    def remove_layer(go, selected):
+        if not go or not selected:
             raise PreventUpdate
+        area_removed = False
         for layer_id in _expand_selection(state, selected):
+            layer = state.get(layer_id)
+            area_removed = area_removed or (layer is not None
+                                            and layer.kind == "study_area")
             state.remove_layer(layer_id)
+        if area_removed:
+            # the study area lives in two places (state + its layer): later
+            # loads and the raster clip to state.study_area, so it goes too
+            state.study_area = None
         # drop any feature highlight (its layer may be gone)
-        return state.layers_view(), _EMPTY_FC
+        return (state.layers_view(), _EMPTY_FC,
+                "No study area drawn." if area_removed else no_update)
 
     # -------------------------- Feature 4: open a layer's full attribute table
     @app.callback(
@@ -486,35 +537,52 @@ def register(app, state) -> None:
         Output(ids.LAYER_TABLE_GRID, "columnDefs"),
         Output(ids.LAYER_TABLE_GRID, "rowData"),
         Output(ids.LAYER_TABLE_TITLE, "children"),
+        Output(ids.NOTICES, "data", allow_duplicate=True),
         Input(ids.LAYER_VIEW_BTN, "n_clicks"),
         State(ids.LAYERS_GRID, "selectedRows"),
-        prevent_initial_call=True)
-    def open_layer_table(n_clicks, selected):
+        State(ids.NOTICES, "data"),
+        prevent_initial_call=True,
+        running=[(Output(ids.LAYER_VIEW_BTN, "disabled"), True, False)])
+    def open_layer_table(n_clicks, selected, notices):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        notices = list(notices or [])
+        before = list(notices)
         if not n_clicks or not selected:
             raise PreventUpdate
+
+        def _result(*table):
+            # the store is written only when a box was added (see groups.py)
+            return (*table, notices if notices != before else no_update)
+
         layer = state.get(selected[0].get("id"))
         if layer is not None and layer.kind == "raster":
-            payload = _combination_table_payload(layer)
+            payload, notices = _combination_table_payload(layer, notices)
             if payload is not None:
-                return (True, *payload)
-            return (True, [], [], f"{layer.name}: no combination table "
-                    "(build the raster from the Cost tab to get one).")
+                return _result(True, *payload)
+            return _result(True, [], [], f"{layer.name}: no combination "
+                           "table (build the raster from the Cost tab to "
+                           "get one).")
         if layer is None or layer.gdf is None or layer.gdf.empty:
-            return (True, [], [],
-                    "This layer has no attribute table (rasters have none).")
-        return (True, *_attr_table_payload(layer))
+            return _result(True, [], [], "This layer has no attribute table "
+                           "(rasters have none).")
+        payload, notices = guard(_attr_table_payload, layer, notices=notices)
+        if payload is None:
+            return _result(no_update, no_update, no_update, no_update)
+        return _result(True, *payload)
 
     # ------------------ Feature 5: edit per-polygon cost in the layer table
     @app.callback(
         Output(ids.NOTICES, "data", allow_duplicate=True),
         Input(ids.LAYER_TABLE_GRID, "cellValueChanged"),
         State(ids.LAYERS_GRID, "selectedRows"),
+        State(ids.NOTICES, "data"),
         prevent_initial_call=True)
-    def edit_layer_table_cell(events, layer_selection):
+    def edit_layer_table_cell(events, layer_selection, notices):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from ..services.manual_cost import COST_COLUMN, MANUAL_META_KEY
 
+        notices = list(notices or [])
+        before = list(notices)
         if not events or not layer_selection:
             raise PreventUpdate
         layer = state.get(layer_selection[0].get("id"))
@@ -533,12 +601,21 @@ def register(app, state) -> None:
             value = data.get(column)
             if column == COST_COLUMN:
                 from ..services import cost_model
-                value = cost_model.coerce_factor(value)
+                try:
+                    value = cost_model.coerce_factor(value)
+                except ValueError as exc:
+                    notices.append(Notice(
+                        severity="warning", title="Cost is not a number",
+                        meaning=str(exc),
+                        impact="The cell was not changed on the server.",
+                        fix="Type a number such as 1.25, or 65535 to forbid.",
+                        focus_id=ids.TAB_LAYERS).to_dict())
+                    continue
             layer.gdf.iat[int(row), layer.gdf.columns.get_loc(column)] = value
             changed = True
-        if not changed:
+        if not changed and notices == before:
             raise PreventUpdate
-        return no_update
+        return notices if notices != before else no_update
 
     # ------------------ Feature 4/3: table row -> highlight the feature
     @app.callback(
@@ -568,11 +645,14 @@ def register(app, state) -> None:
         Output(ids.LAYER_TABLE_GRID, "selectedRows"),
         Output(ids.LAYER_TABLE_GRID, "paginationGoTo"),
         Output(ids.LAYER_TABLE_GRID, "scrollTo"),
+        Output(ids.NOTICES, "data", allow_duplicate=True),
         Input({"type": ids.TYPE_LAYER_GEOJSON, "id": ALL}, "clickData"),
         State(ids.LAYERS_GRID, "selectedRows"),
+        State(ids.NOTICES, "data"),
         prevent_initial_call=True)
-    def select_clicked_feature_row(_click_datas, layer_selection):
+    def select_clicked_feature_row(_click_datas, layer_selection, notices):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        notices = list(notices or [])
         trigger = ctx.triggered_id
         if not trigger or not layer_selection:
             raise PreventUpdate
@@ -587,10 +667,27 @@ def register(app, state) -> None:
         row_index = _feature_row_index(layer, feature)
         if row_index is None:
             raise PreventUpdate
-        column_defs, row_data, title = _attr_table_payload(layer)
+        payload, notices = guard(_attr_table_payload, layer, notices=notices)
+        if payload is None:
+            return (no_update,) * 7 + (notices,)
+        column_defs, row_data, title = payload
         selected = [r for r in row_data if r["__row"] == row_index]
+        if not selected:
+            # the table only ships the first MAX_TABLE_ROWS rows: say so
+            # instead of opening it with nothing selected
+            notices.append(Notice(
+                severity="info", title="That feature is not in the table",
+                meaning=f"Row {row_index:,} is beyond the first "
+                        f"{MAX_TABLE_ROWS:,} rows shown in the table "
+                        f"('{layer.name}' has {len(layer.gdf):,}).",
+                impact="The table opens at its start with no row selected.",
+                fix="Read this feature's attributes in the Attrs tab; the "
+                    "table lists only the first rows of a large layer.",
+                focus_id=ids.TAB_LAYERS).to_dict())
+            return (True, column_defs, row_data, title, [], no_update,
+                    no_update, notices)
         return (True, column_defs, row_data, title, selected,
-                _table_page(row_index), {"rowIndex": row_index})
+                _table_page(row_index), {"rowIndex": row_index}, no_update)
 
     # ---- Feature 2: click a raster cell -> select its cost-combination row
     @app.callback(
@@ -601,26 +698,45 @@ def register(app, state) -> None:
         Output(ids.LAYER_TABLE_GRID, "selectedRows", allow_duplicate=True),
         Output(ids.LAYER_TABLE_GRID, "paginationGoTo", allow_duplicate=True),
         Output(ids.LAYER_TABLE_GRID, "scrollTo", allow_duplicate=True),
+        Output(ids.NOTICES, "data", allow_duplicate=True),
         Input(ids.MAP, "clickData"),
         State(ids.LAYERS_GRID, "selectedRows"),
         State(ids.UI_STATE, "data"),
+        State(ids.LAYER_TABLE_OFFCANVAS, "is_open"),
+        State(ids.DRAW_CONTROL, "action"),
+        State(ids.NOTICES, "data"),
         prevent_initial_call=True)
-    def select_raster_combination(click_data, layer_selection, ui_state):
+    def select_raster_combination(click_data, layer_selection, ui_state,
+                                  panel_open, draw_action, notices):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from ..services import combinations, geo
 
+        notices = list(notices or [])
+        before = list(notices)
         # only when a raster with a combination table is the selected layer and
         # no build/edit click-mode is armed (dispatch_click owns those)
         if (ui_state or {}).get("click_mode", "off") != "off":
             raise PreventUpdate
+        # a click while a shape is being drawn / edited / deleted belongs to
+        # the draw tool: never pop the table up under it
+        last_draw = str((draw_action or {}).get("type") or "").split(":")[-1]
+        if last_draw in _DRAW_ACTIVE_TYPES:
+            raise PreventUpdate
         if not click_data or not click_data.get("latlng") or not layer_selection:
             raise PreventUpdate
         layer = state.get(layer_selection[0].get("id"))
-        combo = (combinations.ensure_combination_gdf(layer)   # lazy build
-                 if layer is not None and layer.kind == "raster" else None)
-        if layer is None or layer.kind != "raster" or combo is None \
-                or layer.crs is None:
+        if layer is None or layer.kind != "raster" or layer.crs is None:
             raise PreventUpdate
+        # the (heavy) table is looked up only when the user already works with
+        # it: its panel is open, or it was built earlier. A plain map click
+        # never starts the build and never opens the panel by itself.
+        if not panel_open and (layer.meta or {}).get("combination_gdf") is None:
+            raise PreventUpdate
+        combo, notices = _combination_for(layer, notices)   # lazy build
+        if combo is None:
+            if notices == before:
+                raise PreventUpdate
+            return (no_update,) * 7 + (notices,)
         lat = float(click_data["latlng"]["lat"])
         lng = float(click_data["latlng"]["lng"])
         x, y = geo.point_wgs84_to_crs(lat, lng, layer.crs)
@@ -632,7 +748,8 @@ def register(app, state) -> None:
             combo, layer.name, colormap=colormap, vmin=vmin, vmax=vmax)
         selected = [r for r in row_data if r["__row"] == row_index]
         return (True, column_defs, row_data, title, selected,
-                _table_page(row_index), {"rowIndex": row_index})
+                _table_page(row_index), {"rowIndex": row_index},
+                notices if notices != before else no_update)
 
     # -------------------------------- background map: source / opacity / z-order
     @app.callback(
@@ -644,8 +761,7 @@ def register(app, state) -> None:
         Input(ids.BASEMAP_OPACITY, "value"),
         Input(ids.BASEMAP_ZORDER, "value"))
     def update_basemap(name, opacity, zorder):
-        from ..layout import (BASEMAP_BY_NAME, BASEMAP_Z_ABOVE,
-                              BASEMAP_Z_BELOW, BLANK_TILE)
+        from ..layout import BASEMAP_BY_NAME, BASEMAP_Z_ABOVE, BASEMAP_Z_BELOW, BLANK_TILE
 
         basemap = BASEMAP_BY_NAME.get(name or "")
         url = basemap["url"] if basemap else BLANK_TILE
@@ -661,6 +777,30 @@ def register(app, state) -> None:
                   Input(ids.LAYERS_VIEW, "data"))
     def render_route_tree(_view):
         return route_tree_component(state)
+
+    # ---- the route dropdown follows the layer list (a route can leave the
+    # project from several places: Layers tab, groups, project open/new, ...).
+    # The other writers of these options stay; this one is the safety net that
+    # needs no knowledge of who changed the layers.
+    @app.callback(
+        Output(ids.EDIT_ROUTE_SELECT, "options", allow_duplicate=True),
+        Output(ids.EDIT_ROUTE_SELECT, "value", allow_duplicate=True),
+        Output(ids.ACTIVE_ROUTE, "positions", allow_duplicate=True),
+        Output(ids.CONTROL_MARKERS, "children", allow_duplicate=True),
+        Input(ids.LAYERS_VIEW, "data"),
+        State(ids.EDIT_ROUTE_SELECT, "value"),
+        prevent_initial_call=True)
+    def sync_route_options(_view, selected_route):
+        options = [{"label": ly.name, "value": ly.id}
+                   for ly in state.layers_of_kind("route")]
+        current = state.get(selected_route) if selected_route else None
+        if not selected_route or (current is not None
+                                  and current.kind == "route"):
+            return options, no_update, no_update, no_update
+        # the selected route is gone: deselect it and take its yellow
+        # highlight and its source/target/waypoint markers off the map
+        state.active_route_id = None
+        return options, None, [], []
 
     @app.callback(
         Output(ids.EDIT_ROUTE_SELECT, "value", allow_duplicate=True),

@@ -12,7 +12,7 @@ api: []
 (installation-quick-install-recommended)=
 ## Quick Install (recommended)
 
-Pre-built binary wheels are available on PyPI for **Windows**, **Linux**, and **macOS** with **Python 3.12, 3.13, and 3.14**. No C++ compiler required:
+Pre-built binary wheels are available on PyPI for **Windows**, **Linux**, and **macOS** with **Python 3.12, 3.13, 3.14, and 3.15**. No C++ compiler required:
 
 ```{code-block} bash
 pip install pyorps
@@ -29,10 +29,10 @@ A C++ compiler is **only** required if you install from source (e.g., `pip insta
 
 | Platform | Architecture | Python Versions |
 |----------|-------------|-----------------|
-| **Windows** | x86_64 (AMD64) | 3.12, 3.13, 3.14 |
-| **Linux (glibc)** | x86_64 | 3.12, 3.13, 3.14 |
-| **Linux (musl/Alpine)** | x86_64 | 3.12, 3.13, 3.14 |
-| **macOS** | x86_64, ARM64 (Apple Silicon) | 3.12, 3.13, 3.14 |
+| **Windows** | x86_64 (AMD64) | 3.12, 3.13, 3.14, 3.15 |
+| **Linux (glibc)** | x86_64 | 3.12, 3.13, 3.14, 3.15 |
+| **Linux (musl/Alpine)** | x86_64 | 3.12, 3.13, 3.14, 3.15 |
+| **macOS** | ARM64 (Apple Silicon, macOS 15+); Intel Macs build from source | 3.12, 3.13, 3.14, 3.15 |
 
 If `pip install pyorps` succeeds, the Cython extensions are already compiled — no further action needed.
 
@@ -46,13 +46,15 @@ PYORPS provides several optional dependency groups for different use cases:
 | `graph` | `pip install pyorps[graph]` | rustworkx, python-igraph, networkx, networkit |
 | `gpu` | `pip install pyorps[gpu]` | cupy-cuda12x |
 | `gpu-full` | `pip install pyorps[gpu-full]` | cupy-cuda12x plus the RAPIDS packages cugraph-cu12 and cudf-cu12. No PYORPS backend uses the RAPIDS packages; install the extra only if your own GPU workflow needs them alongside PYORPS. |
-| `dev` | `pip install pyorps[dev]` | coverage, pytest, cython |
+| `dev` | `pip install pyorps[dev]` | coverage, pytest, cython, ruff |
 | `examples` | `pip install pyorps[examples]` | notebook, fiona |
-| `case_studies` | `pip install pyorps[case_studies]` | notebook, fiona, pandapower, contextily |
+| `case_studies` | `pip install pyorps[case_studies]` | notebook, fiona, pandapower, contextily, pyyaml |
 | `additionals` | `pip install pyorps[additionals]` | openpyxl |
+| `yaml` | `pip install pyorps[yaml]` | pyyaml: reading and writing YAML files (infrastructure profiles, cost catalogue, data manifests, collector inputs). Without it these calls raise `MissingDependencyError` that names this extra. |
 | `gui` | `pip install pyorps[gui]` | dash, dash-leaflet, dash-ag-grid, dash-extensions, dash-bootstrap-components, localtileserver, pywebview, pyyaml, orjson, flask-compress, pyarrow, waitress, geobuf |
 | `viz` | `pip install pyorps[viz]` | Deprecated alias of `gui` (same packages) |
-| `full` | `pip install pyorps[full]` | graph, dev, examples, case_studies and additionals groups (not GPU, not GUI) |
+| `simplify` | `pip install pyorps[simplify]` | simplification (version 0.7 up to, not including, 3.0): the Rust-backed Visvalingam-Whyatt routine behind the `visvalingam` method of route simplification. Without it that method raises `MissingDependencyError` that names this extra. |
+| `full` | `pip install pyorps[full]` | graph, dev, examples, case_studies, additionals, yaml and simplify groups (not GPU, not GUI) |
 
 You can combine multiple groups:
 
@@ -168,7 +170,7 @@ print("Cython extensions available")
 
 ### `pip install pyorps` fails with "no matching distribution"
 
-Your platform or Python version may not have a pre-built wheel. Check that you are using **Python 3.12, 3.13, or 3.14** on a supported platform (see [Pre-built Wheel Availability](#pre-built-wheel-availability)). If no wheel is available, pip will attempt to build from source, which requires a C++ compiler (see [C++ Compiler Requirements](#c-compiler-requirements)).
+Your platform or Python version may not have a pre-built wheel. Check that you are using **Python 3.12, 3.13, 3.14, or 3.15** on a supported platform (see [Pre-built Wheel Availability](#pre-built-wheel-availability)). If no wheel is available, pip will attempt to build from source, which requires a C++ compiler (see [C++ Compiler Requirements](#c-compiler-requirements)).
 
 ### Missing C++ compiler on Windows
 

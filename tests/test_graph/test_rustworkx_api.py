@@ -1,5 +1,6 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pytest
 
@@ -8,7 +9,7 @@ import pytest
 pytest.importorskip("rustworkx")
 
 
-from pyorps.core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
+from pyorps.core.exceptions import AlgorithmNotImplementedError, NoPathFoundError
 from pyorps.graph.api.rustworkx_api import RustworkxAPI
 
 
@@ -137,7 +138,8 @@ class TestRustworkxAPI(unittest.TestCase):
     def test_shortest_path_astar(self):
         """Test shortest_path with A* algorithm."""
         # Create a heuristic function
-        heuristic = lambda node: 0.0
+        def heuristic(node):
+            return 0.0
 
         # Patch _compute_single_path to avoid actual function calls
         with patch.object(self.api, '_compute_single_path') as mock_compute:

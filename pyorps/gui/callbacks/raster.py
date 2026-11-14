@@ -12,8 +12,11 @@ from dash import ALL, Input, Output, State, no_update
 from dash.exceptions import PreventUpdate
 
 from .. import ids
-from ..services import tiles, validate
-from ..services.errors import Notice, guard, success
+from ..services import jobs, tiles, validate
+from ..services import rasterize as rasterize_service
+from ..services.errors import Notice, cap_notices, guard, success
+from . import job_poll
+from .routes import field_notice, number_or_default, numeric_field_problem
 
 
 def add_raster_layer(state, source, notices: list, *, name: str | None = None,
@@ -72,7 +75,91 @@ def _size_bounds(state):
             stack[:, 2].max(), stack[:, 3].max())
 
 
-def _build_modifiers(state, rows):
+def _whole_number(value, label: str, name: str, *, dtype=None) -> int:
+    """A modifier cell that must be a whole number from 0 up (and fit the raster
+    type when it is known); a ValueError names the row and the column."""
+    import math
+
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Modifier '{name}': {label} must be a number "
+                         f"(got '{value}').") from None
+    if not math.isfinite(number) or number < 0 or number != int(number):
+        raise ValueError(f"Modifier '{name}': {label} must be a whole number "
+                         f"from 0 up (got {value}).")
+    if dtype:
+        import numpy as np
+
+        try:
+            info = np.iinfo(dtype)
+        except ValueError:                       # a float raster: any number
+            return int(number)
+        if number > info.max:
+            raise ValueError(
+                f"Modifier '{name}': {label} {int(number)} does not fit the "
+                f"raster type {dtype} (allowed {info.min} to {info.max}).")
+    return int(number)
+
+
+def _zone_value(text, column, gdf, name: str):
+    """The zone cell as the value the library compares the column with: a
+    number for a numeric column, else the stripped text."""
+    import pandas as pd
+
+    if pd.api.types.is_numeric_dtype(gdf[column]):
+        try:
+            zone = float(str(text).strip().replace(",", "."))
+        except ValueError:
+            raise ValueError(
+                f"Modifier '{name}': the zone value '{text}' is not a number "
+                f"but column '{column}' is numeric.") from None
+    else:
+        zone = str(text).strip()
+    if not zone:      # the library skips the zone rule for a falsy value
+        raise ValueError(
+            f"Modifier '{name}': a zone value of 0 or empty is not supported "
+            "(the library would skip the zone rule); pick another value or "
+            "use a condition on the row instead.")
+    return zone
+
+
+def _modifier_options(row: dict, gdf, name: str, dtype=None) -> dict:
+    """The ``ignore_value`` / ``forbidden_value`` / zone arguments of a row.
+
+    Old rows have none of the four columns: they mean "keep forbidden cells,
+    forbid as 65535, no zone rule" - exactly what every row did before.
+    """
+    from .. import presets
+
+    keep = row.get("keep_forbidden")
+    keep = True if keep is None or keep == "" else bool(keep)
+    forbidden = number_or_default(row.get("forbidden_value"),
+                                  presets.FORBIDDEN)
+    options = {
+        "ignore_value": presets.FORBIDDEN if keep else None,
+        "forbidden_value": _whole_number(forbidden, "'Forbid as'", name,
+                                         dtype=dtype),
+        "zone_field": None, "forbidden_zone": None,
+    }
+    column = str(row.get("zone_column") or "").strip()
+    zone = row.get("forbidden_zone")
+    has_zone = zone is not None and str(zone).strip() != ""
+    if not column and not has_zone:
+        return options
+    if not column or not has_zone:
+        raise ValueError(
+            f"Modifier '{name}': the zone rule needs both a zone column and "
+            "a zone value.")
+    if column not in gdf.columns:
+        raise ValueError(f"Modifier '{name}': the zone column '{column}' is "
+                         "not an attribute of the dataset.")
+    options["zone_field"] = column
+    options["forbidden_zone"] = _zone_value(zone, column, gdf, name)
+    return options
+
+
+def _build_modifiers(state, rows, dtype=None):
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Modifier grid rows -> ordered ModifierSpec list (F12 + Feature 5).
 
@@ -97,7 +184,11 @@ def _build_modifiers(state, rows):
             raise ValueError(f"Modifier dataset '{name}' is not a loaded "
                              "vector layer.")
         mode = row.get("mode") or "multiply"
-        buffer_m = float(row.get("buffer_m") or 0)
+        buffer_m = float(number_or_default(row.get("buffer_m"), 0))
+        if buffer_m < 0:
+            raise ValueError(f"Modifier '{name}': the buffer must not be "
+                             f"negative (got {buffer_m:g} m).")
+        options = _modifier_options(row, layer.gdf, name, dtype)
 
         if mode == "per-feature":       # Feature 5: per-polygon cost column
             value_col = (row.get("column") or "cost").strip() or "cost"
@@ -118,7 +209,7 @@ def _build_modifiers(state, rows):
                 specs.append(ModifierSpec(
                     gdf=group, mode="override", factor=factor,
                     buffer_m=buffer_m, name=name,
-                    condition=f"{value_col} = {factor:g}"))
+                    condition=f"{value_col} = {factor:g}", **options))
             continue
 
         if "operator" in row or "factor" in row:          # Feature 5 schema
@@ -129,7 +220,7 @@ def _build_modifiers(state, rows):
             gdf = cost_model.apply_condition(layer.gdf, column, operator, value)
             specs.append(ModifierSpec(
                 gdf=gdf, mode=mode, factor=factor, buffer_m=buffer_m,
-                name=name,
+                name=name, **options,
                 condition=cost_model.condition_label(column, operator, value)))
             continue
 
@@ -141,11 +232,12 @@ def _build_modifiers(state, rows):
                 gdf = cost_model.apply_condition(layer.gdf, zone, "==", val)
                 specs.append(ModifierSpec(
                     gdf=gdf, mode=mode, factor=float(factor), buffer_m=buffer_m,
-                    name=name, condition=f"{zone} == {val}"))
+                    name=name, condition=f"{zone} == {val}", **options))
         else:
             specs.append(ModifierSpec(
                 gdf=layer.gdf, mode=mode, factor=float(values),
-                buffer_m=buffer_m, name=name, condition="all features"))
+                buffer_m=buffer_m, name=name, condition="all features",
+                **options))
     return specs
 
 
@@ -202,6 +294,227 @@ def _rasterize_inputs(state, grid_state, grid_rows, dataset_sel, table_sel):
     return layer, keys, grid_rows
 
 
+def _fill_value_problem(fill_value, dtype: str) -> dict | None:
+    """A notice when ``fill_value`` cannot be stored in a raster of ``dtype``."""
+    import numpy as np
+
+    kwargs = {"control": ids.FILL_VALUE, "tab": ids.TAB_RASTER,
+              "impact": "No raster was built."}
+    problem = numeric_field_problem(fill_value, "Fill value", whole=True,
+                                    **kwargs)
+    if problem is not None or fill_value is None or fill_value == "":
+        return problem
+    number = float(fill_value)
+    try:
+        info = np.iinfo(dtype)
+    except ValueError:                       # a float dtype: any whole number
+        return None
+    if not info.min <= number <= info.max:
+        return field_notice(
+            "Fill value", f"{number:g} does not fit the raster type "
+            f"{dtype} (allowed {info.min} to {info.max})", **kwargs)
+    return None
+
+
+def fill_value_limits(dtype) -> tuple[float | None, float | None]:
+    """``(min, max)`` the raster type ``dtype`` can store (``None``: no limit)."""
+    import numpy as np
+
+    try:
+        info = np.iinfo(dtype or "uint16")
+    except (TypeError, ValueError):          # float32: any whole number
+        return None, None
+    return info.min, info.max
+
+
+def _choice_problem(value, field: str, allowed: tuple[str, ...], *,
+                    control: str) -> dict | None:
+    """A notice when a dropdown holds something it never offers (a stale page,
+    a restored setting); a blank value means "the default" and is fine."""
+    if value is None or value == "" or value in allowed:
+        return None
+    return field_notice(
+        field, f"must be one of {', '.join(allowed)} (got '{value}')",
+        control=control, tab=ids.TAB_RASTER, impact="No raster was built.")
+
+
+def _rasterize_field_problem(resolution, fill_value, dtype, geom_buffer,
+                             preproc, buf_a, buf_b, buf_l,
+                             on_thin=None) -> dict | None:
+    """The first unusable rasterize form field as a notice, or None."""
+    tab = ids.TAB_RASTER
+    kwargs = {"tab": tab, "impact": "No raster was built."}
+    checks = [
+        numeric_field_problem(resolution, "Resolution (m)", control=ids.RES_M,
+                              minimum=0, allow_equal=False, **kwargs),
+        _choice_problem(dtype, "Data type", rasterize_service.RASTER_DTYPES,
+                        control=ids.RASTER_DTYPE),
+        _fill_value_problem(fill_value, dtype or "uint16"),
+        numeric_field_problem(geom_buffer, "Geometry buffer (m)",
+                              control=ids.GEOM_BUFFER, minimum=0, **kwargs),
+        _choice_problem(on_thin, "On thin features",
+                        rasterize_service.THIN_POLICIES, control=ids.ON_THIN),
+    ]
+    if preproc == "street_buffer":
+        checks += [
+            numeric_field_problem(value, label, control=control, minimum=0,
+                                  **kwargs)
+            for value, label, control in (
+                (buf_a, "Street buffer A (m)", ids.PREPROC_BUF_A),
+                (buf_b, "Street buffer B (m)", ids.PREPROC_BUF_B),
+                (buf_l, "Street buffer L (m)", ids.PREPROC_BUF_L))]
+    return next((check for check in checks if check is not None), None)
+
+
+#: what the two background-job outputs of ``run_rasterize`` (poll, Stop button) hold when a run does not
+#: touch the job. ``RASTERIZE_BUSY`` stays a ``running=`` target of that callback alone: the Build button is
+#: gated only while the callback itself runs, so a click during a background run reaches the job
+#: service's refusal notice.
+_NO_JOB = (no_update, no_update)
+#: the Stop button of the rasterize job is hidden unless a job runs
+STOP_HIDDEN = job_poll.STOP_HIDDEN
+#: where the state keeps the rasterize job
+_RASTERIZE_SLOT = jobs.kind_slot(rasterize_service.JOB_KIND)
+#: what a stop is promised to do, for the status line and the Stop answer
+STOP_NOTE = ("The raster is built in stages (base layer, each modifier, crop, save): the run stops when the "
+             "stage in flight is finished, and then builds nothing.")
+
+
+def rasterize_status_text(job) -> str:
+    """The status line of a running rasterize job: its progress, and that a Stop is waiting."""
+    text = job.progress_text()
+    if job.cancel.is_set() and job.status == jobs.RUNNING:
+        text += " (stop requested, the run ends at the next stage boundary)"
+    return text
+
+
+def _combination_inputs(base_layer_name: str, build_kwargs: dict) -> dict:
+    """The lazy combination-table inputs a built raster layer keeps (perf plan phase 4)."""
+    return {
+        "base_gdf": build_kwargs["base_gdf"], "feature_keys": build_kwargs["feature_keys"],
+        "assumptions": build_kwargs["assumptions"], "base_layer_name": base_layer_name,
+        "modifiers": build_kwargs["modifiers"], "base_crs": build_kwargs["base_gdf"].crs,
+        "bounding_polygon": build_kwargs["bounding_polygon"],
+    }
+
+
+def finalize_rasterize(state, raster_path: str, log: list[str], notices: list[dict], *, resolution: float,
+                       colormap, config: dict, combination: dict, seq):
+    """What happens after a cost raster is built: layer, tiles, coverage info, log.
+
+    The one path for the synchronous run (inside ``run_rasterize``) and a background run (the job
+    poll, ``callbacks/raster_job.py``, through :func:`rasterize_outcome`). ``config`` is the layer's
+    ``rasterize_config``, ``combination`` its lazy ``combination_inputs``, ``seq`` the map-view counter
+    that makes the map fit the new layer. Returns the four values of ``LAYERS_VIEW``, ``MAP_VIEW``,
+    ``RASTERIZE_LOG`` and ``NOTICES``.
+    """
+    new_layer, notices = add_raster_layer(
+        state, raster_path, notices,
+        name=f"Cost raster ({resolution:g} m)", colormap=colormap)
+    if new_layer is None:
+        return no_update, no_update, "\n".join(log), notices
+    new_layer.meta["rasterize_config"] = config
+    # F2: the cost -> layer/feature/value combination table is now built
+    # LAZILY (perf plan phase 4): stash the inputs and let the first
+    # 📋-table / legend / map-click materialize it — the geometric
+    # overlay can take seconds on a big model and the rasterize callback
+    # shouldn't wait for it.
+    new_layer.meta["combination_inputs"] = combination
+    log.append("combination table: built on first use (📋 table / "
+               "legend / map-click)")
+    view = {"fit_bounds": new_layer.tile.bounds, "seq": seq}
+    return state.layers_view(), view, "\n".join(log), notices
+
+
+def rasterize_outcome(state, job):
+    """The ended rasterize job as ``(results, notices)`` for the job poll (``callbacks/job_poll.py``).
+
+    ``results`` are the values of ``LAYERS_VIEW``, ``MAP_VIEW`` and ``RASTERIZE_LOG``, ``notices`` the notice
+    dicts to add. Done: the shared :func:`finalize_rasterize` adds the layer. Stopped: a notice, nothing
+    changes in the project. Failed: the translated error as a notice. Runs once per job, in a poll tick.
+    """
+    notices: list[dict] = []
+    if job.status == jobs.FAILED:
+        failed = job.error_notice()
+        if failed is not None:
+            notices.append(failed)
+        return (no_update, no_update, job.progress_text()), notices
+    if job.status == jobs.CANCELLED:
+        notices.append(Notice(
+            severity="info", title="Rasterizing stopped",
+            meaning="Stop was pressed; the run ended at a stage boundary.",
+            impact="No raster was built and the project is unchanged.",
+            fix="Press Build cost raster again to start over.").to_dict())
+        return (no_update, no_update, f"{job.progress_text()} No raster was built."), notices
+    result = job.result or {}
+    notices.extend(result.get("notices") or [])
+    view, map_view, log, notices = finalize_rasterize(
+        state, result["path"], list(result["log"]), notices, **job.params["finalize"])
+    return (view, map_view, log), notices
+
+
+def _start_background_run(state, build_kwargs: dict, finalize: dict, base_layer_name: str,
+                          notices: list[dict], n_cells: int):
+    """Start the heavy build as a background job; the six outputs of ``run_rasterize``.
+
+    The worker gets a snapshot of the build inputs (``build_kwargs``), the poll callback the ``finalize``
+    keywords of :func:`finalize_rasterize` plus the lazy combination inputs made from that same snapshot
+    (they must describe the data the raster was built from). A refused start (another job runs) answers
+    with the job service's notice and changes nothing.
+    """
+    refusal = jobs.refusal_notice(state, rasterize_service.JOB_KIND)
+    if refusal is not None:
+        notices.append(refusal)
+        return (no_update, no_update, no_update, cap_notices(notices), *_NO_JOB)
+    snapshot = rasterize_service.snapshot_build_inputs(build_kwargs)
+    finalize = {**finalize, "combination": _combination_inputs(base_layer_name, snapshot)}
+    job = jobs.start_job(
+        state, rasterize_service.JOB_KIND, rasterize_service.background_build,
+        label=rasterize_service.JOB_LABEL, params={"build": snapshot, "finalize": finalize})
+    if job is None:             # another start won the race between the check and here
+        notices.append(jobs.refusal_notice(state, rasterize_service.JOB_KIND)
+                       or jobs.busy_notice(jobs.busy_label(state) or rasterize_service.JOB_LABEL))
+        return (no_update, no_update, no_update, cap_notices(notices), *_NO_JOB)
+    notices.append(Notice(
+        severity="info", title="Rasterizing runs in the background",
+        meaning=f"About {n_cells:,} cells is a large raster, so it is built in a background job and the page "
+                "stays usable.",
+        impact="The layer is added when the job has finished. " + STOP_NOTE,
+        fix="Watch the status line below the Build button; press Stop to end the run.").to_dict())
+    return (no_update, no_update, rasterize_status_text(job), cap_notices(notices),
+            False, {})
+
+
+def _held_job_outputs(state, notices: list[dict]):
+    """A Build click while the state holds a rasterize job: the six outputs of ``run_rasterize``.
+
+    While the job runs the click is refused with the job service's notice. While its outcome is being
+    handed to the page the click is refused too and the poll stays on. A job that has ended but was never
+    polled (e.g. the page was reloaded) switches the poll on, which hands its outcome over, instead of
+    refusing every later click. None when the state holds no rasterize job.
+    """
+    phase = jobs.held_phase(state, _RASTERIZE_SLOT)
+    if phase is None:
+        return None
+    if phase == jobs.HELD_RUNNING:
+        notices.append(jobs.refusal_notice(state, rasterize_service.JOB_KIND)
+                       or jobs.busy_notice(rasterize_service.JOB_LABEL))
+        return (no_update, no_update, no_update, cap_notices(notices), *_NO_JOB)
+    if phase == jobs.HELD_HANDOVER:
+        notices.append(job_poll.handover_notice(rasterize_service.JOB_LABEL))
+    else:
+        notices.append(job_poll.ended_notice("rasterize", "Build cost raster"))
+    return no_update, no_update, no_update, cap_notices(notices), False, STOP_HIDDEN
+
+
+def _cached_raster(build_kwargs: dict):
+    """The cached file a build with these inputs would reuse, else None (also when the probe fails)."""
+    try:
+        return rasterize_service.cached_raster_path(**build_kwargs)
+    except Exception:  # pylint: disable=broad-exception-caught  # the build itself reports a real problem
+        return None
+
+
 def register(app, state) -> None:
     # ------------------- rasterization pairing: dataset + COMPATIBLE tables
     @app.callback(
@@ -245,13 +558,42 @@ def register(app, state) -> None:
             return f"{est['label']} — {warning.title}!"
         return est["label"]
 
+    # --------------- the rasterize controls, kept on the server for saving
+    @app.callback(
+        Output(ids.RASTER_SETTINGS, "data"),
+        *[Input(control, "value") for control in
+          (ids.RES_M, ids.FILL_VALUE, ids.RASTER_DTYPE, ids.GEOM_BUFFER,
+           ids.WIDEN_THIN, ids.ALL_TOUCHED, ids.ON_THIN, ids.CROP_BORDER)])
+    def remember_raster_settings(*values):
+        """Mirror the rasterize controls into ``state.raster_settings``: the
+        project file saves them from there, and a rebuilt page shows them.
+        Empty or unusable fields fall back to their defaults."""
+        settings = rasterize_service.normalise_raster_settings(
+            dict(zip(rasterize_service.RASTER_SETTING_KEYS, values)))
+        state.raster_settings = settings
+        return settings
+
+    # ------------------------------ the fill value's range follows the type
+    @app.callback(
+        Output(ids.FILL_VALUE, "min"),
+        Output(ids.FILL_VALUE, "max"),
+        Input(ids.RASTER_DTYPE, "value"))
+    def fill_value_range(dtype):
+        """The browser's own limits of the fill value: what the chosen raster
+        type can store (the run still names a value outside it)."""
+        return fill_value_limits(dtype)
+
     # ------------------------------------------------------- build cost raster
     @app.callback(
         Output(ids.LAYERS_VIEW, "data", allow_duplicate=True),
         Output(ids.MAP_VIEW, "data", allow_duplicate=True),
         Output(ids.RASTERIZE_LOG, "children"),
         Output(ids.NOTICES, "data", allow_duplicate=True),
-        Input(ids.RASTERIZE_BTN, "n_clicks"),
+        # a heavy run is handed to a background job (callbacks/raster_job.py):
+        # these two switch its poll and its Stop button on
+        Output(ids.RASTERIZE_POLL, "disabled", allow_duplicate=True),
+        Output(ids.RASTERIZE_STOP_BTN, "style", allow_duplicate=True),
+        Input(ids.GO_RASTERIZE, "data"),
         State(ids.COST_GRID, "rowData"),
         State(ids.COST_GRID_STATE, "data"),
         State(ids.MODIFIER_GRID, "rowData"),
@@ -269,18 +611,28 @@ def register(app, state) -> None:
         State(ids.NOTICES, "data"),
         State(ids.RASTERIZE_DATASET, "value"),
         State(ids.RASTERIZE_TABLE, "value"),
+        State(ids.WIDEN_THIN, "value"),
+        State(ids.ALL_TOUCHED, "value"),
+        State(ids.ON_THIN, "value"),
+        State(ids.CROP_BORDER, "value"),
+        running=[(Output(ids.RASTERIZE_BUSY, "data"), True, False)],
         prevent_initial_call=True)
-    def run_rasterize(n_clicks, rows, grid_state, modifier_rows, preproc,
+    def run_rasterize(go, rows, grid_state, modifier_rows, preproc,
                       buf_a, buf_b, buf_l, preproc_steps, resolution,
                       fill_value, dtype, geom_buffer, save_path, colormap,
-                      notices, dataset_sel=None, table_sel=None):
+                      notices, dataset_sel=None, table_sel=None,
+                      widen_thin=False, all_touched=False, on_thin="warn",
+                      crop_border=False):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from ..services import cost_model, data_io
         from ..services.rasterize import build_cost_raster
 
         notices = list(notices or [])
-        if not n_clicks:
+        if not go:
             raise PreventUpdate
+        held = _held_job_outputs(state, notices)
+        if held is not None:           # one run at a time; an ended one nobody polled is collected now
+            return held
         try:
             layer, keys, rows_used = _rasterize_inputs(
                 state, grid_state, rows, dataset_sel, table_sel)
@@ -296,13 +648,37 @@ def register(app, state) -> None:
                     "its feature columns.",
                 focus_id=ids.TAB_RASTER,
                 focus_control=ids.RASTERIZE_TABLE).to_dict())
-            return no_update, no_update, no_update, notices
+            return no_update, no_update, no_update, notices, *_NO_JOB
 
-        assumptions = cost_model.assumptions_from_grid_rows(rows_used, keys)
+        # form fields: a value that cannot be valid is named, never replaced
+        problem = _rasterize_field_problem(
+            resolution, fill_value, dtype, geom_buffer, preproc, buf_a,
+            buf_b, buf_l, on_thin)
+        if problem is not None:
+            notices.append(problem)
+            return no_update, no_update, no_update, notices, *_NO_JOB
+
+        # a non-numeric cost cell is named in a notice (#16) instead of
+        # raising a raw error; the guard below catches anything else
+        cost_problem = cost_model.cost_problem_notice(rows_used, keys)
+        if cost_problem is not None:
+            notices.append(cost_problem)
+            return no_update, no_update, no_update, notices, *_NO_JOB
+        assumptions, notices = guard(cost_model.assumptions_from_grid_rows,
+                                     rows_used, keys, notices=notices)
+        if assumptions is None:
+            return no_update, no_update, no_update, notices, *_NO_JOB
         polygon = data_io.study_area_polygon(state.study_area,
                                              layer.gdf.crs)
-        resolution = float(resolution or 1.0)
+        resolution = float(number_or_default(resolution, 1.0))
         dtype = dtype or "uint16"
+        fill = int(number_or_default(fill_value, 65535))
+        geometry_buffer = float(number_or_default(geom_buffer, 0))
+        # the thin-feature burn and the crop: a blank policy is the library's
+        # own default ("warn"); the two switches default to off
+        on_thin = number_or_default(on_thin, "warn")
+        widen_thin, all_touched, crop_border = (
+            bool(widen_thin), bool(all_touched), bool(crop_border))
 
         # pre-flight (shift left, Section 21.5)
         bounds = (tuple(polygon.bounds) if polygon is not None
@@ -311,14 +687,14 @@ def register(app, state) -> None:
         if blocker is not None:
             notices.append(blocker.to_dict())
             if blocker.severity == "error":
-                return no_update, no_update, no_update, notices
+                return no_update, no_update, no_update, notices, *_NO_JOB
         coverage = validate.validate_cost_coverage(layer.gdf, keys,
                                                    assumptions)
         if coverage is not None:
             notices.append(coverage.to_dict())
 
         try:
-            modifiers = _build_modifiers(state, modifier_rows)
+            modifiers = _build_modifiers(state, modifier_rows, dtype)
             # bake custom cost polygons in as per-feature overrides so they
             # show on the cost map and affect routing (task 45)
             from ..services import manual_cost
@@ -336,55 +712,56 @@ def register(app, state) -> None:
                 impact="No raster was built.",
                 fix="Fix the modifier row (dataset / zone field / values).",
                 focus_id=ids.TAB_COST).to_dict())
-            return no_update, no_update, no_update, notices
+            return no_update, no_update, no_update, notices, *_NO_JOB
 
         preproc_params = {}
         if preproc == "street_buffer":
-            preproc_params = {"buffer_a": float(buf_a or 10),
-                              "buffer_b": float(buf_b or 4),
-                              "buffer_l": float(buf_l or 2)}
+            preproc_params = {
+                "buffer_a": float(number_or_default(buf_a, 10)),
+                "buffer_b": float(number_or_default(buf_b, 4)),
+                "buffer_l": float(number_or_default(buf_l, 2))}
 
-        result, notices = guard(
-            build_cost_raster, base_gdf=layer.gdf, assumptions=assumptions,
-            feature_keys=keys, resolution_in_m=resolution,
-            fill_value=int(fill_value or 65535), dtype=dtype,
-            geometry_buffer_m=float(geom_buffer or 0),
-            bounding_polygon=polygon, preprocessor=preproc,
-            preprocessor_params=preproc_params,
-            preprocessor_steps=preproc_steps or [], modifiers=modifiers,
-            save_path=save_path or None, work_dir=state.work_dir,
-            notices=notices)
+        build_kwargs = {
+            "base_gdf": layer.gdf, "assumptions": assumptions,
+            "feature_keys": keys, "resolution_in_m": resolution,
+            "fill_value": fill, "dtype": dtype,
+            "geometry_buffer_m": geometry_buffer,
+            "bounding_polygon": polygon, "preprocessor": preproc,
+            "preprocessor_params": preproc_params,
+            "preprocessor_steps": preproc_steps or [], "modifiers": modifiers,
+            "save_path": save_path or None, "work_dir": state.work_dir,
+            "widen_thin_forbidden": widen_thin, "all_touched": all_touched,
+            "on_thin_features": on_thin, "crop_border": crop_border}
+        finalize = {
+            "resolution": resolution, "colormap": colormap, "seq": go,
+            "config": {
+                "dataset_id": layer.id,
+                "feature_keys": list(keys), "resolution_in_m": resolution,
+                "fill_value": fill, "dtype": dtype,
+                "geometry_buffer_m": geometry_buffer,
+                "preprocessor": preproc, "preprocessor_params": preproc_params,
+                "preprocessor_steps": preproc_steps or [],
+                "widen_thin_forbidden": widen_thin, "all_touched": all_touched,
+                "on_thin_features": on_thin, "crop_border": crop_border,
+            },
+            "combination": _combination_inputs(layer.name, build_kwargs)}
+
+        # a big build (and not one the cache already holds) runs in the
+        # background; everything below this block is the synchronous run
+        n_cells = validate.estimate_raster_size(bounds, resolution,
+                                                dtype)["n_cells"]
+        if (rasterize_service.is_heavy(n_cells)
+                and _cached_raster(build_kwargs) is None):
+            return _start_background_run(state, build_kwargs, finalize,
+                                         layer.name, notices, n_cells)
+
+        result, notices = guard(build_cost_raster, **build_kwargs,
+                                notices=notices)
         if result is None:
-            return no_update, no_update, no_update, notices
+            return no_update, no_update, no_update, notices, *_NO_JOB
         raster_path, log = result
-        new_layer, notices = add_raster_layer(
-            state, raster_path, notices,
-            name=f"Cost raster ({resolution:g} m)", colormap=colormap)
-        if new_layer is None:
-            return no_update, no_update, "\n".join(log), notices
-        new_layer.meta["rasterize_config"] = {
-            "dataset_id": layer.id,
-            "feature_keys": list(keys), "resolution_in_m": resolution,
-            "fill_value": int(fill_value or 65535), "dtype": dtype,
-            "geometry_buffer_m": float(geom_buffer or 0),
-            "preprocessor": preproc, "preprocessor_params": preproc_params,
-            "preprocessor_steps": preproc_steps or [],
-        }
-        # F2: the cost -> layer/feature/value combination table is now built
-        # LAZILY (perf plan phase 4): stash the inputs and let the first
-        # 📋-table / legend / map-click materialize it — the geometric
-        # overlay can take seconds on a big model and the rasterize callback
-        # shouldn't wait for it.
-        new_layer.meta["combination_inputs"] = {
-            "base_gdf": layer.gdf, "feature_keys": keys,
-            "assumptions": assumptions, "base_layer_name": layer.name,
-            "modifiers": modifiers, "base_crs": layer.gdf.crs,
-            "bounding_polygon": polygon,
-        }
-        log.append("combination table: built on first use (📋 table / "
-                   "legend / map-click)")
-        view = {"fit_bounds": new_layer.tile.bounds, "seq": n_clicks}
-        return (state.layers_view(), view, "\n".join(log), notices)
+        return (*finalize_rasterize(state, raster_path, log, notices,
+                                    **finalize), *_NO_JOB)
 
     # -------------------------------------------------- load existing raster
     @app.callback(
@@ -395,7 +772,8 @@ def register(app, state) -> None:
         State(ids.RASTER_LOAD_PATH, "value"),
         State(ids.RASTER_COLORMAP, "value"),
         State(ids.NOTICES, "data"),
-        prevent_initial_call=True)
+        prevent_initial_call=True,
+        running=[(Output(ids.RASTER_LOAD_BTN, "disabled"), True, False)])
     def load_raster(n_clicks, path, colormap, notices):
         notices = list(notices or [])
         if not n_clicks:
@@ -501,7 +879,15 @@ def register(app, state) -> None:
                                        title=label)],
                     className="legend-row"))
             return rows
-        combo = combinations.ensure_combination_gdf(layer)   # lazy build
+        combo, _ = guard(combinations.ensure_combination_gdf, layer)
+        if combo is None and (layer.meta or {}).get("combination_error"):
+            # a failed lazy build is shown here (the legend renders on every
+            # selection, so a notice per render would be noise); it is logged
+            # and the next selection retries
+            return html.Small(
+                "The cost-combination legend could not be built: "
+                f"{layer.meta['combination_error']} — see the log; selecting "
+                "the raster again retries.", className="text-danger")
         if combo is None or getattr(combo, "empty", True):
             return html.Small("This raster has no combination legend (only "
                               "rasters built from the Cost tab do).",
@@ -545,7 +931,7 @@ def register(app, state) -> None:
             layer = state.get(selected[0].get("id"))
             if layer is not None and layer.kind == "raster":
                 return layer
-        rasters = [ly for ly in state.layers.values()
+        rasters = [ly for ly in state.ordered_layers()
                    if ly.kind == "raster" and ly.tile is not None]
         return rasters[0] if len(rasters) == 1 else None
 
@@ -560,7 +946,8 @@ def register(app, state) -> None:
         State(ids.LAYERS_GRID, "selectedRows"),
         State({"type": ids.TYPE_RASTER_TILE, "id": ALL}, "id"),
         State(ids.NOTICES, "data"),
-        prevent_initial_call=True)
+        prevent_initial_call=True,
+        running=[(Output(ids.GRAD_APPLY_BTN, "disabled"), True, False)])
     def apply_graduated(n_clicks, mode, classes, selected, tile_ids,
                         notices):
         # NOTE: the base colormap is read from layer.meta (kept fresh by
@@ -574,6 +961,19 @@ def register(app, state) -> None:
         if not n_clicks:
             raise PreventUpdate
         no_urls = [no_update] * len(tile_ids or [])
+        if (mode or "continuous") not in ("continuous", "unique"):
+            problem = numeric_field_problem(
+                classes, "Classes", control=ids.GRAD_CLASSES,
+                tab=ids.TAB_RASTER, minimum=2, whole=True,
+                impact="The raster was not re-classified.")
+            if problem is None and classes is not None and float(classes) > 32:
+                problem = field_notice(
+                    "Classes", "must be at most 32", control=ids.GRAD_CLASSES,
+                    tab=ids.TAB_RASTER,
+                    impact="The raster was not re-classified.")
+            if problem is not None:
+                notices.append(problem)
+                return no_urls, "check the Classes field", notices
         layer = _target_raster_layer(selected)
         if layer is None or layer.tile is None:
             return (no_urls,
@@ -591,7 +991,7 @@ def register(app, state) -> None:
                 return "continuous ramp restored"
             config = graduated.build_config(
                 layer.meta.get("source_path") or layer.tile.source_path,
-                mode, int(classes or 5), colormap)
+                mode, int(number_or_default(classes, 5)), colormap)
             graduated.apply_to_layer(layer, config)
             return (f"{config['classes']} classes "
                     f"({graduated.METHODS.get(mode, mode)}) — edit the "
@@ -655,6 +1055,7 @@ def register(app, state) -> None:
         State(ids.RASTER_COMBINE_OP, "value"),
         State(ids.RASTER_COLORMAP, "value"),
         State(ids.NOTICES, "data"),
+        running=[(Output(ids.RASTER_COMBINE_BUSY, "data"), True, False)],
         prevent_initial_call=True)
     def combine_rasters(n_clicks, layer_ids, operation, colormap, notices):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

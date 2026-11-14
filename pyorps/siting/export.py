@@ -36,9 +36,12 @@ written.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field as _field
+from dataclasses import dataclass
+from dataclasses import field as _field
 
 import numpy as np
+
+from pyorps.core.exceptions import ConsistencyCheckError, InvalidInputError
 
 __all__ = ["LinkCosts", "SitingExport", "export_tower_fields"]
 
@@ -59,15 +62,15 @@ class LinkCosts:
 
     def __post_init__(self):
         if self.link_type not in _LINK_TYPES:
-            raise ValueError(
+            raise InvalidInputError(
                 f"link_type must be one of {_LINK_TYPES}, "
                 f"got {self.link_type!r}")
         self.cost_lb = np.asarray(self.cost_lb, dtype=np.float64)
         self.cost_ub = np.asarray(self.cost_ub, dtype=np.float64)
         if self.cost_lb.shape != self.cost_ub.shape:
-            raise ValueError("cost_lb and cost_ub must have the same shape")
+            raise InvalidInputError("cost_lb and cost_ub must have the same shape")
         if self.link_type == "cable" and self.n_towers is not None:
-            raise ValueError("n_towers is meaningless for a cable link")
+            raise InvalidInputError("n_towers is meaningless for a cable link")
 
     @property
     def key(self) -> str:
@@ -97,10 +100,10 @@ class SitingExport:
         """Add one terminal/link-type column block."""
         n = len(self.candidates)
         if link.cost_lb.shape != (n,):
-            raise ValueError(
+            raise InvalidInputError(
                 f"{link.key}: expected {n} costs, got {link.cost_lb.shape}")
         if link.key in self.links:
-            raise ValueError(f"{link.key} was added twice")
+            raise InvalidInputError(f"{link.key} was added twice")
         self.links[link.key] = link
         return self
 
@@ -114,13 +117,13 @@ class SitingExport:
         for key, link in self.links.items():
             bad = link.violations(tol)
             if bad:
-                raise AssertionError(
+                raise ConsistencyCheckError(
                     f"{key}: cost_lb exceeds cost_ub on {bad} candidates -- "
                     f"one of the two fields is not the bound it claims")
             only_ub = ((~np.isfinite(link.cost_lb))
                        & np.isfinite(link.cost_ub))
             if only_ub.any():
-                raise AssertionError(
+                raise ConsistencyCheckError(
                     f"{key}: {int(only_ub.sum())} candidates are reachable "
                     f"in the upper bound but not the lower one, which no "
                     f"relaxation can do")

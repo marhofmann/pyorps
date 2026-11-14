@@ -100,11 +100,13 @@ class TestComparison:
             extra={"seconds": 1.2})
 
     def test_identical_records_match(self):
+        assert prov.diff(self._base(), self._base()) == []
         prov.require_match(self._base(), self._base())
 
     def test_extra_is_never_compared(self):
         a, b = self._base(), self._base()
         b["extra"]["seconds"] = 99.0
+        assert prov.diff(a, b) == []
         prov.require_match(a, b)
 
     def test_every_difference_is_listed(self):

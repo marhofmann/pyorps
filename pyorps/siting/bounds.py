@@ -47,6 +47,8 @@ import math
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError
+
 __all__ = [
     "OverheadScreenBound",
     "assert_overhead_bound_preconditions",
@@ -98,13 +100,13 @@ def assert_overhead_bound_preconditions(*, ignore_max_cost: bool,
         A record of what was checked, to store beside the bound.
     """
     if quantity not in ("kernel", "reported"):
-        raise ValueError(
+        raise InvalidInputError(
             f"quantity must be 'kernel' or 'reported', got {quantity!r}. "
             f"The two differ by the two terminal towers -- >= 560 kEUR on "
             f"the shipped 110 kV profile -- so a bound that does not name "
             f"one bounds nothing in particular.")
     if not ignore_max_cost:
-        raise ValueError(
+        raise InvalidInputError(
             "this bound needs ignore_max_cost=True. With exclusion "
             "disabled both searches cross IMPASSABLE_CELL_COST cells, but "
             "the field CHARGES 65535 per metre there while _terrain_eur "
@@ -116,7 +118,7 @@ def assert_overhead_bound_preconditions(*, ignore_max_cost: bool,
           for a, b in np.asarray(constrained_steps).reshape(-1, 2)[:, :2]}
     if not cs <= fs:
         missing = sorted(cs - fs)[:6]
-        raise ValueError(
+        raise InvalidInputError(
             f"the constrained search uses {len(cs - fs)} step(s) the field "
             f"does not, e.g. {missing}. terrain(route) >= d_unconstrained "
             f"needs the field's neighbourhood to CONTAIN the constrained "
@@ -187,7 +189,7 @@ def overhead_screen_lower_bound(terrain_eur, distance_m, *, profile,
         ignore_max_cost=ignore_max_cost, field_steps=field_steps,
         constrained_steps=constrained_steps, quantity=quantity)
     if not profile.has_span_constraints:
-        raise ValueError(
+        raise InvalidInputError(
             f"profile {profile.name!r} has no max_span_m, so it implies no "
             f"minimum tower count and this bound degenerates to the "
             f"terrain term alone")
@@ -315,6 +317,6 @@ def collection_cost_upper_bound(distances) -> np.ndarray:
     """
     arr = np.asarray(distances, dtype=np.float64)
     if arr.ndim != 2:
-        raise ValueError(
+        raise InvalidInputError(
             f"expected (n_sources, n_candidates), got {arr.shape}")
     return arr.sum(axis=0)

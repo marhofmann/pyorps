@@ -29,12 +29,21 @@ References:
 
 from __future__ import annotations
 
-from typing import Optional, Tuple, Union
+import hashlib
+import os
+import warnings
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError, PyorpsRuntimeError
 from pyorps.utils.traversal_gpu import (
-    GPU_AVAILABLE, prepare_step_lookup_tables
+    GPU_AVAILABLE,
+    describe_gpu_error,
+    gpu_not_available_error,
+    gpu_out_of_memory_error,
+    gpu_probe_errors,
+    is_gpu_out_of_memory,
+    prepare_step_lookup_tables,
 )
 
 if GPU_AVAILABLE:
@@ -805,6 +814,11 @@ void delta_stepping_persistent(
             int* qa = swap ? queue_b : queue_a;
             int* qb = swap ? queue_a : queue_b;
             int ca = control[CTL_COUNT_A];
+            // Read the settled offset BEFORE the barrier below: gtid 0
+            // advances CTL_SETTLED right after it, and a block that read it
+            // late would append this ring at the wrong offset (leaving stale
+            // entries, i.e. vertices whose heavy edges are never relaxed).
+            int os = control[CTL_SETTLED];
             for (int idx = gtid; idx < ca; idx += stride) {
                 int u = qa[idx];
                 for (int hop = 0; ; hop++) {
@@ -861,7 +875,6 @@ void delta_stepping_persistent(
             int nc = control[CTL_COUNT_B]; if (nc > buf_size) nc = buf_size;
             if (nc == 0) { drained = 1; break; }
             int* qb2 = swap ? queue_a : queue_b;
-            int os = control[CTL_SETTLED];
             for (int i = gtid; i < nc; i += stride) { int d = os + i; if (d < buf_size) settled[d] = qb2[i]; }
             if (gtid == 0) { int ns = os + nc; control[CTL_SETTLED] = ns < buf_size ? ns : buf_size; control[CTL_COUNT_A] = nc; }
             swap ^= 1; grid_barrier(control, n_blocks);
@@ -954,7 +967,11 @@ void delta_stepping_persistent(
         // from this phase's base -- the fallback scan rebuilds the frontier
         // from dist[] (lossless; re-relaxing settled vertices in the span
         // produces no improvements, only bounded extra work).
-        if (control[CTL_OVERFLOW]) {
+        // Every thread must see the same flag before gtid 0 clears it, or
+        // blocks diverge on the barrier below.
+        int ovf = control[CTL_OVERFLOW];
+        grid_barrier(control, n_blocks);
+        if (ovf) {
             if (gtid == 0) {
                 control[CTL_OVERFLOW] = 0;
                 control[CTL_COUNT_A] = 0;
@@ -989,343 +1006,253 @@ void delta_stepping_persistent(
         if (control[CTL_DONE]) break;
     }
 }
-"""
+"""  # noqa: E501  (CUDA kernel source: the long lines are part of the string)
 
 
-# V5 control-word indices
+# V5 control-word indices. Words 8.. are parity-indexed PAIRS: the kernel
+# flips the parity at every rendezvous, so gtid 0 only ever rewrites the
+# other parity's word -- one that no block reads between the same two
+# barriers (see the kernel comment in sssp_async_v5.cu).
 _C5_DONE = 0
 _C5_WORK = 1          # queued + in-flight items (quiescence == 0)
-_C5_BASE = 2          # bucket index of the rolling span start
 _C5_BARRIER_CNT = 3   # rendezvous barrier: arrival counter
 _C5_BARRIER_SENSE = 4  # rendezvous barrier: sense-reversing flag
-_C5_MIN_DIST = 5      # rescan scratch: min dist as int bits
-_C5_OVERFLOW = 6      # a bucket ring overflowed -> rewind rescan
 _C5_TGT_MAX = 7       # target-bound scratch: max target dist as int bits
-_C5_SIZE = 8
+_C5_BASE = 8          # [2] bucket index of the rolling span start
+_C5_OVERFLOW = 10     # [2] a bucket ring overflowed -> rewind from base
+_C5_FAR_OVF = 12      # [2] far list overflowed / forced -> full dist[] scan
+_C5_FAR_CNT = 14      # [2] far list length
+_C5_FAR_MIN = 16      # [2] running min of far entries (float bits)
+_C5_SCAN_MIN = 18     # [2] full-scan min scratch (float bits)
+_C5_SIZE = 20
+_V5_INF_BITS = int(np.float32(1e30).view(np.int32))   # __float_as_int(1e30f)
 
-_ASYNC_SSSP_KERNEL = r"""
-#define C5_DONE 0
-#define C5_WORK 1
-#define C5_BASE 2
-#define C5_BARRIER_CNT 3
-#define C5_BARRIER_SENSE 4
-#define C5_MIN_DIST 5
-#define C5_OVERFLOW 6
-#define C5_TGT_MAX 7
+def _load_cuda_source(filename: str) -> str:
+    """Read a CUDA source file shipped next to this module (NVRTC takes a string)."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
 
-#define NB 32
-#define EMPTY_SLOT (-1)
 
-// Sense-reversing rendezvous barrier (same protocol as V4: grid.sync()
-// lacks usable memory ordering on Blackwell; explicit __threadfence()).
-__device__ void v5_barrier(volatile int* control, int n_blocks) {
-    __threadfence();
-    __syncthreads();
-    if (threadIdx.x == 0) {
-        int my_sense = control[C5_BARRIER_SENSE];
-        int arrived = atomicAdd((int*)&control[C5_BARRIER_CNT], 1) + 1;
-        if (arrived == n_blocks) {
-            control[C5_BARRIER_CNT] = 0;
-            __threadfence();
-            control[C5_BARRIER_SENSE] = 1 - my_sense;
-        } else {
-            while (control[C5_BARRIER_SENSE] == my_sense) {}
-        }
-    }
-    __syncthreads();
-}
+# The V5 kernel lives in a real CUDA file (editable with CUDA tooling); the
+# float32-raster variant is still derived from its text. It is read on
+# first use (_v5_source), never at import: a missing or unreadable file must
+# mean "V5 unavailable" (V4/V3 and the rest of the module keep working), not
+# an import error of every module that imports this one.
+_ASYNC_SSSP_KERNEL = None
 
-// Reserve a ring slot for `v`, preferring bucket `bidx`.
-//
-// A full bucket spills into the next ring instead of dropping the push.
-// That is sound because bucket order in this kernel is *advisory*: a
-// vertex pulled from a later ring is still relaxed from its current
-// dist[] value, and the label-correcting argument (atomicMin + re-queue)
-// never depended on the order. Spilling turns the arena's capacity
-// bound from "per bucket" into "over the whole ring set", which is what
-// lets the arena be sized at NB*cap >= n_pixels: the span-boundary
-// refill pushes at most one entry per pixel, so with spill it can never
-// drop a vertex.
-//
-// That matters for more than memory. A refill that drops re-raises
-// C5_OVERFLOW, and the resulting rewind rescans from the *same* span
-// base and re-pushes the *same* oversubscribed bucket -- if a single
-// delta-bucket holds more than the whole ring set can take (a 0-cost
-// plateau, or any large region whose edges are tiny next to delta),
-// the rendezvous makes no progress and the kernel spins forever. Every
-// path that reserves a slot must go through here.
-//
-// Returns 1 when placed (the item is now claimable), 0 when every ring
-// is full -- the caller then drops the push and raises C5_OVERFLOW,
-// which the span-boundary rescan repairs losslessly (the dropped
-// vertex kept its improved dist[], and the rewind rescans from
-// base*delta, at or below which no push can land).
-__device__ inline int v5_ring_push(volatile int* wres, int* arena,
-                                   const int cap, const int bidx,
-                                   const int v) {
-    for (int t = 0; t < NB; t++) {
-        int bb = bidx + t;
-        if (bb >= NB) bb -= NB;
-        // Reservations beyond cap are harmless: readers clamp wres to
-        // cap, so nobody ever waits on a slot we did not write.
-        int q = atomicAdd((int*)&wres[bb], 1);
-        if (q < cap) {
-            __threadfence();
-            arena[bb * cap + q] = v;
-            return 1;
-        }
-    }
-    return 0;
-}
 
-// Asynchronous bucket-queue SSSP (ADDS-style, simplified for rasters).
-//
-// Hot path has NO grid-wide barriers: blocks claim chunks from a shared
-// ring of NB delta-granular buckets covering the rolling span
-// [base, base+NB)*delta, relax them, and push improvements with atomics
-// only. Improvements landing outside the span only update dist[] (no
-// queue entry); a span-boundary rescan rebuilds the frontier from dist[]
-// -- lossless, because a vertex whose dist lies at/after the new span
-// base was never relaxed-from at its current dist. Quiescence
-// (work == 0 => nothing queued AND nobody mid-chunk) funnels every block
-// into a rendezvous that advances the span, refills the ring, checks the
-// target bound, or terminates. Bucket granularity stays FINE (delta, not
-// a super-bucket): the 2026-08-06 sweep showed coarse priority windows
-// amplify work on heavy-tail rasters; the async design removes barrier
-// cost without giving up ordering.
-extern "C" __global__
-void sssp_async_v5(
-    const unsigned short* __restrict__ raster,
-    const signed char*    __restrict__ steps,
-    const float*          __restrict__ cost_factors,
-    const signed char*    __restrict__ inter_lut,
-    const int*            __restrict__ n_inter,
-    const int n_steps, const int max_inter_cols,
-    const int rows, const int cols, const int max_cost,
-    float* dist, int* pred,
-    const float delta, const int n_pixels, const int chunk,
-    const int* targets, const int n_targets, const float margin,
-    volatile int* control,
-    volatile int* wres,      // per-bucket write reservations [NB]
-    volatile int* rres,      // per-bucket read reservations  [NB]
-    int* arena,              // NB * cap item slots, EMPTY_SLOT-initialized
-    const int cap,
-    const float* __restrict__ dem,
-    const float* __restrict__ grad_lut,
-    const float* __restrict__ grad_bin_factor,
-    const float* __restrict__ grad_step_len,
-    const int grad_n_bins
-) {
-    int n_blocks = gridDim.x;
-    extern __shared__ char smem[];
-    int sb = n_steps * 2, sp = (sb + 3) & ~3;
-    signed char* s_steps = (signed char*)smem;
-    int* s_n_inter = (int*)(smem + sp);
-    float* s_cost_factors = (float*)(s_n_inter + n_steps);
-    signed char* s_inter_lut = (signed char*)(s_cost_factors + n_steps);
-    for (int i = threadIdx.x; i < sb; i += blockDim.x) s_steps[i] = steps[i];
-    for (int i = threadIdx.x; i < n_steps; i += blockDim.x) s_n_inter[i] = n_inter[i];
-    for (int i = threadIdx.x; i < n_steps; i += blockDim.x) s_cost_factors[i] = cost_factors[i];
-    int ls = n_steps * max_inter_cols * 2;
-    for (int i = threadIdx.x; i < ls; i += blockDim.x) s_inter_lut[i] = inter_lut[i];
-    int lsp = (ls + 3) & ~3;
-    float* s_grad_lut = (float*)(s_inter_lut + lsp);
-    float* s_grad_bf  = s_grad_lut + 2 * grad_n_bins;
-    float* s_grad_sl  = s_grad_bf + n_steps;
-    if (grad_n_bins > 0) {
-        for (int i = threadIdx.x; i < 2 * grad_n_bins; i += blockDim.x)
-            s_grad_lut[i] = grad_lut[i];
-        for (int i = threadIdx.x; i < n_steps; i += blockDim.x) {
-            s_grad_bf[i] = grad_bin_factor[i];
-            s_grad_sl[i] = grad_step_len[i];
-        }
-    }
-    __syncthreads();
-    int gtid = blockIdx.x * blockDim.x + threadIdx.x;
-    int stride = gridDim.x * blockDim.x;
+def _v5_source() -> str:
+    """Text of sssp_async_v5.cu, read once; raises OSError if it is missing."""
+    global _ASYNC_SSSP_KERNEL  # pylint: disable=global-statement  # lazy module-level cache
+    if _ASYNC_SSSP_KERNEL is None:
+        _ASYNC_SSSP_KERNEL = _load_cuda_source("sssp_async_v5.cu")
+    return _ASYNC_SSSP_KERNEL
 
-    __shared__ int sh_bucket, sh_start, sh_take;
+# Markers around the generic per-item relax body in sssp_async_v5.cu; a
+# body generated for one step set (_v5_relax_specialized) replaces the text
+# between them for solves without predecessors.
+_V5_BODY_START = "            // ---- generic relax body (a generated body may replace it) ----\n"
+_V5_BODY_END = "            // ---- end of generic relax body ----\n"
 
-    while (true) {
-        if (control[C5_DONE]) break;
+#: Steps per group in the specialised relax body: the dist[] reads of one
+#: group are issued together, then its atomics, then its pushes.
+_V5_SPEC_GROUP = 16
 
-        // ---- claim a chunk from the lowest claimable bucket (leader) ----
-        if (threadIdx.x == 0) {
-            sh_take = 0;
-            int base = control[C5_BASE];
-            for (int b = 0; b < NB; b++) {
-                for (;;) {
-                    int rr = rres[b];
-                    int wr = wres[b]; if (wr > cap) wr = cap;
-                    int avail = wr - rr;
-                    if (avail <= 0) break;
-                    int take = avail < chunk ? avail : chunk;
-                    if (atomicCAS((int*)&rres[b], rr, rr + take) == rr) {
-                        sh_bucket = b; sh_start = rr; sh_take = take;
-                        break;
-                    }
-                }
-                if (sh_take > 0) break;
-            }
-            (void)base;
-        }
-        __syncthreads();
-        int take = sh_take;
 
-        if (take == 0) {
-            // ---- no claimable work: quiescence check ----
-            if (control[C5_WORK] != 0) {
-            #if __CUDA_ARCH__ >= 700
-                __nanosleep(200);
-            #endif
-                continue;
-            }
-            // work == 0: nothing queued, nobody mid-chunk (a processing
-            // block keeps its chunk counted until fully done) -- every
-            // block observes 0 and funnels into the rendezvous.
-            v5_barrier(control, n_blocks);
+def _v5_relax_specialized(steps_arr, inter_lut, n_inter, cost_factors,
+                          float_raster, group=None):
+    """CUDA relax body for one fixed step set, or None if it does not fit.
 
-            // -- span advance / termination (all blocks, barriered) --
-            int base = control[C5_BASE];
-            float span_end = (base + NB) * delta;
-            // Overflow rewind: dropped pushes kept their dist inside the
-            // current span -- rescan from the span base, not its end.
-            float from_val = control[C5_OVERFLOW]
-                           ? base * delta : span_end;
-            if (base < 0) from_val = 0.0f;   // initial epoch
-            if (gtid == 0) control[C5_MIN_DIST] = __float_as_int(1e30f);
-            v5_barrier(control, n_blocks);
-            float lm = 1e30f;
-            for (int i = gtid; i < n_pixels; i += stride) {
-                float d = dist[i];
-                if (d >= from_val && d < lm) lm = d;
-            }
-            if (lm < 1e30f)
-                atomicMin((int*)&control[C5_MIN_DIST], __float_as_int(lm));
-            v5_barrier(control, n_blocks);
-            float gm = __int_as_float(control[C5_MIN_DIST]);
-            if (gm >= 1e29f) {
-                if (gtid == 0) control[C5_DONE] = 1;
-                v5_barrier(control, n_blocks);
-                break;
-            }
-            int new_base = (int)(gm / delta);
-            // target early exit: everything unprocessed is >= gm.
-            // Scratch word MUST differ from C5_MIN_DIST: gm was published
-            // through C5_MIN_DIST by the barrier above, and slower blocks
-            // may not have read it yet -- zeroing it here would hand them
-            // gm == 0 and diverge the blocks' barrier sequences (the
-            // 2026-08-06 nondeterministic targeted-mode corruption).
-            if (n_targets > 0) {
-                if (gtid == 0) control[C5_TGT_MAX] = 0;
-                v5_barrier(control, n_blocks);
-                for (int i = gtid; i < n_targets; i += stride)
-                    atomicMax((int*)&control[C5_TGT_MAX],
-                              __float_as_int(dist[targets[i]]));
-                v5_barrier(control, n_blocks);
-                float mt = __int_as_float(control[C5_TGT_MAX]);
-                if (mt < 1e29f && gm > mt * margin) {
-                    if (gtid == 0) control[C5_DONE] = 1;
-                    v5_barrier(control, n_blocks);
-                    break;
-                }
-            }
-            // -- reset ring, refill from dist[] --
-            for (int b = gtid; b < NB; b += stride) { wres[b] = 0; rres[b] = 0; }
-            if (gtid == 0) {
-                control[C5_BASE] = new_base;
-                control[C5_WORK] = 0;
-                control[C5_OVERFLOW] = 0;
-            }
-            v5_barrier(control, n_blocks);
-            float nbv = new_base * delta, nev = (new_base + NB) * delta;
-            for (int i = gtid; i < n_pixels; i += stride) {
-                float d = dist[i];
-                if (d < nbv || d >= nev) continue;
-                int bidx = (int)(d / delta) - new_base;
-                if (bidx < 0) bidx = 0; if (bidx >= NB) bidx = NB - 1;
-                atomicAdd((int*)&control[C5_WORK], 1);
-                if (!v5_ring_push(wres, arena, cap, bidx, i)) {
-                    atomicSub((int*)&control[C5_WORK], 1);
-                    control[C5_OVERFLOW] = 1;
-                }
-            }
-            v5_barrier(control, n_blocks);
-            continue;
-        }
+    Same edges, same weights and the same float operations, in the same
+    order, as the generic body in sssp_async_v5.cu; what changes is the
+    memory access:
 
-        // ---- process the claimed chunk ----
-        int b = sh_bucket, start = sh_start;
-        int base = control[C5_BASE];
-        float span_hi = (base + NB) * delta;
-        for (int i = threadIdx.x; i < take; i += blockDim.x) {
-            volatile int* slot = (volatile int*)&arena[b * cap + start + i];
-            int u;
-            while ((u = *slot) == EMPTY_SLOT) {}   // writer reserved: finite
-            *slot = EMPTY_SLOT;
-            int ur = u / cols, uc = u - ur * cols;
-            float ud = dist[u]; if (ud >= 1e30f) continue;
-            unsigned short sv = raster[u]; if (sv == max_cost) continue;
-            float udem = (grad_n_bins > 0) ? dem[u] : 0.0f;
-            for (int s = 0; s < n_steps; s++) {
-                int vr = ur + (int)s_steps[s*2], vc = uc + (int)s_steps[s*2+1];
-                if (vr < 0 || vr >= rows || vc < 0 || vc >= cols) continue;
-                int v = vr * cols + vc;
-                unsigned short dv = raster[v]; if (dv == max_cost) continue;
-                float ic = 0.0f; bool ok = true; int ni = s_n_inter[s];
-                for (int k = 0; k < ni; k++) {
-                    int ir = ur + (int)s_inter_lut[(s*max_inter_cols+k)*2];
-                    int icc = uc + (int)s_inter_lut[(s*max_inter_cols+k)*2+1];
-                    if (ir < 0 || ir >= rows || icc < 0 || icc >= cols) { ok = false; break; }
-                    unsigned short iv = raster[ir*cols+icc]; if (iv == max_cost) { ok = false; break; }
-                    ic += (float)iv;
-                }
-                if (!ok) continue;
-                float ew = ((float)sv + (float)dv + ic) * s_cost_factors[s];
-                if (grad_n_bins > 0) {
-                    float dh = fabsf(dem[v] - udem);
-                    int gb = (int)(dh * s_grad_bf[s]);
-                    if (gb >= grad_n_bins) gb = grad_n_bins - 1;
-                    float gmul = s_grad_lut[2*gb];
-                    if (isinf(gmul)) continue;
-                    ew = ew * gmul + s_grad_lut[2*gb+1] * s_grad_sl[s];
-                }
-                float nd = ud + ew;
-                // The pred store races concurrent better atomicMin winners
-                // (a slower older winner's store can land last, leaving
-                // pred pointing at the worse predecessor). Vertices
-                // improved exactly once (0-cost plateaus) are race-free;
-                // multiply-improved ones are validated and fixed by the
-                // v5_repair_pred post-pass.
-                int ndi = __float_as_int(nd), odi = atomicMin((int*)&dist[v], ndi);
-                if (ndi < odi) {
-                    if (pred != NULL) pred[v] = u;
-                    if (nd < span_hi) {
-                        int bidx = (int)(nd / delta) - base;
-                        if (bidx < 0) bidx = 0; if (bidx >= NB) bidx = NB - 1;
-                        // Count BEFORE reserving: once wres is advanced the
-                        // item is claimable, and a consumer may fully process
-                        // and decrement it -- if it were not yet counted,
-                        // C5_WORK could read 0 with work still in flight
-                        // (rendezvous deadlock).
-                        atomicAdd((int*)&control[C5_WORK], 1);
-                        if (!v5_ring_push(wres, arena, cap, bidx, v)) {
-                            atomicSub((int*)&control[C5_WORK], 1);
-                            control[C5_OVERFLOW] = 1;
-                        }
-                    }
-                    // out-of-span: dist[] already updated; the span-boundary
-                    // rescan recovers it -- no queue entry, no far list.
-                }
-            }
-        }
-        // chunk complete (including all its pushes): release the count
-        __threadfence();
-        __syncthreads();
-        if (threadIdx.x == 0) atomicSub((int*)&control[C5_WORK], take);
-    }
-}
-"""
+    * the step set is baked in, so every cell any step touches (targets and
+      intermediates; at most 64) is loaded ONCE per expanded vertex into a
+      register window (k=1: 8 loads instead of 16, k=3: 40 instead of 120),
+      all loads independent and issued together instead of a chain of
+      load -> branch -> load per step;
+    * blocked / out-of-raster cells become one bit mask, and a step is
+      valid iff its cells' bits are all clear (the generic loop's bounds
+      and ``== max_cost`` tests, cell by cell);
+    * dist[v] is READ first and atomicMin is issued only where the new
+      label is smaller than the value read. dist only ever decreases, so a
+      read value can only be >= the current one: a skipped atomicMin is
+      exactly one that would have returned "no improvement".
+
+    Arithmetic is identical bit for bit: the uint16 cell sum is an exact
+    integer (< 2**24) either way, the product and the addition are
+    explicit ``__fmul_rn`` / ``__fadd_rn`` (no FMA contraction, as in the
+    generic body's SASS), the float32-raster sum keeps the generic order
+    ``(sv + dv) + ((0 + i1) + i2 ...)``, and the gradient term is the
+    generic body's ``FMUL`` + ``FFMA``.
+
+    It runs after the kernel's per-item prologue (``u``, ``ud`` and the
+    stale-entry test) and calls the same ``v5_on_improve`` handler.
+
+    The body keeps NO predecessors: the session launches it only for
+    solves without pred. Pred solves keep the generic body, because the
+    hot-path pred store races (an older winner's store can land after a
+    newer winner's) and on a 0-cost plateau the stale sideways link still
+    validates in ``v5_best_pred`` and can close a pred cycle; any change in
+    relax timing changes how often that happens (measured: the zero-wall
+    PathFinder case failed 9 of 6000 runs with this body even with the
+    store right after its atomicMin, 0 of 8000 with the generic one).
+    """
+    n_steps = int(len(steps_arr))
+    if n_steps == 0 or n_steps > 64:
+        return None
+    group = _V5_SPEC_GROUP if group is None else max(1, min(32, int(group)))
+    plan = []
+    used = set()
+    for s in range(n_steps):
+        tgt = (int(steps_arr[s][0]), int(steps_arr[s][1]))
+        its = [(int(inter_lut[s][k][0]), int(inter_lut[s][k][1]))
+               for k in range(int(n_inter[s]))]
+        if tgt == (0, 0) or (0, 0) in its:
+            return None
+        used.add(tgt)
+        used.update(its)
+        cf_bits = int(np.asarray(cost_factors[s], dtype=np.float32).view(np.uint32))
+        plan.append((tgt, its, cf_bits))
+    if len(used) > 64:
+        return None
+    cells = sorted(used)
+    cid = {c: i for i, c in enumerate(cells)}
+    wide = len(cells) > 32
+    mt, one = ("unsigned long long", "1ull") if wide else ("unsigned int", "1u")
+
+    def nm(x):
+        return f"m{-x}" if x < 0 else (f"p{x}" if x > 0 else "z")
+
+    def inb(c):
+        cond = []
+        if c[0] != 0:
+            cond.append(f"rv_{nm(c[0])}")
+        if c[1] != 0:
+            cond.append(f"cv_{nm(c[1])}")
+        return " && ".join(cond) if cond else "true"
+
+    def idx(c):
+        return f"ro_{nm(c[0])} + ({c[1]})" if c[1] else f"ro_{nm(c[0])}"
+
+    def mask_of(cs):
+        m = 0
+        for c in cs:
+            m |= 1 << cid[c]
+        return f"0x{m:x}{'ull' if wide else 'u'}"
+
+    rt = "float" if float_raster else "unsigned short"
+    blocked = (lambda x: f"{x} >= 1e30f") if float_raster else (lambda x: f"{x} == max_cost")
+    L = []
+    a = L.append
+    a("            // ---- specialised relax body (step set baked in; see _v5_relax_specialized) ----")
+    a("            int ur = u / cols, uc = u - ur * cols;")
+    a(f"            {rt} sv = raster[u];")
+    for r in sorted({c[0] for c in cells} - {0}):
+        a(f"            const bool rv_{nm(r)} = (unsigned)(ur + ({r})) < (unsigned)rows;")
+    for c in sorted({c[1] for c in cells} - {0}):
+        a(f"            const bool cv_{nm(c)} = (unsigned)(uc + ({c})) < (unsigned)cols;")
+    for r in sorted({c[0] for c in cells}):
+        a(f"            const int ro_{nm(r)} = u + ({r}) * cols;" if r else
+          "            const int ro_z = u;")
+    a(f"            {mt} bad = 0;")
+    for c in cells:
+        i = cid[c]
+        w = f"w{i}"
+        if float_raster:
+            a(f"            float {w} = 0.0f;")
+            a(f"            if ({inb(c)}) {w} = raster[{idx(c)}];")
+        else:
+            a(f"            int {w} = 0;")
+            a(f"            if ({inb(c)}) {w} = (int)raster[{idx(c)}];")
+        a(f"            if (!({inb(c)}) || {blocked(w)}) bad |= {one} << {i};")
+    a("            if (ud >= 1e30f) continue;")
+    a(f"            if ({blocked('sv')}) continue;")
+    a("            float udem = (grad_n_bins > 0) ? dem[u] : 0.0f;")
+    for g0 in range(0, n_steps, group):
+        gs = list(range(g0, min(n_steps, g0 + group)))
+        a(f"            {{   // steps {gs[0]}..{gs[-1]}")
+        for j, s in enumerate(gs):
+            tgt, its, cf_bits = plan[s]
+            a(f"                bool k{j} = (bad & {mask_of([tgt] + its)}) == 0;")
+            a(f"                const int v{j} = {idx(tgt)};")
+            t = f"w{cid[tgt]}"
+            if float_raster:
+                ic = "0.0f"
+                for c in its:
+                    ic = f"__fadd_rn({ic}, w{cid[c]})"
+                ssum = f"__fadd_rn(__fadd_rn(sv, {t}), {ic})"
+            else:
+                ssum = "(float)((int)sv + " + " + ".join([t] + [f"w{cid[c]}" for c in its]) + ")"
+            a(f"                float e{j} = __fmul_rn({ssum}, __int_as_float(0x{cf_bits:08x}));")
+        a("                if (grad_n_bins > 0) {")
+        for j, s in enumerate(gs):
+            tgt = plan[s][0]
+            a(f"                    float m{j} = 0.0f; if ({inb(tgt)}) m{j} = dem[v{j}];")
+        for j, s in enumerate(gs):
+            a(f"                    {{ float dh = fabsf(__fsub_rn(m{j}, udem));")
+            a(f"                      int gb = __float2int_rz(__fmul_rn(dh, s_grad_bf[{s}]));")
+            a("                      if (gb >= grad_n_bins) gb = grad_n_bins - 1;")
+            a("                      const float gmul = s_grad_lut[2 * gb];")
+            a(f"                      if (isinf(gmul)) k{j} = false;")
+            a(f"                      else e{j} = __fmaf_rn(e{j}, gmul, "
+              f"__fmul_rn(s_grad_lut[2 * gb + 1], s_grad_sl[{s}])); }}")
+        a("                }")
+        for j, _ in enumerate(gs):
+            a(f"                const int d{j} = __float_as_int(__fadd_rn(ud, e{j}));")
+        for j, _ in enumerate(gs):
+            a(f"                int o{j} = 0; if (k{j}) o{j} = __float_as_int(dist[v{j}]);")
+        for j, _ in enumerate(gs):
+            a(f"                k{j} = k{j} && d{j} < o{j};")
+        # The group's atomics are independent and go out back to back. This
+        # body never stores pred (the session launches it with pred == NULL
+        # only, see GpuSsspSession._kernel_fast).
+        for j, _ in enumerate(gs):
+            a(f"                if (k{j}) o{j} = atomicMin((int*)&dist[v{j}], d{j});")
+        a("                unsigned int imp = 0u;")
+        for j, _ in enumerate(gs):
+            a(f"                if (k{j} && d{j} < o{j}) imp |= 1u << {j};")
+        a("                while (imp) {")
+        a("                    const int j = __ffs(imp) - 1; imp &= imp - 1;")
+        a("                    int v = v0, d = d0;")
+        for j in range(1, len(gs)):
+            a(f"                    if (j == {j}) {{ v = v{j}; d = d{j}; }}")
+        a("                    v5_on_improve(control, wres, arena, cap, flist, far_cap, far_ok,")
+        a("                                  par, base, delta, span_hi, v, __int_as_float(d), d);")
+        a("                }")
+        a("            }")
+    return "\n".join(L) + "\n"
+
+
+def _v5_kernel_source(steps, float_raster, specialize=True):
+    """(source, cache variant) of sssp_async_v5 for one step set.
+
+    The step-set-specialised relax body when it fits, the generic kernel
+    (byte-identical to ``_ASYNC_SSSP_KERNEL``) otherwise or when
+    ``specialize`` is False.
+    """
+    conv = _float_raster_source if float_raster else (lambda s: s)
+    kind = "f32" if float_raster else "u16"
+    body = None
+    if specialize:
+        steps_arr, inter_lut, n_inter, cost_factors = \
+            prepare_step_lookup_tables(np.asarray(steps))
+        body = _v5_relax_specialized(steps_arr, inter_lut, n_inter,
+                                     cost_factors, float_raster)
+    src = _v5_source()
+    sig = "extern \"C\" __global__\nvoid sssp_async_v5("
+    if (body is None or src.count(_V5_BODY_START) != 1
+            or src.count(_V5_BODY_END) != 1 or src.count(sig) != 1):
+        return conv(src), kind          # generic kernel (also if the markers moved)
+    i0 = src.index(_V5_BODY_START) + len(_V5_BODY_START)
+    i1 = src.index(_V5_BODY_END)
+    head = src[:i0]
+    head = head.replace(
+        sig, "extern \"C\" __global__ __launch_bounds__(512, 1)\nvoid sssp_async_v5(")
+    out = conv(head) + body + conv(src[i1:])
+    return out, kind + "-spec-" + hashlib.sha1(out.encode()).hexdigest()[:16]
 
 # Post-pass predecessor validation/repair for V5. The hot-path pred store
 # races concurrent better atomicMin winners: on a multiply-improved vertex
@@ -1496,6 +1423,11 @@ void v5_walk_pred(
     int limit = wr ? limits[t] : n_pixels;
     int cnt = 0;
     int v = tgt;
+    // Brent's cycle detection: a predecessor cycle (possible through stale
+    // links on 0-cost plateaus) is reported after O(chain + cycle) hops
+    // instead of n_pixels (262 M single-thread hops on a full map). A
+    // valid chain never revisits a cell, so it can never fire there.
+    int brent_pt = v, brent_pow = 1, brent_lam = 0;
     for (;;) {
         if (wr) {
             if (cnt >= limit) { lengths[t] = -1; return; }
@@ -1503,7 +1435,7 @@ void v5_walk_pred(
         }
         cnt++;
         if (v == source_idx) break;
-        if (cnt > n_pixels) { lengths[t] = -1; return; }  // cycle guard
+        if (cnt > n_pixels) { lengths[t] = -1; return; }  // hard hop limit
         int p = pred[v];
         if (do_repair) {
             p = v5_best_pred(
@@ -1515,6 +1447,8 @@ void v5_walk_pred(
         }
         if (p < 0) { lengths[t] = -1; return; }
         v = p;
+        if (v == brent_pt) { lengths[t] = -1; return; }   // cycle
+        if (++brent_lam == brent_pow) { brent_pt = v; brent_pow <<= 1; brent_lam = 0; }
     }
     lengths[t] = cnt;
 }
@@ -1622,6 +1556,21 @@ def _compute_auto_delta(
 # ============================================================================
 
 _v4_available = None
+#: Why the V4 probe answered False (the CUDA, compile or file error); None while it is True or not yet run.
+_v4_unavailable_cause = None
+
+
+def _kernel_unavailable(name: str, err: BaseException, fallback: str) -> None:
+    """Announce once that a kernel family cannot be used here, with the cause; out-of-memory is raised.
+
+    Called from the availability probes with an error of :func:`gpu_probe_errors`. The probe result is cached,
+    so this runs once per process and kernel family.
+    """
+    if is_gpu_out_of_memory(err):
+        raise gpu_out_of_memory_error(err, f"compiling the {name} kernel") from err
+    warnings.warn(
+        f"GPU SSSP {name} kernel unavailable ({describe_gpu_error(err)}); {fallback}",
+        UserWarning, stacklevel=3)
 
 
 def _check_v4_available():
@@ -1629,8 +1578,12 @@ def _check_v4_available():
 
     Caches the result so the compilation check only happens once.
     Returns True if cooperative groups are supported and the kernel compiles.
+
+    Only the errors of :func:`gpu_probe_errors` (CuPy/CUDA runtime, driver and compile errors, missing
+    libraries or files) mean "unavailable": the cause is kept in ``_v4_unavailable_cause`` and reported once in a
+    UserWarning. Out-of-memory is raised as ``MemoryError``; any other exception is a bug and propagates.
     """
-    global _v4_available  # pylint: disable=global-statement  # module-level availability cache
+    global _v4_available, _v4_unavailable_cause  # pylint: disable=global-statement  # availability cache
     if _v4_available is not None:
         return _v4_available
     try:
@@ -1644,12 +1597,17 @@ def _check_v4_available():
         # Accessing .kernel triggers compilation without launching.
         _ = kernel.kernel
         _v4_available = True
-    except Exception:  # pylint: disable=broad-exception-caught  # optional GPU backend probe
+        _v4_unavailable_cause = None
+    except gpu_probe_errors() as err:
+        _kernel_unavailable("V4", err, "sssp_raster_gpu falls back to the V3 kernel")
         _v4_available = False
+        _v4_unavailable_cause = err
     return _v4_available
 
 
 _v5_available = None
+#: Why the V5 probe answered False (the CUDA, compile or file error); None while it is True or not yet run.
+_v5_unavailable_cause = None
 
 
 def _check_v5_available():
@@ -1657,21 +1615,26 @@ def _check_v5_available():
 
     Caches the result so the compilation check only happens once.
     Returns True if cooperative groups are supported and the kernel compiles.
+
+    Same error handling as :func:`_check_v4_available`; the cause is kept in ``_v5_unavailable_cause``.
     """
-    global _v5_available  # pylint: disable=global-statement  # module-level availability cache
+    global _v5_available, _v5_unavailable_cause  # pylint: disable=global-statement  # availability cache
     if _v5_available is not None:
         return _v5_available
     try:
         _ensure_cuda_path()
         kernel = _get_sssp_kernel(
             "sssp_async_v5",
-            _ASYNC_SSSP_KERNEL,
+            _v5_source(),        # OSError (missing .cu) -> V5 unavailable
             cooperative=True,
         )
         _ = kernel.kernel
         _v5_available = True
-    except Exception:  # pylint: disable=broad-exception-caught  # optional GPU backend probe
+        _v5_unavailable_cause = None
+    except gpu_probe_errors() as err:
+        _kernel_unavailable("V5", err, "sssp_raster_gpu falls back to the V4 kernel")
         _v5_available = False
+        _v5_unavailable_cause = err
     return _v5_available
 
 
@@ -1709,7 +1672,7 @@ def _resolve_delta(delta, raster, cost_factors, ignore_max):
         return _compute_auto_delta(raster, cost_factors, ignore_max)
     delta = float(delta)
     if delta <= 0:
-        raise ValueError(f"delta must be > 0, got {delta}")
+        raise InvalidInputError(f"delta must be > 0, got {delta}")
     return delta
 
 
@@ -1743,14 +1706,14 @@ def _prepare_gradient_gpu(dem, gradient_luts, raster_shape, n_steps,
         null = np.intp(0)
         return null, null, null, null, 0, 0, 1.0
     if dem is None:
-        raise ValueError("gradient_luts require a dem aligned to the raster")
+        raise InvalidInputError("gradient_luts require a dem aligned to the raster")
     dem = np.ascontiguousarray(dem, dtype=np.float32)
     if dem.shape != raster_shape:
-        raise ValueError(
+        raise InvalidInputError(
             f"DEM shape {dem.shape} does not match the raster "
             f"{raster_shape} — align the DEM first.")
     if not np.isfinite(dem).all():
-        raise ValueError(
+        raise InvalidInputError(
             "DEM contains non-finite values — sanitize before the GPU "
             "((int)(NaN * x) is undefined on device).")
 
@@ -2082,17 +2045,17 @@ def sssp_raster_gpu(
         raster: np.ndarray,
         steps: np.ndarray,
         source_idx: int,
-        delta: Union[float, str] = "auto",
+        delta: float | str = "auto",
         ignore_max: bool = True,
-        target_indices: Optional[np.ndarray] = None,
+        target_indices: np.ndarray | None = None,
         margin: float = 1.00001,
         return_predecessor: bool = False,
         max_light_iterations: int = 100,
         threads_per_block: int = 256,
-        dem: Optional[np.ndarray] = None,
+        dem: np.ndarray | None = None,
         gradient_luts=None,
-        session: Optional["GpuSsspSession"] = None,
-) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        session: GpuSsspSession | None = None,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """GPU SSSP; uses the v5 async bucket-queue kernel, falling back to
     the v4 persistent kernel, then v3.
@@ -2108,7 +2071,7 @@ def sssp_raster_gpu(
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if not GPU_AVAILABLE:
-        raise RuntimeError(
+        raise gpu_not_available_error(
             "CUDA GPU not available. Install cupy with CUDA support: "
             "pip install cupy-cuda12x"
         )
@@ -2128,16 +2091,16 @@ def sssp_raster_gpu(
             threads_per_block=threads_per_block,
             dem=dem, gradient_luts=gradient_luts)
     if gradient_luts is not None:
-        raise RuntimeError(
+        raise gpu_not_available_error(
             "Per-edge gradient terms require the V4 persistent cooperative "
             "kernel, which is unavailable on this system (cooperative "
             "groups could not be compiled). Use the cython backend "
-            "instead.")
+            "instead.", _v4_unavailable_cause)
     if np.issubdtype(np.asarray(raster).dtype, np.floating):
-        raise RuntimeError(
+        raise gpu_not_available_error(
             "Float32 weight rasters require the V4 persistent cooperative "
             "kernel, which is unavailable on this system. Use a library "
-            "backend instead.")
+            "backend instead.", _v4_unavailable_cause)
     return _sssp_raster_gpu_v3(
         raster, steps, source_idx, delta, ignore_max,
         target_indices, margin, return_predecessor,
@@ -2156,6 +2119,7 @@ def _ensure_cuda_path():
     CuPy's internal cached path variables.
     """
     import os
+
     import cupy.cuda.compiler as _compiler
 
     # Already resolved
@@ -2254,19 +2218,19 @@ def sssp_raster_gpu_v4(
         raster: np.ndarray,
         steps: np.ndarray,
         source_idx: int,
-        delta: Union[float, str] = "auto",
+        delta: float | str = "auto",
         ignore_max: bool = True,
-        target_indices: Optional[np.ndarray] = None,
+        target_indices: np.ndarray | None = None,
         margin: float = 1.00001,
         return_predecessor: bool = False,
         max_light_iterations: int = 100,
         threads_per_block: int = 256,
         window: int = 4,
         fuse_depth: int = 0,
-        dem: Optional[np.ndarray] = None,
+        dem: np.ndarray | None = None,
         gradient_luts=None,
         blocks_per_sm: int = 2,
-) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """V4 persistent cooperative kernel SSSP. Same API as sssp_raster_gpu.
 
@@ -2293,7 +2257,7 @@ def sssp_raster_gpu_v4(
     window = min(max(1, int(window)), 32)
     fuse_depth = max(0, int(fuse_depth))
     if not GPU_AVAILABLE:
-        raise RuntimeError("CUDA GPU not available: pip install cupy-cuda12x")
+        raise gpu_not_available_error("CUDA GPU not available: pip install cupy-cuda12x")
 
     early_exit, ctx = _common_gpu_setup(
         raster, steps, source_idx, delta, ignore_max, return_predecessor)
@@ -2358,7 +2322,7 @@ def sssp_raster_gpu_v4(
         # indistinguishable from genuinely unreachable. Measured on a 700x700
         # zero-cost raster, V4 returned 401^2 settled cells and inf for the
         # other 329,199 - a wrong answer delivered silently. Fail instead.
-        raise RuntimeError(
+        raise PyorpsRuntimeError(
             f"V4 abandoned part of the frontier: the light phase hit its "
             f"{max_light_iterations * max(1, window)}-iteration cap with work "
             f"still queued, so the returned distances would be partial. This "
@@ -2427,13 +2391,38 @@ def _v5_arena_cap(n_pixels: int,
         # refill drop is what makes the rewind re-push the same
         # oversubscribed bucket forever. The no-drop guarantee this whole
         # sizing rests on is only valid at >= 1.0.
-        raise ValueError(
+        raise InvalidInputError(
             f"arena_factor must be >= 1.0 (the span-boundary refill pushes "
             f"up to one entry per pixel and must never drop), got "
             f"{arena_factor}")
     total = int(np.ceil(arena_factor * float(int(n_pixels))))
     per_bucket = -(-total // _V5_N_BUCKETS)
     return max(4096, int(per_bucket))
+
+
+def _v5_far_cap(n_pixels: int) -> int:
+    """Entries per far list (two lists, 0.5 B/cell in total).
+
+    A far list holds the vertices whose dist landed at/after the end of
+    the rolling span (plus ring-overflow drops and carry-overs), so the
+    span-boundary refill is O(frontier) instead of two O(n_pixels) scans
+    of dist[]. It is a cache, not a correctness bound: on overflow the
+    kernel raises C5_FOVF and that one rendezvous falls back to the
+    full scan. n/16 is ~30x the far writes per span measured on
+    random/heavy/zero/walls rasters at 1000^2-2000^2 (0.3 % of cells).
+    """
+    return max(4096, int(n_pixels) // 16)
+
+
+def _v5_max_blocks_per_sm(kernel, tpb: int, smem_bytes: int) -> int:
+    """Resident blocks/SM the driver guarantees for a cooperative launch."""
+    try:
+        from cupy_backends.cuda.api import driver as _drv  # pylint: disable=import-outside-toplevel
+        n = int(_drv.occupancyMaxActiveBlocksPerMultiprocessor(
+            kernel.kernel.ptr, int(tpb), int(smem_bytes)))
+        return max(1, n)
+    except Exception:  # pylint: disable=broad-exception-caught  # driver binding missing: old clamp
+        return max(1, 512 // int(tpb))
 
 
 class GpuSsspSession:
@@ -2460,7 +2449,9 @@ class GpuSsspSession:
     raster      2 (4 f32)  ``close()``
     dist        4          ``close()``
     pred        4          ``close()`` (allocated on first request)
+    pred64      8          end of each solve that keeps pred (scratch)
     arena       4          ``close()``
+    far lists   0.5        ``close()`` (two lists, see _v5_far_cap)
     DEM         4          ``close()`` (only with gradient routing)
     ==========  =========  ======================================
 
@@ -2474,8 +2465,8 @@ class GpuSsspSession:
             steps: np.ndarray,
             *,
             ignore_max: bool = True,
-            delta: Union[float, str] = "auto",
-            dem: Optional[np.ndarray] = None,
+            delta: float | str = "auto",
+            dem: np.ndarray | None = None,
             gradient_luts=None,
             threads_per_block: int = 256,
             blocks_per_sm: int = 2,
@@ -2484,17 +2475,18 @@ class GpuSsspSession:
     ):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not GPU_AVAILABLE:
-            raise RuntimeError(
+            raise gpu_not_available_error(
                 "CUDA GPU not available: pip install cupy-cuda12x")
         if not _check_v5_available():
-            raise RuntimeError(
+            raise gpu_not_available_error(
                 "GpuSsspSession requires the V5 async kernel, which could "
                 "not be compiled on this system (cooperative groups). Call "
-                "sssp_raster_gpu() without a session to fall back to V4/V3.")
+                "sssp_raster_gpu() without a session to fall back to V4/V3.",
+                _v5_unavailable_cause)
 
         raster = np.asarray(raster)
         if raster.ndim != 2:
-            raise ValueError(f"raster must be 2D, got shape {raster.shape}")
+            raise InvalidInputError(f"raster must be 2D, got shape {raster.shape}")
         rows, cols = int(raster.shape[0]), int(raster.shape[1])
         self.shape = (rows, cols)
         self.n_pixels = rows * cols
@@ -2537,23 +2529,17 @@ class GpuSsspSession:
         self.delta = float(base_delta * grad_mean_mult)
 
         self.chunk = max(1, int(chunk))
-        tpb = min(max(32, int(threads_per_block)), 512)
-        bps = min(max(1, int(blocks_per_sm)), 2)
-        # >512 resident threads/SM produces wrong dist arrays on
-        # Blackwell (historical "Bug #3") -- same clamp as V4/V5.
-        while bps > 1 and tpb * bps > 512:
-            bps -= 1
-        self.threads_per_block = tpb
-        self.blocks_per_sm = bps
         _ensure_cuda_path()
-        self._max_blocks = int(
-            cp.cuda.Device().attributes["MultiProcessorCount"] * bps)
-
         variant_src = (_float_raster_source if self._float_raster
                        else (lambda s: s))  # nosemgrep - early exit in __init__ is intentional
         variant = "f32" if self._float_raster else "u16"
+        # Solves that keep predecessors run the generic kernel; solves
+        # without (solve_seeded, field-only solve) run the relax body
+        # specialised to this step set when it fits -- same dist bit for
+        # bit, fewer loads and atomics (see _v5_relax_specialized for why
+        # the pred solves stay generic).
         self._kernel = _get_sssp_kernel(
-            "sssp_async_v5", variant_src(_ASYNC_SSSP_KERNEL),
+            "sssp_async_v5", variant_src(_v5_source()),
             cooperative=True, variant=variant)
         self._repair_kernel = _get_sssp_kernel(
             "v5_repair_pred", variant_src(_V5_PRED_REPAIR_KERNEL),
@@ -2561,6 +2547,23 @@ class GpuSsspSession:
         self._walk_kernel = _get_sssp_kernel(
             "v5_walk_pred", variant_src(_V5_WALK_PRED_KERNEL),
             variant=variant)
+
+        tpb = min(max(32, int(threads_per_block)), 512)
+        # A cooperative launch needs every block resident: the driver says
+        # how many blocks of this kernel fit per SM. On top of that, the
+        # historical Blackwell clamp of at most 512 resident threads per SM
+        # ("Bug #3": wrong dist arrays at 1024 threads/SM, same clamp as
+        # V4) stays until a stress run at 1024 threads/SM on sm_120 passes.
+        bps = max(1, int(blocks_per_sm))
+        while bps > 1 and tpb * bps > 512:
+            bps -= 1
+        bps = min(bps, _v5_max_blocks_per_sm(self._kernel, tpb, self.smem_bytes))
+        self.threads_per_block = tpb
+        self.blocks_per_sm = bps
+        n_sm = int(cp.cuda.Device().attributes["MultiProcessorCount"])
+        self._max_blocks = n_sm * bps
+        self._kernel_fast, self._max_blocks_fast = self._build_fast_kernel(
+            steps, variant, tpb, bps, n_sm)
 
         self.arena_factor = float(arena_factor)
         self.cap = _v5_arena_cap(self.n_pixels, self.arena_factor)
@@ -2570,9 +2573,55 @@ class GpuSsspSession:
         self._d_wres = cp.empty(_V5_N_BUCKETS, dtype=cp.int32)
         self._d_rres = cp.empty(_V5_N_BUCKETS, dtype=cp.int32)
         self._d_ctl = cp.empty(_C5_SIZE, dtype=cp.int32)
+        self.far_cap = _v5_far_cap(self.n_pixels)
+        self._d_far_a = cp.empty(self.far_cap, dtype=cp.int32)
+        self._d_far_b = cp.empty(self.far_cap, dtype=cp.int32)
+        # Control words of a fresh solve: base = -NB and a raised far-list
+        # overflow flag make the first rendezvous a full dist[] scan from
+        # 0, where it finds the seeds -- no host-side frontier setup.
+        self._ctl_init = np.zeros(_C5_SIZE, dtype=np.int32)
+        self._ctl_init[_C5_BASE] = -_V5_N_BUCKETS
+        self._ctl_init[_C5_FAR_OVF] = 1
+        for w in (_C5_FAR_MIN, _C5_FAR_MIN + 1, _C5_SCAN_MIN, _C5_SCAN_MIN + 1):
+            self._ctl_init[w] = _V5_INF_BITS
         self._pred_source = None       # source the device pred belongs to
         self._full_field = False       # True after a no-target (session) solve
         self._closed = False
+
+    def _build_fast_kernel(self, steps, variant, tpb, bps, n_sm):
+        """(kernel, grid) for solves without predecessors.
+
+        The relax body specialised to this step set and its own residency
+        bound (it holds more registers than the generic kernel), or -- on ANY
+        failure to generate, compile or size it -- the generic kernel and its
+        grid, which give the same fields bit for bit, only slower.
+        """
+        try:
+            src, fast_variant = _v5_kernel_source(steps, self._float_raster)
+            if fast_variant == variant:
+                return self._kernel, self._max_blocks
+            kernel = _get_sssp_kernel("sssp_async_v5", src, cooperative=True,
+                                      variant=fast_variant)
+            _ = kernel.kernel            # compile here, inside the guard
+            per_sm = _v5_max_blocks_per_sm(kernel, tpb, self.smem_bytes)
+            return kernel, n_sm * min(bps, per_sm)
+        except Exception:  # pylint: disable=broad-exception-caught  # optional fast path: fall back
+            return self._kernel, self._max_blocks
+
+    def _launch_fast(self, args) -> None:
+        """Launch the no-pred solve; if the specialised kernel's launch is
+        refused (e.g. a cooperative grid the driver will not co-schedule),
+        nothing ran, so fall back to the generic kernel for this and every
+        later solve of the session."""
+        if self._kernel_fast is not self._kernel:
+            try:
+                self._kernel_fast((self._max_blocks_fast,), (self.threads_per_block,),
+                                  args, shared_mem=self.smem_bytes)
+                return
+            except Exception:  # pylint: disable=broad-exception-caught  # launch refused: generic kernel
+                self._kernel_fast, self._max_blocks_fast = self._kernel, self._max_blocks
+        self._kernel((self._max_blocks,), (self.threads_per_block,),
+                     args, shared_mem=self.smem_bytes)
 
     # -- lifecycle ---------------------------------------------------
 
@@ -2586,6 +2635,7 @@ class GpuSsspSession:
         total = 0
         for buf in (self._d_raster, self._d_dist, self._d_pred,
                     self._d_arena, self._d_wres, self._d_rres, self._d_ctl,
+                    self._d_far_a, self._d_far_b,
                     self._d_steps, self._d_cost_factors, self._d_inter_lut,
                     self._d_n_inter, self._dem_arg, self._grad_lut_arg,
                     self._grad_bf_arg, self._grad_sl_arg):
@@ -2610,6 +2660,8 @@ class GpuSsspSession:
         self._d_wres = None
         self._d_rres = None
         self._d_ctl = None
+        self._d_far_a = None
+        self._d_far_b = None
         self._d_steps = None
         self._d_cost_factors = None
         self._d_inter_lut = None
@@ -2624,7 +2676,7 @@ class GpuSsspSession:
         if free_pool:
             cp.get_default_memory_pool().free_all_blocks()
 
-    def __enter__(self) -> "GpuSsspSession":
+    def __enter__(self) -> GpuSsspSession:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:
@@ -2641,17 +2693,17 @@ class GpuSsspSession:
         """
         raster = np.asarray(raster)
         if raster.shape != self.shape:
-            raise ValueError(
+            raise InvalidInputError(
                 f"session was built for a {self.shape} raster, got "
                 f"{raster.shape}; build a new GpuSsspSession")
         if bool(np.issubdtype(raster.dtype, np.floating)) != self._float_raster:
-            raise ValueError(
+            raise InvalidInputError(
                 "session raster dtype kind differs (float32 lossless mode "
                 "vs uint16); build a new GpuSsspSession")
 
     def _check_open(self) -> None:
         if self._closed:
-            raise RuntimeError("GpuSsspSession is closed")
+            raise PyorpsRuntimeError("GpuSsspSession is closed")
 
     # -- solving -----------------------------------------------------
 
@@ -2669,16 +2721,14 @@ class GpuSsspSession:
         self._d_arena.fill(-1)
         self._d_wres.fill(0)
         self._d_rres.fill(0)
-        self._d_ctl.fill(0)
-        # base = -NB makes the first rendezvous rescan start at 0, where
-        # it finds the source -- no host-side frontier setup needed.
-        self._d_ctl[_C5_BASE] = -_V5_N_BUCKETS
+        # One upload for every control word (see _ctl_init in __init__).
+        self._d_ctl.set(self._ctl_init)
         self._full_field = False
 
     def solve(
             self,
             source_idx: int,
-            target_indices: Optional[np.ndarray] = None,
+            target_indices: np.ndarray | None = None,
             *,
             margin: float = 1.00001,
             return_predecessor: bool = False,
@@ -2733,25 +2783,37 @@ class GpuSsspSession:
 
         self._d_dist[source_idx] = np.float32(0.0)
         _, n_targets, targets_arg = _prepare_v4_targets(target_indices)
-        pred_arg = self._d_pred if need_pred else np.intp(0)
+        # A pred solve records (dist bits << 32 | pred) with a 64-bit min in
+        # a scratch array (8 B/cell for the duration of this call) and keeps
+        # the low words: pred is then the winner of each vertex's final
+        # improvement, race-free (see the kernel). All ones = no pred (-1).
+        pred64 = (cp.full(self.n_pixels, np.uint64(0xFFFFFFFFFFFFFFFF), dtype=cp.uint64)
+                  if need_pred else None)
+        pred_arg = pred64 if need_pred else np.intp(0)
 
-        self._kernel(
-            (self._max_blocks,), (self.threads_per_block,),
-            (self._d_raster, self._d_steps, self._d_cost_factors,
-             self._d_inter_lut, self._d_n_inter,
-             np.int32(self.n_steps), np.int32(self._max_inter_cols),
-             np.int32(self.shape[0]), np.int32(self.shape[1]),
-             np.int32(self._max_cost),
-             self._d_dist, pred_arg, np.float32(self.delta),
-             np.int32(self.n_pixels), np.int32(self.chunk),
-             targets_arg, np.int32(n_targets), np.float32(margin),
-             self._d_ctl, self._d_wres, self._d_rres, self._d_arena,
-             np.int32(self.cap),
-             self._dem_arg, self._grad_lut_arg, self._grad_bf_arg,
-             self._grad_sl_arg, np.int32(self._grad_n_bins)),
-            shared_mem=self.smem_bytes)
+        args = (self._d_raster, self._d_steps, self._d_cost_factors,
+                self._d_inter_lut, self._d_n_inter,
+                np.int32(self.n_steps), np.int32(self._max_inter_cols),
+                np.int32(self.shape[0]), np.int32(self.shape[1]),
+                np.int32(self._max_cost),
+                self._d_dist, pred_arg, np.float32(self.delta),
+                np.int32(self.n_pixels), np.int32(self.chunk),
+                targets_arg, np.int32(n_targets), np.float32(margin),
+                self._d_ctl, self._d_wres, self._d_rres, self._d_arena,
+                np.int32(self.cap),
+                self._d_far_a, self._d_far_b, np.int32(self.far_cap),
+                self._dem_arg, self._grad_lut_arg, self._grad_bf_arg,
+                self._grad_sl_arg, np.int32(self._grad_n_bins))
+        if need_pred:
+            self._kernel((self._max_blocks,), (self.threads_per_block,),
+                         args, shared_mem=self.smem_bytes)
+        else:
+            self._launch_fast(args)
 
         if need_pred:
+            # low 32-bit words (little-endian: the even int32 lanes)
+            self._d_pred[...] = pred64.view(cp.int32)[0::2]
+            del pred64
             self._pred_source = source_idx
             if full_repair:
                 self._run_full_repair(source_idx)
@@ -2761,6 +2823,65 @@ class GpuSsspSession:
             return None
         return _transfer_results(
             self._d_dist, self._d_pred, bool(return_predecessor))
+
+    def solve_seeded(
+            self,
+            seed_idx: np.ndarray,
+            seed_dist: np.ndarray | None = None,
+            *,
+            margin: float = 1.00001,
+    ) -> np.ndarray:
+        """Full float32 field ``min_k seed_dist[k] + d(seed_idx[k], v)`` from many seeds.
+
+        The V5 kernel rebuilds its frontier from ``dist[]`` at every span
+        boundary, so every seed is placed in ``dist`` before the launch; no
+        host-side frontier is needed. Seeds on impassable cells are refused,
+        repeated seeds keep the smallest label. No predecessor is kept.
+
+        Float32 arithmetic: use the result as a bound with a rounding margin
+        (``k_max * 3 * 2**-24`` relative, k_max the largest number of steps on a
+        shortest path; 3 u covers the cost factor, the product and the addition), never as an exact value.
+        """
+        self._check_open()
+        seeds = np.asarray(seed_idx, dtype=np.int64).ravel()
+        if seeds.size == 0:
+            raise InvalidInputError("solve_seeded needs at least one seed")
+        if seeds.min() < 0 or seeds.max() >= self.n_pixels:
+            raise InvalidInputError("a seed index lies outside the raster")
+        d0 = (np.zeros(seeds.size, dtype=np.float32) if seed_dist is None
+              else np.asarray(seed_dist, dtype=np.float32).ravel())
+        if d0.size != seeds.size or not np.isfinite(d0).all() or (d0 < 0).any():
+            raise InvalidInputError("seed_dist must be finite, non-negative, one per seed")
+        if not self._float_raster:
+            flat = np.asarray(self._raster_host).reshape(-1)
+            if (flat[seeds] == self._max_cost).any():
+                raise InvalidInputError("a seed lies on an impassable cell")
+        order = np.lexsort((d0, seeds))                  # per cell, the smallest label first
+        seeds, d0 = seeds[order], d0[order]
+        first = np.r_[True, seeds[1:] != seeds[:-1]]
+        seeds, d0 = seeds[first], d0[first]
+
+        self._reset_state(False)
+        self._pred_source = None
+        self._d_dist[cp.asarray(seeds)] = cp.asarray(d0)
+        _, n_targets, targets_arg = _prepare_v4_targets(None)
+        self._launch_fast(
+            (self._d_raster, self._d_steps, self._d_cost_factors,
+             self._d_inter_lut, self._d_n_inter,
+             np.int32(self.n_steps), np.int32(self._max_inter_cols),
+             np.int32(self.shape[0]), np.int32(self.shape[1]),
+             np.int32(self._max_cost),
+             self._d_dist, np.intp(0), np.float32(self.delta),
+             np.int32(self.n_pixels), np.int32(self.chunk),
+             targets_arg, np.int32(n_targets), np.float32(margin),
+             self._d_ctl, self._d_wres, self._d_rres, self._d_arena,
+             np.int32(self.cap),
+             self._d_far_a, self._d_far_b, np.int32(self.far_cap),
+             self._dem_arg, self._grad_lut_arg, self._grad_bf_arg,
+             self._grad_sl_arg, np.int32(self._grad_n_bins)))
+        cp.cuda.Stream.null.synchronize()
+        self._full_field = False
+        return _transfer_results(self._d_dist, None, False)
 
     def _run_full_repair(self, source_idx: int) -> None:
         """Validate/repair every pred entry against the final dist.
@@ -2791,7 +2912,7 @@ class GpuSsspSession:
             target_indices,
             *,
             repair: bool = True,
-    ) -> Tuple[list, np.ndarray]:
+    ) -> tuple[list, np.ndarray]:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         """Walk pred on the device and download only the chains.
 
@@ -2824,7 +2945,7 @@ class GpuSsspSession:
         self._check_open()
         source_idx = int(source_idx)
         if self._d_pred is None or self._pred_source != source_idx:
-            raise RuntimeError(
+            raise PyorpsRuntimeError(
                 "no predecessor field on the device for source "
                 f"{source_idx}; call solve(..., download=False) or "
                 "solve(..., return_predecessor=True) first")
@@ -2933,7 +3054,7 @@ class GpuSsspSession:
             target_indices,
             *,
             margin: float = 1.00001,
-    ) -> Tuple[list, np.ndarray]:
+    ) -> tuple[list, np.ndarray]:
         """Solve, then return only the target paths and their costs.
 
         The O(path) query: no full-raster download (item 1.3) and no
@@ -2950,19 +3071,19 @@ def sssp_raster_gpu_v5(
         raster: np.ndarray,
         steps: np.ndarray,
         source_idx: int,
-        delta: Union[float, str] = "auto",
+        delta: float | str = "auto",
         ignore_max: bool = True,
-        target_indices: Optional[np.ndarray] = None,
+        target_indices: np.ndarray | None = None,
         margin: float = 1.00001,
         return_predecessor: bool = False,
         threads_per_block: int = 256,
         blocks_per_sm: int = 2,
         chunk: int = 256,
-        dem: Optional[np.ndarray] = None,
+        dem: np.ndarray | None = None,
         gradient_luts=None,
-        session: Optional["GpuSsspSession"] = None,
+        session: GpuSsspSession | None = None,
         arena_factor: float = _V5_DEFAULT_ARENA_FACTOR,
-) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """V5 asynchronous bucket-queue SSSP. Same API as sssp_raster_gpu.
 
@@ -2987,11 +3108,12 @@ def sssp_raster_gpu_v5(
         shape is checked against it. When omitted a session is built for
         this call and freed on return -- i.e. exactly the pre-1.2
         behaviour.
+
     arena_factor: ring-arena sizing (see :func:`_v5_arena_cap`).
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if not GPU_AVAILABLE:
-        raise RuntimeError("CUDA GPU not available: pip install cupy-cuda12x")
+        raise gpu_not_available_error("CUDA GPU not available: pip install cupy-cuda12x")
 
     own_session = session is None
     if own_session:
@@ -3017,17 +3139,17 @@ def sssp_raster_gpu_paths(
         steps: np.ndarray,
         source_idx: int,
         target_indices: np.ndarray,
-        delta: Union[float, str] = "auto",
+        delta: float | str = "auto",
         ignore_max: bool = True,
         margin: float = 1.00001,
         threads_per_block: int = 256,
         blocks_per_sm: int = 2,
         chunk: int = 256,
-        dem: Optional[np.ndarray] = None,
+        dem: np.ndarray | None = None,
         gradient_luts=None,
-        session: Optional["GpuSsspSession"] = None,
+        session: GpuSsspSession | None = None,
         arena_factor: float = _V5_DEFAULT_ARENA_FACTOR,
-) -> Tuple[list, np.ndarray]:
+) -> tuple[list, np.ndarray]:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """Solve and return only the target paths and their costs (item 1.3).
 
@@ -3040,7 +3162,7 @@ def sssp_raster_gpu_paths(
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if not GPU_AVAILABLE:
-        raise RuntimeError("CUDA GPU not available: pip install cupy-cuda12x")
+        raise gpu_not_available_error("CUDA GPU not available: pip install cupy-cuda12x")
     own_session = session is None
     if own_session:
         session = GpuSsspSession(

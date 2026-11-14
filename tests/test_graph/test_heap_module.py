@@ -10,16 +10,14 @@ Covers:
 """
 
 import pytest
-
 from pyorps.utils._heap import (
     PyBinaryHeap32,
     PyBinaryHeap64,
-    py_ravel_index,
-    py_unravel_index,
-    py_round_up_power_of_two,
     py_get_circular_index,
+    py_ravel_index,
+    py_round_up_power_of_two,
+    py_unravel_index,
 )
-
 
 # ==================== PyBinaryHeap32 ====================
 

@@ -76,6 +76,97 @@ def group_by_proximity_uint32(np.ndarray[uint32_t, ndim=1] source_indices,
     return sorted_indices
 
 
+# ==================== BOUNDED PATH RECONSTRUCTION ====================
+#
+# Every predecessor walk in this module goes through _walk_prev(), the
+# int32 counterpart of walk_path() in _delta_stepping.pyx. A simple path
+# visits each cell at most once, so a chain that has not ended after
+# len(prev) cells runs in a cycle; it raises PyorpsRuntimeError instead of
+# counting forever (the old open-coded length loops) or writing past the
+# path buffer it sized from that count.
+
+cdef int64_t _prev_chain_length(int32_t[:] prev, uint32_t start,
+                                int64_t stop) noexcept:
+    """Number of cells on the chain ``start -> prev[start] -> ...``.
+
+    ``stop >= 0``: the chain ends at cell ``stop`` (the single root); 0 when
+    it reaches a cell without predecessor (``-1``) first, i.e. no path.
+    ``stop < 0``: the chain ends at the first cell whose predecessor is
+    ``-1`` (the seed that owns ``start``). -1 when the chain has not ended
+    after ``len(prev)`` cells: it runs in a cycle. ``start`` and every
+    predecessor id must lie in ``[0, len(prev))`` or be ``-1``.
+    """
+    cdef int64_t n = <int64_t>prev.shape[0]
+    cdef int64_t count = 1
+    cdef int32_t p
+    cdef uint32_t current = start
+    while True:
+        if stop >= 0 and <int64_t>current == stop:
+            return count
+        p = prev[current]
+        if p < 0:
+            return count if stop < 0 else 0
+        if count >= n:
+            return -1
+        current = <uint32_t>p
+        count += 1
+
+
+cdef object _raise_prev_cycle(uint32_t start, int64_t stop, int64_t n_cells):
+    # Imported here, as in _delta_stepping.pyx: pyorps.core pulls in modules
+    # that import this one.
+    from pyorps.core.exceptions import PyorpsRuntimeError
+    end = (f"the root cell {stop}" if stop >= 0
+           else "a cell without predecessor")
+    raise PyorpsRuntimeError(
+        f"The predecessor chain from cell {start} does not reach {end} "
+        f"within {n_cells} cells: the predecessor field contains a cycle. "
+        f"This is a solver defect; please report it together with the "
+        f"raster.")
+
+
+cdef np.ndarray _walk_prev(int32_t[:] prev, uint32_t start, int64_t stop):
+    """Path root -> ``start`` (uint32 cell ids) from an int32 ``prev`` array.
+
+    See :func:`_prev_chain_length` for ``stop``. Empty when the chain ends
+    before ``stop``, PyorpsRuntimeError when it runs in a cycle.
+    """
+    cdef int64_t n = _prev_chain_length(prev, start, stop)
+    cdef int64_t k
+    cdef uint32_t current
+    cdef np.ndarray[uint32_t, ndim=1] out
+    if n < 0:
+        _raise_prev_cycle(start, stop, <int64_t>prev.shape[0])
+    if n == 0:
+        return np.empty(0, dtype=np.uint32)
+    out = np.empty(n, dtype=np.uint32)
+    current = start
+    for k in range(n - 1, -1, -1):
+        out[k] = current
+        if k > 0:
+            current = <uint32_t>prev[current]
+    return out
+
+
+def _walk_prev_path(prev, int64_t start, int64_t stop=-1):
+    """Test hook: :func:`_walk_prev` on a caller-built int32 predecessor array.
+
+    ``stop >= 0`` walks to that root cell (``DijkstraSolver`` after
+    ``reset_root``); ``stop = -1`` walks to the first cell without
+    predecessor (``reset_roots`` and ``MultiSourceSolver.path_to_root``).
+    Not a public API.
+    """
+    from pyorps.core.exceptions import InvalidInputError
+    cdef np.ndarray[int32_t, ndim=1] arr = np.ascontiguousarray(
+        prev, dtype=np.int32).ravel()
+    cdef int64_t n = <int64_t>arr.shape[0]
+    if n == 0 or start < 0 or start >= n or stop >= n:
+        raise InvalidInputError("start or stop lies outside the array")
+    if np.any((arr < -1) | (arr >= n)):
+        raise InvalidInputError("a predecessor id lies outside the array")
+    return _walk_prev(arr, <uint32_t>start, stop)
+
+
 # ==================== DIJKSTRA SOLVER CLASS ====================
 
 cdef class DijkstraSolver:
@@ -199,29 +290,13 @@ cdef class DijkstraSolver:
         """
         Reconstruct path from prev array.
 
-        Written once, used by all methods. Returns empty array if no path exists.
+        Written once, used by all methods. Returns empty array if no path
+        exists; raises PyorpsRuntimeError if the chain runs in a cycle
+        (see _walk_prev).
         """
         if self.prev[target] == -1:
             return np.empty(0, dtype=np.uint32)
-
-        cdef int path_length = 1
-        cdef uint32_t current = target
-        while current != source:
-            current = self.prev[current]
-            path_length += 1
-
-        cdef np.ndarray[uint32_t, ndim=1] path = np.empty(path_length, dtype=np.uint32)
-        current = target
-        cdef int idx = path_length - 1
-
-        while True:
-            path[idx] = current
-            if current == source:
-                break
-            current = self.prev[current]
-            idx -= 1
-
-        return path
+        return _walk_prev(self.prev, target, <int64_t>source)
 
     def reset_root(self, uint32_t source_idx):
         """Wipe labels and seed a new single-source search at ``source_idx``."""
@@ -400,27 +475,13 @@ cdef class DijkstraSolver:
 
         Walks predecessors until one is ``-1``: with several roots there
         is no single source to stop at, and reading ``prev == -1`` as a
-        uint32 cell id would run off the array.
+        uint32 cell id would run off the array. Raises PyorpsRuntimeError
+        if the chain runs in a cycle (see _walk_prev).
         """
         if (target >= <uint32_t>self.visited.shape[0]
                 or self.visited[target] == 0):
             return np.empty(0, dtype=np.uint32)
-        cdef int length = 1
-        cdef uint32_t walk = target
-        while self.prev[walk] != -1:
-            walk = <uint32_t>self.prev[walk]
-            length += 1
-        cdef np.ndarray[uint32_t, ndim=1] out = np.empty(length,
-                                                         dtype=np.uint32)
-        cdef int idx = length - 1
-        walk = target
-        while True:
-            out[idx] = walk
-            if self.prev[walk] == -1:
-                break
-            walk = <uint32_t>self.prev[walk]
-            idx -= 1
-        return out
+        return _walk_prev(self.prev, target, -1)
 
     @property
     def expansion_count(self):
@@ -1704,6 +1765,8 @@ cdef class MultiSourceSolver:
         route: consecutive entries differ by one entry of the direction table.
         Raises when the last solve kept no predecessors (a lean solver, or
         ``solve_stream(keep_prev=False)``): there is no forest to walk.
+        Raises PyorpsRuntimeError if the chain runs in a cycle (see
+        _walk_prev).
         """
         if self.visited.shape[0] == 0 or cell >= <uint32_t>self.visited.shape[0]:
             return np.empty(0, dtype=np.uint32)
@@ -1714,24 +1777,7 @@ cdef class MultiSourceSolver:
                 "solve_stream(keep_prev=True)")
         if self.visited[cell] == 0:
             return np.empty(0, dtype=np.uint32)
-
-        cdef int length = 1
-        cdef uint32_t walk = cell
-        while self.prev[walk] != -1:
-            walk = <uint32_t>self.prev[walk]
-            length += 1
-
-        cdef np.ndarray[uint32_t, ndim=1] out = np.empty(length,
-                                                         dtype=np.uint32)
-        cdef int idx = length - 1
-        walk = cell
-        while True:
-            out[idx] = walk
-            if self.prev[walk] == -1:
-                break
-            walk = <uint32_t>self.prev[walk]
-            idx -= 1
-        return out
+        return _walk_prev(self.prev, cell, -1)
 
     # ---------- boundary extraction ----------
 

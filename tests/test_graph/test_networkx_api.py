@@ -1,8 +1,9 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 
-from pyorps.core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
+from pyorps.core.exceptions import AlgorithmNotImplementedError, NoPathFoundError
 from pyorps.graph.api.networkx_api import NetworkxAPI
 
 
@@ -40,7 +41,7 @@ class TestNetworkxAPI(unittest.TestCase):
             mock_graph = MagicMock()
             mock_graph_cls.return_value = mock_graph
 
-            api = NetworkxAPI(
+            NetworkxAPI(
                 self.raster_data,
                 self.steps,
                 from_nodes=self.from_nodes,
@@ -60,7 +61,7 @@ class TestNetworkxAPI(unittest.TestCase):
             mock_digraph = MagicMock()
             mock_digraph_cls.return_value = mock_digraph
 
-            api = NetworkxAPI(
+            NetworkxAPI(
                 self.raster_data,
                 self.steps,
                 from_nodes=self.from_nodes,
@@ -82,7 +83,7 @@ class TestNetworkxAPI(unittest.TestCase):
             mock_graph_cls.return_value = mock_graph
 
             # Call create_graph with None for cost
-            api = NetworkxAPI(
+            NetworkxAPI(
                 self.raster_data,
                 self.steps,
                 from_nodes=self.from_nodes,
@@ -177,7 +178,8 @@ class TestNetworkxAPI(unittest.TestCase):
     def test_shortest_path_astar(self):
         """Test shortest_path with A* algorithm."""
         # Create a heuristic function
-        heuristic = lambda u, v: abs(u - v)
+        def heuristic(u, v):
+            return abs(u - v)
 
         # Patch the internal method
         with patch.object(self.api, '_compute_single_path') as mock_compute:

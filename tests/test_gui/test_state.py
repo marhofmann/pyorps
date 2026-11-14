@@ -1,8 +1,6 @@
 """Unit tests: ProjectState layer CRUD, ordering, views."""
 import pytest
 
-from pyorps.gui.state import ProjectState
-
 
 def test_add_and_order(state):
     a = state.add_layer("A", "vector")

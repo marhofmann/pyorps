@@ -12,7 +12,8 @@ raster:
 import numpy as np
 import pytest
 
-from pyorps.certify import boundary_cells, certify_path_field, drain
+from pyorps.certify import certify_path_field
+from pyorps.graph.drain import boundary_cells, drain
 from pyorps.utils.neighborhood import get_neighborhood_steps
 
 TOL = 1e-9

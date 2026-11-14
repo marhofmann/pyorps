@@ -3,10 +3,10 @@ PYORPS: An Open-Source Tool for Automated Power Line Routing
 
 References:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
-    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
+Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 [2] Goodchild, M. F.: 'An evaluation of lattice solutions to the problem of corridor
-    location', Environment and Planning A: Economy and Space, 1977, 9, (7), pp 727-738
+location', Environment and Planning A: Economy and Space, 1977, 9, (7), pp 727-738
 """
 
 import math
@@ -14,13 +14,56 @@ import re
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError, InvalidTypeError
+
+#: Largest neighbourhood order: the steps are stored as int8.
+MAX_NEIGHBORHOOD_K = 127
+
+#: What get_neighborhood_steps accepts, for error messages.
+NEIGHBORHOOD_FORMS = (
+    f"an integer K with 0 <= K <= {MAX_NEIGHBORHOOD_K}, or a string that "
+    f"ends in K after an optional non-digit prefix, such as 'r2', 'R3' or "
+    f"'8'")
+
+# A string neighbourhood: optional non-digit prefix ("r", "R", "k=", ...),
+# then the order K, then nothing else.
+_NEIGHBORHOOD_RE = re.compile(r'\D*(\d+)')
+
+
+def _neighborhood_order(k) -> int:
+    """The order K encoded by ``k``; raises with the allowed forms."""
+    if isinstance(k, str):
+        match = _NEIGHBORHOOD_RE.fullmatch(k.strip())
+        if match is None:
+            raise InvalidInputError(
+                f"Invalid neighbourhood {k!r}: expected {NEIGHBORHOOD_FORMS}.")
+        return int(match.group(1))
+    if isinstance(k, (bool, np.bool_)):
+        raise InvalidTypeError(
+            f"Invalid neighbourhood {k!r}: expected {NEIGHBORHOOD_FORMS}.")
+    if isinstance(k, (int, np.integer)):
+        return int(k)
+    if isinstance(k, (float, np.floating)):
+        if math.isfinite(k) and float(k).is_integer():
+            return int(k)
+        raise InvalidInputError(
+            f"Invalid neighbourhood {k!r}: expected {NEIGHBORHOOD_FORMS} "
+            f"(a float must be a whole number).")
+    raise InvalidTypeError(
+        f"Invalid neighbourhood {k!r} of type {type(k).__name__}: expected "
+        f"{NEIGHBORHOOD_FORMS}.")
+
 
 def get_neighborhood_steps(k: int | str, directed: bool = True) -> np.ndarray:
     """
     Generate the steps for a k-neighborhood.
 
     Parameters:
-        k (Union[int, str]): The neighborhood parameter (k >= 0)
+        k (Union[int, str]): The neighborhood order K, 0 <= K <= 127, as an
+            integer (a whole-number float is accepted) or as a string that
+            ends in K after an optional non-digit prefix ("r2", "R3", "8",
+            "k=1"). Anything after K, a missing K, a fractional float or a
+            bool is rejected.
         directed (bool): If True, includes all possible step directions;
                          if False, includes a minimal set of steps that ensures
                          bidirectional connectivity in the graph
@@ -28,21 +71,23 @@ def get_neighborhood_steps(k: int | str, directed: bool = True) -> np.ndarray:
     Returns:
         np.ndarray: A numpy array with dtype int8 containing all steps
 
+    Raises:
+        ValueError: If ``k`` has an allowed type but an invalid value.
+        TypeError: If ``k`` has an unsupported type.
+
     References:
         [1]
     """
-    if isinstance(k, str):
-        numbers = re.findall(r'^\D*(\d+)', k)
-        if not numbers:
-            raise ValueError("k must be an integer or neighbourhood string!")
-        _k = int(numbers[0])
-    else:
-        _k = k
+    _k = _neighborhood_order(k)
 
     if _k < 0:
-        raise ValueError("k must be non-negative")
-    if _k > 127:
-        raise ValueError("k is too large for int8 dtype (max value is 127)")
+        raise InvalidInputError(
+            f"Invalid neighbourhood {k!r}: K must be non-negative; expected "
+            f"{NEIGHBORHOOD_FORMS}.")
+    if _k > MAX_NEIGHBORHOOD_K:
+        raise InvalidInputError(
+            f"Invalid neighbourhood {k!r}: K={_k} is too large for the int8 "
+            f"steps; expected {NEIGHBORHOOD_FORMS}.")
 
     # Generate all steps with full directionality
     steps = _generate_full_steps(_k, {}, directed)
@@ -195,7 +240,7 @@ def elongation_error(theta_j: float, theta_j_plus_1: float, phi: float) -> float
     denominator = math.sin(theta_j_plus_1 - theta_j)
 
     if abs(denominator) < 1e-10:
-        raise ValueError("Denominator is zero, directions may be identical")
+        raise InvalidInputError("Denominator is zero, directions may be identical")
 
     return numerator / denominator
 
@@ -222,7 +267,7 @@ def max_deviation(theta_j: float, theta_j_plus_1: float, phi: float) -> float:
     denominator = math.sin(theta_j_plus_1 - theta_j)
 
     if abs(denominator) < 1e-10:
-        raise ValueError("Denominator is zero, directions may be identical")
+        raise InvalidInputError("Denominator is zero, directions may be identical")
 
     return numerator / denominator
 

@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 import numba as nb
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError
 from pyorps.utils.metric_edges import _intermediate_offsets
 
 __all__ = ["evaluate_path_metrics", "PathEvaluation"]
@@ -240,11 +241,11 @@ def evaluate_path_metrics(
     path_rows = np.ascontiguousarray(path_rows, dtype=np.int64)
     path_cols = np.ascontiguousarray(path_cols, dtype=np.int64)
     if path_rows.shape[0] != path_cols.shape[0]:
-        raise ValueError("path_rows and path_cols must have equal length")
+        raise InvalidInputError("path_rows and path_cols must have equal length")
 
     names = list(layers)
     if not names:
-        raise ValueError("evaluate_path_metrics needs at least one layer")
+        raise InvalidInputError("evaluate_path_metrics needs at least one layer")
 
     # Everything below reads ONLY the cells the path touches (plan item
     # 1.1): gathering ~6 values per segment replaces K full-window float32

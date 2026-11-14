@@ -1,5 +1,4 @@
 """Tests for pyorps.utils.linestring_simplify."""
-import math
 import pytest
 from shapely.geometry import LineString
 
@@ -92,3 +91,14 @@ def test_grid_tolerance_zero_is_identity():
     line = LineString([(0.1, 0.2), (1.4, 0.8)])
     simplified = simplify_linestring(line, method="grid", tolerance=0.0)
     assert list(simplified.coords) == [(0.1, 0.2), (1.4, 0.8)]
+
+
+def test_a_method_without_a_branch_is_a_consistency_error(monkeypatch):
+    """The last line of ``simplify_linestring`` is an invariant: a method that
+    passes the name check must have a branch. Only a patched name list reaches it."""
+    from pyorps.core.exceptions import ConsistencyCheckError
+    from pyorps.utils import linestring_simplify as module
+    monkeypatch.setattr(module, "_METHODS", (*module._METHODS, "no_branch"))
+    line = LineString([(0, 0), (1, 1), (2, 0)])
+    with pytest.raises(ConsistencyCheckError, match="no_branch"):
+        simplify_linestring(line, method="no_branch", tolerance=1.0)

@@ -73,6 +73,7 @@ import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
+from pyorps.core.exceptions import InvalidInputError
 
 __all__ = [
     "INF",
@@ -116,9 +117,9 @@ class CableType:
         # Negative prices or resistances break both the engines' bound
         # (A <= B) and Dijkstra's non-negative weights (review 2026-09-24).
         if not self.ampacity_a > 0:  # pylint: disable=unnecessary-negation  # NaN must fail the check
-            raise ValueError(f"{self.name}: ampacity_a must be > 0")
+            raise InvalidInputError(f"{self.name}: ampacity_a must be > 0")
         if not (self.cost_eur_per_m >= 0 and self.r_ohm_per_m >= 0):
-            raise ValueError(f"{self.name}: cost and resistance must be >= 0")
+            raise InvalidInputError(f"{self.name}: cost and resistance must be >= 0")
 
 
 @dataclass(frozen=True)
@@ -153,30 +154,30 @@ class CollectorModel:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         full = 1 << self.n
         if len(self.current_a) != full or len(self.loss_weight) != full:
-            raise ValueError(
+            raise InvalidInputError(
                 f"current_a and loss_weight need 2**n = {full} entries "
                 f"(indexed by turbine bitmask)")
         if not self.types:
-            raise ValueError("the catalogue is empty")
+            raise InvalidInputError("the catalogue is empty")
         if any(not c >= 0 for c in self.current_a):
-            raise ValueError("current_a must be >= 0 (and not NaN)")
+            raise InvalidInputError("current_a must be >= 0 (and not NaN)")
         if any(not w >= 0 for w in self.loss_weight):
-            raise ValueError("loss_weight must be >= 0 (and not NaN)")
+            raise InvalidInputError("loss_weight must be >= 0 (and not NaN)")
         if any(not f > 0 for f in self.derating):  # pylint: disable=unnecessary-negation  # NaN must fail the check
-            raise ValueError("derating factors must be > 0")
+            raise InvalidInputError("derating factors must be > 0")
         if self.p_max < 1:
-            raise ValueError("p_max must be >= 1")
+            raise InvalidInputError("p_max must be >= 1")
         if not self.derating or self.derating[0] != 1.0:
-            raise ValueError("derating[0] is f(1) and must be 1.0")
+            raise InvalidInputError("derating[0] is f(1) and must be 1.0")
         if any(b > a for a, b in zip(self.derating, self.derating[1:])):
-            raise ValueError("derating must be non-increasing in m")
+            raise InvalidInputError("derating must be non-increasing in m")
         if self.m_max is not None and self.m_max < 1:
-            raise ValueError("m_max must be >= 1 or None")
+            raise InvalidInputError("m_max must be >= 1 or None")
         for name in ("sigma_eur_per_m", "turbine_panel_eur",
                      "station_building_eur", "station_panel_eur", "bay_eur",
                      "loss_coef"):
             if getattr(self, name) < 0:
-                raise ValueError(f"{name} must be >= 0")
+                raise InvalidInputError(f"{name} must be >= 0")
         opts = tuple((ti, p) for p in range(1, self.p_max + 1)
                      for ti in range(len(self.types)))
         object.__setattr__(self, "_options", opts)

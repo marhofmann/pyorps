@@ -1,0 +1,55 @@
+# The 110 kV cable leg from the substation to a grid connection point (plan 2026-09-23-proven-optimal-substation-full-cost.md
+# section 3.3, term 9; plan 2026-10-06-paper-run-pipeline.md stage S2).
+#
+# Owner decisions: digging (civil) cost is the SAME for 20/30/33 kV and 110 kV, so the 110 kV leg is routed on the SAME
+# priced 1 m trench raster as the collector; only the material differs (shared trenches matter for the collector only);
+# ONE circuit on the 110 kV side, no trench sharing; the 110 kV leg is never cheaper per metre than the collector.
+#
+# Weight of one metre of route in a cell:   (1 + omega) * c(cell)  +  rho
+#   c(cell)  the priced trench rate of cost_priced_1m.tif (EUR per metre, consent pricing included, 65535 forbidden);
+#   omega    capitalised O&M multiple of the cable asset class (catalogue O&M share x annuity factor), as for the collector;
+#   rho      the per-metre part that does not depend on the cell:  3 cores x material(section) x (1 + omega)
+#            + capitalised losses  loss_coef(110 kV) * R_L(section) * W(all)   [W(all): the joint power-category table of
+#            the whole farm, built from the hourly wind record with wake and wind direction and the turbine time series
+#            (build_loss_categories.py), the same table the collector uses].
+# rho is the same in every cell, so the cheapest section is route-independent and chosen once.
+#
+# Statuses as in collector_inputs_2026.yaml (sourced, decided, catalogue, derived, assumption).
+
+meta:
+  date: 2026-10-06
+  note: >-
+    Second fill (the first one priced the trench from the catalogue civil base and terrain multipliers, which could come
+    out below the collector's trench rate; it was withdrawn). Items the plan lists for the 110 kV cable but the catalogue
+    has no key for (joints, cross-bonding, easement, fibre, dielectric loss) are priced at zero and listed below; the
+    cable ends and the bay belong to the connection-point term, not to the per-metre weight.
+
+route:
+  circuits:
+    {value: 1, status: decided, source: "owner 2026-10-06: a single 110 kV line is sufficient; no trench sharing, no parallel circuit"}
+  trench_raster:
+    {value: cost_priced_1m, status: decided, source: "owner 2026-10-06: MV and HV digging cost is the same, the same raster is used"}
+  mode:
+    {value: cable, status: assumption, source: "cable field only; overhead and mixed legs are a separate bound; the legal predicate (EnWG 43h, 2.75 x) is checked on the winner"}
+
+  terminal:
+    {value: nearest_allowed_cells, status: decided, source: "owner 2026-10-06 (D-h): no site or route on forbidden cells; a connection point on a forbidden cell is reached at the allowed cells nearest to it, gap recorded not priced"}
+
+cable:
+  cores_per_circuit:
+    {catalogue_key: underground_cable_civil.cores_per_circuit_multiplier.hv_110kv_single_core_cables, status: catalogue}
+  om_share_of_capex:
+    {catalogue_key: personnel_and_om.om_annual_pct_of_capex, status: catalogue}
+  material_eur_per_m_per_core:
+    value: {240: 100, 300: 110, 400: 130, 500: 150, 630: 175}
+    status: sourced
+    source: "owner's table TopoMILP/examples/cost_assumptions/cost_assumptions_for_hv_lines.csv: midpoints of 90-110, 100-120, 120-140, 140-160, 160-190 EUR/m per single-core 110 kV XLPE cable, equipment only, 2024-25"
+  sections_mm2:
+    {value: [240, 300, 400, 500, 630], status: decided, source: "the sections both the price table and voltage_2026.yaml (aluminium conductor resistance) list"}
+  ampacity_ok:
+    {value: true, status: assumption, source: "every listed section carries the plant current (about 0.26 kA at 110 kV for 47.6 MW)"}
+  unpriced_per_metre_items:
+    value: [joints, cross_bonding, easement, fibre, dielectric_loss]
+    status: assumption
+    source: "plan 3.3 lists them; the catalogue has no keys (review V6-L2); priced at zero until it has"
+  voltage_data_file: voltage_2026.yaml

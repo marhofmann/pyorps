@@ -1,13 +1,21 @@
 # test_utils/test_traversal.py
 import unittest
+
 import numpy as np
 
 from pyorps.utils.traversal import (
-    intermediate_steps_numba, get_cost_factor_numba, ravel_index,
-    calculate_region_bounds, calculate_segment_length,
-    get_max_number_of_edges, calculate_path_metrics_numba,
-    euclidean_distances_numba, is_valid_node, find_valid_nodes,
-    construct_edges, get_outgoing_edges
+    calculate_path_metrics_numba,
+    calculate_region_bounds,
+    calculate_segment_length,
+    construct_edges,
+    euclidean_distances_numba,
+    find_valid_nodes,
+    get_cost_factor_numba,
+    get_max_number_of_edges,
+    get_outgoing_edges,
+    intermediate_steps_numba,
+    is_valid_node,
+    ravel_index,
 )
 
 
@@ -685,8 +693,7 @@ class TestNewTraversalFunctions(unittest.TestCase):
 
     def test_integration_check_and_correct(self):
         """Test integration of check_max_values and find_nearest_valid_positions_numba."""
-        from pyorps.utils.traversal import check_max_values, \
-            find_nearest_valid_positions_numba
+        from pyorps.utils.traversal import check_max_values, find_nearest_valid_positions_numba
 
         # Create a path that goes through some invalid cells
         path_indices_2d = np.array([
@@ -764,8 +771,7 @@ class TestNewTraversalFunctions(unittest.TestCase):
 
     def test_different_max_values(self):
         """Test both functions with different max values."""
-        from pyorps.utils.traversal import check_max_values, \
-            find_nearest_valid_positions_numba
+        from pyorps.utils.traversal import check_max_values, find_nearest_valid_positions_numba
 
         # Test with a different max value
         custom_max = 1000

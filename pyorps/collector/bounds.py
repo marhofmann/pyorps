@@ -222,8 +222,8 @@ def rho_hat_lower_bound_raster(values, steps, cell_m: float, turbines,
         even the relaxation is infeasible.
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    from pyorps.certify.windows import EXCLUDED, drain
     from pyorps.collector.raster import _step_weights
+    from pyorps.graph.drain import EXCLUDED, drain
 
     v = np.asarray(values)
     rows, cols = v.shape
@@ -353,7 +353,7 @@ def completion_bounds_raster(values, steps, cell_m: float, turbines,
     Returns:
         ``{k: array}`` in CELL units (EUR / ``cell_m``), ``k = 1..n``.
     """
-    from pyorps.certify.windows import EXCLUDED, drain
+    from pyorps.graph.drain import EXCLUDED, drain
 
     v = np.asarray(values)
     N = v.size

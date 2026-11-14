@@ -10,14 +10,32 @@ when the layer is served; the routing raster itself is written by pyorps).
 """
 from __future__ import annotations
 
+import copy
+import dataclasses
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .. import presets
+from . import jobs
 from .cost_model import wrap_assumptions
+from .jobs import JobCancelled
+
+#: a build of more than this many cells runs as a background job with a Stop
+#: button (callbacks/raster_job.py); a smaller one runs inside its callback
+RASTERIZE_BACKGROUND_CELLS = 20_000_000
+#: the key of the background job in ``ProjectState.jobs`` (the one the page's
+#: ``layout.JOB_CONTROLS`` knows) and the name the user reads in its status
+JOB_KIND = "rasterize"
+JOB_LABEL = "Rasterizing"
+
+
+def is_heavy(n_cells: int) -> bool:
+    """Does a raster of ``n_cells`` cells go to a background job? Reads the threshold when called."""
+    return n_cells > RASTERIZE_BACKGROUND_CELLS
 
 
 @dataclass
@@ -35,7 +53,13 @@ class ModifierSpec:
     mode: str = "multiply"            # "multiply" | "override"
     factor: float = 1.0               # scalar multiply factor / override value
     buffer_m: float = 0.0
+    #: cells holding this value are left alone (None: every cell may change)
     ignore_value: float | None = presets.FORBIDDEN
+    #: the library's zone options: features whose ``zone_field`` equals
+    #: ``forbidden_zone`` are burnt as ``forbidden_value`` instead of ``factor``
+    forbidden_value: int = presets.FORBIDDEN
+    zone_field: str | None = None
+    forbidden_zone: Any = None
     name: str = ""
     condition: str = "all features"   # human label of the (column, op, value)
 
@@ -48,12 +72,150 @@ class ModifierSpec:
         return self.gdf is None or len(self.gdf) == 0
 
 
+#: rows hashed per chunk, so the WKB copy of a big layer never exists whole
+_DIGEST_CHUNK = 50_000
+
+
+def _referenced_strings(value: Any) -> set[str]:
+    """Every string anywhere inside ``value`` (dicts / lists / tuples)."""
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, dict):
+        out: set[str] = set()
+        for key, item in value.items():
+            out |= _referenced_strings(key) | _referenced_strings(item)
+        return out
+    if isinstance(value, (list, tuple, set)):
+        out = set()
+        for item in value:
+            out |= _referenced_strings(item)
+        return out
+    return set()
+
+
+def gdf_digest(gdf, columns=None) -> str:
+    """Content fingerprint of a GeoDataFrame: geometry + the named columns.
+
+    Hashes the WKB bytes of the geometries (in chunks, so a big layer is never
+    copied whole) and the values of ``columns`` only (``None`` = geometry
+    only; ``"all"`` = every attribute column). Never serialises to GeoJSON.
+    The feature COUNT alone is not a fingerprint: moving one vertex of a
+    polygon, or reloading a layer that has the same number of features, must
+    not reuse an old raster.
+    """
+    if gdf is None:
+        return "none"
+    import numpy as np
+    import pandas as pd
+    import shapely
+
+    hasher = hashlib.sha256()
+    hasher.update(str(gdf.crs).encode("utf-8"))
+    hasher.update(len(gdf).to_bytes(8, "little"))
+    geometry = gdf.geometry.values
+    for start in range(0, len(geometry), _DIGEST_CHUNK):
+        for wkb in shapely.to_wkb(np.asarray(geometry[start:start + _DIGEST_CHUNK])):
+            hasher.update(wkb if wkb is not None else b"")
+    if isinstance(columns, str) and columns == "all":
+        columns = [c for c in gdf.columns if c != gdf.geometry.name]
+    for column in sorted(c for c in (columns or []) if c in gdf.columns):
+        hasher.update(str(column).encode("utf-8"))
+        values = gdf[column]
+        try:
+            hashed = pd.util.hash_pandas_object(values, index=False)
+        except TypeError:                       # unhashable cells (dict / list)
+            hashed = pd.util.hash_pandas_object(values.astype(str), index=False)
+        hasher.update(hashed.to_numpy().tobytes())
+    return hasher.hexdigest()[:16]
+
+
+def _base_digest(base_gdf, feature_keys, preprocessor, preprocessor_params,
+                 preprocessor_steps) -> str:
+    """Digest of the base layer: geometry + the attribute columns the build
+    can read (the cost keys and any column named in a preprocessing step or
+    parameter; a NAMED preprocessor reads columns by its own names, so every
+    attribute counts then)."""
+    if preprocessor and preprocessor != "none":
+        columns: Any = "all"
+    else:
+        named = (_referenced_strings(list(feature_keys))
+                 | _referenced_strings(preprocessor_params)
+                 | _referenced_strings(preprocessor_steps))
+        columns = [c for c in base_gdf.columns if c in named]
+    return gdf_digest(base_gdf, columns)
+
+
+#: the thin-feature policies of ``GeoRasterizer.rasterize(on_thin_features=)``
+THIN_POLICIES = ("warn", "raise", "ignore")
+
+#: the rasterize settings a project keeps, in the order of the controls:
+#: key -> value of a blank page. They are the library's own defaults, except
+#: the geometry buffer: the GUI starts at 1 m (the library at 0 m) because it
+#: clears most sub-cell parcel defects of cadastral data.
+RASTER_SETTING_DEFAULTS: dict[str, Any] = {
+    "resolution_m": 1.0,
+    "fill_value": presets.FORBIDDEN,
+    "dtype": "uint16",
+    "geometry_buffer_m": 1,
+    "widen_thin_forbidden": False,
+    "all_touched": False,
+    "on_thin_features": "warn",
+    "crop_border": False,
+}
+RASTER_SETTING_KEYS = tuple(RASTER_SETTING_DEFAULTS)
+RASTER_DTYPES = ("uint16", "uint32", "float32")
+
+
+def _finite_number(value: Any, default: Any) -> Any:
+    """``value`` when it is a plain finite number, else ``default``."""
+    import math
+
+    if isinstance(value, (int, float)) and not isinstance(value, bool) \
+            and math.isfinite(value):
+        return value
+    return default
+
+
+def normalise_raster_settings(raw: Any) -> dict[str, Any]:
+    """The rasterize settings of a project file, as the controls take them.
+
+    An older project has none: ``{}``, so the page keeps its own defaults.
+    Otherwise every key is present, and a missing or unusable value falls back
+    to its default (a typed number is kept as typed: the run checks it and
+    names the field).
+    """
+    if not isinstance(raw, dict) or not raw:
+        return {}
+    out = dict(RASTER_SETTING_DEFAULTS)
+    for key in ("resolution_m", "fill_value", "geometry_buffer_m"):
+        out[key] = _finite_number(raw.get(key), RASTER_SETTING_DEFAULTS[key])
+    if raw.get("dtype") in RASTER_DTYPES:
+        out["dtype"] = raw["dtype"]
+    if raw.get("on_thin_features") in THIN_POLICIES:
+        out["on_thin_features"] = raw["on_thin_features"]
+    for key in ("widen_thin_forbidden", "all_touched", "crop_border"):
+        value = raw.get(key)
+        out[key] = value if isinstance(value, bool) else RASTER_SETTING_DEFAULTS[key]
+    return out
+
+
 def config_hash(*, feature_keys, assumptions, resolution_in_m, fill_value,
                 dtype, geometry_buffer_m, bounds, preprocessor,
                 preprocessor_params, modifier_meta, n_features,
-                preprocessor_steps=None) -> str:
+                preprocessor_steps=None, data_digest: str = "",
+                widen_thin_forbidden: bool = False, all_touched: bool = False,
+                on_thin_features: str = "warn",
+                crop_border: bool = False) -> str:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    """Stable hash of everything that changes the raster (cache key)."""
+    """Stable hash of everything that changes the raster (cache key).
+
+    ``data_digest`` is the content fingerprint of the base layer
+    (:func:`gdf_digest`); every modifier carries its own as ``"digest"`` in
+    ``modifier_meta``. The feature counts stay in the key as a cheap extra.
+    The thin-feature switches and the border crop change the burnt cells (or
+    the extent), and the policy decides whether a defect warns or stops the
+    build: a cached raster would hide that, so all four are part of the key.
+    """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     payload = json.dumps({
         "keys": list(feature_keys), "assumptions": assumptions,
@@ -61,9 +223,118 @@ def config_hash(*, feature_keys, assumptions, resolution_in_m, fill_value,
         "buf": geometry_buffer_m, "bounds": bounds,
         "pre": [preprocessor, preprocessor_params],
         "steps": preprocessor_steps or [],
-        "mods": modifier_meta, "n": n_features,
+        "mods": modifier_meta, "n": n_features, "data": data_digest,
+        "thin": [bool(widen_thin_forbidden), bool(all_touched),
+                 on_thin_features, bool(crop_border)],
     }, sort_keys=True, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _config_target(*, base_gdf, assumptions, feature_keys, resolution_in_m,
+                   fill_value, dtype, geometry_buffer_m, bounding_polygon,
+                   preprocessor, preprocessor_params, preprocessor_steps,
+                   modifiers, save_path, work_dir, widen_thin_forbidden,
+                   all_touched, on_thin_features, crop_border):
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+    """``(config hash, file the build writes)`` of one build.
+
+    One place for both ``build_cost_raster`` and ``cached_raster_path``, so
+    the check "is this raster already built?" can never disagree with the
+    build. Creates nothing on disk.
+    """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+    modifier_meta = [{
+        "mode": m.mode, "factor": m.factor, "condition": m.condition,
+        "buf": m.buffer_m, "name": m.name,
+        "n": 0 if m.gdf is None else int(len(m.gdf)),
+        # the modifier's factor is a scalar, so only its geometry is used
+        "digest": gdf_digest(m.gdf),
+        # how it meets cells that are already forbidden, and its zone rule
+        "ignore": m.ignore_value, "forbid": m.forbidden_value,
+        "zone": [m.zone_field, m.forbidden_zone],
+    } for m in modifiers]
+    digest = config_hash(
+        feature_keys=feature_keys, assumptions=assumptions,
+        resolution_in_m=resolution_in_m, fill_value=fill_value, dtype=dtype,
+        geometry_buffer_m=geometry_buffer_m,
+        bounds=(tuple(bounding_polygon.bounds)
+                if bounding_polygon is not None
+                else tuple(base_gdf.total_bounds)),
+        preprocessor=preprocessor, preprocessor_params=preprocessor_params,
+        preprocessor_steps=preprocessor_steps,
+        modifier_meta=modifier_meta, n_features=int(len(base_gdf)),
+        data_digest=_base_digest(base_gdf, feature_keys, preprocessor,
+                                 preprocessor_params, preprocessor_steps),
+        widen_thin_forbidden=widen_thin_forbidden, all_touched=all_touched,
+        on_thin_features=on_thin_features, crop_border=crop_border)
+    if save_path:
+        return digest, Path(save_path)
+    return digest, Path(work_dir) / f"cost_{digest}.tif"
+
+
+def cached_raster_path(*, base_gdf, assumptions: dict,
+                       feature_keys: tuple[str, ...],
+                       resolution_in_m: float = 1.0,
+                       fill_value: int = presets.FORBIDDEN,
+                       dtype: str = "uint16",
+                       geometry_buffer_m: float = 0.0,
+                       bounding_polygon=None,
+                       preprocessor: str | None = None,
+                       preprocessor_params: dict | None = None,
+                       preprocessor_steps: list[dict] | None = None,
+                       modifiers: list[ModifierSpec] | None = None,
+                       save_path: str | Path | None = None,
+                       work_dir: str | Path = ".",
+                       use_cache: bool = True,
+                       widen_thin_forbidden: bool = False,
+                       all_touched: bool = False,
+                       on_thin_features: str = "warn",
+                       crop_border: bool = False) -> str | None:
+    """The file ``build_cost_raster`` would reuse as a cache hit, else None.
+
+    Takes the keywords of ``build_cost_raster`` (so the caller can pass the
+    same dict) and answers without building: the callback decides with it
+    whether a big build is already done and needs no background job.
+    """
+    if save_path or not use_cache:        # an explicit path is always rebuilt
+        return None
+    _digest, final_path = _config_target(
+        base_gdf=base_gdf, assumptions=assumptions, feature_keys=feature_keys,
+        resolution_in_m=resolution_in_m, fill_value=fill_value, dtype=dtype,
+        geometry_buffer_m=geometry_buffer_m, bounding_polygon=bounding_polygon,
+        preprocessor=preprocessor,
+        preprocessor_params=dict(preprocessor_params or {}),
+        preprocessor_steps=list(preprocessor_steps or []),
+        modifiers=list(modifiers or []), save_path=save_path,
+        work_dir=work_dir, widen_thin_forbidden=widen_thin_forbidden,
+        all_touched=all_touched, on_thin_features=on_thin_features,
+        crop_border=crop_border)
+    return str(final_path) if final_path.exists() else None
+
+
+def _cancel_point(cancel) -> None:
+    """A stage boundary: ends the build (``JobCancelled``) once Stop was pressed."""
+    if cancel is not None and cancel.is_set():
+        raise JobCancelled("Rasterizing was stopped")
+
+
+def _save_without_leftover(rasterizer, final_path: Path) -> None:
+    """Save the raster; a save that fails does not leave a half-written file.
+
+    A file this save created is removed again when it fails (an unfinished
+    ``cost_<hash>.tif`` would later be reused as a cache hit); a file that was
+    there before is left as it is, since it cannot be restored.
+    """
+    existed = final_path.exists()
+    try:
+        rasterizer.save_raster(str(final_path))          # F2: explicit path
+    except BaseException:
+        if not existed:
+            try:
+                final_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
 
 
 def build_cost_raster(*, base_gdf, assumptions: dict,
@@ -79,12 +350,30 @@ def build_cost_raster(*, base_gdf, assumptions: dict,
                       modifiers: list[ModifierSpec] | None = None,
                       save_path: str | Path | None = None,
                       work_dir: str | Path = ".",
-                      use_cache: bool = True):
+                      use_cache: bool = True,
+                      widen_thin_forbidden: bool = False,
+                      all_touched: bool = False,
+                      on_thin_features: str = "warn",
+                      crop_border: bool = False,
+                      cancel=None, progress=None):
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    """Base rasterize -> ordered modifiers -> save. Returns (path, log).
+    """Base rasterize -> ordered modifiers -> optional crop -> save.
+    Returns (path, log).
 
     ``save_path=None`` resolves to a config-hashed file in ``work_dir`` (F2:
     pyorps itself is never called with a None save path / CWD default).
+    ``widen_thin_forbidden`` / ``all_touched`` / ``on_thin_features`` go to
+    ``GeoRasterizer.rasterize`` as they are (the library's defaults are off /
+    off / warn); ``crop_border`` cuts the outer rows and columns that hold
+    only forbidden cells (``GeoRasterizer.shrink_raster``) before the save.
+
+    ``cancel`` (anything with ``is_set()``, e.g. a ``threading.Event``) and
+    ``progress`` are for a background run. Stop is looked at between the
+    stages only: before the base burn, before each modifier, before the crop
+    and before the save (one library call cannot be interrupted); it raises
+    ``jobs.JobCancelled`` and nothing is saved. ``progress(done, total,
+    stage)`` is called when a stage starts, ``done`` counting the stages that
+    are finished. Without both, the build behaves as it always did.
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps import CostAssumptions, GeoRasterizer, initialize_geo_dataset
@@ -94,26 +383,15 @@ def build_cost_raster(*, base_gdf, assumptions: dict,
     preprocessor_steps = list(preprocessor_steps or [])
     log: list[str] = []
 
-    modifier_meta = [{
-        "mode": m.mode, "factor": m.factor, "condition": m.condition,
-        "buf": m.buffer_m, "name": m.name,
-        "n": 0 if m.gdf is None else int(len(m.gdf)),
-    } for m in modifiers]
-    digest = config_hash(
-        feature_keys=feature_keys, assumptions=assumptions,
+    digest, final_path = _config_target(
+        base_gdf=base_gdf, assumptions=assumptions, feature_keys=feature_keys,
         resolution_in_m=resolution_in_m, fill_value=fill_value, dtype=dtype,
-        geometry_buffer_m=geometry_buffer_m,
-        bounds=(tuple(bounding_polygon.bounds)
-                if bounding_polygon is not None
-                else tuple(base_gdf.total_bounds)),
+        geometry_buffer_m=geometry_buffer_m, bounding_polygon=bounding_polygon,
         preprocessor=preprocessor, preprocessor_params=preprocessor_params,
-        preprocessor_steps=preprocessor_steps,
-        modifier_meta=modifier_meta, n_features=int(len(base_gdf)))
-
-    if save_path:
-        final_path = Path(save_path)
-    else:
-        final_path = Path(work_dir) / f"cost_{digest}.tif"
+        preprocessor_steps=preprocessor_steps, modifiers=modifiers,
+        save_path=save_path, work_dir=work_dir,
+        widen_thin_forbidden=widen_thin_forbidden, all_touched=all_touched,
+        on_thin_features=on_thin_features, crop_border=crop_border)
     final_path.parent.mkdir(parents=True, exist_ok=True)
 
     if use_cache and final_path.exists() and not save_path:
@@ -144,6 +422,17 @@ def build_cost_raster(*, base_gdf, assumptions: dict,
     else:
         preprocessing_function = named_fn or steps_fn
 
+    # the stages Stop can end the build between, and the progress callback
+    n_stages = (1 + sum(1 for m in modifiers if not m.is_empty)
+                + (1 if crop_border else 0) + 1)
+    finished = 0
+
+    def stage(name: str) -> None:
+        _cancel_point(cancel)
+        if progress is not None:
+            progress(finished, n_stages, name)
+
+    stage("burning the base layer")
     # work on a copy — preprocessors mutate geometry/columns in place
     dataset = initialize_geo_dataset(base_gdf.copy())
     rasterizer = GeoRasterizer(
@@ -152,25 +441,80 @@ def build_cost_raster(*, base_gdf, assumptions: dict,
         resolution_in_m=resolution_in_m, fill_value=fill_value, dtype=dtype,
         geometry_buffer_m=geometry_buffer_m,
         bounding_box=bounding_polygon,
-        preprocessing_function=preprocessing_function)
+        preprocessing_function=preprocessing_function,
+        widen_thin_forbidden=widen_thin_forbidden, all_touched=all_touched,
+        on_thin_features=on_thin_features)
     log.append(f"base raster {rasterizer.raster.shape} at "
                f"{resolution_in_m} m ({dtype}, fill={fill_value})")
+    if widen_thin_forbidden or all_touched or on_thin_features != "warn":
+        log.append(f"thin features: widen={widen_thin_forbidden}, "
+                   f"all_touched={all_touched}, on_thin_features="
+                   f"{on_thin_features}")
 
     for spec in modifiers:
         if spec.is_empty:
             log.append(f"modifier '{spec.name}' [{spec.condition}]: no "
                        "matching features — skipped")
             continue
+        finished += 1
+        stage(f"modifier '{spec.name}' [{spec.condition}]")
         rasterizer.modify_raster_from_dataset(
             input_data=spec.gdf.copy(),
             cost_assumptions=spec.cost_assumptions(),
             multiply=spec.mode == "multiply",
             geometry_buffer_m=spec.buffer_m,
-            ignore_value=spec.ignore_value)
+            ignore_value=spec.ignore_value,
+            zone_field=spec.zone_field,
+            forbidden_zone=spec.forbidden_zone,
+            forbidden_value=spec.forbidden_value)
         log.append(f"modifier '{spec.name}' [{spec.condition}] "
                    f"{spec.mode} {spec.factor:g} on {len(spec.gdf)} feature(s)")
 
-    rasterizer.save_raster(str(final_path))          # F2: explicit path
+    finished += 1                   # the base layer and every modifier are done
+    if crop_border:
+        stage("cropping the forbidden border")
+        before = rasterizer.raster.shape
+        rasterizer.shrink_raster(presets.FORBIDDEN)
+        after = rasterizer.raster.shape
+        log.append(f"cropped the forbidden border: {before} -> {after}"
+                   if after != before
+                   else "crop: no outer row or column is fully forbidden")
+        finished += 1
+
+    stage("saving the raster")
+    _save_without_leftover(rasterizer, final_path)
     log.append(f"saved {final_path}")
     return str(final_path), log
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+
+
+# ------------------------------------------------------- background build (P7)
+def snapshot_build_inputs(build_kwargs: dict[str, Any]) -> dict[str, Any]:
+    """A copy of the ``build_cost_raster`` keywords that the project cannot change under a running job.
+
+    The worker thread must never see a layer's data change while it reads it (the user may edit or delete
+    the layer during a long build), so a background build gets its own copy of the base layer, of every
+    modifier's layer and of the dicts and lists. Immutable values (numbers, strings, a shapely polygon)
+    are shared.
+    """
+    snap = dict(build_kwargs)
+    snap["base_gdf"] = build_kwargs["base_gdf"].copy()
+    snap["modifiers"] = [
+        dataclasses.replace(m, gdf=None if m.gdf is None else m.gdf.copy())
+        for m in build_kwargs.get("modifiers") or []]
+    for key in ("assumptions", "preprocessor_params", "preprocessor_steps"):
+        snap[key] = copy.deepcopy(build_kwargs.get(key))
+    return snap
+
+
+def background_build(job) -> dict[str, Any]:
+    """Worker body of a heavy rasterize run (``jobs.start_job(..., work=background_build)``).
+
+    Computes only: it reads ``job.params["build"]`` (the snapshot from :func:`snapshot_build_inputs`), reports
+    its stages with ``job.report`` and stops at the stage boundaries when ``job.cancel`` is set (raising
+    ``JobCancelled``, so nothing is saved). Returns ``{"path": str, "log": list[str], "notices": [dict]}``;
+    the notices are the warnings the build raised. The poll callback adds the layer from it.
+    """
+    (path, log), notices = jobs.run_collecting_warnings(
+        build_cost_raster, **job.params["build"], cancel=job.cancel, progress=job.report)
+    return {"path": path, "log": log, "notices": notices}

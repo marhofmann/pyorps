@@ -68,7 +68,10 @@ except ImportError as e:
 
     # Provide informative error functions for all algorithms
     def _cython_not_available(*args, **kwargs):
-        raise ImportError(
+        # imported here: pyorps.core is not importable yet while pyorps.utils initialises
+        from pyorps.core.exceptions import MissingDependencyError
+
+        raise MissingDependencyError(
             "Cython extension 'path_algorithms' not available. "
             "Please install from source or use a pre-compiled wheel."
         )
@@ -88,7 +91,6 @@ except ImportError as e:
     # Utility functions
     group_by_proximity = _cython_not_available
     path_cost = _cython_not_available
-    path_cost_f32 = _cython_not_available
     create_exclude_mask = _cython_not_available
 
 
@@ -111,7 +113,6 @@ __all__ = [
     # Utility functions from Cython
     'group_by_proximity',
     'path_cost',
-    'path_cost_f32',
     'create_exclude_mask',
 
     # Core path functions from Numba

@@ -14,12 +14,12 @@ from dash.exceptions import PreventUpdate
 
 from .. import ids
 
-
 #: technical column name -> human-readable label (routes carry the metric
 #: columns; anything not listed keeps its own name)
 FIELD_LABELS = {
     "name": "Name",
     "total_length_m": "Total Length (in m)",
+    "terrain_length_m": "Terrain Length (in m)",
     "geodesic_length_m": "Geodesic Length (in m)",
     "total_cost": "Total Cost",
     "total_cell_cost": "Raw Cell Cost",

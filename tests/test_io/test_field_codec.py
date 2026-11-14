@@ -12,14 +12,17 @@ filler and every bound over it is a lie), and the interval surviving
 the decode's own float arithmetic.
 """
 
+import dataclasses
+
 import numpy as np
 import pytest
 
 from pyorps.io.field_codec import (
-    DecodedField,
     FIELD_CODECS,
+    DecodedField,
     codec_of,
     decode_field,
+    decode_rows,
     encode_field,
     is_lossy,
 )
@@ -189,8 +192,7 @@ class TestSavedCostFieldIntegration:
         pytest.importorskip("rasterio")
         import json
 
-        from pyorps.graph.search_session import SavedCostField, \
-            _FIELD_FORMAT_VERSION
+        from pyorps.graph.search_session import _FIELD_FORMAT_VERSION, SavedCostField
 
         rows, cols = 48, 64
         f = _field(rows, cols)
@@ -238,5 +240,46 @@ class TestSavedCostFieldIntegration:
 def test_decoded_field_is_frozen():
     d = DecodedField(lower=np.zeros((2, 2)), error_bound=1.0,
                      reachable=np.ones((2, 2), bool), codec="fixed-quantum")
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         d.error_bound = 2.0
+
+
+@pytest.mark.parametrize("codec,tile", [("fixed-quantum", 16),
+                                        ("fixed-quantum", 64), ("raw", 64)])
+def test_decode_rows_equals_the_whole_decode_cut_to_the_rows(codec, tile):
+    """CODE-06: a partial read gives the same interval ends as a full read."""
+    f = _field(rows=150, cols=203)             # not a multiple of the tile
+    payload, meta = encode_field(f, codec=codec, error_bound=25.0, tile=tile)
+    whole = decode_field(payload, meta)
+    for r0, r1 in [(0, 150), (0, 1), (149, 150), (17, 18), (15, 17),
+                   (16, 48), (30, 133), (63, 65), (5, 5)]:
+        part = decode_rows(payload, meta, r0, r1)
+        np.testing.assert_array_equal(part.lower, whole.lower[r0:r1])
+        np.testing.assert_array_equal(part.upper, whole.upper[r0:r1])
+        np.testing.assert_array_equal(part.reachable, whole.reachable[r0:r1])
+        assert part.error_bound == whole.error_bound
+
+
+def test_decode_rows_touches_only_the_frames_it_needs(monkeypatch):
+    import pyorps.io.field_codec as fc
+
+    f = _field(rows=200, cols=130)
+    payload, meta = encode_field(f, codec="fixed-quantum", error_bound=10.0,
+                                 tile=32)
+    calls = []
+    real = fc._unpack_frame
+    monkeypatch.setattr(fc, "_unpack_frame",
+                        lambda blob, n: calls.append(1) or real(blob, n))
+    decode_rows(payload, meta, 40, 70)         # tile-rows 1 and 2 only
+    assert len(calls) == 2
+    calls.clear()
+    decode_field(payload, meta)
+    assert len(calls) == meta["frames"] > 2
+
+
+def test_decode_rows_refuses_a_bad_range():
+    f = _field(rows=40, cols=40)
+    payload, meta = encode_field(f, codec="raw")
+    for r0, r1 in [(-1, 5), (5, 3), (0, 41)]:
+        with pytest.raises(ValueError, match="r0 <= r1"):
+            decode_rows(payload, meta, r0, r1)

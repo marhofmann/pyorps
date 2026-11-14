@@ -48,164 +48,26 @@ for any non-negative raster.
 
 from __future__ import annotations
 
-import heapq
 import math
 from dataclasses import dataclass
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError
+from pyorps.graph.drain import EXCLUDED, boundary_cells, drain, step_table
+
 __all__ = [
     "TreeCertificate",
     "WindowCertificate",
+    "WindowGrowth",
     "boundary_cells",
     "certify_path_field",
     "certify_tree_field",
     "drain",
     "ellipse_window",
+    "grow_window",
     "step_table",
 ]
-
-EXCLUDED = 65535
-
-
-def _factor32(dr: int, dc: int, n: int) -> float:
-    d = np.sqrt(np.float32(dr * dr + dc * dc), dtype=np.float32)
-    return float(d / np.float32(2.0 + n))
-
-
-def step_table(steps) -> list[tuple[int, int, list[tuple[int, int]], float,
-                                    float]]:
-    """``(dr, dc, intermediates, float32 cost factor, length)`` per step,
-    exactly as the Cython kernels hold them (plan D8)."""
-    from pyorps.graph.tower_field import intermediate_offsets
-    out = []
-    for dr, dc in np.asarray(steps)[:, :2]:
-        dr, dc = int(dr), int(dc)
-        inter = intermediate_offsets(dr, dc)
-        out.append((dr, dc, inter, _factor32(dr, dc, len(inter)),
-                    math.hypot(dr, dc)))
-    return out
-
-
-def boundary_cells(inside: np.ndarray, steps) -> np.ndarray:
-    """``dW``: cells of ``W`` with a step whose end or an intermediate cell
-    lies outside ``W`` (or off the raster)."""
-    inside = np.asarray(inside, dtype=bool)
-    rows, cols = inside.shape
-    out = np.zeros_like(inside)
-    padded = np.zeros((rows + 8, cols + 8), dtype=bool)
-    padded[4:4 + rows, 4:4 + cols] = inside
-    for dr, dc, inter, _f, _l in step_table(steps):
-        for a, b in [(dr, dc)] + list(inter):
-            if abs(a) > 4 or abs(b) > 4:
-                raise ValueError("steps longer than 4 cells are not supported")
-            shifted = padded[4 + a:4 + a + rows, 4 + b:4 + b + cols]
-            out |= inside & ~shifted
-    return out
-
-
-def drain(values: np.ndarray, steps, seeds, labels, *, length_rate=0.0,
-          weight_mult=1.0, excluded: np.ndarray | None = None,
-          no_transit=None, engine: str = "auto", return_prev: bool = False):
-    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    """``min_k labels[k] + d_w(seeds[k], v)`` for every cell, in cell units.
-
-    ``excluded`` cells (and ``values == 65535``) are neither entered nor
-    crossed. Uses ``MultiSourceSolver.solve_stream`` when the built
-    extension has it (``engine="kernel"``), otherwise a pure-Python heap
-    Dijkstra with the kernel's exact arithmetic (``engine="python"``).
-
-    With ``return_prev`` it returns ``(dist, prev)``: ``prev`` holds, per
-    flat cell, the cell the last step came from, ``-1`` where the seed's
-    own label won (a seed wins ties) and where nothing arrived -- the
-    trace code of the drain (plan section 3.2, item 7).
-    """
-    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    vals = np.asarray(values)
-    ras = np.asarray(vals, dtype=np.uint16).copy()
-    if excluded is not None:
-        ras[np.asarray(excluded, dtype=bool)] = EXCLUDED
-    seeds = np.asarray(seeds, dtype=np.int64).ravel()
-    labels = np.asarray(labels, dtype=np.float64).ravel()
-    order = np.argsort(labels, kind="stable")
-    seeds, labels = seeds[order], labels[order]
-    use_kernel = engine == "kernel"
-    if engine == "auto":
-        try:
-            from pyorps.utils import _dijkstra as dj
-            use_kernel = hasattr(dj.MultiSourceSolver, "solve_stream")
-        except ImportError:
-            use_kernel = False
-    if use_kernel:
-        from pyorps.utils import _dijkstra as dj
-        st = np.asarray(steps, dtype=np.int8)
-        solver = dj.make_multi_source_solver(ras, st, lean=True)
-        solver.solve_stream(seeds, labels, length_rate=float(length_rate),
-                            weight_mult=float(weight_mult),
-                            no_transit=no_transit, keep_prev=return_prev)
-        dist = solver.dist_array().reshape(ras.shape)
-        if return_prev:
-            prev = solver.prev_array().astype(np.int64)
-            prev[~np.isfinite(dist.ravel())] = -1
-            return dist, prev
-        return dist
-    return _python_drain(ras, steps, seeds, labels, float(length_rate),
-                         float(weight_mult), no_transit, return_prev)
-
-
-def _python_drain(ras, steps, seeds, labels, length_rate, weight_mult,
-                  no_transit, return_prev=False):
-    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    rows, cols = ras.shape
-    blocked = ras == EXCLUDED
-    nt = np.zeros_like(blocked)
-    if no_transit is not None:
-        nt.ravel()[np.asarray(no_transit, dtype=np.int64)] = True
-    table = step_table(steps)
-    dist = np.full(rows * cols, math.inf)
-    prev = np.full(rows * cols, -1, dtype=np.int64)
-    done = np.zeros(rows * cols, dtype=bool)
-    heap = []
-    for c, lab in zip(seeds.tolist(), labels.tolist()):
-        if blocked.ravel()[c]:
-            continue
-        if lab < dist[c]:
-            dist[c] = lab
-            heapq.heappush(heap, (lab, c))
-    while heap:
-        d, u = heapq.heappop(heap)
-        if done[u] or d > dist[u]:
-            continue
-        done[u] = True
-        ur, uc = divmod(u, cols)
-        for dr, dc, inter, fac, ln in table:
-            vr, vc = ur + dr, uc + dc
-            if not (0 <= vr < rows and 0 <= vc < cols):
-                continue
-            if blocked[vr, vc] or nt[vr, vc]:
-                continue
-            ok = True
-            s = float(ras[ur, uc]) + float(ras[vr, vc])
-            for a, b in inter:
-                ir, ic = ur + a, uc + b
-                if (not (0 <= ir < rows and 0 <= ic < cols)
-                        or blocked[ir, ic] or nt[ir, ic]):
-                    ok = False
-                    break
-                s += float(ras[ir, ic])
-            if not ok:
-                continue
-            v = vr * cols + vc
-            nd = d + weight_mult * (s * fac) + length_rate * ln
-            if nd < dist[v]:
-                dist[v] = nd
-                prev[v] = u
-                heapq.heappush(heap, (nd, v))
-    dist[~done] = math.inf
-    if return_prev:
-        prev[~done] = -1
-        return dist.reshape(rows, cols), prev
-    return dist.reshape(rows, cols)
 
 
 @dataclass
@@ -218,17 +80,119 @@ class WindowCertificate:
         exact: bool mask, where ``field`` equals the unwindowed field.
         beta: the boundary term (``min(beta_in, beta_out)``).
         b: ``d_W(dW, s)``.
+        inside: bool mask of the window ``W`` (``None`` when not recorded).
     """
     field: np.ndarray
     lower: np.ndarray
     exact: np.ndarray
     beta: float
     b: np.ndarray
+    inside: np.ndarray | None = None
 
     @property
     def exact_fraction(self) -> float:
         inside = np.isfinite(self.field)
         return float(self.exact[inside].mean()) if inside.any() else 0.0
+
+    @property
+    def uncertified(self) -> np.ndarray:
+        """Cells of ``W`` where the field is NOT shown to be exact. At the
+        growth cap these keep ``lower`` as their bound and are reported as
+        such (review finding CODE-10)."""
+        return self._in_window() & ~self.exact
+
+    def _in_window(self) -> np.ndarray:
+        if self.inside is not None:
+            return self.inside
+        return np.isfinite(self.field)
+
+    def bracket(self, row: int, col: int) -> tuple[float, float]:
+        """``(lower, upper)`` for the true field value at one cell of ``W``:
+        equal where exact, otherwise ``lower`` (a global lower bound) and the
+        in-window value (a walk that stays in ``W``, so an upper bound). A
+        caller must report the bracket, never pick an end, for a cell that is
+        not certified (plan 3.5, CODE-10)."""
+        if not self._in_window()[row, col]:
+            raise InvalidInputError("the cell lies outside the window")
+        if self.exact[row, col]:
+            v = float(self.field[row, col])          # may be inf: unreachable
+            return v, v
+        return float(self.lower[row, col]), float(self.field[row, col])
+
+
+@dataclass
+class WindowGrowth:
+    """The outcome of one :func:`grow_window` request.
+
+    Attributes:
+        window: The window to use next (the grown one, or the old one when
+            growth was refused).
+        grown: True when the window got bigger.
+        capped: True when growth was refused (cell cap or retry limit); the
+            caller keeps ``min(d_W, beta + b)`` as the bound and reports the
+            uncertified cells.
+        reason: Why growth was refused, ``""`` when it happened.
+        cells: Number of cells in ``window``.
+        regrowths: Regrowths used after this call.
+    """
+    window: np.ndarray
+    grown: bool
+    capped: bool
+    reason: str
+    cells: int
+    regrowths: int
+
+
+def grow_window(inside: np.ndarray, *, margin_cells: int, cap_cells: int,
+                regrowths: int = 0, max_regrowths: int = 1) -> WindowGrowth:
+    """One capped regrowth of a window (plan 3.5, D2, review CODE-10).
+
+    A failed border self-check used to mean "grow and re-run" with neither a
+    cap nor an exit, and one attempt of the collector DW takes hours. Growth is
+    now refused once ``max_regrowths`` have been used (the plan: at most one)
+    or when the grown window would exceed ``cap_cells`` (the plan: 145 M cells
+    for the DW, 240 M for single-source fields). On refusal the caller keeps
+    the lower bound everywhere and reports a bracket where the certificate does
+    not hold (:meth:`WindowCertificate.bracket`).
+
+    Parameters:
+        inside: bool mask of the current window.
+        margin_cells: Cells added on every side (a square dilation, clipped to
+            the raster).
+        cap_cells: Largest allowed window, in cells.
+        regrowths: Regrowths already used for this window.
+        max_regrowths: How many are allowed in all.
+    """
+    cur = np.asarray(inside, dtype=bool)
+    n = int(cur.sum())
+    if margin_cells < 1:
+        raise InvalidInputError("margin_cells must be >= 1")
+    if regrowths >= max_regrowths:
+        return WindowGrowth(cur, False, True,
+                            f"{regrowths} regrowth(s) used, at most "
+                            f"{max_regrowths} allowed", n, regrowths)
+    grown = cur.copy()
+    rows, cols = cur.shape
+    # square dilation, separable: rows then columns
+    k = int(margin_cells)
+    tmp = cur.copy()
+    for d in range(1, k + 1):
+        tmp[d:, :] |= cur[:-d, :]
+        tmp[:-d, :] |= cur[d:, :]
+    grown = tmp.copy()
+    for d in range(1, k + 1):
+        grown[:, d:] |= tmp[:, :-d]
+        grown[:, :-d] |= tmp[:, d:]
+    m = int(grown.sum())
+    if m > cap_cells:
+        return WindowGrowth(cur, False, True,
+                            f"the grown window has {m} cells, the cap is "
+                            f"{cap_cells}", n, regrowths)
+    if m == n:
+        return WindowGrowth(cur, False, True,
+                            "the window already covers every reachable cell "
+                            "of the raster", n, regrowths)
+    return WindowGrowth(grown, True, False, "", m, regrowths + 1)
 
 
 def certify_path_field(values: np.ndarray, steps, inside: np.ndarray, seeds,
@@ -291,7 +255,7 @@ def certify_path_field(values: np.ndarray, steps, inside: np.ndarray, seeds,
     lower = np.minimum(field, bound)
     exact = inside & (field <= bound)
     return WindowCertificate(field=field, lower=lower, exact=exact,
-                             beta=beta, b=b)
+                             beta=beta, b=b, inside=inside.copy())
 
 
 @dataclass
@@ -336,9 +300,9 @@ def certify_tree_field(values: np.ndarray, steps, inside: np.ndarray,
     inside = np.asarray(inside, dtype=bool)
     turb = np.asarray(turbines, dtype=np.int64).ravel()
     if not inside.ravel()[turb].all():
-        raise ValueError("the tree certificate needs every turbine in W")
+        raise InvalidInputError("the tree certificate needs every turbine in W")
     if mu_min < 0:
-        raise ValueError("mu_min must be >= 0")
+        raise InvalidInputError("mu_min must be >= 0")
     exc = ~inside | (vals == EXCLUDED)
     dW = np.flatnonzero((boundary_cells(inside, steps) & ~exc).ravel())
     mv = np.asarray(mv_window, dtype=np.float64).reshape(vals.shape)

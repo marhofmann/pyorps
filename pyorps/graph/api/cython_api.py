@@ -2,9 +2,17 @@
 import numpy as np
 from numpy import array, astype, ndarray, uint32, uint64
 
-from pyorps.core.exceptions import AlgorithmNotImplementedError, PairwiseError
+from pyorps.core.exceptions import (
+    AlgorithmNotImplementedError,
+    FeatureNotImplementedError,
+    InvalidInputError,
+    InvalidTypeError,
+    PairwiseError,
+    PyorpsError,
+)
 from pyorps.core.types import IMPASSABLE_CELL_COST
 from pyorps.graph.api.graph_api import GraphAPI
+from pyorps.graph.api.graph_library_api import reject_unknown_options
 from pyorps.utils._dijkstra import make_dijkstra_solver
 from pyorps.utils._raster_context import NO_EXCLUSION_VALUE
 from pyorps.utils.path_algorithms import (
@@ -21,14 +29,66 @@ from pyorps.utils.path_algorithms import (
 #: above 1 make the search run LONGER - they buy no exactness.
 EXACT_TERMINATION_MARGIN = 1.00001
 
+_STEPS_HINT = ("an int8 numpy array of shape (n, 2) with n >= 1, e.g. "
+               "pyorps.utils.neighborhood.get_neighborhood_steps('r2')")
+
+
+def _validate_kernel_inputs(raster_data, steps) -> None:
+    """Reject inputs the Cython kernels would read out of bounds.
+
+    The kernels are typed ``uint16[:, :]`` / ``int8[:, :]`` with bounds
+    checking off and accept ``None`` for either, which crashes the
+    interpreter. Constant cost: shape and dtype only, never the data.
+
+    Raises:
+        PyorpsError: naming the offending value and what is allowed.
+    """
+    if not isinstance(raster_data, ndarray):
+        raise PyorpsError(
+            f"raster_data must be a 2-D uint16 numpy array, got "
+            f"{type(raster_data).__name__}.")
+    if raster_data.ndim != 2:
+        raise PyorpsError(
+            f"raster_data must be a 2-D uint16 numpy array, got shape "
+            f"{raster_data.shape}.")
+    if raster_data.dtype != np.uint16:
+        raise PyorpsError(
+            f"Unsupported raster dtype {raster_data.dtype.name!r} for the "
+            f"cython backend: allowed is 'uint16' only. Cast with "
+            f".astype('uint16') after clipping to 0..65534 (65535 marks "
+            f"forbidden cells); float32 rasters need a float backend "
+            f"(networkit, networkx, igraph, rustworkx, raster_gpu, raster_fim).")
+    if steps is None:
+        raise PyorpsError(
+            f"steps is None: the cython backend needs a neighbourhood, "
+            f"{_STEPS_HINT}.")
+    if not isinstance(steps, ndarray):
+        raise PyorpsError(
+            f"steps must be {_STEPS_HINT}; got {type(steps).__name__}.")
+    if steps.ndim != 2 or steps.shape[1] != 2 or steps.shape[0] < 1:
+        raise PyorpsError(
+            f"steps must be {_STEPS_HINT}; got shape {steps.shape}.")
+    if steps.dtype != np.int8:
+        raise PyorpsError(
+            f"steps must be {_STEPS_HINT}; got dtype {steps.dtype.name!r}.")
+
 
 class CythonAPI(GraphAPI):
     """
     Graph API implementation that directly uses Cython algorithms on raster data.
     """
 
+    #: Algorithm names shortest_path accepts (any letter case).
+    ALGORITHMS = ("dijkstra", "delta-stepping", "delta-stepping-circular")
+
+    #: Keyword arguments shortest_path reads (see its docstring). Any other
+    #: keyword raises TypeError: it used to be dropped, so a typo such as
+    #: ``detla=3`` ran with the default delta.
+    SHORTEST_PATH_OPTIONS = ("pairwise", "delta", "num_threads", "margin")
+
     def __init__(self, raster_data, steps, ignore_max=True, dem_data=None,
                  gradient_luts=None):
+        _validate_kernel_inputs(raster_data, steps)
         super().__init__(raster_data, steps, ignore_max)
         # ignore_max=False means "no cell is an obstacle". The kernels build
         # their exclude mask from `raster == max_value`, so the disabling
@@ -42,8 +102,17 @@ class CythonAPI(GraphAPI):
         self.dem_data = dem_data
         self.gradient_luts = gradient_luts
         if gradient_luts is not None and dem_data is None:
-            raise ValueError(
+            raise InvalidInputError(
                 "gradient_luts require dem_data aligned to the raster")
+        if dem_data is not None and gradient_luts is None:
+            # The kernels read a DEM only through the slope tables: without
+            # them it would be ignored and the route would be the flat one.
+            raise InvalidInputError(
+                "dem_data without gradient_luts would be ignored by the "
+                "cython kernels (the route would be the flat route). Pass "
+                "the gradient_luts built for this DEM "
+                "(Objective.build_gradient_luts), or route through "
+                "PathFinder(dem=...), which builds them.")
         # Cached Dijkstra context + solver, see _dijkstra_solver().
         self._solver = None
         self._solver_state = (None, None, None, None, None)
@@ -105,6 +174,7 @@ class CythonAPI(GraphAPI):
             target_indices: Target node indices
             algorithm: Algorithm name ("dijkstra" or "delta-stepping")
             **kwargs: Additional parameters:
+
                 - pairwise: bool - compute paths pairwise (for multiple sources/targets)
                 - delta: float - bucket width for delta-stepping (default 100)
                 - num_threads: int - number of threads for delta-stepping (0=auto)
@@ -114,7 +184,18 @@ class CythonAPI(GraphAPI):
 
         Returns:
             List of path indices or list of lists for multiple paths
+
+        Raises:
+            TypeError: For a keyword that is not in SHORTEST_PATH_OPTIONS; the
+                message names it and the closest valid name.
         """
+        reject_unknown_options(kwargs, self.SHORTEST_PATH_OPTIONS,
+                               "CythonAPI.shortest_path()")
+
+        # raster_data/steps may have been replaced since __init__; the kernels
+        # take both unchecked (None or a ragged steps array crashes them).
+        _validate_kernel_inputs(self.raster_data, self.steps)
+
         # Convert inputs to numpy arrays
         sources = self._to_array(source_indices)
         targets = self._to_array(target_indices)
@@ -125,12 +206,14 @@ class CythonAPI(GraphAPI):
         is_pairwise = kwargs.pop('pairwise', False)  # Remove from kwargs after reading
 
         # Validate algorithm
-        algo = algorithm.lower()
-        if algo not in ["dijkstra", "delta-stepping", "delta-stepping-circular"]:
-            raise AlgorithmNotImplementedError(algorithm, graph_library="cython")
+        algo = algorithm.lower() if isinstance(algorithm, str) else algorithm
+        if algo not in self.ALGORITHMS:
+            allowed = ", ".join(repr(a) for a in self.ALGORITHMS)
+            raise AlgorithmNotImplementedError(
+                algorithm, graph_library=f"cython (allowed: {allowed})")
 
         if self.gradient_luts is not None and algo != "dijkstra":
-            raise NotImplementedError(
+            raise FeatureNotImplementedError(
                 "In-search gradient terms are currently supported by the "
                 "cython 'dijkstra' algorithm only (delta-stepping support "
                 "is a later phase of the feasibility plan).")
@@ -158,7 +241,7 @@ class CythonAPI(GraphAPI):
         elif isinstance(indices, ndarray):
             arr = indices if indices.ndim > 0 else array([indices.item()])
         else:
-            raise TypeError(f"Unsupported type for indices: {type(indices)}")
+            raise InvalidTypeError(f"Unsupported type for indices: {type(indices)}")
 
         # Choose appropriate dtype based on maximum value
         dtype = uint64 if arr.max() > UINT32_MAX else uint32

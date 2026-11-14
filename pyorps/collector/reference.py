@@ -75,6 +75,7 @@ from pyorps.collector.model import (
     popcount,
     set_partitions,
 )
+from pyorps.core.exceptions import InvalidInputError, PyorpsRuntimeError
 
 __all__ = [
     "CollectorGraph",
@@ -97,13 +98,13 @@ class CollectorGraph:
 
     def __post_init__(self):
         self.adj = [[] for _ in range(self.n_nodes)]
-        for ei, (u, w, c, l) in enumerate(self.edges):
+        for ei, (u, w, c, length) in enumerate(self.edges):
             if not (0 <= u < self.n_nodes and 0 <= w < self.n_nodes):
-                raise ValueError(f"edge {ei} ({u}, {w}) leaves the graph")
+                raise InvalidInputError(f"edge {ei} ({u}, {w}) leaves the graph")
             if u == w:
-                raise ValueError(f"edge {ei} is a loop")
-            if c < 0 or not l > 0:
-                raise ValueError(f"edge {ei} needs c >= 0 and l > 0")
+                raise InvalidInputError(f"edge {ei} is a loop")
+            if c < 0 or not length > 0:
+                raise InvalidInputError(f"edge {ei} needs c >= 0 and l > 0")
             self.adj[u].append((w, ei))
             self.adj[w].append((u, ei))
 
@@ -121,10 +122,13 @@ class _Algebra:
     """Token rules shared by both modes; subclasses fill the differences."""
 
     def __init__(self, model: CollectorModel, per_cable: bool,
-                 candidate_rule: bool = True):
+                 candidate_rule: bool = True, canonical: bool = False):
         self.m = model
         self.per_cable = per_cable
         self.candidate_rule = candidate_rule
+        # canonical node order (lemma L3, user decision D2 of 2026-10-05):
+        # only meaningful for set tokens, see _SetAlgebra
+        self.canonical = canonical
         self.full = model.full
         self._cost_cache: dict = {}
         self._rate_cache: dict = {}
@@ -217,11 +221,36 @@ class _Algebra:
         all of them)."""
         return itertools.product(L1s, L2s)
 
+    def merge_allowed(self, L1, L2):  # pylint: disable=unused-argument  # interface shared with the set algebra
+        """Whether the canonical node order lets ``L1`` and ``L2`` merge
+        (always, unless the set algebra restricts it)."""
+        return True
+
 
 class _SetAlgebra(_Algebra):
     """Tokens carry turbine sets: exact for heterogeneous turbines."""
 
     mode = "set"
+
+    def __init__(self, model, per_cable, candidate_rule=True, canonical=False):
+        super().__init__(model, per_cable, candidate_rule, canonical)
+        self._grow_cache: dict = {}
+
+    def merge_allowed(self, L1, L2):
+        """Canonical node order, rule "no back-fill" (see :meth:`junctions`
+        for the other half). At a node one label is the STATE and the other
+        ARRIVES over a trench (so it must be growable). The arriving label's
+        downs may be glued to the state's ups, but its ups may never fill a
+        down that is already in the state: that down is fed from above, split
+        by a station (Jb), or leaves through a grow. When both labels are
+        growable either may be the state, so the pair is allowed if one role
+        works. The merged label is the same either way."""
+        if not self.canonical:
+            return True
+        u1, d1, u2, d2 = set(L1[1]), set(L1[2]), set(L2[1]), set(L2[2])
+        if not (u2 & d1) and self.growable(L2):
+            return True
+        return not (u1 & d2) and self.growable(L1)
 
     @staticmethod
     def union(toks):
@@ -251,12 +280,14 @@ class _SetAlgebra(_Algebra):
         return acc == (S | accd)
 
     def growable(self, L):
-        S, U, D = L
-        if not U or (S == self.full and D):
-            return False
-        if not self.valid(S, U, D, node=False):
-            return False
-        return self.rate(U, D) < INF
+        hit = self._grow_cache.get(L)
+        if hit is None:
+            S, U, D = L
+            hit = bool(U and not (S == self.full and D)
+                       and self.valid(S, U, D, node=False)
+                       and self.rate(U, D) < INF)
+            self._grow_cache[L] = hit
+        return hit
 
     def merge_pairs(self, L1s, L2s, S1, S2):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
@@ -321,6 +352,11 @@ class _SetAlgebra(_Algebra):
         above = _disjoint_collections(avail)
         # Ja: inputs = some ups + new downs from above, output up.
         for r in range(len(Ul) + 1):
+            if r == 0 and self.canonical:
+                # canonical order, rule NF: a station that takes all its
+                # inputs from above would be a free up-block; lemma L2 rules
+                # that out, and one that feeds a target is a Jb instead
+                continue
             for Mb in itertools.combinations(Ul, r):
                 for Ma_masks in above:
                     if r + len(Ma_masks) < 2:
@@ -380,8 +416,8 @@ class _CountAlgebra(_Algebra):
 
     mode = "count"
 
-    def __init__(self, model, per_cable, candidate_rule=True):
-        super().__init__(model, per_cable, candidate_rule)
+    def __init__(self, model, per_cable, candidate_rule=True, canonical=False):  # pylint: disable=unused-argument  # engine A has no node-order rule
+        super().__init__(model, per_cable, candidate_rule, canonical=False)
         self._imin = model.min_over_size(model.current_a)
         self._wmin = model.min_over_size(model.loss_weight)
         self._rep = {}
@@ -589,7 +625,7 @@ class CollectorResult:
     def design(self, g: int):
         """The optimal design rooted at ``g`` (see :mod:`.design`)."""
         if self._solver is None:
-            raise RuntimeError("solve with keep_trace=True to trace designs")
+            raise PyorpsRuntimeError("solve with keep_trace=True to trace designs")
         return self._solver.trace(int(g))
 
 
@@ -597,7 +633,8 @@ def solve_collector(graph: CollectorGraph, turbines: Sequence[int],
                     model: CollectorModel, *, engine: str = "B",
                     tokens: str | None = None, conductor: str | None = None,
                     root: int | None = None, candidate_rule: bool = True,
-                    keep_trace: bool = True) -> CollectorResult:
+                    keep_trace: bool = True,
+                    node_order: str = "canonical") -> CollectorResult:
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """``MV(g)`` for every node ``g`` of ``graph``.
 
@@ -617,27 +654,36 @@ def solve_collector(graph: CollectorGraph, turbines: Sequence[int],
             for testing the rule.
         keep_trace: Keep predecessor records so :meth:`CollectorResult.design`
             works (set mode only).
+        node_order: ``"canonical"`` (default) applies the node operations at a
+            Steiner cell in one topological order (lemma L3: no free-block
+            stations, no back-fill of a down by a later child); it removes
+            states, not designs. ``"full"`` allows every interleaving and is
+            the reference the canonical order is tested against. Set tokens
+            only; count tokens (engine A) ignore it.
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if engine not in ("A", "B"):
-        raise ValueError("engine must be 'A' or 'B'")
+        raise InvalidInputError("engine must be 'A' or 'B'")
     tokens = tokens or ("set" if engine == "B" else "count")
     conductor = conductor or ("per_cable" if engine == "B" else "per_section")
     if tokens not in ("set", "count") or conductor not in ("per_cable",
                                                            "per_section"):
-        raise ValueError("tokens must be set|count, conductor "
-                         "per_cable|per_section")
+        raise InvalidInputError("tokens must be set|count, conductor "
+                                "per_cable|per_section")
     if (tokens == "count" and conductor == "per_cable"
             and not model.interchangeable()):
-        raise ValueError(
+        raise InvalidInputError(
             "count tokens with one option per cable are neither exact nor a "
             "relaxation for turbines that differ; use engine A "
             "(count, per_section) for a bound or engine B for the value")
     turbines = [int(t) for t in turbines]
     if len(turbines) != model.n or len(set(turbines)) != model.n:
-        raise ValueError(f"need {model.n} distinct turbine nodes")
+        raise InvalidInputError(f"need {model.n} distinct turbine nodes")
+    if node_order not in ("canonical", "full"):
+        raise InvalidInputError("node_order must be 'canonical' or 'full'")
     algebra_cls = _SetAlgebra if tokens == "set" else _CountAlgebra
-    alg = algebra_cls(model, conductor == "per_cable", candidate_rule)
+    alg = algebra_cls(model, conductor == "per_cable", candidate_rule,
+                      canonical=node_order == "canonical")
     solver = _Solver(graph, turbines, model, alg,
                      keep_trace=keep_trace and tokens == "set", root=root)
     mv = solver.run()
@@ -662,7 +708,7 @@ class _Solver:
         self.is_turb[turbines] = True
         self.root = None if root is None else int(root)
         if self.root is not None and self.is_turb[self.root]:
-            raise ValueError("the root cannot be a turbine node")
+            raise InvalidInputError("the root cannot be a turbine node")
         # no_transit: nodes a grow may not enter and where no merge or
         # junction happens -- the turbines, plus the root in single-root mode
         self.no_transit = self.is_turb.copy()
@@ -721,6 +767,8 @@ class _Solver:
             S2 = S ^ S1
             for b1, b2 in alg.merge_pairs(self.by_S.get(S1, ()),
                                           self.by_S.get(S2, ()), S1, S2):
+                if not alg.merge_allowed(b1, b2):
+                    continue
                 merged = alg.merge(b1, b2)
                 if not merged:
                     continue
@@ -926,7 +974,7 @@ class _Solver:
         from pyorps.collector.design import Design, Junction, System
 
         if not np.isfinite(self.mv[g]):
-            raise ValueError(f"no feasible collector at root {g}")
+            raise InvalidInputError(f"no feasible collector at root {g}")
         tnodes: list[int] = []
         tedges: list[tuple[int, int, int]] = []
         systems: list[System] = []
@@ -956,7 +1004,7 @@ class _Solver:
             while True:
                 rec = self.pred.get((L, st, v))
                 if rec is None:
-                    raise RuntimeError(f"no trace record for {(L, st, v)}")
+                    raise PyorpsRuntimeError(f"no trace record for {(L, st, v)}")
                 if rec[0] != "grow":
                     break
                 _, u, st_u, ei = rec
@@ -1000,7 +1048,7 @@ class _Solver:
                     systems[sid].sink = ("junction", jid)
                     junctions[jid].inputs.append(sid)
             else:
-                raise RuntimeError(f"unknown trace record {kind!r}")
+                raise PyorpsRuntimeError(f"unknown trace record {kind!r}")
             return first
 
         root_node = new_node(g)

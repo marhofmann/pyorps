@@ -40,15 +40,16 @@ entry points, in increasing order of how much of PYORPS they involve:
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 import numpy as np
 
 from pyorps.graph.tower_field import (
     TowerFieldModel,
-    TowerLattice,
     TowerFieldSolver,
+    TowerLattice,
     intermediate_offsets,
 )
 
@@ -414,8 +415,7 @@ def compare_with_find_route(finder, targets: Sequence, *,
         terminal-tower difference is visible instead of implicit.
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    from pyorps.graph.tower_field import (
-        angle_tables_from_profile, tower_field_from_raster)
+    from pyorps.graph.tower_field import angle_tables_from_profile, tower_field_from_raster
 
     profile = finder.profile
     raster = np.asarray(finder.raster_handler.data[0])
@@ -436,7 +436,10 @@ def compare_with_find_route(finder, targets: Sequence, *,
     angles = (angle_tables_from_profile(profile, lattice)
               if model.angle_tier == 2 else None)
 
-    src_rc = finder.raster_handler.coords_to_indices([finder.source_coords])
+    # check_bounds: the cell indexes the field arrays below, where a point
+    # outside the window would wrap around (negative index) or overrun.
+    src_rc = finder.raster_handler.coords_to_indices([finder.source_coords],
+                                                     check_bounds=True)
     source_cell = (int(src_rc[0][0]) // factor, int(src_rc[0][1]) // factor)
 
     field = tower_field_from_raster(
@@ -462,7 +465,8 @@ def compare_with_find_route(finder, targets: Sequence, *,
         score = score_tower_chain(cells, values=values,
                                   tower_cost=tower_cost, lattice=lattice,
                                   model=model)
-        tgt_rc = finder.raster_handler.coords_to_indices([tgt])
+        tgt_rc = finder.raster_handler.coords_to_indices([tgt],
+                                                         check_bounds=True)
         cell = (int(tgt_rc[0][0]) // factor, int(tgt_rc[0][1]) // factor)
         comparisons.append(OracleComparison(
             target=cell, oracle_cost=score.total,

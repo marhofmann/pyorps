@@ -33,6 +33,8 @@ from collections.abc import Callable, Hashable, Iterable, Sequence
 from dataclasses import asdict, dataclass, field
 from itertools import combinations
 
+from pyorps.core.exceptions import InvalidInputError, PyorpsRuntimeError
+
 __all__ = [
     "ConsentResult",
     "EpsilonManifest",
@@ -58,13 +60,13 @@ class EpsilonManifest:
     def add(self, name: str, value: float, *, kind: str = "adm",
             source: str = "") -> EpsilonManifest:
         if kind not in ("adm", "E"):
-            raise ValueError("kind must be 'adm' or 'E'")
+            raise InvalidInputError("kind must be 'adm' or 'E'")
         value = float(value)
         if not (value >= 0.0 and math.isfinite(value)):
-            raise ValueError(f"epsilon entry {name!r} must be finite and "
+            raise InvalidInputError(f"epsilon entry {name!r} must be finite and "
                              f">= 0, got {value}")
         if any(e["name"] == name and e["kind"] == kind for e in self.entries):
-            raise ValueError(f"epsilon entry {name!r} ({kind}) is already "
+            raise InvalidInputError(f"epsilon entry {name!r} ({kind}) is already "
                              f"recorded")
         self.entries.append({"name": name, "kind": kind, "value": value,
                              "source": source})
@@ -154,7 +156,7 @@ def relax_and_verify(candidates: Iterable[tuple[Hashable, float]],
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if eps < 0:
-        raise ValueError("eps must be >= 0")
+        raise InvalidInputError("eps must be >= 0")
     order = sorted(candidates, key=lambda kv: kv[1])
     best_key = None
     z_best = float(z_ub)
@@ -162,7 +164,7 @@ def relax_and_verify(candidates: Iterable[tuple[Hashable, float]],
     enumerated = []
     log = []
     next_rel = math.inf
-    for i, (key, f_rel) in enumerate(order):  # pylint: disable=unused-variable
+    for _i, (key, f_rel) in enumerate(order):
         f_rel = float(f_rel)
         if f_rel > z_best + eps:
             next_rel = f_rel
@@ -172,23 +174,23 @@ def relax_and_verify(candidates: Iterable[tuple[Hashable, float]],
         steps = 0
         while up - lo > eps:
             if escalate is None:
-                raise RuntimeError(
+                raise PyorpsRuntimeError(
                     f"candidate {key!r} stays a bracket [{lo}, {up}]; a "
                     f"bracket is never a result -- pass escalate=")
             if steps >= max_escalations:
-                raise RuntimeError(
+                raise PyorpsRuntimeError(
                     f"candidate {key!r} still [{lo}, {up}] after "
                     f"{steps} escalations")
             lo2, up2 = (float(x) for x in escalate(key, (lo, up)))
             if lo2 < lo - eps or up2 > up + eps:
-                raise ValueError(f"escalation of {key!r} widened the "
+                raise InvalidInputError(f"escalation of {key!r} widened the "
                                  f"bracket: [{lo}, {up}] -> [{lo2}, {up2}]")
             lo, up = max(lo, lo2), min(up, up2)
             steps += 1
         if lo > up + eps:
-            raise ValueError(f"candidate {key!r}: L {lo} > U {up}")
+            raise InvalidInputError(f"candidate {key!r}: L {lo} > U {up}")
         if lo < f_rel - eps:
-            raise ValueError(f"candidate {key!r}: L {lo} below its relaxed "
+            raise InvalidInputError(f"candidate {key!r}: L {lo} below its relaxed "
                              f"value {f_rel}: F_rel is not a lower bound")
         enumerated.append((key, f_rel, lo, up))
         lows.append(lo)
@@ -247,13 +249,13 @@ def consent_lattice(classes: Sequence[Hashable], one_off: dict,
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if eps < 0:
-        raise ValueError("eps must be >= 0")
+        raise InvalidInputError("eps must be >= 0")
     K = tuple(classes)
     if len(set(K)) != len(K):
-        raise ValueError("classes must be distinct")
+        raise InvalidInputError("classes must be distinct")
     for k in K:
         if not one_off.get(k, 0.0) >= 0:
-            raise ValueError(f"one-off cost of {k!r} must be >= 0")
+            raise InvalidInputError(f"one-off cost of {k!r} must be >= 0")
     V = delay or (lambda _S: 0.0)
     subsets = [frozenset(c) for r in range(len(K) + 1)
                for c in combinations(K, r)]
@@ -261,7 +263,7 @@ def consent_lattice(classes: Sequence[Hashable], one_off: dict,
     def extra_cost(S):
         v = float(V(S))
         if v < 0:
-            raise ValueError(f"V({set(S)}) = {v} < 0")
+            raise InvalidInputError(f"V({set(S)}) = {v} < 0")
         return sum(float(one_off.get(k, 0.0)) for k in S) + v
 
     full = frozenset(K)
@@ -288,7 +290,7 @@ def consent_lattice(classes: Sequence[Hashable], one_off: dict,
             continue
         fS = float(masked_value(S))
         if fS < f_all - 1e-9 * max(1.0, abs(f_all)):
-            raise ValueError(f"F_S {fS} < F_all {f_all} for S = {set(S)}: "
+            raise InvalidInputError(f"F_S {fS} < F_all {f_all} for S = {set(S)}: "
                              f"masking cannot make the optimum cheaper")
         evaluated[S] = fS
         total = fS + extra_cost(S)

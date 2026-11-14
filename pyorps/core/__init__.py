@@ -6,33 +6,49 @@ from .cost_assumptions import (
                                get_zero_cost_assumptions,
                                save_empty_cost_assumptions,
 )
+from .ensemble import EnsembleError, RouteEnsemble
 from .exceptions import (
                                AlgorithmNotImplementedError,
                                ColumnAnalysisError,
+                               ConsistencyCheckError,
                                # Cost assumption exceptions
                                CostAssumptionsError,
+                               CrsReprojectionWarning,
                                FeatureColumnError,
+                               FeatureNotImplementedError,
                                FileLoadError,
                                FormatError,
+                               InputFileNotFoundError,
+                               InsufficientMemoryError,
+                               # Replacements for builtin exceptions
+                               InvalidInputError,
                                InvalidSourceError,
+                               InvalidTypeError,
                                # Metric stack exceptions
                                MetricStackError,
+                               MissingDependencyError,
+                               MissingKeyError,
                                NoPathFoundError,
                                NoSuitableColumnsError,
+                               NumericalPrecisionError,
                                # Objective exceptions
                                ObjectiveError,
                                PairwiseError,
                                # Base exception
                                PyorpsError,
+                               PyorpsRuntimeError,
+                               # Warning root
+                               PyorpsWarning,
                                # Graph API exceptions
                                RasterShapeError,
                                WFSConnectionError,
                                # WFS exceptions
                                WFSError,
                                WFSLayerNotFoundError,
+                               WFSRequestRejectedError,
                                WFSResponseParsingError,
+                               WFSServerError,
 )
-from .ensemble import EnsembleError, RouteEnsemble
 from .metric_stack import CombineResult, MetricStack
 from .objective import GradientLUTs, GradientOptions, Objective
 from .path import Path, PathCollection
@@ -47,6 +63,7 @@ from .types import (
                                InputDataType,
                                NormalizedCoordinate,
 )
+from .warning_types import AlgorithmFallbackWarning, CoverageWarning, SpanRuleWarning
 
 __all__ = [
     # Cost assumptions
@@ -69,7 +86,7 @@ __all__ = [
     # Path classes
     "Path", "PathCollection",
 
-    # Exceptions - Base
+    # Exceptions - Base (catch this for anything the library reports)
     "PyorpsError",
 
     # Exceptions - Cost assumptions
@@ -78,8 +95,19 @@ __all__ = [
 
     # Exceptions - WFS
     "WFSError", "WFSConnectionError", "WFSResponseParsingError", "WFSLayerNotFoundError",
+    "WFSServerError", "WFSRequestRejectedError",
 
     # Exceptions - Graph API
     "RasterShapeError", "NoPathFoundError", "AlgorithmNotImplementedError",
-    "PairwiseError"
+    "PairwiseError",
+
+    # Exceptions - replacements for builtin exceptions (each also derives from its builtin)
+    "InvalidInputError", "InvalidTypeError", "MissingKeyError",
+    "MissingDependencyError", "FeatureNotImplementedError",
+    "PyorpsRuntimeError", "InsufficientMemoryError", "InputFileNotFoundError",
+    "ConsistencyCheckError", "NumericalPrecisionError",
+
+    # Warning root
+    "PyorpsWarning", "CrsReprojectionWarning", "AlgorithmFallbackWarning",
+    "CoverageWarning", "SpanRuleWarning",
 ]

@@ -639,6 +639,91 @@ cdef inline int _check_span_clearance(
     return 1
 
 
+# ==================== LINE-END HELPERS ====================
+
+cdef inline int _span_starts_at(
+    int cur_row, int cur_col,
+    float span_dist_m,
+    uint8_t direction,
+    float step_distance,
+    int start_row, int start_col,
+    vector[StepData]& directions,
+) noexcept nogil:
+    """Return 1 when the current span started at (start_row, start_col).
+
+    A span is straight (a direction change always needs a tower), so its
+    start lies round(span / step) steps back along ``direction``; the step
+    count is computed exactly as in _check_span_clearance_vh. Used with the
+    source cell: the span then started at the source (no line tower yet).
+    """
+    cdef int n_steps = <int>(span_dist_m / step_distance + 0.5)
+    if cur_row - n_steps * directions[direction].dr != start_row:
+        return 0
+    if cur_col - n_steps * directions[direction].dc != start_col:
+        return 0
+    return 1
+
+
+cdef inline int _end_span_ok(
+    int tgt_row, int tgt_col,
+    float span_dist_m,
+    uint8_t direction,
+    int src_row, int src_col,
+    float target_min_span,
+    int src_h_on, float src_h,
+    int tgt_h_on, float tgt_h,
+    float height_a,
+    float cond_w, float cond_t, float min_clearance,
+    const float* dem_ptr, const float* obstacle_ptr,
+    int rows, int cols,
+    vector[StepData]& directions,
+    vector[CachedStepData]& cached_steps,
+    float step_distance,
+) noexcept nogil:
+    """Acceptance test of a search state that reached the target cell.
+
+    Returns 1 when the last span (from the last line tower, or from the
+    source when the span started there, to the target) may end the line:
+
+    - ``target_min_span > 0``: the span is at least ``target_min_span``
+      (the comparison the tower placement uses for ``min_span``), unless
+      it started at the source (a line without any line tower).
+    - ``tgt_h_on``: the conductor clears the target cell itself
+      (``tgt_h - obstacle(target) >= min_clearance``) and the whole last
+      span, attached ``tgt_h`` above the DEM at the target and ``height_a``
+      (the height class of the state) at the span start, or ``src_h`` when
+      ``src_h_on`` and the span started at the source. The last span is
+      sampled in full (_span_clearance_from): from the first cell after the
+      last tower, also when it is one step long, and from the source cell
+      itself when it starts at a source connection structure.
+
+    Read-only on all inputs; safe inside nogil / OpenMP sections.
+    """
+    cdef int from_src = _span_starts_at(
+        tgt_row, tgt_col, span_dist_m, direction, step_distance,
+        src_row, src_col, directions)
+    if (target_min_span > 0.0 and from_src == 0 and
+            <double>span_dist_m < <double>target_min_span):
+        return 0
+    cdef float h_a = height_a
+    cdef int first_cell = 1
+    cdef float obs_t = 0.0
+    if tgt_h_on != 0:
+        if obstacle_ptr != NULL:
+            obs_t = obstacle_ptr[tgt_row * cols + tgt_col]
+        if tgt_h - obs_t < min_clearance:
+            return 0
+        if src_h_on != 0 and from_src != 0:
+            h_a = src_h
+            first_cell = 0
+        return _span_clearance_from(
+            tgt_row, tgt_col, span_dist_m, direction,
+            h_a, tgt_h, cond_w, cond_t, min_clearance,
+            dem_ptr, obstacle_ptr, rows, cols,
+            directions, cached_steps, step_distance, first_cell)
+    return 1
+
+
 cdef inline int _check_span_clearance_vh(
     int cur_row, int cur_col,
     float span_dist_m,
@@ -709,6 +794,13 @@ cdef inline int _check_span_clearance_vh(
         walk_row += directions[direction].dr
         walk_col += directions[direction].dc
 
+        # Spans between two line towers: the first cell after tower A
+        # (step 0) and tower A's own cell are not sampled, and a span of
+        # one step is not checked at all (n_steps <= 1 above); the quick
+        # skip above also ignores obstacles. Changing this for ordinary
+        # spans is a separate owner decision; spans at a connection point
+        # (source or target height set) are sampled in full by
+        # _span_clearance_from instead.
         if step > 0:
             x = <float>(step + 1) * step_distance
             if (<unsigned int>walk_row >= <unsigned int>rows or
@@ -726,3 +818,256 @@ cdef inline int _check_span_clearance_vh(
                 return 0
 
     return 1
+
+
+cdef inline int _span_clearance_from(
+    int cur_row, int cur_col,
+    float span_dist_m,
+    uint8_t direction,
+    float height_a, float height_b,
+    float cond_w, float cond_t, float min_clearance,
+    const float* dem_ptr, const float* obstacle_ptr,
+    int rows, int cols,
+    vector[StepData]& directions,
+    vector[CachedStepData]& cached_steps,
+    float step_distance,
+    int first_cell,
+) noexcept nogil:
+    """Clearance of a span with a chosen first sampled lattice cell.
+
+    ``first_cell`` >= 2 is the sampling of ordinary spans between two line
+    towers (exactly _check_span_clearance_vh, bit for bit). Spans at a
+    connection point are sampled in full:
+
+    - ``first_cell`` = 1: every lattice cell after tower A, the first one
+      included, every intermediate cell, and also a span of one step (the
+      last span to a target connection height);
+    - ``first_cell`` = 0: in addition the start cell itself (a span that
+      starts at a source connection structure of height ``height_a``).
+
+    The end cell (x = span length) is always sampled: there the conductor
+    is at DEM + ``height_b``. No quick skip on the tower heights (it would
+    ignore obstacles and terrain that rise more than 50 m above the ends).
+    A span of zero steps (source == target) checks the end cell only (and
+    the start cell, the same one, with ``height_a`` when ``first_cell`` = 0).
+    Read-only on all inputs; safe inside nogil / OpenMP sections.
+    """
+    if first_cell >= 2:
+        return _check_span_clearance_vh(
+            cur_row, cur_col, span_dist_m, direction, height_a, height_b,
+            cond_w, cond_t, min_clearance, dem_ptr, obstacle_ptr, rows, cols,
+            directions, cached_steps, step_distance)
+
+    cdef int n_steps = <int>(span_dist_m / step_distance + 0.5)
+    cdef int ta_row = cur_row - n_steps * directions[direction].dr
+    cdef int ta_col = cur_col - n_steps * directions[direction].dc
+    if (<unsigned int>ta_row >= <unsigned int>rows or
+            <unsigned int>ta_col >= <unsigned int>cols):
+        return 0
+    cdef int a_idx = ta_row * cols + ta_col
+    cdef int b_idx = cur_row * cols + cur_col
+    cdef float dem_a = dem_ptr[a_idx]
+    cdef float dem_b = dem_ptr[b_idx]
+    cdef float attach_a = dem_a + height_a
+    cdef float attach_b = dem_b + height_b
+    cdef float span_len, x, chord_z, sag_x, cond_z, ground_z, obs_z, clr
+    cdef int walk_row = ta_row
+    cdef int walk_col = ta_col
+    cdef int step, i, int_row, int_col, n_inter, cell_idx
+
+    if n_steps <= 0:
+        obs_z = 0.0
+        if obstacle_ptr != NULL:
+            obs_z = obstacle_ptr[b_idx]
+        if first_cell == 0 and attach_a - dem_a - obs_z < min_clearance:
+            return 0
+        if attach_b - dem_b - obs_z < min_clearance:
+            return 0
+        return 1
+
+    span_len = <float>n_steps * step_distance
+    n_inter = cached_steps[direction].intermediate_count
+
+    if first_cell == 0:
+        # The start cell (x = 0): the conductor leaves the structure there.
+        x = 0.0
+        chord_z = attach_a + (attach_b - attach_a) * x / span_len
+        sag_x = (cond_w * x * (span_len - x)) / (2.0 * cond_t)
+        cond_z = chord_z - sag_x
+        obs_z = 0.0
+        if obstacle_ptr != NULL:
+            obs_z = obstacle_ptr[a_idx]
+        clr = cond_z - dem_a - obs_z
+        if clr < min_clearance:
+            return 0
+
+    for step in range(n_steps):
+        for i in range(n_inter):
+            int_row = walk_row + cached_steps[direction].intermediates[i].dr
+            int_col = walk_col + cached_steps[direction].intermediates[i].dc
+            if (<unsigned int>int_row >= <unsigned int>rows or
+                    <unsigned int>int_col >= <unsigned int>cols):
+                return 0
+            x = <float>step * step_distance + step_distance * (<float>(i + 1) / <float>(n_inter + 1))
+            chord_z = attach_a + (attach_b - attach_a) * x / span_len
+            sag_x = (cond_w * x * (span_len - x)) / (2.0 * cond_t)
+            cond_z = chord_z - sag_x
+            cell_idx = int_row * cols + int_col
+            ground_z = dem_ptr[cell_idx]
+            obs_z = 0.0
+            if obstacle_ptr != NULL:
+                obs_z = obstacle_ptr[cell_idx]
+            clr = cond_z - ground_z - obs_z
+            if clr < min_clearance:
+                return 0
+
+        walk_row += directions[direction].dr
+        walk_col += directions[direction].dc
+        if (<unsigned int>walk_row >= <unsigned int>rows or
+                <unsigned int>walk_col >= <unsigned int>cols):
+            return 0
+        # Every lattice cell after the start, the first one included.
+        x = <float>(step + 1) * step_distance
+        chord_z = attach_a + (attach_b - attach_a) * x / span_len
+        sag_x = (cond_w * x * (span_len - x)) / (2.0 * cond_t)
+        cond_z = chord_z - sag_x
+        cell_idx = walk_row * cols + walk_col
+        ground_z = dem_ptr[cell_idx]
+        obs_z = 0.0
+        if obstacle_ptr != NULL:
+            obs_z = obstacle_ptr[cell_idx]
+        clr = cond_z - ground_z - obs_z
+        if clr < min_clearance:
+            return 0
+
+    return 1
+
+
+# ==================== LINE-END ARGUMENT CHECKS ====================
+
+# Largest connection height / target_min_span the kernels accept (metres).
+# Far above any real structure; keeps every value finite in float32 and
+# inside the float32 arithmetic of the clearance test.
+LINE_END_MAX_M = 1.0e6
+
+
+def _reject_non_number(value, name):
+    """bool and str are not lengths (``True`` would read as 1 m, ``"7"`` as 7 m)."""
+    if isinstance(value, (bool, np.bool_, str, bytes)):
+        raise TypeError(f"{name} must be a number (metres), got {value!r}.")
+
+
+def line_end_target_min_span(value):
+    """Validated target_min_span as the float32 value the kernels use (0 = off).
+
+    Raises TypeError for bool, str, None and other non-numbers; ValueError
+    for a negative, non-finite or too large value (above LINE_END_MAX_M) and
+    for a positive value that underflows to 0 in float32 (it would switch
+    the rule off silently). All comparisons are made in double before the
+    cast to float.
+    """
+    _reject_non_number(value, "target_min_span")
+    cdef double v = float(value)
+    if not (v >= 0.0) or v == INFINITY or v > LINE_END_MAX_M:
+        raise ValueError(
+            f"target_min_span must be a finite number >= 0 and at most "
+            f"{LINE_END_MAX_M:g} m (0 switches the end-span rule off), got {value!r}."
+        )
+    cdef float f = <float>v
+    if v > 0.0 and f == 0.0:
+        raise ValueError(
+            f"target_min_span {value!r} is positive but 0 in float32 (it would "
+            f"switch the end-span rule off); use 0 or a length in metres."
+        )
+    return f
+
+
+def line_end_attach_height(value, name):
+    """Parse a connection-point height: (1, height) or (0, 0.0) when off.
+
+    None or NaN switch the end height off (the search is then unchanged);
+    any other value must be a finite number above 0 and at most
+    LINE_END_MAX_M (metres above the DEM). bool and str raise TypeError, a
+    bad value ValueError; the checks are made in double before any cast.
+    """
+    if value is None:
+        return 0, 0.0
+    _reject_non_number(value, name)
+    cdef double v = float(value)
+    if v != v:
+        return 0, 0.0
+    if not (v > 0.0) or v == INFINITY or v > LINE_END_MAX_M:
+        raise ValueError(
+            f"{name} must be a finite height above 0 m and at most "
+            f"{LINE_END_MAX_M:g} m (None or NaN switch it off), got {value!r}."
+        )
+    return 1, v
+
+
+cdef int _check_exact_span_bins(
+    float[:] step_dist, float span_bin_size, float max_span, int n_span_bins,
+) except -1:
+    """Raise ValueError when two span lengths of one direction share a bin.
+
+    The line-end options (target_min_span, connection heights) are exact
+    only when every span length has its own search state. The search
+    accumulates a span per step in float32 storage (double sum of the
+    stored float and the float32 step, cast back to float) and bins the
+    double sum as (uint16)(sum / span_bin_size); this is simulated here with
+    the same types and the same order of operations for spans of 1 .. K
+    steps (K = the steps below max_span), per direction. The bins must
+    increase strictly and stay below n_span_bins.
+    """
+    cdef Py_ssize_t d, n_dirs = step_dist.shape[0]
+    cdef double step_m, new_m, q
+    cdef double prev_m = 0.0
+    cdef float span_f
+    cdef int k, prev_bin
+    cdef uint16_t b
+    for d in range(n_dirs):
+        step_m = <double>step_dist[d]
+        span_f = 0.0
+        prev_bin = -1
+        k = 0
+        while True:
+            new_m = <double>span_f + step_m
+            if not (new_m < <double>max_span):
+                break
+            k += 1
+            q = new_m / span_bin_size
+            if not (q < <double>n_span_bins) or not (q < 65536.0):
+                raise ValueError(
+                    f"span bins do not cover the spans needed by the line-end "
+                    f"options: in direction {d} (step {step_m:.9g} m) the span "
+                    f"of {k} steps ({new_m:.9g} m) falls into bin {q:.6g} >= "
+                    f"n_span_bins ({n_span_bins}) with span_bin_size "
+                    f"{span_bin_size:.9g} m."
+                )
+            b = <uint16_t>q
+            if <int>b <= prev_bin:
+                raise ValueError(
+                    f"span_bin_size {span_bin_size:.9g} m is too coarse for the "
+                    f"line-end options (target_min_span, connection heights), "
+                    f"which need one search state per span length: in direction "
+                    f"{d} (step {step_m:.9g} m) the spans of {k - 1} and {k} "
+                    f"steps ({prev_m:.9g} m and {new_m:.9g} m, accumulated in "
+                    f"float32 as in the search) share span bin {<int>b}. Use a "
+                    f"span_bin_size below the shortest step with a margin for "
+                    f"float32 rounding (for example step * K / (K + 0.25) with "
+                    f"K = ceil(max_span / step)) and n_span_bins = K + 1."
+                )
+            prev_bin = <int>b
+            prev_m = new_m
+            span_f = <float>new_m
+    return 0
+
+
+def check_exact_span_bins(step_distances, float span_bin_size, float max_span,
+                          int n_span_bins):
+    """Python entry of the span-bin check the kernels run when a line-end
+    option is on: raises ValueError naming the bin size, the step and the
+    first two span lengths of one direction that share a bin (or the first
+    span whose bin is not below n_span_bins)."""
+    cdef np.ndarray[np.float32_t, ndim=1] sd = np.ascontiguousarray(
+        step_distances, dtype=np.float32).reshape(-1)
+    _check_exact_span_bins(sd, span_bin_size, max_span, n_span_bins)

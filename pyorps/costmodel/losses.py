@@ -37,6 +37,8 @@ from pathlib import Path
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError
+
 __all__ = [
     "LossCategories",
     "annuity_factor",
@@ -62,10 +64,10 @@ def category_square_sums(hours: np.ndarray, P: np.ndarray,
     h = np.asarray(hours, dtype=np.float64)
     P = np.asarray(P, dtype=np.float64)
     if P.ndim != 2 or P.shape[0] != h.shape[0]:
-        raise ValueError(f"P must be (K, n) with K = {h.shape[0]}")
+        raise InvalidInputError(f"P must be (K, n) with K = {h.shape[0]}")
     Q = np.zeros_like(P) if Q is None else np.asarray(Q, dtype=np.float64)
     if Q.shape != P.shape:
-        raise ValueError("Q must have the shape of P")
+        raise InvalidInputError("Q must have the shape of P")
     M = (P * h[:, None]).T @ P + (Q * h[:, None]).T @ Q
     return _w_from_matrix(M)
 
@@ -84,7 +86,7 @@ def annuity_factor(years: float, rate: float, growth: float = 0.0) -> float:
     headline is H = 25 a, r = 4 % real, g = 0 %: AF = 15.622.
     """
     if years <= 0:
-        raise ValueError("years must be > 0")
+        raise InvalidInputError("years must be > 0")
     q = (1.0 + growth) / (1.0 + rate)
     if abs(q - 1.0) < 1e-15:
         return float(years)
@@ -108,12 +110,12 @@ def loss_price_eur_per_mwh(*, price: float, nu: float = 0.0,
     consistent 67.37 EUR/MWh). Implementation log section 4.
     """
     if not 0.0 <= nu < 1.0:
-        raise ValueError("nu must lie in [0, 1)")
+        raise InvalidInputError("nu must lie in [0, 1)")
     if convention == "plan":
         return float(price) * (1.0 - nu)
     if convention == "clipped":
         return float(price)
-    raise ValueError("convention must be 'plan' or 'clipped'")
+    raise InvalidInputError("convention must be 'plan' or 'clipped'")
 
 
 def loss_coef(*, price_eur_per_mwh: float, u_kv: float, years: float = 25.0,
@@ -125,7 +127,7 @@ def loss_coef(*, price_eur_per_mwh: float, u_kv: float, years: float = 25.0,
     price and the annuity factor that is ``loss_coef * r * W``.
     """
     if u_kv <= 0:
-        raise ValueError("u_kv must be > 0")
+        raise InvalidInputError("u_kv must be > 0")
     return (float(price_eur_per_mwh) * annuity_factor(years, rate, growth)
             / (u_kv * u_kv))
 
@@ -178,13 +180,13 @@ class LossCategories:
         """Hours sum to a year; M_cat matches the category means; the
         mean-only form never exceeds the exact one on the diagonal."""
         if abs(self.hours.sum() - 8760.0) > 1e-6 * 8760.0:
-            raise ValueError(f"category hours sum to {self.hours.sum()}")
+            raise InvalidInputError(f"category hours sum to {self.hours.sum()}")
         m = ((self.P * self.hours[:, None]).T @ self.P
              + (self.Q * self.hours[:, None]).T @ self.Q)
         if not np.allclose(m, self.M_cat, rtol=rtol, atol=1e-9):
-            raise ValueError("M_cat does not match the category table")
+            raise InvalidInputError("M_cat does not match the category table")
         if np.any(np.diag(self.M_cat) > np.diag(self.M_exact) * (1 + rtol)):
-            raise ValueError("a mean-only W exceeds the exact W")
+            raise InvalidInputError("a mean-only W exceeds the exact W")
 
     def loss_weight(self, kind: str = "exact") -> tuple[float, ...]:
         """``W(X)`` for every bitmask, for ``CollectorModel.loss_weight``.
@@ -200,7 +202,7 @@ class LossCategories:
         elif kind == "cat":
             M = self.M_cat
         else:
-            raise ValueError("kind must be exact, var or cat")
+            raise InvalidInputError("kind must be exact, var or cat")
         return tuple(float(x) for x in _w_from_matrix(M))
 
     def theta_hours(self, rated_mw_total: float, kind: str = "exact") -> float:

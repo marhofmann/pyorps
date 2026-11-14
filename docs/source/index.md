@@ -64,7 +64,7 @@ Full class and function documentation.
 (index-status)=
 ## What is available where
 
-Each page states its status. `stable` pages describe the API that is kept; `experimental` pages describe features in the same release (`pip install pyorps`, 0.4.0) that may still change. See {doc}`getting_started/release_status`.
+Each page states its status (`status:` in its header) and where you can get it (`available_in:`). `stable` pages describe the API that is kept; `experimental` pages describe features that are in the latest PyPI release (`available_in: pypi`) and may change in a later version; `unreleased` pages describe code that is only on the `main` branch or in a source checkout (`available_in: main` or `source`). The `since:` field names the release in which a page's feature first appeared. See {doc}`getting_started/release_status`.
 
 | Area | Status | Page |
 |---|---|---|
@@ -72,6 +72,7 @@ Each page states its status. `stable` pages describe the API that is kept; `expe
 | Route simplification | stable | {doc}`api/path_finder` |
 | Multi-metric objectives, cost fields, corridor graphs, tower fields | experimental | {doc}`api/metric_stack_objective`, {doc}`api/cost_fields`, {doc}`api/corridor_graphs`, {doc}`api/tower_fields` |
 | Thin forbidden features, eikonal FIM, constrained routing, GUI | experimental | {doc}`api/thin_forbidden_features`, {doc}`api/eikonal_fim`, {doc}`api/constrained_path_finder`, {doc}`api/gui` |
+| Research packages for free siting: collector, certify, cost model, siting (experimental research code) | unreleased | {doc}`api/collector`, {doc}`api/certify`, {doc}`api/costmodel`, {doc}`api/siting` |
 
 Machine-readable versions of these docs: `llms.txt`, `llms-full.txt` and `api-index.json` at the root of the built site.
 
@@ -125,6 +126,10 @@ api/corridor_graphs
 api/tower_fields
 api/constrained_path_finder
 api/gui
+api/collector
+api/certify
+api/costmodel
+api/siting
 api/exceptions
 ```
 

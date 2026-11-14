@@ -99,6 +99,43 @@ def invoke(app, fragments, *args, outputs_list=None, triggered=None):
     return json.loads(raw)["response"]
 
 
+def _says_finalizing(resp: dict) -> bool:
+    """A poll answer that says the ended job's result is being added to the project."""
+    from pyorps.gui.services import jobs
+
+    return any(isinstance(value, dict) and jobs.FINALIZING_NOTE in str(value.get("children", ""))
+               for value in resp.values())
+
+
+def poll_job(app, ack_id: str, notices=None, *, max_ticks: int = 10) -> dict:
+    """Tick a background job's poll as the page does and return what the page ends up with (round 15).
+
+    The poll is the callback that writes the one-shot store ``ack_id`` (``callbacks/job_poll.py``). A running
+    job (or no job) answers on the first tick, and that answer is returned. An ended job is handed over in
+    steps: a tick claims it and says "adding the result", the next one runs the finalize step and answers
+    with the outputs and a token; the page writes the token into the store, and the tick after that sends it
+    back, which switches the poll off. The returned dict is the outputs' answer merged with that last tick's
+    (so it holds the result outputs, the notices and the final poll / Stop values).
+    """
+    from pyorps.gui import ids
+
+    key = f"{ack_id}.data"
+    _key, entry = find_callback(app, key)
+    poll_id = entry["inputs"][0]["id"]
+    triggered = [f"{poll_id}.n_intervals"]
+    notices = list(notices or [])
+    for tick in range(1, max_ticks + 1):
+        resp = invoke(app, key, tick, notices, None, triggered=triggered)
+        if ack_id in resp:                   # the outcome: the page keeps it, the next tick confirms it
+            if ids.NOTICES in resp:
+                notices = resp[ids.NOTICES]["data"]
+            confirm = invoke(app, key, tick + 1, notices, resp[ack_id]["data"], triggered=triggered)
+            return {**resp, **confirm}
+        if not _says_finalizing(resp):
+            return resp
+    raise AssertionError(f"the poll writing {ack_id!r} never handed the outcome over in {max_ticks} ticks")
+
+
 # ------------------------------------------------------------------ fixtures
 @pytest.fixture(scope="session", autouse=True)
 def _isolate_logbook(tmp_path_factory):
@@ -111,6 +148,22 @@ def _isolate_logbook(tmp_path_factory):
     logbook.reset()
     yield
     logbook.reset()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _stop_the_shared_tile_server():
+    """Stop localtileserver's shared server when the session ends (round 15).
+
+    The GUI does this at exit (``app._exit_report``); the tests never did. A browser test that left a large
+    raster on the map ended with tile renders still running in the server's worker threads (GDAL reads), and
+    the pytest process then stayed alive after its summary, with one thread and no CPU: the interpreter had
+    shut down and the process exit was blocked. ``stop_server`` lets the requests in flight finish first (and,
+    since round 15, never waits for ever for idle keep-alive connections), so no render is cut off at exit.
+    """
+    yield
+    from pyorps.gui.state import TileManager
+
+    TileManager.stop_server()
 
 
 @pytest.fixture(scope="session")

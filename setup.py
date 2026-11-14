@@ -4,6 +4,7 @@ import os
 import platform
 import time
 from pathlib import Path
+
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext as _build_ext
 
@@ -105,6 +106,25 @@ def sha256_file(path):
     return digest.hexdigest()
 
 
+def generator_versions():
+    """Versions of the packages that the generated C++ sources depend on.
+
+    Cython writes numpy's C API calls into the .cpp files, taken from the numpy
+    that is installed while it runs. A .cpp generated next to a newer numpy does
+    not compile against an older numpy's headers (and a different Cython writes
+    different code), so both versions are part of the build signature: a build
+    in another environment regenerates the sources instead of reusing them.
+    """
+    import numpy as np
+
+    try:
+        import Cython
+        cython_version = Cython.__version__
+    except ImportError:
+        cython_version = None
+    return {"cython": cython_version, "numpy": np.__version__}
+
+
 def compute_build_signature(system, cpp_standard, compile_args, link_args):
     payload = json.dumps(
         {
@@ -114,6 +134,7 @@ def compute_build_signature(system, cpp_standard, compile_args, link_args):
             "compile_args": compile_args,
             "link_args": link_args,
             "directives": COMPILER_DIRECTIVES,
+            "generators": generator_versions(),
         },
         sort_keys=True,
     )
@@ -318,7 +339,7 @@ def make_extensions():
     )
     force = signature != previous
     if force and previous is not None:
-        print("Compiler flags changed since the last build - forcing a rebuild")
+        print("Compiler flags, Cython or numpy changed since the last build - forcing a rebuild")
 
     if need_cythonize and HAS_CYTHON:
         print("Cythonizing extensions...")

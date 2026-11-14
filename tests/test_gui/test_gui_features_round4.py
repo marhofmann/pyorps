@@ -17,17 +17,14 @@ import geopandas as gpd
 import numpy as np
 import pytest
 import rasterio
-from rasterio.transform import from_origin
-from shapely.geometry import box, mapping, Polygon
-
+from conftest import invoke
 from dash.exceptions import PreventUpdate
+from rasterio.transform import from_origin
+from shapely.geometry import Polygon, box, mapping
 
 from pyorps.gui import ids
-from pyorps.gui.services import (cost_model, combinations, geo, manual_cost,
-                                 raster_algebra, tiles)
+from pyorps.gui.services import combinations, geo, manual_cost, raster_algebra, tiles
 from pyorps.gui.services.rasterize import ModifierSpec, build_cost_raster
-
-from conftest import invoke
 
 
 def _key_by_input(app, out_frag, input_pred):
@@ -218,7 +215,7 @@ def test_manual_polygon_live_sync_and_edit(app, state):
 
     # editing a cost cell in the Cost-tab grid writes back to the layer
     invoke(app, ("layers-view.data", ids.MANUAL_GRID, "cellValueChanged"),
-           {"data": {"__row": 1, "cost": "777"}, "colId": "cost"},
+           {"data": {"__row": 1, "cost": "777"}, "colId": "cost"}, [],
            triggered=[f"{ids.MANUAL_GRID}.cellValueChanged"])
     assert float(state.get(MANUAL_LAYER_ID).gdf["cost"].iloc[1]) == 777.0
 
@@ -256,7 +253,7 @@ def test_edit_manual_cost_in_table_writes_back(app, state):
                             meta={"manual_cost": True, "cost_column": "cost"})
     event = [{"colId": "cost", "data": {"__row": 0, "cost": "777"}}]
     invoke(app, ("notices.data", "layer-table-grid", "cellValueChanged"),
-           event, [{"id": layer.id}],
+           event, [{"id": layer.id}], [],
            triggered=[f"{ids.LAYER_TABLE_GRID}.cellValueChanged"])
     assert float(state.get(layer.id).gdf["cost"].iloc[0]) == 777.0
 
@@ -416,7 +413,7 @@ def test_open_raster_combination_table_callback(app, state):
     raster = state.add_layer("Cost raster", "raster", crs="EPSG:25832",
                              meta={"combination_gdf": combo})
     resp = invoke(app, (f"{ids.LAYER_TABLE_GRID}.rowData", ids.LAYER_VIEW_BTN),
-                  1, [{"id": raster.id}],
+                  1, [{"id": raster.id}], [],
                   triggered=[f"{ids.LAYER_VIEW_BTN}.n_clicks"])
     assert resp[ids.LAYER_TABLE_OFFCANVAS]["is_open"] is True
     fields = [c["field"] for c in resp[ids.LAYER_TABLE_GRID]["columnDefs"]]
@@ -438,8 +435,11 @@ def test_click_raster_selects_combination_row(app, state):
                              meta={"combination_gdf": combo})
     click = {"latlng": {"lat": lat, "lng": lng}}
     key = _key_by_input(app, "paginationGoTo", _by_id(ids.MAP))
+    # panel closed, draw tool idle, table already built (it is in meta): the
+    # click looks the row up; an unbuilt table would need the panel open
     resp = invoke(app, key, click, [{"id": raster.id}],
-                  {"click_mode": "off"}, triggered=[f"{ids.MAP}.clickData"])
+                  {"click_mode": "off"}, False, None, [],
+                  triggered=[f"{ids.MAP}.clickData"])
     selected = resp[ids.LAYER_TABLE_GRID]["selectedRows"]
     assert selected and int(selected[0]["cost"]) == 405     # Wald/Nadelholz
     assert selected[0]["bez"] == "Nadelholz"
@@ -470,7 +470,7 @@ def test_click_feature_selects_table_row(app, state):
     feat = layer.geojson["features"][2]
     key = _key_by_input(app, "paginationGoTo", _pattern(ids.TYPE_LAYER_GEOJSON))
     resp = invoke(
-        app, key, [None], [{"id": layer.id}],
+        app, key, [None], [{"id": layer.id}], [],
         triggered=[{"id": {"type": ids.TYPE_LAYER_GEOJSON, "id": layer.id},
                     "property": "clickData", "value": feat}])
     assert resp[ids.LAYER_TABLE_OFFCANVAS]["is_open"] is True
@@ -487,7 +487,7 @@ def test_click_feature_of_unselected_layer_ignored(app, state):
     feat = layer.geojson["features"][0]
     key = _key_by_input(app, "paginationGoTo", _pattern(ids.TYPE_LAYER_GEOJSON))
     with pytest.raises(PreventUpdate):
-        invoke(app, key, [None], [{"id": other.id}],
+        invoke(app, key, [None], [{"id": other.id}], [],
                triggered=[{"id": {"type": ids.TYPE_LAYER_GEOJSON,
                                   "id": layer.id},
                            "property": "clickData", "value": feat}])

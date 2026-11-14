@@ -3,14 +3,14 @@ PYORPS: An Open-Source Tool for Automated Power Line Routing
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
-    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
+Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 
 Backward-compatibility shim — imports from Cython _traversal module.
 Falls back to Numba implementations if Cython extension is not available.
 
 THE INTERMEDIATE-CELL INVARIANT (read before changing any edge builder)
-----------------------------------------------------------------------
+-----------------------------------------------------------------------
 A step from ``(r, c)`` to ``(r+dr, c+dc)`` is admitted only if EVERY
 intermediate cell of that step is passable. ``intermediate_steps_numba``
 (``_raster_context.pyx:_calculate_intermediate_steps_cython``) enumerates them:
@@ -77,21 +77,21 @@ except ImportError:
     _CYTHON_TRAVERSAL = False
 
     from pyorps.utils._traversal_numba import (  # noqa: F401  # pylint: disable=unused-import  # re-exported API
+        calculate_gradient_penalty,
         calculate_path_metrics_numba,
-        intermediate_steps_numba,
+        calculate_region_bounds,
+        calculate_segment_length,
+        check_max_values,
         construct_edges,
         construct_edges_3d,
-        get_max_number_of_edges,
         euclidean_distances_numba,
-        get_cost_factor_numba,
-        ravel_index,
-        calculate_region_bounds,
-        is_valid_node,
+        find_nearest_valid_positions_numba,
         find_valid_nodes,
         find_valid_nodes_3d,
+        get_cost_factor_numba,
+        get_max_number_of_edges,
         get_outgoing_edges,
-        calculate_segment_length,
-        find_nearest_valid_positions_numba,
-        check_max_values,
-        calculate_gradient_penalty,
+        intermediate_steps_numba,
+        is_valid_node,
+        ravel_index,
     )

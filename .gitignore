@@ -64,3 +64,11 @@ docs/api/
 # Agent working files (kept in a private archive)
 CLAUDE.md
 docs/superpowers/
+
+# Large case-study data (owner decision 2026-11-10): published separately (Zenodo), never in git.
+# The small files of the study (config, manifest, sidecars, loss_categories.npz, wea.geojson) are tracked.
+case_studies/runkel_free_siting/data/dem/
+case_studies/runkel_free_siting/data/rasters/*.tif
+case_studies/runkel_free_siting/data/rasters/*.tif.aux.xml
+case_studies/runkel_free_siting/data/layers/towers_110.geojson
+case_studies/runkel_free_siting/data/layers/power_lines_110.geojson

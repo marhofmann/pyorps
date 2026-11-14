@@ -51,6 +51,7 @@ from pyorps.collector.voltage_batch import (
     _orient,
     batch_load_flow,
 )
+from pyorps.core.exceptions import InvalidInputError, MissingDependencyError
 
 __all__ = ["inflated_load_flow", "islands_load_flow"]
 
@@ -61,8 +62,8 @@ def _pgm():
     try:
         import power_grid_model as pgm
     except ImportError as exc:                          # pragma: no cover
-        raise ImportError("the power-grid-model backends need "
-                          "`pip install power-grid-model`") from exc
+        raise MissingDependencyError("the power-grid-model backends need "
+                                     "`pip install power-grid-model`") from exc
     return pgm
 
 
@@ -75,7 +76,7 @@ def _branches(batch: DesignBatch, rows: slice, rep: np.ndarray):
     b = batch.b_s[rows][bi, ei]
     zero = (r == 0) & (x == 0)
     if (b[zero] != 0).any():
-        raise ValueError("a zero-impedance branch with shunt susceptance")
+        raise InvalidInputError("a zero-impedance branch with shunt susceptance")
     keep = ~zero
     bi, ei = bi[keep], ei[keep]
     u = rep[bi, batch.edge_u[ei]]

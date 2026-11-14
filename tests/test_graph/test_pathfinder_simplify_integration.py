@@ -1,5 +1,6 @@
 """End-to-end tests for find_route(simplify=...)."""
 import math
+
 import numpy as np
 import pytest
 import rasterio

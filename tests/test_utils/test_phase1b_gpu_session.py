@@ -48,13 +48,18 @@ except ImportError:
 
 # Import-safe without CuPy: sssp_gpu guards its cupy import.
 from pyorps.utils.sssp_gpu import (
-    _v5_arena_cap, _V5_N_BUCKETS, _V5_DEFAULT_ARENA_FACTOR,
+    _V5_DEFAULT_ARENA_FACTOR,
+    _V5_N_BUCKETS,
+    _v5_arena_cap,
 )
 
 if GPU:
     from pyorps.utils.sssp_gpu import (
-        GpuSsspSession, sssp_raster_gpu_paths, sssp_raster_gpu_v4,
-        sssp_raster_gpu_v5, _check_v5_available,
+        GpuSsspSession,
+        _check_v5_available,
+        sssp_raster_gpu_paths,
+        sssp_raster_gpu_v4,
+        sssp_raster_gpu_v5,
     )
     from pyorps.utils.traversal_gpu import prepare_step_lookup_tables
 

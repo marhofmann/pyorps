@@ -5,16 +5,22 @@ One render callback maps the ``notices`` store to a stack of severity-coloured
 toast boxes (title / Means / Impact / Fix / collapsible Details / optional
 "Go fix" button that jumps to the offending tab). Dismissing a toast prunes it
 from the store; warnings/info/success auto-dismiss client-side via
-``duration`` but stay in the store history until dismissed or replaced.
+``duration`` but stay in the store history (capped at the newest
+``errors.MAX_STORED_NOTICES``) until dismissed or replaced. Only notices that
+are NEW since the previous render open as toasts; an older one stays open only
+while its own auto-dismiss timer is running, so an earlier warning never pops
+up again.
 """
 from __future__ import annotations
+
+import time
 
 import dash_bootstrap_components as dbc
 from dash import ALL, Input, Output, State, ctx, html, no_update
 from dash.exceptions import PreventUpdate
 
 from .. import ids
-from ..services import logbook
+from ..services import errors, logbook
 
 _COLORS = {"error": "danger", "warning": "warning", "info": "info",
            "success": "success"}
@@ -25,10 +31,15 @@ _ICONS = {"error": "danger", "warning": "warning", "info": "info",
 #: dismissed toast is never lost.
 _DURATIONS = {"error": 10_000, "warning": 5_000, "info": 5_000,
               "success": 4_000}
+#: monotonic clock for the toast timers (a module attribute so tests can drive it)
+_clock = time.monotonic
 
 
-def notice_toast(notice: dict) -> dbc.Toast:
-    """Render one notice dict (services.errors.Notice.to_dict) as a Toast."""
+def notice_toast(notice: dict, is_open: bool = True) -> dbc.Toast:
+    """Render one notice dict (services.errors.Notice.to_dict) as a Toast.
+
+    ``is_open=False`` renders it closed (an old notice kept in the history).
+    """
     severity = notice.get("severity", "error")
     body = []
     for label, key in (("Means", "meaning"), ("Impact", "impact"),
@@ -54,29 +65,61 @@ def notice_toast(notice: dict) -> dbc.Toast:
         body, header=notice.get("title", "Notice"),
         icon=_ICONS.get(severity, "danger"),
         duration=_DURATIONS.get(severity),
-        dismissable=True, is_open=True,
+        dismissable=True, is_open=is_open,
         className=f"notice-{severity}",
         id={"type": ids.TYPE_NOTICE, "index": notice.get("id", "")})
+
+
+def _still_showing(first_shown: dict[str, float], notice: dict,
+                   now: float) -> bool:
+    """Whether a notice's toast should be open in this render.
+
+    A NEW notice opens. An older one stays open only while its auto-dismiss
+    timer (``_DURATIONS``) is still running, so a toast on screen is not
+    closed by the next notice and one that already timed out (or was closed)
+    does not pop up again. A severity without a timer stays open.
+    """
+    nid = notice.get("id")
+    if not nid:
+        return True
+    started = first_shown.setdefault(nid, now)
+    duration = _DURATIONS.get(notice.get("severity", "error"))
+    return duration is None or (now - started) * 1000.0 < duration
 
 
 def register(app, state) -> None:  # pylint: disable=unused-argument  # uniform register(app, state) signature
     #: ids of notices already written to the log (one write per notice)
     logged_ids: set[str] = set()
+    #: notice id -> when its toast first opened (``_clock`` seconds)
+    first_shown: dict[str, float] = {}
 
     @app.callback(Output(ids.NOTICE_STACK, "children"),
                   Input(ids.NOTICES, "data"))
     def render_notices(notices):
-        # persist every new notice to the log file before it is rendered, so a
-        # warning/error survives its 5-10 s toast and stays readable later.
-        for notice in notices or []:
+        notices = errors.cap_notices(notices)
+        now = _clock()
+        toasts = []
+        for notice in notices:
             nid = notice.get("id")
+            # persist every new notice to the log file before it is rendered,
+            # so a warning/error survives its 5-10 s toast and stays readable
+            # later. The browser store only holds a short ``details``; the full
+            # traceback is still known server-side and goes to the log.
             if nid and nid not in logged_ids:
                 logged_ids.add(nid)
                 try:
-                    logbook.log_notice(notice)
+                    full = errors.full_details(nid)
+                    logbook.log_notice({**notice, "details": full}
+                                       if full else notice)
                 except Exception:  # pragma: no cover  # nosec B110  # pylint: disable=broad-exception-caught
                     pass
-        return [notice_toast(n) for n in (notices or [])]
+            toasts.append(notice_toast(
+                notice, is_open=_still_showing(first_shown, notice, now)))
+        if len(first_shown) > 500:           # bounded: keep only the live ids
+            live = {n.get("id") for n in notices}
+            for stale in [k for k in first_shown if k not in live]:
+                del first_shown[stale]
+        return toasts
 
     # ------------------------------------------------- the full-log viewer
     @app.callback(

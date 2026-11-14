@@ -69,11 +69,14 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError
+
 __all__ = [
     "FIELD_CODECS",
     "DecodedField",
     "encode_field",
     "decode_field",
+    "decode_rows",
     "codec_of",
     "is_lossy",
 ]
@@ -142,7 +145,7 @@ class DecodedField:
             return self.lower
         if side == "upper":
             return self.upper
-        raise ValueError(
+        raise InvalidInputError(
             f"side must be 'lower' or 'upper', got {side!r}; there is no "
             f"third option -- 'the value' is exactly the ambiguity this "
             f"type exists to remove")
@@ -227,9 +230,9 @@ def encode_field(values, *, codec: str = "fixed-quantum",
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     arr = np.asarray(values, dtype=np.float64)
     if arr.ndim != 2:
-        raise ValueError(f"expected a 2-D field, got shape {arr.shape}")
+        raise InvalidInputError(f"expected a 2-D field, got shape {arr.shape}")
     if codec not in FIELD_CODECS:
-        raise ValueError(
+        raise InvalidInputError(
             f"unknown codec {codec!r}; have {FIELD_CODECS}")
 
     reachable = np.isfinite(arr)
@@ -241,10 +244,10 @@ def encode_field(values, *, codec: str = "fixed-quantum",
 
     q = float(error_bound)
     if not (q > 0.0 and np.isfinite(q)):
-        raise ValueError(
+        raise InvalidInputError(
             f"error_bound must be a finite positive quantum, got {q}")
     if np.any(arr[reachable] < 0):
-        raise ValueError(
+        raise InvalidInputError(
             "negative field values are not supported; a cost field is "
             "non-negative and the quantiser relies on it")
 
@@ -346,7 +349,7 @@ def decode_field(payload, meta: dict) -> DecodedField:
         return DecodedField(lower=arr, error_bound=0.0,
                             reachable=np.isfinite(arr), codec="raw")
     if codec != "fixed-quantum":
-        raise ValueError(f"unknown codec {codec!r} in field metadata")
+        raise InvalidInputError(f"unknown codec {codec!r} in field metadata")
 
     tile = int(meta["tile"])
     R, C = int(meta["padded_rows"]), int(meta["padded_cols"])
@@ -364,6 +367,59 @@ def decode_field(payload, meta: dict) -> DecodedField:
 
     mask = np.unpackbits(np.asarray(payload["reach_mask"], dtype=np.uint8),
                          count=rows * cols).astype(bool).reshape(rows, cols)
+    lower = np.nextafter(k.astype(np.float64) * q, -np.inf)
+    lower[~mask] = np.inf
+    return DecodedField(lower=lower, error_bound=q, reachable=mask,
+                        codec=codec)
+
+
+def decode_rows(payload, meta: dict, r0: int, r1: int) -> DecodedField:
+    """Read back rows ``r0`` to ``r1`` (``r1`` exclusive) of a stored field.
+
+    Only the frames (tile-rows) that cover those rows are inflated, and only
+    the slice of the reachability mask, so a merge that needs a band of a
+    large field does not decode all of it (review finding CODE-06). The result
+    equals ``decode_field(payload, meta)`` cut to ``[r0:r1]`` on every end of
+    the interval. A ``raw`` field is simply sliced. The encoder still needs the
+    whole field in memory: ``encode_field`` has no row-wise writer yet.
+    """
+    rows, cols = int(meta["rows"]), int(meta["cols"])
+    if not (0 <= r0 <= r1 <= rows):
+        raise InvalidInputError(f"need 0 <= r0 <= r1 <= {rows}, got {r0}, {r1}")
+    codec = codec_of(meta)
+    if codec == "raw":
+        arr = np.asarray(payload["dist"], dtype=np.float64).reshape(
+            rows, cols)[r0:r1]
+        return DecodedField(lower=arr, error_bound=0.0,
+                            reachable=np.isfinite(arr), codec="raw")
+    if codec != "fixed-quantum":
+        raise InvalidInputError(f"unknown codec {codec!r} in field metadata")
+    tile = int(meta["tile"])
+    _R, C = int(meta["padded_rows"]), int(meta["padded_cols"])
+    q = float(meta["quantum"])
+    if r0 == r1:
+        empty = np.empty((0, cols))
+        return DecodedField(lower=empty, error_bound=q,
+                            reachable=empty.astype(bool), codec=codec)
+    per_frame = tile * tile * (C // tile)
+    f0, f1 = r0 // tile, (r1 - 1) // tile + 1
+    body = np.asarray(payload["q_body"], dtype=np.uint8)
+    offsets = np.asarray(payload["q_frames"], dtype=np.int64)
+    raw = body[int(offsets[f0]):int(offsets[f1])].tobytes()
+    base = int(offsets[f0])
+    flat = np.empty((f1 - f0) * per_frame, dtype=np.int64)
+    for f in range(f0, f1):
+        flat[(f - f0) * per_frame:(f - f0 + 1) * per_frame] = _unpack_frame(
+            raw[int(offsets[f]) - base:int(offsets[f + 1]) - base], per_frame)
+    band = _untile_major(flat, (f1 - f0) * tile, C, ((f1 - f0) * tile, C),
+                         tile)
+    k = band[r0 - f0 * tile:r1 - f0 * tile, :cols]
+
+    first, last = r0 * cols, r1 * cols
+    packed = np.asarray(payload["reach_mask"], dtype=np.uint8)
+    bits = np.unpackbits(packed[first // 8:(last + 7) // 8])
+    mask = bits[first % 8:first % 8 + (last - first)].astype(bool).reshape(
+        r1 - r0, cols)
     lower = np.nextafter(k.astype(np.float64) * q, -np.inf)
     lower[~mask] = np.inf
     return DecodedField(lower=lower, error_bound=q, reachable=mask,
