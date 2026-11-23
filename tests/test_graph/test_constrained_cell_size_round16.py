@@ -157,12 +157,15 @@ def test_objective_run_at_one_metre_is_bit_identical_to_the_recorded_values(name
     assert [(t.cell_index, t.tower_type, t.terrain_cost, t.angle_cost) for t in path.towers] == rec["towers"]
     assert path.total_terrain_cost == rec["terrain"]
     assert path.total_tower_cost == rec["towers_total"]
-    assert path.total_angle_penalty_cost == rec["angle"]
-    assert path.total_cost == rec["total"]
+    # The turn penalties are a sum of table values that can differ in the last bit between platforms (macOS on
+    # arm64 reports 899.9999999999999 for the 900.0 recorded on Windows and Linux). The total and the kernel
+    # distance contain that sum, so these three are compared to 1e-12 relative; everything else stays exact.
+    assert path.total_angle_penalty_cost == pytest.approx(rec["angle"], rel=1e-12)
+    assert path.total_cost == pytest.approx(rec["total"], rel=1e-12)
     assert path.total_length == rec["length"]
     assert finder._search_scale == rec["scale"]
     (call,) = kernel_spy
-    assert call["dist"] == rec["kernel_dist"]
+    assert call["dist"] == pytest.approx(rec["kernel_dist"], rel=1e-12)
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
