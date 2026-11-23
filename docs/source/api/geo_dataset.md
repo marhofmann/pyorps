@@ -128,9 +128,6 @@ pf = PathFinder(
 (geo-dataset-windowed)=
 ## Windowed Raster Reads
 
-```{pyorps-status} unreleased source
-```
-
 `LocalRasterDataset` can read only a part of a raster, so a very large GeoTIFF does not have to fit in memory.
 
 - `load_metadata()` reads no pixels; afterwards the raster geometry (transform, shape, CRS) is known, which is all that is needed to compute a search window.

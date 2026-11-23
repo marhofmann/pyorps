@@ -72,7 +72,7 @@ Each page states its status (`status:` in its header) and where you can get it (
 | Route simplification | stable | {doc}`api/path_finder` |
 | Multi-metric objectives, cost fields, corridor graphs, tower fields | experimental | {doc}`api/metric_stack_objective`, {doc}`api/cost_fields`, {doc}`api/corridor_graphs`, {doc}`api/tower_fields` |
 | Thin forbidden features, eikonal FIM, constrained routing, GUI | experimental | {doc}`api/thin_forbidden_features`, {doc}`api/eikonal_fim`, {doc}`api/constrained_path_finder`, {doc}`api/gui` |
-| Research packages for free siting: collector, certify, cost model, siting (experimental research code) | unreleased | {doc}`api/collector`, {doc}`api/certify`, {doc}`api/costmodel`, {doc}`api/siting` |
+| Research packages for free siting: collector, certify, cost model, siting (experimental research code) | experimental | {doc}`api/collector`, {doc}`api/certify`, {doc}`api/costmodel`, {doc}`api/siting` |
 
 Machine-readable versions of these docs: `llms.txt`, `llms-full.txt` and `api-index.json` at the root of the built site.
 

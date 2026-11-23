@@ -26,7 +26,7 @@ PYORPS uses a pluggable backend architecture. All backends implement the abstrac
 | NetworkX | `NetworkxAPI` | Graph library | `pip install pyorps[graph]` | Pure Python reference |
 | iGraph | `IGraphAPI` | Graph library | `pip install pyorps[graph]` | C-backed |
 | RasterGPU | `RasterGPUAPI` | GPU direct | `pip install pyorps[gpu]` | CUDA delta-stepping |
-| RasterFIM | `RasterFIMAPI` | GPU direct (eikonal) | `pip install pyorps[gpu]` | Continuous least-cost solve (source checkout only) |
+| RasterFIM | `RasterFIMAPI` | GPU direct (eikonal) | `pip install pyorps[gpu]` | Continuous least-cost solve (experimental) |
 
 The backend is chosen by name only. `graph_api` defaults to `"cython"`; PYORPS does not switch backend by raster size. A `cugraph` backend does not exist (`graph_api="cugraph"` raises `NotImplementedError`).
 
@@ -71,14 +71,14 @@ Use library backends when you need:
 
 ### RasterGPU
 
-```{pyorps-status} unreleased source
+```{pyorps-status} experimental pypi
 ```
 
 The GPU backend runs a persistent cooperative kernel directly on raster data in GPU memory. See {ref}`raster-gpu-backend` below for details.
 
 ### RasterFIM
 
-```{pyorps-status} unreleased source
+```{pyorps-status} experimental pypi
 ```
 
 `RasterFIMAPI` (`graph_api="raster_fim"`) does not search a graph. It solves the continuous eikonal equation `|grad T| = c(x)` on the cost raster with a GPU block fast-iterative method (CuPy kernels) and traces each route by steepest descent on the arrival-time field `T`. One solve from a source serves all its targets.
@@ -120,14 +120,14 @@ result = path_finder.find_route(algorithm="dijkstra")
 
 ### Delta-Stepping
 
-Parallel bucket-based algorithm. On Linux, delta-stepping uses OpenMP for multi-threaded execution, making it well suited for very large rasters.
+Parallel bucket-based algorithm. Delta-stepping uses OpenMP for multi-threaded execution (Windows and Linux builds), which can make it faster on large rasters when several cores are available. Measure on your own machine.
 
 ```{code-block} python
 result = path_finder.find_route(algorithm="delta-stepping")
 ```
 
 :::{note}
-Delta-stepping is available on the CythonAPI and RasterGPU backends only. On Windows and macOS, it runs single-threaded because OpenMP is not available. For best parallel performance, use Linux or the GPU backend.
+Delta-stepping is available on the CythonAPI and RasterGPU backends only. The Windows and Linux builds use OpenMP; `num_threads` sets the thread count (0 = automatic). On macOS, OpenMP is used only if the extension was built with Homebrew `libomp`.
 :::
 
 ### A\*
@@ -237,7 +237,7 @@ For GPU runs, `save_gpu_raster()` converts a GeoTIFF once into the raw `.gpur` f
 ### Algorithm Selection
 
 - **Dijkstra**: general purpose, always optimal. Good for all raster sizes.
-- **Delta-stepping**: better for very large rasters on Linux where OpenMP parallelism is available.
+- **Delta-stepping**: can be faster on large rasters when several cores are available; the result is the same as Dijkstra. Measure on your machine.
 - **A\***: faster for single source-to-target when using a library backend.
 
 See {ref}`algorithms-section` for the full comparison.
@@ -274,7 +274,7 @@ This helps identify the bottleneck: raster loading, graph creation, or the short
 (raster-gpu-backend)=
 ## GPU Backend `raster_gpu`
 
-```{pyorps-status} unreleased source
+```{pyorps-status} experimental pypi
 ```
 
 PYORPS includes a GPU-accelerated SSSP (single-source shortest path) implementation that runs entirely on NVIDIA GPUs. It uses a persistent cooperative kernel with custom barrier synchronization, operating directly on raster data in GPU memory without constructing a graph object.

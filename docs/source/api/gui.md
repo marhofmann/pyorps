@@ -35,7 +35,7 @@ app = build_app()   # a Dash app, for embedding or testing
 
 `launch(...)` runs the server; every setting is also a command-line option (`python -m pyorps.gui --help`): `--desktop`, `--host` (default 127.0.0.1), `--port` (8050), `--allow-remote`, `--threads` (8), `--work-dir`, `--compress`/`--no-compress` and `--debug`. A host other than the local machine is refused unless `--allow-remote` is given, because the server has no authentication and its path fields read and write files on the machine it runs on. `build_app(state=None, *, compress=None, **dash_kwargs)` returns the Dash app; response compression is on whenever `flask-compress` is installed.
 
-`--project FILE` (a `project.json`, or a folder that holds one; a relative path is taken from the current folder) opens a saved project at start, in the browser and with `--desktop`, through the same code as the "Open project" button. A missing or broken file prints one error line and ends with exit code 1 before a server or window starts. This flag and the cards described below are on `main`; they are not part of release 0.4.0.
+`--project FILE` (a `project.json`, or a folder that holds one; a relative path is taken from the current folder) opens a saved project at start, in the browser and with `--desktop`, through the same code as the "Open project" button. A missing or broken file prints one error line and ends with exit code 1 before a server or window starts. This flag and the cards described below are new in release 0.5.0.
 
 (gui-routes-settings)=
 ## Settings in the Routes tab

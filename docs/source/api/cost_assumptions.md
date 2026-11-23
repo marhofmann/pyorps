@@ -162,7 +162,7 @@ The `detect_feature_columns()` function uses statistical analysis (Shannon entro
 (cost-assumptions-multiple-metrics-metrics)=
 ## Multiple Metrics (`metrics=`)
 
-```{pyorps-status} unreleased source
+```{pyorps-status} experimental pypi
 ```
 
 `CostAssumptions(source=None, metrics=None)` accepts an optional list of metric names. A leaf of the cost dictionary may then be a dict of named values instead of a single number:

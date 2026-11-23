@@ -1,6 +1,6 @@
 """PYORPS - Python for Optimal Routes in Power Systems."""
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 # Suppress third-party deprecation warnings triggered during import
 import warnings as _warnings

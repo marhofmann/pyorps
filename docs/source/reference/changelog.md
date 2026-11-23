@@ -9,8 +9,10 @@ api: []
 ---
 # 📝 Changelog
 
-(changelog-unreleased)=
-## Unreleased
+(changelog-0-5-0)=
+## 0.5.0 (2026-11-23)
+
+First release since 0.4.0 (2026-10-01), with wheels for Python 3.12 to 3.15 on Windows, Linux and macOS. Python 3.11 is no longer supported, and data in a geographic CRS is now reprojected instead of rejected (see "Changed"). Everything below is in `pip install pyorps` 0.5.0.
 
 Added:
 
