@@ -60,215 +60,38 @@ from typing import Any, NamedTuple
 from pyorps.core.exceptions import InvalidInputError
 from pyorps.core.infrastructure_profile import TERMINAL_SPAN_RULES
 
-from .constrained_objective import Support, View, describe_range, format_number, problems_text
+from .constrained_ends_checks import (  # noqa: F401  (the names this module re-exports are its public API)
+    DEFAULT_RULE,
+    DEFAULTS,
+    ENFORCE_RULE,
+    FIELD_SPECS,
+    HEIGHT_KEYS,
+    HEIGHT_MAXIMUM,
+    LABELS,
+    PROBLEM_KEYS,
+    RULE_LABELS,
+    FieldSpec,
+    ProfileFacts,
+    RuleLabel,
+    _as_number,
+    _has_dem,
+    _raise_for_bad_values,
+    _shown,
+    _value_problem,
+    default_settings,
+    input_values,
+    is_default,
+    normalise,
+    profile_facts,
+    rule_label,
+    rule_options,
+    used_ends,
+)
+from .constrained_objective import Support, View, format_number, problems_text
 from .errors import Notice
-from .profile_form import clearance_state
-
-# --------------------------------------------------------------------------- constants
-#: the two finder keywords, in display order (source first)
-HEIGHT_KEYS = ("source_connection_height_m", "target_connection_height_m")
-#: the largest height the GUI accepts (the library has no limit; the profile's own height fields stop at 300 m too)
-HEIGHT_MAXIMUM = 300.0
-#: the value of ``terminal_span_rule`` of a profile that does not name one
-DEFAULT_RULE = "remove"
-#: the rule value that needs the search (exact bins, CPU backends only)
-ENFORCE_RULE = "enforce"
-
-#: every key :func:`problems` and :func:`bins_problem` can return
-PROBLEM_KEYS = (*HEIGHT_KEYS, "rule", "backend", "bins")
-
-
-class FieldSpec(NamedTuple):
-    """One height: what the block labels it and what is allowed (the controls are built from these)."""
-
-    key: str
-    label: str
-    unit: str
-    minimum: float | None
-    maximum: float | None
-    allow_equal: bool        # True: the minimum itself is allowed
-    default: float | None    # None = blank = not set
-    help: str
-
-
-_HEIGHT_HELP = (
-    "Height above the ground at the {end} point at which the conductor leaves the structure there ({example}). "
-    "Blank = not set: the line end behaves as before. With a terrain model (DEM) and a profile that has tower "
-    "height, conductor weight, conductor tension, ground clearance and span limits, the search chooses the "
-    "position and height of the {which} tower so that the {which} span clears the ground from this height; "
-    "otherwise the height is only reported as the height of the {end} tower and the route does not change.")
-
-FIELD_SPECS: dict[str, FieldSpec] = {s.key: s for s in (
-    FieldSpec("source_connection_height_m", "Source connection height", "m", 0.0, HEIGHT_MAXIMUM, False, None,
-              _HEIGHT_HELP.format(end="source", which="first", example="for example a substation gantry")),
-    FieldSpec("target_connection_height_m", "Target connection height", "m", 0.0, HEIGHT_MAXIMUM, False, None,
-              _HEIGHT_HELP.format(end="target", which="last", example="for example the top of an existing tower"))
-)}
-
-DEFAULTS: dict[str, float | None] = {key: spec.default for key, spec in FIELD_SPECS.items()}
-
-#: the label of a key as a problem names it ("Source connection height (source_connection_height_m)")
-LABELS: dict[str, str] = {
-    **{key: f"{spec.label} ({key})" for key, spec in FIELD_SPECS.items()},
-    "rule": "End-span rule (terminal_span_rule)", "backend": "Backend", "bins": "Exact span bins"}
-
-
-class RuleLabel(NamedTuple):
-    """One value of ``terminal_span_rule`` as the page words it (the select is built from :data:`RULE_LABELS`)."""
-
-    value: str
-    label: str               # the option text of the select
-    help: str                # one or two sentences for the help text
-
-
-#: the four values in the library's order, from one table (the page package builds the select from it)
-RULE_LABELS: dict[str, RuleLabel] = {r.value: r for r in (
-    RuleLabel("remove", "Remove it (old behaviour; can leave a span above the longest span)",
-              "A tower the search placed closer than the shortest span to a line end is removed afterwards. The "
-              "end span then becomes longer and can end up above the longest span; a warning says so."),
-    RuleLabel("remove_if_valid", "Remove it only if every span stays valid",
-              "The tower is removed only when the line stays valid without it (a straight stretch, a span below "
-              "the longest span, ground clearance kept); otherwise it is kept and flagged."),
-    RuleLabel("keep", "Keep it (the end span may be shorter than the shortest span)",
-              "Every tower the search placed is kept. A short end span is flagged in the route's notes."),
-    RuleLabel("enforce", "Never place one (end spans at least the shortest span)",
-              "The search itself keeps every end span at least as long as the shortest span, so nothing has to be "
-              "removed or repaired afterwards. It searches on exact span bins (more memory and time than a "
-              "default run) and works on the CPU backends only."),
-)}
-
-
-def rule_options() -> list[dict[str, str]]:
-    """The options of the select, ``[{"label": ..., "value": ...}]``, in the library's order."""
-    return [{"label": RULE_LABELS[value].label, "value": value} for value in TERMINAL_SPAN_RULES]
-
-
-def rule_label(value: Any) -> str:
-    """The option text of a rule value; the value itself (as text) when it is none of the four."""
-    entry = RULE_LABELS.get(value) if isinstance(value, str) else None
-    return entry.label if entry else str(value)
-
-
-# --------------------------------------------------------------------------- numbers
-def _as_number(value: Any) -> float | None:
-    """``value`` as a finite float, or None when it is not a usable number."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    number = float(value)
-    return number if math.isfinite(number) else None
-
-
-def _shown(value: Any) -> str:
-    number = _as_number(value)
-    return format_number(number) if number is not None else repr(value)
-
-
-def _coerce(value: Any) -> Any:
-    """Blank -> None; numbers and numeric text -> float; anything else unchanged (judged later).
-
-    A non-finite float (or the text ``"nan"`` / ``"inf"``) is kept as text, so that the settings stay JSON-safe.
-    """
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        number = float(value)
-        return number if math.isfinite(number) else repr(number)
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        try:
-            number = float(text)
-        except ValueError:
-            return text
-        return number if math.isfinite(number) else text
-    return str(value)
-
-
-def default_settings() -> dict[str, float | None]:
-    """A fresh copy of :data:`DEFAULTS` (no height set)."""
-    return dict(DEFAULTS)
-
-
-def normalise(raw: Any) -> dict[str, Any]:
-    """The heights of the page or of a project file, with every key present.
-
-    Never raises and never judges a value (see the module docstring); ``{}``, None and anything that is not a
-    mapping give :func:`default_settings`; unknown keys are dropped. The result is JSON-safe and normalising it
-    again changes nothing.
-    """
-    out: dict[str, Any] = default_settings()
-    if not isinstance(raw, Mapping):
-        return out
-    for key in HEIGHT_KEYS:
-        if key in raw:
-            out[key] = _coerce(raw[key])
-    return out
-
-
-def input_values(raw: Any) -> dict[str, float | None]:
-    """What the number inputs show: a finite number as it is (also one outside the range, so that the user sees
-    what is wrong), anything else blank."""
-    settings = normalise(raw)
-    return {key: _as_number(settings[key]) for key in HEIGHT_KEYS}
-
-
-def is_default(raw: Any) -> bool:
-    """True when no height is set: classic constrained routing, nothing goes to the library."""
-    settings = normalise(raw)
-    return all(settings[key] is None for key in HEIGHT_KEYS)
-
-
-def used_ends(raw: Any) -> dict[str, float]:
-    """The heights a run was given, as stored with the route; ``{}`` when none is set.
-
-    Raises ``InvalidInputError`` for a value that :func:`problems` would name (callers check it first).
-    """
-    settings = normalise(raw)
-    _raise_for_bad_values(settings)
-    return {key: float(settings[key]) for key in HEIGHT_KEYS if settings[key] is not None}
 
 
 # --------------------------------------------------------------------------- the profile and the run, as facts
-class ProfileFacts(NamedTuple):
-    """What the end settings need to know about the profile (read from a dict or an ``InfrastructureProfile``)."""
-
-    spans_on: bool                   # min_span_m and max_span_m both set: the profile places towers
-    clearance_on: bool               # tower height, conductor weight, tension and clearance all set
-    rule: str                        # terminal_span_rule (a missing key is "remove")
-    min_span_m: Any
-    max_span_m: Any
-    n_heights: int                   # height classes of the search (1 unless several tower heights are set)
-
-
-def _data(profile: Any) -> dict:
-    if isinstance(profile, Mapping):
-        return dict(profile)
-    to_dict = getattr(profile, "to_dict", None)
-    if callable(to_dict):
-        return dict(to_dict())
-    return {}
-
-
-def profile_facts(profile: Any) -> ProfileFacts:
-    """The facts of ``profile`` (a profile dict, an ``InfrastructureProfile`` or None), by the library's rules."""
-    data = _data(profile)
-    heights = data.get("tower_heights_m")
-    n_heights = len(heights) if isinstance(heights, (list, tuple)) and len(heights) > 1 else 1
-    rule = data.get("terminal_span_rule")
-    return ProfileFacts(
-        spans_on=data.get("min_span_m") is not None and data.get("max_span_m") is not None,
-        clearance_on=clearance_state(data) == "on",
-        rule=DEFAULT_RULE if rule is None else rule,
-        min_span_m=data.get("min_span_m"), max_span_m=data.get("max_span_m"), n_heights=n_heights)
-
-
-def _has_dem(dem: Any) -> bool:
-    return dem is not None and not (isinstance(dem, str) and not dem.strip()) and dem is not False
-
-
 class Effect(NamedTuple):
     """What the end settings of one run (or one segment) ask of the search."""
 
@@ -332,30 +155,6 @@ def gpu_backends() -> tuple[str, ...]:
 
 
 # --------------------------------------------------------------------------- problems
-def _value_problem(spec: FieldSpec, value: Any) -> str | None:
-    """Why ``value`` is not an allowed height, or None (blank is allowed: the height is not set)."""
-    if value is None:
-        return None
-    subject = f"{spec.label} ({spec.key})"
-    allowed = f"Allowed: {describe_range(spec)}, or leave it blank."
-    number = _as_number(value)
-    if number is None:
-        return f"{subject}: {_shown(value)} is not a finite number. {allowed}"
-    shown = f"{format_number(number)} {spec.unit}".rstrip()
-    if spec.minimum is not None and (number < spec.minimum or (number == spec.minimum and not spec.allow_equal)):
-        return f"{subject}: {shown} is too low. {allowed}"
-    if spec.maximum is not None and number > spec.maximum:
-        return f"{subject}: {shown} is too high. {allowed}"
-    return None
-
-
-def _raise_for_bad_values(settings: Mapping[str, Any]) -> None:
-    for key in HEIGHT_KEYS:
-        text = _value_problem(FIELD_SPECS[key], settings[key])
-        if text:
-            raise InvalidInputError(text)
-
-
 def _named(settings: Mapping[str, Any], keys: Sequence[str] = HEIGHT_KEYS) -> str:
     """``"source height 25 m, target height 12 m"`` for the heights that are set."""
     words = {HEIGHT_KEYS[0]: "source height", HEIGHT_KEYS[1]: "target height"}
@@ -379,6 +178,24 @@ def _gpu_causes(settings: Mapping[str, Any], eff: Effect) -> list[str]:
     return causes
 
 
+def _rule_problem(facts: Any) -> tuple[str, str] | None:
+    """The ``("rule", message)`` problem of a rule value that is none of the four, or None."""
+    if isinstance(facts.rule, str) and facts.rule in TERMINAL_SPAN_RULES:
+        return None
+    return ("rule", f"End-span rule (terminal_span_rule): {facts.rule!r} is not one of " +
+                    f"{', '.join(TERMINAL_SPAN_RULES)}. Choose one of the four rules.")
+
+
+def _backend_problem(settings: Mapping[str, Any], eff: Effect, backend: str | None) -> tuple[str, str] | None:
+    """The ``("backend", message)`` problem of a GPU backend with something no GPU solver takes, or None."""
+    if (backend or "cython") not in gpu_backends():
+        return None
+    causes = _gpu_causes(settings, eff)
+    if not causes:
+        return None
+    return ("backend", f"Backend: {backend} cannot run {' and '.join(causes)}. {gpu_reason(backend)}")
+
+
 def problems(raw: Any, *, backend: str | None = "cython", profile: Any = None,
              dem: Any = None) -> list[tuple[str, str]]:
     """Everything the library would refuse about these end settings, as ``(key, message)``; ``[]`` when it can run.
@@ -396,17 +213,15 @@ def problems(raw: Any, *, backend: str | None = "cython", profile: Any = None,
     """
     settings = normalise(raw)
     out = [(key, text) for key in HEIGHT_KEYS if (text := _value_problem(FIELD_SPECS[key], settings[key]))]
-    facts = profile_facts(profile)
-    if not isinstance(facts.rule, str) or facts.rule not in TERMINAL_SPAN_RULES:
-        out.append(("rule", f"End-span rule (terminal_span_rule): {facts.rule!r} is not one of "
-                            f"{', '.join(TERMINAL_SPAN_RULES)}. Choose one of the four rules."))
+    rule_problem = _rule_problem(profile_facts(profile))
+    if rule_problem:
+        out.append(rule_problem)
     if out:
         return out
     eff = effect(settings, profile=profile, dem=dem)
-    if (backend or "cython") in gpu_backends():
-        causes = _gpu_causes(settings, eff)
-        if causes:
-            out.append(("backend", f"Backend: {backend} cannot run {' and '.join(causes)}. {gpu_reason(backend)}"))
+    backend_problem = _backend_problem(settings, eff, backend)
+    if backend_problem:
+        out.append(backend_problem)
     return out
 
 
@@ -467,11 +282,11 @@ def no_effect_reasons(profile: Any = None, dem: Any = None) -> list[str]:
 
 #: what the DEM and the DSM of the constrained card do (``ConstrainedPathFinder``), in plain words: the one text the
 #: clearance line of the profile form, the help of the two inputs and the notes below agree with
-DEM_ROLE = ("The terrain model (DEM) gives the ground height: the search uses it for slopes and, with a profile "
-            "that has tower height, conductor weight, conductor tension and ground clearance, for the clearance "
+DEM_ROLE = ("The terrain model (DEM) gives the ground height: the search uses it for slopes and, with a profile " +
+            "that has tower height, conductor weight, conductor tension and ground clearance, for the clearance " +
             "check, which is off without a DEM.")
-DSM_ROLE = ("The surface model (DSM) is optional and is read only together with a DEM: DSM minus DEM gives the "
-            "height of trees and buildings, which the clearance check then counts as well. With a DEM alone the "
+DSM_ROLE = ("The surface model (DSM) is optional and is read only together with a DEM: DSM minus DEM gives the " +
+            "height of trees and buildings, which the clearance check then counts as well. With a DEM alone the " +
             "check counts the bare ground; a DSM without a DEM is ignored.")
 
 
@@ -489,12 +304,38 @@ def surface_model_notes(profile: Any = None, dem: Any = None, dsm: Any = None) -
     if not _has_dem(dsm):
         return []
     if not _has_dem(dem):
-        return ["The surface model (DSM) is ignored: the library reads it only together with a terrain model (DEM), "
+        return ["The surface model (DSM) is ignored: the library reads it only together with a terrain model (DEM), " +
                 "as the height of trees and buildings (DSM minus DEM). Enter a DEM as well, or clear the DSM."]
     if not profile_facts(profile).clearance_on:
-        return ["The surface model (DSM) is not used: only the clearance check reads it, and the profile lacks tower "
+        return ["The surface model (DSM) is not used: only the clearance check reads it, and the profile lacks tower " +
                 "height, conductor weight, conductor tension or ground clearance, so the check is off."]
     return []
+
+
+def _no_effect_note(settings: Mapping[str, Any], eff: Effect, profile: Any, dem: Any) -> str | None:
+    """The note of a set height that would have no effect, or None."""
+    set_keys = [key for key in HEIGHT_KEYS if settings[key] is not None and _as_number(settings[key]) is not None]
+    if not set_keys or eff.clearance:
+        return None
+    reasons = no_effect_reasons(profile, dem)
+    return (f"The {_named(settings, set_keys)} is reported only, the route does not change: "
+            f"{' and '.join(reasons)}. The height is still shown as the height of the end tower.")
+
+
+def _rule_note(facts: Any) -> str | None:
+    """The note of a non-default rule in a profile without span limits, or None."""
+    if facts.rule in TERMINAL_SPAN_RULES and facts.rule != DEFAULT_RULE and not facts.spans_on:
+        return f"The end-span rule '{facts.rule}' changes nothing: the profile places no towers."
+    return None
+
+
+def _exact_bins_note(eff: Effect) -> str | None:
+    """The note of a run that needs exact span bins, or None."""
+    if not eff.exact_bins:
+        return None
+    return ("This run searches with exact span bins (as short as one step) so that no feasible route is "
+            "hidden: it needs more memory and time than a default run, and the library refuses a window "
+            "whose search would not fit.")
 
 
 def notes(raw: Any, *, backend: str | None = "cython", profile: Any = None, dem: Any = None) -> list[str]:
@@ -508,19 +349,8 @@ def notes(raw: Any, *, backend: str | None = "cython", profile: Any = None, dem:
     settings = normalise(raw)
     facts = profile_facts(profile)
     eff = effect(settings, profile=profile, dem=dem)
-    out = []
-    set_keys = [key for key in HEIGHT_KEYS if settings[key] is not None and _as_number(settings[key]) is not None]
-    if set_keys and not eff.clearance:
-        reasons = no_effect_reasons(profile, dem)
-        out.append(f"The {_named(settings, set_keys)} is reported only, the route does not change: "
-                   f"{' and '.join(reasons)}. The height is still shown as the height of the end tower.")
-    if facts.rule in TERMINAL_SPAN_RULES and facts.rule != DEFAULT_RULE and not facts.spans_on:
-        out.append(f"The end-span rule '{facts.rule}' changes nothing: the profile places no towers.")
-    if eff.exact_bins:
-        out.append("This run searches with exact span bins (as short as one step) so that no feasible route is "
-                   "hidden: it needs more memory and time than a default run, and the library refuses a window "
-                   "whose search would not fit.")
-    return out
+    found = (_no_effect_note(settings, eff, profile, dem), _rule_note(facts), _exact_bins_note(eff))
+    return [note for note in found if note]
 
 
 def summary(raw: Any) -> str:
@@ -568,11 +398,11 @@ def problem_notice(found: list[tuple[str, str]], *, controls: Mapping[str, str] 
         fix = "Choose one of the four end-span rules in the profile form."
     elif key == "backend":
         title = "Line ends: this backend cannot run them"
-        fix = ("Choose a CPU backend (cython or cython_parallel), or clear the connection heights and set the "
+        fix = ("Choose a CPU backend (cython or cython_parallel), or clear the connection heights and set the " +
                "end-span rule to remove, remove_if_valid or keep.")
     else:
         title = "Line ends: the exact search is too large"
-        fix = ("Use a coarser raster, a smaller search buffer or a smaller longest span; or set the end-span rule "
+        fix = ("Use a coarser raster, a smaller search buffer or a smaller longest span; or set the end-span rule " +
                "to keep or remove_if_valid and clear the connection heights (they keep the coarse bins).")
     return Notice(severity="error", title=title, meaning=message, impact=impact, fix=fix, focus_id=tab,
                   focus_control=(controls or {}).get(key)).to_dict()
@@ -661,6 +491,7 @@ def _steps(neighborhood: str, directed: bool):
 def estimate_exact_bins(rows: int, cols: int, *, max_span_m: float, cell_size_m: float = 1.0,
                         neighborhood: str = "r2", backend: str | None = "cython", n_heights: int = 1,
                         clearance: bool = False, has_dem: bool = False) -> BinEstimate:
+    # lizard forgives: keyword-only options mirror the finder's settings; every caller and test passes them by name
     """The exact-bin state space of a ``rows`` x ``cols`` window, by the finder's own formula.
 
     Mirrors ``ConstrainedPathFinder._exact_span_bins``: the shortest step is the smallest step distance of the
@@ -727,44 +558,60 @@ def window_shape(raster_source: Any, source: Sequence[float], target: Sequence[f
         return None
 
 
+_GIB = 1024 ** 3
+
+
+def _bins_advice(buffer_m: float | None) -> tuple[str, str]:
+    """``(span_advice, size_advice)``: what to change when the span bins / the whole state space is too big."""
+    buffer_text = f" (now {format_number(buffer_m)} m)" if buffer_m else ""
+    rules = ("or set the end-span rule to \"Remove it\", \"Remove it only if every span stays valid\" or \"Keep it\" " +
+             "and clear the connection heights (they keep the coarse bins).")
+    span_advice = ("Use a coarser raster (the bins are as short as the shortest step) or a shorter longest span " +
+                   f"(max_span_m); {rules}")
+    size_advice = ("Use a coarser raster (the bins are as short as the shortest step), a smaller search buffer" +
+                   f"{buffer_text}, or a shorter longest span (max_span_m); {rules}")
+    return span_advice, size_advice
+
+
+def _first_bound_text(est: BinEstimate, why: str, first: str, buffer_m: float | None) -> str:
+    """The sentence about the first bound the window is above (``first`` is one of ``est.exceeded``)."""
+    span_advice, size_advice = _bins_advice(buffer_m)
+    steps_text = (f"the longest span is {est.steps_per_span:,} steps of the shortest step " +
+                  f"{est.shortest_step_m:.4g} m")
+    space_text = (f"{est.states:,} states ({est.rows:,} x {est.cols:,} cells x {est.n_directions} directions x " +
+                  f"{est.n_bins:,} span bins of {est.bin_size_m:.4g} m x {est.n_heights} height classes)")
+    if first == "bins":
+        return (f"{why} needs exact span bins, but {steps_text}, so {est.n_bins:,} span bins of " +
+                f"{est.bin_size_m:.4g} m are needed and the search holds at most {est.max_bins:,}. {span_advice}")
+    if first == "steps":
+        return (f"{why} needs exact span bins, but {steps_text}, above the limit of {est.max_steps:,} steps per " +
+                f"longest span (above it the bins no longer tell neighbouring spans apart). {span_advice}")
+    if first == "states":
+        return (f"{why} needs exact span bins, which make the search {space_text}, above the limit of " +
+                f"{est.max_states:,} states the library accepts. {size_advice}")
+    memory = est.memory
+    return (f"{why} needs exact span bins, and the search kernel {memory.kernel} ({memory.form} form) would then " +
+            f"need about {est.nbytes / _GIB:.1f} GiB of memory, above the limit of {est.max_bytes / _GIB:.1f} GiB " +
+            f"the library accepts. The search has {space_text}. {size_advice}")
+
+
+def _other_bounds_text(est: BinEstimate, others: Sequence[str]) -> str:
+    """`` It is also above the limit of: ...`` for the bounds after the first one."""
+    named = {"bins": f"{est.n_bins:,} span bins (limit {est.max_bins:,})",
+             "steps": f"{est.steps_per_span:,} steps per longest span (limit {est.max_steps:,})",
+             "states": f"{est.states:,} states (limit {est.max_states:,})",
+             "memory": f"{est.nbytes / _GIB:.1f} GiB (limit {est.max_bytes / _GIB:.1f} GiB)"}
+    return f" It is also above the limit of: {'; '.join(named[name] for name in others)}."
+
+
 def bins_message(est: BinEstimate, why: str, *, buffer_m: float | None = None, segment: str = "") -> str:
     """The sentence of the exact-bin problem: the numbers, the limit and what to change."""
     prefix = f"{segment}: " if segment else ""
-    buffer_text = f" (now {format_number(buffer_m)} m)" if buffer_m else ""
-    rules = ("or set the end-span rule to \"Remove it\", \"Remove it only if every span stays valid\" or \"Keep it\" "
-             "and clear the connection heights (they keep the coarse bins).")
-    span_advice = (f"Use a coarser raster (the bins are as short as the shortest step) or a shorter longest span "
-                   f"(max_span_m); {rules}")
-    size_advice = (f"Use a coarser raster (the bins are as short as the shortest step), a smaller search buffer"
-                   f"{buffer_text}, or a shorter longest span (max_span_m); {rules}")
-    gib = 1024 ** 3
-    steps_text = (f"the longest span is {est.steps_per_span:,} steps of the shortest step "
-                  f"{est.shortest_step_m:.4g} m")
-    space_text = (f"{est.states:,} states ({est.rows:,} x {est.cols:,} cells x {est.n_directions} directions x "
-                  f"{est.n_bins:,} span bins of {est.bin_size_m:.4g} m x {est.n_heights} height classes)")
     exceeded = est.exceeded or ("states",)
-    first = exceeded[0]
-    if first == "bins":
-        text = (f"{why} needs exact span bins, but {steps_text}, so {est.n_bins:,} span bins of "
-                f"{est.bin_size_m:.4g} m are needed and the search holds at most {est.max_bins:,}. {span_advice}")
-    elif first == "steps":
-        text = (f"{why} needs exact span bins, but {steps_text}, above the limit of {est.max_steps:,} steps per "
-                f"longest span (above it the bins no longer tell neighbouring spans apart). {span_advice}")
-    elif first == "states":
-        text = (f"{why} needs exact span bins, which make the search {space_text}, above the limit of "
-                f"{est.max_states:,} states the library accepts. {size_advice}")
-    else:
-        memory = est.memory
-        text = (f"{why} needs exact span bins, and the search kernel {memory.kernel} ({memory.form} form) would then "
-                f"need about {est.nbytes / gib:.1f} GiB of memory, above the limit of {est.max_bytes / gib:.1f} GiB "
-                f"the library accepts. The search has {space_text}. {size_advice}")
+    text = _first_bound_text(est, why, exceeded[0], buffer_m)
     others = exceeded[1:]
     if others:
-        named = {"bins": f"{est.n_bins:,} span bins (limit {est.max_bins:,})",
-                 "steps": f"{est.steps_per_span:,} steps per longest span (limit {est.max_steps:,})",
-                 "states": f"{est.states:,} states (limit {est.max_states:,})",
-                 "memory": f"{est.nbytes / gib:.1f} GiB (limit {est.max_bytes / gib:.1f} GiB)"}
-        text += f" It is also above the limit of: {'; '.join(named[name] for name in others)}."
+        text += _other_bounds_text(est, others)
     return f"{prefix}Exact span bins: {text}"
 
 
@@ -775,6 +622,23 @@ def _why(eff: Effect) -> str:
     if eff.heights_act:
         reasons.append("a connection height")
     return " and ".join(reasons)
+
+
+def _cannot_estimate(settings: Mapping[str, Any], max_span: float | None) -> bool:
+    """True when the size cannot be judged before the run: a bad height value, or no usable longest span."""
+    if any(_value_problem(FIELD_SPECS[k], settings[k]) for k in HEIGHT_KEYS):
+        return True
+    return max_span is None or max_span <= 0
+
+
+def _window_estimate(shape: tuple[int, int, float], eff: Effect, facts: Any, max_span: float,
+                     run: tuple[str, str | None, bool]) -> BinEstimate:
+    """:func:`estimate_exact_bins` of one segment's window; ``run`` is ``(neighborhood, backend, has_dem)``."""
+    rows, cols, cell = shape
+    neighborhood, backend, has_dem = run
+    n_heights = facts.n_heights if eff.clearance else 1
+    return estimate_exact_bins(rows, cols, max_span_m=max_span, cell_size_m=cell, neighborhood=neighborhood,
+                               backend=backend, n_heights=n_heights, clearance=eff.clearance, has_dem=has_dem)
 
 
 def bins_problem(raw: Any, *, raster_source: Any, points: Sequence[Sequence[float]], profile: Any = None,
@@ -797,7 +661,7 @@ def bins_problem(raw: Any, *, raster_source: Any, points: Sequence[Sequence[floa
     settings = normalise(raw)
     facts = profile_facts(profile)
     max_span = _as_number(facts.max_span_m)
-    if any(_value_problem(FIELD_SPECS[k], settings[k]) for k in HEIGHT_KEYS) or max_span is None or max_span <= 0:
+    if _cannot_estimate(settings, max_span):
         return None
     n_segments = len(points) - 1
     for index in range(max(0, n_segments)):
@@ -808,11 +672,7 @@ def bins_problem(raw: Any, *, raster_source: Any, points: Sequence[Sequence[floa
         shape = window_shape(raster_source, points[index], points[index + 1], search_buffer_m)
         if shape is None:
             continue
-        rows, cols, cell = shape
-        n_heights = facts.n_heights if eff.clearance else 1
-        est = estimate_exact_bins(rows, cols, max_span_m=max_span, cell_size_m=cell, neighborhood=neighborhood,
-                                  backend=backend, n_heights=n_heights, clearance=eff.clearance,
-                                  has_dem=_has_dem(dem))
+        est = _window_estimate(shape, eff, facts, max_span, (neighborhood, backend, _has_dem(dem)))
         if est.exceeds:
             label = f"Segment {index + 1} of {n_segments}" if n_segments > 1 else ""
             return ("bins", bins_message(est, _why(eff), buffer_m=search_buffer_m, segment=label))

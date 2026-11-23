@@ -55,6 +55,31 @@ def layer_from_drawn(features: list[dict], project_crs: Any, *,
     return gdf.to_crs(project_crs)
 
 
+def _row_index(row: dict, pos: int) -> int:
+    """The grid row's own ``__row`` field when it is an int, else its position."""
+    index = row.get("__row")
+    return index if isinstance(index, int) and not isinstance(index, bool) else pos
+
+
+def _positions_by_wkt(prev_rows, prev_wkts) -> dict[str, list[int]]:
+    """Positions of the previous rows, grouped by the WKT of the shape each row described."""
+    by_wkt: dict[str, list[int]] = {}
+    for pos, row in enumerate(prev_rows):
+        index = _row_index(row, pos)
+        if 0 <= index < len(prev_wkts):
+            by_wkt.setdefault(prev_wkts[index], []).append(pos)
+    return by_wkt
+
+
+def _match_by_wkt(polys, by_wkt: dict[str, list[int]]) -> list[int | None]:
+    """The previous-row position whose shape equals each polygon (first unused one), else None."""
+    matched: list[int | None] = []
+    for poly in polys:
+        candidates = by_wkt.get(poly.wkt)
+        matched.append(candidates.pop(0) if candidates else None)
+    return matched
+
+
 def _match_previous_rows(polys, prev_rows, prev_wkts) -> list[dict]:
     """One previous grid row (or ``{}``) per polygon in ``polys``.
 
@@ -63,22 +88,8 @@ def _match_previous_rows(polys, prev_rows, prev_wkts) -> list[dict]:
     ``__row`` field says which, else its position). Polygons left over fall
     back to the row at their index, unless a geometric match already used it.
     """
-    by_wkt: dict[str, list[int]] = {}
-    for pos, row in enumerate(prev_rows):
-        index = row.get("__row")
-        index = index if isinstance(index, int) and not isinstance(index, bool)             else pos
-        if 0 <= index < len(prev_wkts):
-            by_wkt.setdefault(prev_wkts[index], []).append(pos)
-    taken: set[int] = set()
-    matched: list[int | None] = []
-    for poly in polys:
-        candidates = by_wkt.get(poly.wkt)
-        if candidates:
-            pos = candidates.pop(0)
-            taken.add(pos)
-            matched.append(pos)
-        else:
-            matched.append(None)
+    matched = _match_by_wkt(polys, _positions_by_wkt(prev_rows, prev_wkts))
+    taken = {pos for pos in matched if pos is not None}
     result: list[dict] = []
     for i, pos in enumerate(matched):
         if pos is None and i < len(prev_rows) and i not in taken:

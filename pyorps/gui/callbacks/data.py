@@ -55,8 +55,8 @@ def _dataset_list(state) -> list:
     items = []
     for layer in state.layers_of_kind("vector"):
         summary = layer.meta.get("summary", {})
-        label = (f"{layer.name} — {summary.get('n_features', '?')} "
-                 f"features, cols: "
+        label = (f"{layer.name} — {summary.get('n_features', '?')} " +
+                 "features, cols: " +
                  f"{', '.join(summary.get('columns', [])[:6])}")
         refresh = ""
         if layer.meta.get("source"):
@@ -248,7 +248,7 @@ def register(app, state) -> None:
                 return (no_update, no_update, no_update, no_update,
                         cap_notices(notices))
             _layer, rows = result
-            status = (f"{len(rows)} cost polygon(s) — edit name/cost below, "
+            status = (f"{len(rows)} cost polygon(s) — edit name/cost below, " +
                       "move vertices / delete with the map tools."
                       if rows else "Draw cost polygons on the map.")
             return (state.layers_view(), no_update, rows, status,

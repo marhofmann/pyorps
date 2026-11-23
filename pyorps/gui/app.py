@@ -167,7 +167,6 @@ def _json_bytes(payload: Any) -> bytes:
         import orjson
         return orjson.dumps(payload)  # pylint: disable=no-member  # optional dependency
     except ImportError:
-        import json
         return json.dumps(payload).encode("utf-8")
 
 
@@ -288,13 +287,13 @@ def check_host(host: str, allow_remote: bool = False) -> bool:
 def remote_warning(host: str, port: int, debug: bool = False) -> str:
     """The warning printed when the GUI is deliberately exposed."""
     lines = [
-        f"WARNING: --allow-remote: the GUI listens on {host}:{port} and is open "
+        f"WARNING: --allow-remote: the GUI listens on {host}:{port} and is open " +
         "to every machine that can reach that port.",
-        " - There is NO authentication: anybody who connects can read and write "
+        " - There is NO authentication: anybody who connects can read and write " +
         "any file this user can access through the path fields.",
-        " - File paths refer to the SERVER machine, and native file dialogs "
+        " - File paths refer to the SERVER machine, and native file dialogs " +
         "open on the server, not in the remote browser.",
-        " - Raster tiles are served from the server's 'localhost' and will not "
+        " - Raster tiles are served from the server's 'localhost' and will not " +
         "load in a remote browser.",
     ]
     if debug:

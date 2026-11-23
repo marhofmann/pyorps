@@ -236,8 +236,9 @@ _N_WEIGHTS = len(form_section.WEIGHT_IDS)
 _N_GRADIENT = len(form_section.GRADIENT_IDS)
 
 #: what the clientside "Go fix" helper runs: open every closed ``<details>`` around the control a notice
-#: focuses (this card, "Algorithm & search" for the Backend and Algorithm fields, ...) so that the scroll and
-#: the flash of the existing handler land on a visible control
+#: focuses (this card, "Algorithm & search" for the Backend and Algorithm fields, ...) and every closed
+#: accordion item (the slope, rasterize and routing fields) by clicking its own header, so that dash-bootstrap
+#: keeps its open/closed state; the scroll and the flash of the existing handler then land on a visible control
 OPEN_CARD_JS = """
 function(data) {
     if (data && data.control) {
@@ -245,6 +246,13 @@ function(data) {
         while (node) {
             if (node.tagName === 'DETAILS' && !node.open) {
                 node.open = true;
+            }
+            if (node.classList && node.classList.contains('accordion-collapse')
+                    && !node.classList.contains('show') && node.parentElement) {
+                var header = node.parentElement.querySelector('.accordion-button.collapsed');
+                if (header) {
+                    header.click();
+                }
             }
             node = node.parentElement;
         }

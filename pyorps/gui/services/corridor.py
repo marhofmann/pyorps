@@ -47,8 +47,6 @@ Rules the functions follow:
 """
 from __future__ import annotations
 
-import math
-import numbers
 import os
 import uuid
 from collections.abc import Callable, Mapping, Sequence
@@ -57,9 +55,33 @@ from pathlib import Path
 from typing import Any
 
 from pyorps.core.exceptions import InvalidInputError, NoPathFoundError
-from pyorps.core.types import IMPASSABLE_CELL_COST
 
 from . import errors, geo, jobs, routing
+from .corridor_checks import (
+    _PROBLEM_TEXT,
+    CORRIDOR_DEFAULTS,
+    FIELD_SPECS,
+    SETTING_KEYS,
+    TERMINAL_CHOICES,
+    TERMINALS_ALL,
+    TERMINALS_ENDS,
+    Point,
+    Problem,
+    SettingSpec,
+    _as_points,
+    _fmt,
+    _is_blank,
+    _number,
+    _settings_with_defaults,
+    backend_problem,
+    corridor_problems,
+    describe_range,
+    label_for,
+    max_pair_distance_cells,
+    normalise_corridor_settings,
+    terminal_problems,
+    terminals_from_draft,
+)
 
 __all__ = [
     "CANNOT_STOP_NOTE", "CORRIDOR_DEFAULTS", "FIELD_SPECS", "JOB_KIND", "JOB_LABEL", "NODES_LAYER",
@@ -71,18 +93,11 @@ __all__ = [
     "terminals_from_draft",
 ]
 
-Problem = tuple[str, str]
-Point = tuple[float, float]
-
 #: the job kind in ``state.jobs`` and its label (the status line reads "Corridor graph... 2/4 ...")
 JOB_KIND = "corridor"
 JOB_LABEL = "Corridor graph"
 #: what the status text says about Stop: this job has none
 CANNOT_STOP_NOTE = "cannot be stopped; you can keep working"
-
-TERMINALS_ALL = "all"
-TERMINALS_ENDS = "sources_targets"
-TERMINAL_CHOICES = (TERMINALS_ALL, TERMINALS_ENDS)
 
 #: the two layers of the saved GeoPackage (the library's own names)
 SEGMENTS_LAYER = "corridor_segments"
@@ -99,375 +114,6 @@ HEAVY_WINDOW_CELLS = 30_000_000
 HEAVY_MEMORY_MB = 2000.0
 #: rough bytes per cell of the multi-source sweep (cost, distance, predecessor, region label, heap), order of magnitude
 _BYTES_PER_CELL = 24
-
-#: how many items one message lists before it says "and N more"
-_LISTED = 5
-
-
-# --------------------------------------------------------------------------- specs
-@dataclass(frozen=True)
-class SettingSpec:
-    """One corridor setting: label, unit, limits, default and help (the card builds its controls from these)."""
-
-    key: str
-    label: str
-    unit: str = ""
-    kind: str = "number"            # "number" | "select" | "bool"
-    minimum: float | None = None
-    maximum: float | None = None
-    allow_equal: bool = True        # False: the value must be strictly above ``minimum``
-    whole: bool = False
-    default: Any = None
-    options: tuple[str, ...] = ()
-    required: bool = True           # False: a blank value is allowed (it means ``blank_means``)
-    blank_means: str = ""
-    help: str = ""
-
-
-FIELD_SPECS: dict[str, SettingSpec] = {s.key: s for s in (
-    SettingSpec(
-        "terminals", "Points to connect", kind="select", options=TERMINAL_CHOICES, default=TERMINALS_ALL,
-        help="All control points: sources, waypoints and targets. Sources and targets only: waypoints are left out."),
-    SettingSpec(
-        "k_per_pair", "Crossings kept per point pair", minimum=1, maximum=5, whole=True, default=1,
-        help="How many of the cheapest crossings between two neighbouring points are kept. The extra crossings are "
-             "usually near-duplicates of the first, so 1 is almost always right."),
-    SettingSpec(
-        "min_shared_length_m", "Ignore shared runs shorter than", unit="m", minimum=0, maximum=10000, default=0.0,
-        help="Two routes that run side by side for less than this length are not treated as sharing a trench. "
-             "0 keeps the construction exact."),
-    SettingSpec(
-        "max_pair_cost", "Skip pairs costing more than", unit="cost units x m", minimum=0, allow_equal=False,
-        default=None, required=False, blank_means="every pair is kept",
-        help="Connections between two points that cost more than this are not built. The cost is the cell value "
-             "times the length in metres (the unit of a section's construction cost: EUR when the raster holds "
-             "EUR/m). Blank keeps every pair."),
-    SettingSpec(
-        "validate_pair_costs", "Also compute exact pair costs", kind="bool", default=False,
-        help="Runs one extra least-cost search per point and reports how far the network's pair prices are above "
-             "the exact ones. Slower."),
-)}
-SETTING_KEYS = tuple(FIELD_SPECS)
-CORRIDOR_DEFAULTS: dict[str, Any] = {key: spec.default for key, spec in FIELD_SPECS.items()}
-
-#: labels and fix texts of the problem keys that are not settings
-_PROBLEM_TEXT: dict[str, tuple[str, str, str]] = {
-    # key: (label, title, fix)
-    "points": ("Points to connect", "The points cannot be connected",
-               "Correct the points on the map (Routes tab) and try again."),
-    "raster": ("Cost raster", "The cost raster cannot be used",
-               "Pick a readable cost raster under 'Route on raster' and try again."),
-    "graph_api": ("Backend", "The corridor graph needs the cython backend",
-                  "Choose cython under Backend in 'Algorithm & search', then try again."),
-    "neighborhood_k": ("Neighbourhood order k", "The neighbourhood order is not usable",
-                       "Correct the k field in 'Algorithm & search' and try again."),
-    "settings": ("Corridor settings", "The corridor settings are not usable",
-                 "Reset the corridor card and try again."),
-    "graph": ("Corridor graph", "There is no corridor graph to save",
-              "Build the corridor graph first (a reopened project does not keep it), then save."),
-    "save_path": ("Save path", "The file cannot be written",
-                  "Correct the save path (a .gpkg file name) and try again."),
-}
-
-
-def label_for(key: str) -> str:
-    """The label of a setting or problem key (the key itself when it is unknown)."""
-    if key in FIELD_SPECS:
-        return FIELD_SPECS[key].label
-    return _PROBLEM_TEXT.get(key, (key,))[0]
-
-
-# --------------------------------------------------------------------------- small helpers
-def _fmt(value: Any) -> str:
-    """A value as the user should read it in a message."""
-    if value is None:
-        return "blank"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, numbers.Integral):
-        return str(int(value))
-    if isinstance(value, numbers.Real):
-        number = float(value)
-        if math.isfinite(number) and number == int(number) and abs(number) < 1e15:
-            return str(int(number))
-        return repr(number)
-    return repr(str(value))
-
-
-def _is_blank(value: Any) -> bool:
-    return value is None or (isinstance(value, str) and not value.strip())
-
-
-def _number(value: Any) -> float | None:
-    """A finite float from a number or a numeric string; None for anything else (a bool is not a number)."""
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, str):
-        try:
-            value = float(value.strip())
-        except ValueError:
-            return None
-    if not isinstance(value, numbers.Real):
-        return None
-    number = float(value)
-    return number if math.isfinite(number) else None
-
-
-def _plain(number: float | None) -> float | int | None:
-    """A whole float as an int (``2.0`` -> ``2``), anything else unchanged."""
-    if number is not None and number == int(number) and abs(number) < 1e15:
-        return int(number)
-    return number
-
-
-def describe_range(spec: SettingSpec) -> str:
-    """The allowed range of a setting in words, e.g. ``>= 1 and <= 5, whole numbers``."""
-    if spec.kind == "select":
-        return ", ".join(spec.options)
-    if spec.kind == "bool":
-        return "on or off"
-    parts = []
-    if spec.minimum is not None:
-        parts.append(f"{'>=' if spec.allow_equal else '>'} {_fmt(spec.minimum)}")
-    if spec.maximum is not None:
-        parts.append(f"<= {_fmt(spec.maximum)}")
-    text = " and ".join(parts) if parts else "any number"
-    if spec.whole:
-        text += ", whole numbers"
-    if spec.unit:
-        text += f" {spec.unit}"
-    if not spec.required and spec.blank_means:
-        text += f" (blank = {spec.blank_means})"
-    return text
-
-
-def _subject(spec: SettingSpec) -> str:
-    return f"{spec.label} ({spec.key})"
-
-
-def _setting_problem(spec: SettingSpec, raw: Any) -> str | None:
-    """Why one present value of a setting is not allowed, or None."""
-    subject = _subject(spec)
-    allowed = f"Allowed: {describe_range(spec)}."
-    if spec.kind == "select":
-        if isinstance(raw, str) and raw in spec.options:
-            return None
-        return f"{subject}: {_fmt(raw)} is not an option. {allowed}"
-    if spec.kind == "bool":
-        if raw is None or isinstance(raw, bool):
-            return None                     # a switch has no blank: unset means off
-        return f"{subject}: {_fmt(raw)} is not on or off. {allowed}"
-    if _is_blank(raw):
-        return None if not spec.required else f"{subject}: blank, but a value is required. {allowed}"
-    value = _number(raw)
-    if value is None:
-        return f"{subject}: {_fmt(raw)} is not a usable number. {allowed}"
-    shown = f"{_fmt(value)}{' ' + spec.unit if spec.unit else ''}"
-    if spec.whole and value != int(value):
-        return f"{subject}: {shown} is not a whole number. {allowed}"
-    if spec.minimum is not None and (value < spec.minimum or (value == spec.minimum and not spec.allow_equal)):
-        return f"{subject}: {shown} is too low. {allowed}"
-    if spec.maximum is not None and value > spec.maximum:
-        return f"{subject}: {shown} is too high. {allowed}"
-    return None
-
-
-# --------------------------------------------------------------------------- settings
-def normalise_corridor_settings(raw: Any) -> dict[str, Any]:
-    """The corridor settings of a project file (or of the form), as the controls take them.
-
-    A project without them (an older file) gives ``{}``: the card keeps its own defaults. Otherwise every key of
-    :data:`SETTING_KEYS` is present: a missing or unusable value falls back to its default. Values that are usable
-    numbers but outside the allowed range are kept, not clamped, so that :func:`corridor_problems` can name them.
-    The result holds plain JSON types only.
-    """
-    if not isinstance(raw, Mapping) or not raw:
-        return {}
-    out = dict(CORRIDOR_DEFAULTS)
-    terminals = raw.get("terminals")
-    out["terminals"] = terminals if isinstance(terminals, str) and terminals in TERMINAL_CHOICES else TERMINALS_ALL
-    k_per_pair = _number(raw.get("k_per_pair"))
-    out["k_per_pair"] = _plain(k_per_pair) if k_per_pair is not None else CORRIDOR_DEFAULTS["k_per_pair"]
-    shared = _number(raw.get("min_shared_length_m"))
-    out["min_shared_length_m"] = shared if shared is not None else CORRIDOR_DEFAULTS["min_shared_length_m"]
-    out["max_pair_cost"] = _number(raw.get("max_pair_cost"))             # blank or unusable: no limit
-    switch = raw.get("validate_pair_costs")
-    out["validate_pair_costs"] = switch if isinstance(switch, bool) else CORRIDOR_DEFAULTS["validate_pair_costs"]
-    return out
-
-
-def corridor_problems(raw: Any) -> list[Problem]:
-    """``(key, message)`` for every value of the settings that is not allowed; ``[]`` when all are fine.
-
-    Give it the RAW values (the form's, or a stored dict), not the output of :func:`normalise_corridor_settings`:
-    a blank required field is a problem here, while the normaliser would have replaced it by its default. A key
-    that is absent counts as its default; unknown keys are ignored. ``None`` means "no settings", all defaults.
-    """
-    if raw is None:
-        return []
-    if not isinstance(raw, Mapping):
-        return [("settings", f"The corridor settings are {_fmt(raw)}, not a mapping of setting names to values.")]
-    problems: list[Problem] = []
-    for key, spec in FIELD_SPECS.items():
-        if key in raw:
-            message = _setting_problem(spec, raw[key])
-            if message:
-                problems.append((key, message))
-    return problems
-
-
-def _settings_with_defaults(raw: Any) -> dict[str, Any]:
-    return {**CORRIDOR_DEFAULTS, **normalise_corridor_settings(raw)}
-
-
-def max_pair_distance_cells(max_pair_cost: float | None, cell_size_m: float) -> float | None:
-    """``max_pair_distance`` of the library (search CELL units) for a cost limit in cost units x m.
-
-    One cell unit is the cost of crossing one cell of value 1, so ``cell units x cell size = cost units x m`` and
-    the limit divided by the cell size is what ``build_corridor_graph(max_pair_distance=...)`` wants. ``None``
-    (keep every pair) stays ``None``.
-    """
-    if max_pair_cost is None:
-        return None
-    if not (isinstance(cell_size_m, numbers.Real) and math.isfinite(cell_size_m) and cell_size_m > 0):
-        raise InvalidInputError(f"The cell size must be a positive number of metres, not {_fmt(cell_size_m)}.")
-    return float(max_pair_cost) / float(cell_size_m)
-
-
-# --------------------------------------------------------------------------- the points
-def _point(item: Any, where: str) -> Point:
-    """One draft point (``{"x":, "y":}`` or ``[x, y]``) as an ``(x, y)`` float pair."""
-    try:
-        if isinstance(item, Mapping):
-            return float(item["x"]), float(item["y"])
-        x, y = item
-        return float(x), float(y)
-    except (KeyError, TypeError, ValueError) as exc:
-        raise InvalidInputError(f"{where} is not a point with x and y coordinates: {item!r}.") from exc
-
-
-def _as_points(terminals: Any) -> list[Point]:
-    if isinstance(terminals, (str, bytes)) or not isinstance(terminals, Sequence):
-        raise InvalidInputError(f"The points must be a list of (x, y) pairs, not {type(terminals).__name__}.")
-    return [_point(item, f"Point {i}") for i, item in enumerate(terminals, start=1)]
-
-
-def terminals_from_draft(draft: Any, which: str = TERMINALS_ALL) -> list[Point]:
-    """The points to connect, from the route draft (``ROUTE_DRAFT``): ``(x, y)`` in the raster's CRS.
-
-    ``which`` is ``"all"`` (sources, then waypoints, then targets) or ``"sources_targets"`` (waypoints left out).
-    The order is the order of the point numbers in every message. Nothing is removed here: two points on the same
-    spot are reported by :func:`terminal_problems` so the user can fix the draft. Raises ``InvalidInputError`` for
-    an unknown ``which`` or an entry that is not a point.
-    """
-    if which not in TERMINAL_CHOICES:
-        raise InvalidInputError(
-            f"Points to connect: {which!r} is not an option. Allowed: {', '.join(TERMINAL_CHOICES)}.")
-    if draft is None:
-        return []
-    if not isinstance(draft, Mapping):
-        raise InvalidInputError(f"The route draft must be a mapping with sources, waypoints and targets, not "
-                                f"{type(draft).__name__}.")
-    groups = ("sources", "waypoints", "targets") if which == TERMINALS_ALL else ("sources", "targets")
-    points: list[Point] = []
-    for group in groups:
-        for index, item in enumerate(draft.get(group) or [], start=1):
-            points.append(_point(item, f"The {group[:-1]} {index} of the draft"))
-    return points
-
-
-def _where(index: int, point: Point) -> str:
-    return f"point {index + 1} ({point[0]:,.1f}, {point[1]:,.1f})"
-
-
-def _listed(items: list[str]) -> str:
-    shown = "; ".join(items[:_LISTED])
-    return shown + (f"; and {len(items) - _LISTED} more" if len(items) > _LISTED else "")
-
-
-def _inspect_raster(src: Any, indexed: list[tuple[int, Point]],
-                    ignore_max_cost: bool) -> tuple[list[str], list[str], list[str]]:
-    """``(outside, forbidden, duplicates)`` message parts for ``indexed`` = ``[(point number - 1, point), ...]``."""
-    import numpy as np
-    from rasterio.transform import rowcol
-
-    rows, cols = rowcol(src.transform, [p[0] for _, p in indexed], [p[1] for _, p in indexed])
-    rows, cols = np.asarray(rows, dtype=np.int64), np.asarray(cols, dtype=np.int64)
-    inside = (rows >= 0) & (rows < src.height) & (cols >= 0) & (cols < src.width)
-    outside = [_where(i, p) for n, (i, p) in enumerate(indexed) if not inside[n]]
-
-    forbidden: list[str] = []
-    cells: dict[tuple[int, int], list[int]] = {}
-    inside_ids = [n for n in range(len(indexed)) if inside[n]]
-    if inside_ids:
-        values = [v[0] for v in src.sample([indexed[n][1] for n in inside_ids], indexes=1)]
-        floating = np.issubdtype(src.dtypes[0], np.floating)
-        for n, value in zip(inside_ids, values):
-            i, point = indexed[n]
-            cells.setdefault((int(rows[n]), int(cols[n])), []).append(i)
-            blocked = (not np.isfinite(value)) if floating else value >= IMPASSABLE_CELL_COST
-            if ignore_max_cost and blocked:
-                forbidden.append(f"{_where(i, point)}, cell value {value:g}")
-    duplicates = [f"points {', '.join(str(i + 1) for i in ids)} are on the same raster cell (row {row}, column {col})"
-                  for (row, col), ids in cells.items() if len(ids) > 1]
-    return outside, forbidden, duplicates
-
-
-def terminal_problems(raster_path: Any, terminals: Sequence[Sequence[float]], *,
-                      ignore_max_cost: bool = True) -> list[Problem]:
-    """``("points" | "raster", message)`` for points that cannot be connected on this raster; ``[]`` when fine.
-
-    Refused: fewer than two points, a coordinate that is not a finite number, a point outside the raster, a point
-    on a forbidden cell (only while ``ignore_max_cost`` is on: then forbidden cells are hard barriers and the
-    library would silently move the point), two points on the same raster cell (a corridor graph connects distinct
-    points), an unreadable raster. Points are numbered from 1 in the order given. The points must be in the CRS of
-    the raster.
-    """
-    points = _as_points(terminals)
-    problems: list[Problem] = []
-    if len(points) < 2:
-        problems.append(("points", f"A corridor graph connects at least 2 points, but the draft gives {len(points)}. "
-                                   f"Add more points on the map (sources, targets and, with 'All control points', "
-                                   f"waypoints)."))
-    finite = [(i, p) for i, p in enumerate(points) if math.isfinite(p[0]) and math.isfinite(p[1])]
-    if len(finite) < len(points):
-        bad = [_where(i, p) for i, p in enumerate(points) if (i, p) not in finite]
-        problems.append(("points", f"{len(bad)} point(s) have a coordinate that is not a finite number: "
-                                   f"{_listed(bad)}."))
-    if not raster_path:
-        problems.append(("raster", "No cost raster is selected, so the points cannot be checked against it."))
-        return problems
-    if not finite:
-        return problems
-    try:
-        import rasterio
-
-        with rasterio.open(str(raster_path)) as src:
-            outside, forbidden, duplicates = _inspect_raster(src, finite, bool(ignore_max_cost))
-            bounds, crs = src.bounds, src.crs
-    except (OSError, ValueError) as exc:          # rasterio's errors are OSError / ValueError subclasses
-        problems.append(("raster", f"The cost raster cannot be read ({raster_path}): {exc}"))
-        return problems
-    if outside:
-        problems.append(("points", f"{len(outside)} point(s) lie outside the cost raster: {_listed(outside)}. The "
-                                   f"raster covers x {bounds.left:,.1f} to {bounds.right:,.1f} and y "
-                                   f"{bounds.bottom:,.1f} to {bounds.top:,.1f} ({crs})."))
-    if forbidden:
-        problems.append(("points", f"{len(forbidden)} point(s) lie on forbidden cells (no-go, value "
-                                   f"{IMPASSABLE_CELL_COST}): {_listed(forbidden)}. Move them onto a passable cell."))
-    if duplicates:
-        problems.append(("points", f"Some points are duplicates: {_listed(duplicates)}. Remove all but one of each "
-                                   f"group."))
-    return problems
-
-
-def backend_problem(graph_api: Any) -> Problem | None:
-    """``("graph_api", message)`` unless the Backend field is cython (the only backend that builds the graph)."""
-    name = str(graph_api or routing.DEFAULT_BACKEND).strip().lower()
-    if name == "cython":
-        return None
-    return ("graph_api", f"The corridor graph runs on the cython backend only; the Backend field is set to '{name}'. "
-                         f"Choose cython under Backend in 'Algorithm & search'.")
 
 
 # --------------------------------------------------------------------------- notices of problems
@@ -568,7 +214,7 @@ def _routing_options(routing_settings: Any) -> tuple[dict[str, Any], list[Proble
             raise ValueError(k_value)
     except (TypeError, ValueError):
         neighborhood = routing.neighborhood_string(None)
-        problems.append(("neighborhood_k", f"Neighbourhood order k: {_fmt(k_value)} is not usable. Allowed: whole "
+        problems.append(("neighborhood_k", f"Neighbourhood order k: {_fmt(k_value)} is not usable. Allowed: whole " +
                                            f"numbers from {routing.NEIGHBORHOOD_MIN} to {routing.NEIGHBORHOOD_MAX}."))
     buffer_m = _number(raw.get("search_buffer_m"))
     ignore = raw.get("ignore_max_cost")
@@ -662,7 +308,7 @@ def _validation(graph: Any) -> dict[str, Any] | None:
            "mean_excess": float(gap.get("mean_excess", 0.0)), "min_excess": float(gap.get("min_excess", 0.0)),
            "worst_pair_points": worst}
     out["text"] = (
-        f"Exact pair costs were computed for {out['n_pairs']} pair(s): the network prices a pair at most "
+        f"Exact pair costs were computed for {out['n_pairs']} pair(s): the network prices a pair at most " +
         f"{out['max_excess'] * 100:.1f} % above the exact least-cost route (mean {out['mean_excess'] * 100:.1f} %)."
         if per_pair else "Exact pair costs could not be computed for any pair.")
     return out
@@ -673,12 +319,12 @@ def summary_text(summary: Mapping[str, Any]) -> str:
     if not summary.get("n_corridors"):
         return "No corridors were built."
     sections = summary["n_corridors"]
-    text = (f"{summary['n_terminals']} points joined by {sections} trench section{'' if sections == 1 else 's'}; "
-            f"{summary['n_shared_sections']} of them shared by several connections. "
-            f"Together the sections are {summary['total_length_m']:,.0f} m long, {summary['shared_length_m']:,.0f} m "
-            f"of that shared.")
+    text = (f"{summary['n_terminals']} points joined by {sections} trench section{'' if sections == 1 else 's'}; " +
+            f"{summary['n_shared_sections']} of them shared by several connections. " +
+            f"Together the sections are {summary['total_length_m']:,.0f} m long, {summary['shared_length_m']:,.0f} m " +
+            "of that shared.")
     if summary["saved_length_m"] > 0:
-        text += (f" Digging every connection on its own would need {summary['per_route_length_m']:,.0f} m, "
+        text += (f" Digging every connection on its own would need {summary['per_route_length_m']:,.0f} m, " +
                  f"so sharing saves {summary['saved_length_m']:,.0f} m.")
     validation = summary.get("validation")
     return f"{text} {validation['text']}" if validation else text
@@ -689,29 +335,40 @@ def _notice(severity: str, title: str, meaning: str, impact: str, fix: str) -> d
                          focus_id="tab-routes").to_dict()
 
 
-def _graph_notices(graph: Any, n_points: int, validation: dict | None) -> list[dict]:
-    """What the user should see about the run, derived from the graph (warnings of a worker thread are not captured)."""
-    notices: list[dict] = []
+def _left_out_notices(graph: Any, n_points: int) -> list[dict]:
     connected = {t for key in graph.pair_routes for t in key[:2]}
     left_out = [i + 1 for i in range(n_points) if i not in connected]
-    if left_out:
-        notices.append(_notice(
-            "warning", "Some points are not connected",
-            f"Point(s) {', '.join(map(str, left_out))} appear in no connected pair: they are enclosed by forbidden "
-            f"cells, outside the search window, or every route to them runs through another point's region.",
-            "They are missing from the corridor graph.",
-            "Check the cost raster around them, or widen the search buffer under 'Algorithm & search'."))
-    for note in graph.provenance.get("notes") or []:
-        if not str(note).startswith("terminals "):          # the isolated-points note is covered above
-            notices.append(_notice("info", "A note from the corridor construction", str(note),
-                                   "The graph is built, but this detail may matter.", "No action needed."))
-    if validation and validation["min_excess"] < -1e-9:
-        notices.append(_notice(
-            "warning", "The exact pair costs disagree with the network",
-            f"A pair was priced {abs(validation['min_excess']) * 100:.2f} % below its exact least-cost route, which "
-            f"cannot happen for a real route.", "Treat the pair prices of this graph with care.",
-            "Report it together with the raster and the points."))
-    return notices
+    if not left_out:
+        return []
+    return [_notice(
+        "warning", "Some points are not connected",
+        f"Point(s) {', '.join(map(str, left_out))} appear in no connected pair: they are enclosed by forbidden "
+        f"cells, outside the search window, or every route to them runs through another point's region.",
+        "They are missing from the corridor graph.",
+        "Check the cost raster around them, or widen the search buffer under 'Algorithm & search'.")]
+
+
+def _construction_note_notices(graph: Any) -> list[dict]:
+    return [_notice("info", "A note from the corridor construction", str(note),
+                    "The graph is built, but this detail may matter.", "No action needed.")
+            for note in graph.provenance.get("notes") or []
+            if not str(note).startswith("terminals ")]          # the isolated-points note is covered by the caller
+
+
+def _validation_notices(validation: dict | None) -> list[dict]:
+    if not (validation and validation["min_excess"] < -1e-9):
+        return []
+    return [_notice(
+        "warning", "The exact pair costs disagree with the network",
+        f"A pair was priced {abs(validation['min_excess']) * 100:.2f} % below its exact least-cost route, which "
+        f"cannot happen for a real route.", "Treat the pair prices of this graph with care.",
+        "Report it together with the raster and the points.")]
+
+
+def _graph_notices(graph: Any, n_points: int, validation: dict | None) -> list[dict]:
+    """What the user should see about the run, derived from the graph (warnings of a worker thread are not captured)."""
+    return [*_left_out_notices(graph, n_points), *_construction_note_notices(graph),
+            *_validation_notices(validation)]
 
 
 def _crs_notices(crs: Any) -> list[dict]:
@@ -754,11 +411,11 @@ def _empty_result(n_points: int, cfg: dict[str, Any], cell_size: float) -> Corri
     """The outcome when no pair of points is connected: no graph, and a notice that says why."""
     limit = cfg["max_pair_cost"]
     if limit is not None:
-        meaning = (f"Every connection between two points costs more than the limit of {limit:,g} cost units x m "
+        meaning = (f"Every connection between two points costs more than the limit of {limit:,g} cost units x m " +
                    f"(about {limit / cell_size:,.0f} cell units at {cell_size:g} m per cell).")
         fix = "Raise 'Skip pairs costing more than' or leave it blank."
     else:
-        meaning = ("No two points share a region boundary inside the search window: they are cut off from each other "
+        meaning = ("No two points share a region boundary inside the search window: they are cut off from each other " +
                    "by forbidden cells or lie outside the window.")
         fix = "Widen the search buffer under 'Algorithm & search' or check the cost raster for barriers."
     summary = {"n_points": n_points, "n_terminals": 0, "n_pairs": 0, "n_routes": 0, "n_corridors": 0,
@@ -790,6 +447,22 @@ def _cell_size(raster_path: Any) -> float:
 
     with rasterio.open(str(raster_path)) as src:
         return abs(src.transform.a)
+
+
+def _result_from_graph(graph: Any, n_points: int, cfg: dict[str, Any]) -> CorridorResult:
+    validation = _validation(graph)
+    crs = _clean_crs(graph.crs)
+    summary = _summary(graph, n_points, cfg, validation, crs)
+    segments = graph.to_geodataframe().set_crs(crs, allow_override=True)
+    nodes = graph.nodes_to_geodataframe().set_crs(crs, allow_override=True)
+    shared = segments[segments["shared"] == 1]
+    return CorridorResult(
+        graph=graph, summary=summary, segments_gdf=segments, nodes_gdf=nodes,
+        shared_gdf=shared if len(shared) else None,
+        segments_geojson=geo.gdf_to_wgs84_geojson(segments), nodes_geojson=geo.gdf_to_wgs84_geojson(nodes),
+        shared_geojson=geo.gdf_to_wgs84_geojson(shared) if len(shared) else None,
+        crs=segments.crs, settings=cfg,
+        notices=[*_graph_notices(graph, n_points, validation), *_crs_notices(graph.crs)])
 
 
 def build_corridor(raster_path: Any, terminals: Sequence[Sequence[float]], settings: Any = None, *,
@@ -838,19 +511,7 @@ def build_corridor(raster_path: Any, terminals: Sequence[Sequence[float]], setti
         return _empty_result(len(points), cfg, cell_size)
 
     _report(progress, 3)
-    validation = _validation(graph)
-    crs = _clean_crs(graph.crs)
-    summary = _summary(graph, len(points), cfg, validation, crs)
-    segments = graph.to_geodataframe().set_crs(crs, allow_override=True)
-    nodes = graph.nodes_to_geodataframe().set_crs(crs, allow_override=True)
-    shared = segments[segments["shared"] == 1]
-    return CorridorResult(
-        graph=graph, summary=summary, segments_gdf=segments, nodes_gdf=nodes,
-        shared_gdf=shared if len(shared) else None,
-        segments_geojson=geo.gdf_to_wgs84_geojson(segments), nodes_geojson=geo.gdf_to_wgs84_geojson(nodes),
-        shared_geojson=geo.gdf_to_wgs84_geojson(shared) if len(shared) else None,
-        crs=segments.crs, settings=cfg,
-        notices=[*_graph_notices(graph, len(points), validation), *_crs_notices(graph.crs)])
+    return _result_from_graph(graph, len(points), cfg)
 
 
 #: the ``params`` keys :func:`run_job` hands to :func:`build_corridor` (others are for the poll side)
@@ -899,6 +560,39 @@ def _run_number(state: Any) -> int:
     return max(runs, default=0) + 1
 
 
+def _add_corridor_layer(state: Any, result: CorridorResult, *, name: str, gdf: Any, geojson: Any,
+                        style: dict, meta: dict[str, Any]) -> Any:
+    from . import data_io
+
+    return state.add_layer(name, "vector", gdf=gdf, crs=result.crs, geojson=geojson, style=dict(style),
+                           meta={"summary": data_io.dataset_summary(gdf), **meta})
+
+
+def _register_corridor_layers(state: Any, result: CorridorResult, meta_extra: dict[str, Any]) -> tuple[Any, Any, Any]:
+    """Under the state lock: drop stale graphs, add the three layers, keep the graph; ``(segments, shared, nodes)``."""
+    with state.locked():
+        for layer_id in [lid for lid in state.corridor_graphs if lid not in state.layers]:
+            del state.corridor_graphs[layer_id]
+        run = _run_number(state)
+        suffix = "" if run == 1 else f" ({run})"
+        segments = _add_corridor_layer(
+            state, result, name=f"Corridor segments{suffix}", gdf=result.segments_gdf,
+            geojson=result.segments_geojson, style=SEGMENTS_STYLE,
+            meta={"corridor_role": "segments", "corridor_run": run, "corridor_settings": dict(result.settings),
+                  **meta_extra})
+        shared = None
+        if result.shared_gdf is not None:
+            shared = _add_corridor_layer(
+                state, result, name=f"Corridor shared runs{suffix}", gdf=result.shared_gdf,
+                geojson=result.shared_geojson, style=SHARED_STYLE,
+                meta={"corridor_role": "shared", "corridor_run": run, "corridor_for": segments.id})
+        nodes = _add_corridor_layer(
+            state, result, name=f"Corridor nodes{suffix}", gdf=result.nodes_gdf, geojson=result.nodes_geojson,
+            style=NODES_STYLE, meta={"corridor_role": "nodes", "corridor_run": run, "corridor_for": segments.id})
+        state.corridor_graphs[segments.id] = result.graph
+    return segments, shared, nodes
+
+
 def finalize_corridor(state: Any, result: CorridorResult, params: Mapping[str, Any] | None = None) -> Finalized:
     """Store the graph and register the map layers; call it from the poll callback (main thread), once per run.
 
@@ -910,34 +604,10 @@ def finalize_corridor(state: Any, result: CorridorResult, params: Mapping[str, A
     found no corridor (``result.graph is None``) the state is left alone. ``params`` is the job's snapshot; its
     ``raster_layer_id``, when the caller put one there, is recorded on the layers.
     """
-    from . import data_io
-
     if result.graph is None:
         return Finalized(None, None, None, [], result.summary, list(result.notices), result.summary["text"])
     meta_extra = {"raster_layer_id": params["raster_layer_id"]} if params and params.get("raster_layer_id") else {}
-    with state.locked():
-        for layer_id in [lid for lid in state.corridor_graphs if lid not in state.layers]:
-            del state.corridor_graphs[layer_id]
-        run = _run_number(state)
-        suffix = "" if run == 1 else f" ({run})"
-        segments = state.add_layer(
-            f"Corridor segments{suffix}", "vector", gdf=result.segments_gdf, crs=result.crs,
-            geojson=result.segments_geojson, style=dict(SEGMENTS_STYLE),
-            meta={"summary": data_io.dataset_summary(result.segments_gdf), "corridor_role": "segments",
-                  "corridor_run": run, "corridor_settings": dict(result.settings), **meta_extra})
-        shared = None
-        if result.shared_gdf is not None:
-            shared = state.add_layer(
-                f"Corridor shared runs{suffix}", "vector", gdf=result.shared_gdf, crs=result.crs,
-                geojson=result.shared_geojson, style=dict(SHARED_STYLE),
-                meta={"summary": data_io.dataset_summary(result.shared_gdf), "corridor_role": "shared",
-                      "corridor_run": run, "corridor_for": segments.id})
-        nodes = state.add_layer(
-            f"Corridor nodes{suffix}", "vector", gdf=result.nodes_gdf, crs=result.crs,
-            geojson=result.nodes_geojson, style=dict(NODES_STYLE),
-            meta={"summary": data_io.dataset_summary(result.nodes_gdf), "corridor_role": "nodes",
-                  "corridor_run": run, "corridor_for": segments.id})
-        state.corridor_graphs[segments.id] = result.graph
+    segments, shared, nodes = _register_corridor_layers(state, result, meta_extra)
     ids_added = [segments.id] + ([shared.id] if shared is not None else []) + [nodes.id]
     text = result.summary["text"]
     done = errors.success(
@@ -956,20 +626,20 @@ def save_problems(graph: Any, path: Any, *, overwrite: bool = False) -> list[Pro
     """
     problems: list[Problem] = []
     if graph is None:
-        problems.append(("graph", "There is no corridor graph to save. Build one first: a reopened project keeps "
+        problems.append(("graph", "There is no corridor graph to save. Build one first: a reopened project keeps " +
                                   "the map layers but not the graph."))
     if _is_blank(path):
         problems.append(("save_path", "No file name was given. Enter a path ending in .gpkg."))
         return problems
     target = Path(str(path).strip())
     if target.suffix.lower() != ".gpkg":
-        problems.append(("save_path", f"Save path: '{target.name}' is not a GeoPackage. Allowed: a file name ending "
-                                      f"in .gpkg."))
+        problems.append(("save_path", f"Save path: '{target.name}' is not a GeoPackage. Allowed: a file name ending " +
+                                      "in .gpkg."))
     elif target.is_dir():
         problems.append(("save_path", f"Save path: '{target}' is a folder. Enter a file name ending in .gpkg."))
     elif target.exists() and not overwrite:
-        problems.append(("save_path", f"'{target.name}' already exists in {target.parent}. Nothing was written; "
-                                      f"choose another file name or confirm replacing it."))
+        problems.append(("save_path", f"'{target.name}' already exists in {target.parent}. Nothing was written; " +
+                                      "choose another file name or confirm replacing it."))
     return problems
 
 

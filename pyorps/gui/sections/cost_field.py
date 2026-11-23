@@ -37,7 +37,8 @@ SETTING_IDS: dict[str, str] = {
     "algorithm": ids.CF_ALGORITHM,
     "threads": ids.CF_THREADS,
 }
-assert tuple(SETTING_IDS) == service.COST_FIELD_KEYS
+if tuple(SETTING_IDS) != service.COST_FIELD_KEYS:
+    raise RuntimeError("SETTING_IDS and service.COST_FIELD_KEYS differ")
 
 #: problem key -> the component the "Go fix" button of a notice takes the user to. Four of the problem keys of the
 #: service belong to other cards of the Routes tab: the Backend field, the neighbourhood field, the search buffer
@@ -54,37 +55,37 @@ CONTROLS: dict[str, str] = {
 #: every component property the four settings fill, in the order of ``service.COST_FIELD_KEYS``
 FORM_TARGETS: tuple[tuple[str, str], ...] = tuple((SETTING_IDS[key], "value") for key in service.COST_FIELD_KEYS)
 
-INTRO = ("Shows what it costs to reach every cell around the fixed points, as a map layer. "
+INTRO = ("Shows what it costs to reach every cell around the fixed points, as a map layer. " +
          "Use it to find a cheap place for one station that connects several points.")
 
 HELP = (
-    "The fixed points are the sources of the route draft, or all of its control points. For every cell the "
-    "field gives the cost of the cheapest way to reach it from a fixed point. 'Sum over the points' adds that "
-    "cost over all fixed points: the cheapest cell is where one station that connects all of them would cost "
-    "least. 'Lowest of the points' keeps the cost from the nearest fixed point instead: a catchment map. "
-    f"The unit is {service.UNIT}: {service.UNIT_NOTE}. With a weighted objective (see below) it is "
-    f"{service.OBJECTIVE_UNIT} instead: {service.OBJECTIVE_UNIT_NOTE}. "
+    "The fixed points are the sources of the route draft, or all of its control points. For every cell the " +
+    "field gives the cost of the cheapest way to reach it from a fixed point. 'Sum over the points' adds that " +
+    "cost over all fixed points: the cheapest cell is where one station that connects all of them would cost " +
+    "least. 'Lowest of the points' keeps the cost from the nearest fixed point instead: a catchment map. " +
+    f"The unit is {service.UNIT}: {service.UNIT_NOTE}. With a weighted objective (see below) it is " +
+    f"{service.OBJECTIVE_UNIT} instead: {service.OBJECTIVE_UNIT_NOTE}. " +
     "Cells that cannot be reached, and forbidden cells, are shown as no data (transparent).")
 
 HELP_SCOPE = (
-    "The field is computed on the cost raster picked under 'Route on raster', with the same settings as a plain "
-    "route: when the Objective & terrain card is set (weights, extra layers, terrain model with its slope response, "
-    "weight precision), the field uses it, the values are then objective units and the layer remembers the "
-    "objective; with the default values it is the plain cost raster. A terrain model needs the cython backend "
-    "(the field then uses the Dijkstra kernel). The corridor graph and constrained routing do not use the "
-    "objective. It reads the backend, neighbourhood order, search buffer, whole-raster switch and "
-    "forbidden-cells switch of 'Algorithm & search', and needs a backend that can compute a field "
-    f"({', '.join(service.FIELD_BACKENDS)}). It runs in the background and the page stays usable. Stop acts "
+    "The field is computed on the cost raster picked under 'Route on raster', with the same settings as a plain " +
+    "route: when the Objective & terrain card is set (weights, extra layers, terrain model with its slope response, " +
+    "weight precision), the field uses it, the values are then objective units and the layer remembers the " +
+    "objective; with the default values it is the plain cost raster. A terrain model needs the cython backend " +
+    "(the field then uses the Dijkstra kernel). The corridor graph and constrained routing do not use the " +
+    "objective. It reads the backend, neighbourhood order, search buffer, whole-raster switch and " +
+    "forbidden-cells switch of 'Algorithm & search', and needs a backend that can compute a field " +
+    f"({', '.join(service.FIELD_BACKENDS)}). It runs in the background and the page stays usable. Stop acts " +
     "between fixed points: the fixed point being solved always finishes, and a stopped run adds no layer.")
 
 #: the hover texts of the controls
-TIP_ORIGINS = ("Which points of the route draft the field starts from: the sources only, or every control point "
-               f"(sources, targets and waypoints). Allowed: 1 to {service.MAX_ORIGINS} points, because every "
+TIP_ORIGINS = ("Which points of the route draft the field starts from: the sources only, or every control point " +
+               f"(sources, targets and waypoints). Allowed: 1 to {service.MAX_ORIGINS} points, because every " +
                "point needs one full search of the window.")
-TIP_COMBINE = ("Sum over the points: the cost from every fixed point is added, so the cheapest cell is the best "
-               "place for one station that connects them all (siting). Lowest of the points: the cost from the "
+TIP_COMBINE = ("Sum over the points: the cost from every fixed point is added, so the cheapest cell is the best " +
+               "place for one station that connects them all (siting). Lowest of the points: the cost from the " +
                "nearest fixed point, a catchment map.")
-TIP_ALGORITHM = ("auto picks the fastest full-field kernel of the backend. dijkstra is the serial solver and "
+TIP_ALGORITHM = ("auto picks the fastest full-field kernel of the backend. dijkstra is the serial solver and " +
                  "the only one that applies a terrain model. The GPU backends choose their kernel themselves.")
 
 
@@ -113,7 +114,7 @@ def readiness(graph_api: Any, raster_picked: bool) -> tuple[bool, str]:
     if problems:
         return False, problems[0].message
     if not raster_picked:
-        return False, ("Pick a cost raster under 'Route on raster' first: the cost field is computed on it "
+        return False, ("Pick a cost raster under 'Route on raster' first: the cost field is computed on it " +
                        "(build or load one in the Raster tab).")
     return True, "Compute the cost field of the fixed points on the picked cost raster."
 
@@ -163,7 +164,7 @@ def section() -> list:
                                 className="gui-cta", disabled=not ready),
                      id=RUN_WRAP, title=hint),
             dbc.Button("⏹ Stop", id=ids.CF_STOP_BTN, size="sm", color="danger", style={"display": "none"},
-                       title="Stop the cost field after the fixed point being solved; a stopped run adds "
+                       title="Stop the cost field after the fixed point being solved; a stopped run adds " +
                              "no layer"),
         ], className="d-flex align-items-center gap-2 mt-1"),
         html.Div(id=ids.CF_STATUS, className="small mt-1", role="status", style={"whiteSpace": "pre-line"},

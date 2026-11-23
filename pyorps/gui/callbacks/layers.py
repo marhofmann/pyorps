@@ -150,7 +150,7 @@ def _attr_table_payload(layer):
             if manual else "")
     shown = (f"first {MAX_TABLE_ROWS:,} of {len(gdf):,}" if capped
              else f"{len(gdf):,}")
-    title = (f"{layer.name} — {shown} feature(s), {len(cols)} column(s). "
+    title = (f"{layer.name} — {shown} feature(s), {len(cols)} column(s). " +
              f"{hint}Click a row to highlight it on the map.")
     return column_defs, row_data, title
 

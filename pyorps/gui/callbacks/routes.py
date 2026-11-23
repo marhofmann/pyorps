@@ -89,7 +89,7 @@ def numeric_field_problem(value, field: str, *, control: str | None, tab: str,
             phrase = ("must not be negative" if allow_equal
                       else "must be greater than 0")
         else:
-            phrase = (f"must be {'at least' if allow_equal else 'greater than'}"
+            phrase = (f"must be {'at least' if allow_equal else 'greater than'}" +
                       f" {minimum:g}")
         return field_notice(field, phrase, **kwargs)
     if maximum is not None and number > maximum:
@@ -220,9 +220,9 @@ def _estimate_unknown_body() -> list:
                     for title, text in _MITIGATION_TIPS],
                    className="mb-0 small")
     return [
-        html.P("The run could not be estimated, so it is treated as heavy "
-               "(see the notice for the reason). Accept waiting, or cancel "
-               "and reduce the effort first. A running job can be "
+        html.P("The run could not be estimated, so it is treated as heavy " +
+               "(see the notice for the reason). Accept waiting, or cancel " +
+               "and reduce the effort first. A running job can be " +
                "interrupted any time with ⏹ Stop.", className="small"),
         dbc.Alert([html.B("How to make it lighter:"), tips],
                   color="info", className="py-2 px-3 mb-0"),
@@ -230,16 +230,16 @@ def _estimate_unknown_body() -> list:
 
 #: mitigation tips shown in the heavy-run confirm dialog
 _MITIGATION_TIPS = (
-    ("Search buffer", "set a smaller explicit 'Search buffer (m)' and switch "
-                      "off 'whole raster' (Algorithm & search) — the window "
+    ("Search buffer", "set a smaller explicit 'Search buffer (m)' and switch " +
+                      "off 'whole raster' (Algorithm & search) — the window " +
                       "around the points is the main cost driver"),
-    ("Resolution", "rebuild the cost raster at a coarser resolution "
+    ("Resolution", "rebuild the cost raster at a coarser resolution " +
                    "(Raster tab, e.g. 2-5 m instead of 1 m)"),
-    ("Neighbourhood", "lower k from 3/2 to 1 — halves/quarters the edges "
+    ("Neighbourhood", "lower k from 3/2 to 1 — halves/quarters the edges " +
                       "(slightly more angular routes)"),
-    ("Backend", "switch Backend to raster_gpu (fastest for large windows, "
+    ("Backend", "switch Backend to raster_gpu (fastest for large windows, " +
                 "opt-in; needs CuPy and a CUDA GPU)"),
-    ("Fewer pairs", "route fewer source/target combinations at once, or "
+    ("Fewer pairs", "route fewer source/target combinations at once, or " +
                     "use 'Pairwise' instead of the full cross product"),
     ("Study area", "draw a smaller study area and rebuild the raster"),
 )
@@ -340,7 +340,7 @@ def finalize_routing(state, finder, built, failed, *, meta: dict,
     if finder is not None and raster_layer_id:
         state.finders[raster_layer_id] = finder
 
-    group_label = (f"Run {next(state.run_counter)} "
+    group_label = (f"Run {next(state.run_counter)} " +
                    f"({meta.get('n_sources', 1)}x{meta.get('n_targets', 1)})")
     for route in built:
         layer = add_route_layer(
@@ -819,7 +819,7 @@ def register(app, state) -> None:
                  (ids.EDIT_ROUTE_SELECT, "value"), (ids.ROUTE_DRAFT, "data")),
         status=(ids.ROUTING_STATUS, "children"),
         running_text=lambda job: job.progress_text(),
-        finalize=lambda st, job: routing_outcome(st, job)))
+        finalize=lambda st, job: routing_outcome(st, job)))  # pylint: disable=unnecessary-lambda  # looked up at call time: tests patch the target
 
     # ------------------------------------------------- load existing routes
     @app.callback(

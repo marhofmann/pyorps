@@ -262,8 +262,8 @@ def finalize_constrained(state, result: dict, notices: list[dict], *,
     notices.append(success(
         f"Overhead line routed: {summary['n_towers']} towers"
         + (f" ({n_waypoints} forced at waypoints)" if n_waypoints else ""),
-        meaning=(f"Tower cost {summary['total_tower_cost']:,.0f}, angle "
-                 f"penalties {summary['total_angle_penalty_cost']:,.0f}, "
+        meaning=(f"Tower cost {summary['total_tower_cost']:,.0f}, angle " +
+                 f"penalties {summary['total_angle_penalty_cost']:,.0f}, " +
                  f"max turn {summary['max_turn_angle_deg']:.1f} deg."
                  + (f" Objective weights used: {weights_text}." if weights_text else "")
                  + "".join(f" {fact}" for fact in facts))))
@@ -278,9 +278,9 @@ def finalize_constrained(state, result: dict, notices: list[dict], *,
     notes_notice = end_notes_notice(summary)
     if notes_notice is not None:
         notices.append(notes_notice)
-    status = (f"OHL: {summary['n_towers']} towers, spans "
-              f"{summary['spans_min_max_avg'][0]:.0f}-"
-              f"{summary['spans_min_max_avg'][1]:.0f} m "
+    status = (f"OHL: {summary['n_towers']} towers, spans " +
+              f"{summary['spans_min_max_avg'][0]:.0f}-" +
+              f"{summary['spans_min_max_avg'][1]:.0f} m " +
               f"(avg {summary['spans_min_max_avg'][2]:.0f})"
               + end_status_text(summary)
               + (f"; weights: {weights_text}" if weights_text else ""))
@@ -687,8 +687,8 @@ def register(app, state) -> None:
         results=((ids.LAYERS_VIEW, "data"), (ids.OHL_STATUS, "children"),
                  (ids.EDIT_ROUTE_SELECT, "options"), (ids.EDIT_ROUTE_SELECT, "value")),
         status=(ids.OHL_STATUS, "children"),
-        running_text=lambda job: constrained.status_text(job),
-        finalize=lambda st, job: constrained_outcome(st, job)))
+        running_text=lambda job: constrained.status_text(job),  # pylint: disable=unnecessary-lambda  # looked up at call time: tests patch the target
+        finalize=lambda st, job: constrained_outcome(st, job)))  # pylint: disable=unnecessary-lambda  # looked up at call time: tests patch the target
 
     @app.callback(
         Output(ids.OHL_STATUS, "children", allow_duplicate=True),

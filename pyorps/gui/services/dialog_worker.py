@@ -17,12 +17,30 @@ Protocol: one JSON request on stdin, one JSON line on stdout::
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
 
 
 def _unavailable(reason: str) -> dict:
     return {"status": "unavailable", "reason": reason}
+
+
+def _choose(filedialog, root, request: dict):
+    """Show the dialog the request names; the chosen path (``''`` or ``()`` on cancel), or an error reply dict."""
+    mode = request.get("mode")
+    options = {"parent": root, "title": str(request.get("title") or "")}
+    filetypes = [(str(label), str(patterns))
+                 for label, patterns in request.get("filetypes") or []]
+    if mode == "open":
+        return filedialog.askopenfilename(filetypes=filetypes, **options)
+    if mode == "save":
+        return filedialog.asksaveasfilename(
+            defaultextension=str(request.get("defaultextension") or ""),
+            filetypes=filetypes, **options)
+    if mode == "directory":
+        return filedialog.askdirectory(**options)
+    return _unavailable(f"unknown dialog mode {mode!r}")
 
 
 def handle(request: dict) -> dict:
@@ -38,24 +56,11 @@ def handle(request: dict) -> dict:
         return _unavailable(f"no display is available ({exc})")
     try:
         root.withdraw()
-        try:
+        with contextlib.suppress(Exception):  # some window managers refuse; the dialog still works
             root.attributes("-topmost", True)
-        except Exception:  # some window managers refuse; the dialog still works
-            pass
-        mode = request.get("mode")
-        options = {"parent": root, "title": str(request.get("title") or "")}
-        filetypes = [(str(label), str(patterns))
-                     for label, patterns in request.get("filetypes") or []]
-        if mode == "open":
-            chosen = filedialog.askopenfilename(filetypes=filetypes, **options)
-        elif mode == "save":
-            chosen = filedialog.asksaveasfilename(
-                defaultextension=str(request.get("defaultextension") or ""),
-                filetypes=filetypes, **options)
-        elif mode == "directory":
-            chosen = filedialog.askdirectory(**options)
-        else:
-            return _unavailable(f"unknown dialog mode {mode!r}")
+        chosen = _choose(filedialog, root, request)
+        if isinstance(chosen, dict):          # the mode is unknown: nothing was shown
+            return chosen
     except Exception as exc:  # pylint: disable=broad-exception-caught
         return _unavailable(f"the file dialog failed ({exc})")
     finally:

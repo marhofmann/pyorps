@@ -93,6 +93,37 @@ def _referenced_strings(value: Any) -> set[str]:
     return set()
 
 
+def _hash_geometries(hasher, gdf) -> None:
+    """Feed the WKB bytes of the geometries into ``hasher``, ``_DIGEST_CHUNK`` rows at a time."""
+    import numpy as np
+    import shapely
+
+    geometry = gdf.geometry.values
+    for start in range(0, len(geometry), _DIGEST_CHUNK):
+        for wkb in shapely.to_wkb(np.asarray(geometry[start:start + _DIGEST_CHUNK])):
+            hasher.update(wkb if wkb is not None else b"")
+
+
+def _digest_columns(gdf, columns) -> list:
+    """The columns the digest covers, sorted: the named ones the layer has (``"all"`` = every attribute)."""
+    if isinstance(columns, str) and columns == "all":
+        columns = [c for c in gdf.columns if c != gdf.geometry.name]
+    return sorted(c for c in (columns or []) if c in gdf.columns)
+
+
+def _hash_column(hasher, gdf, column) -> None:
+    """Feed the name and the values of one attribute column into ``hasher``."""
+    import pandas as pd
+
+    hasher.update(str(column).encode("utf-8"))
+    values = gdf[column]
+    try:
+        hashed = pd.util.hash_pandas_object(values, index=False)
+    except TypeError:                       # unhashable cells (dict / list)
+        hashed = pd.util.hash_pandas_object(values.astype(str), index=False)
+    hasher.update(hashed.to_numpy().tobytes())
+
+
 def gdf_digest(gdf, columns=None) -> str:
     """Content fingerprint of a GeoDataFrame: geometry + the named columns.
 
@@ -105,27 +136,12 @@ def gdf_digest(gdf, columns=None) -> str:
     """
     if gdf is None:
         return "none"
-    import numpy as np
-    import pandas as pd
-    import shapely
-
     hasher = hashlib.sha256()
     hasher.update(str(gdf.crs).encode("utf-8"))
     hasher.update(len(gdf).to_bytes(8, "little"))
-    geometry = gdf.geometry.values
-    for start in range(0, len(geometry), _DIGEST_CHUNK):
-        for wkb in shapely.to_wkb(np.asarray(geometry[start:start + _DIGEST_CHUNK])):
-            hasher.update(wkb if wkb is not None else b"")
-    if isinstance(columns, str) and columns == "all":
-        columns = [c for c in gdf.columns if c != gdf.geometry.name]
-    for column in sorted(c for c in (columns or []) if c in gdf.columns):
-        hasher.update(str(column).encode("utf-8"))
-        values = gdf[column]
-        try:
-            hashed = pd.util.hash_pandas_object(values, index=False)
-        except TypeError:                       # unhashable cells (dict / list)
-            hashed = pd.util.hash_pandas_object(values.astype(str), index=False)
-        hasher.update(hashed.to_numpy().tobytes())
+    _hash_geometries(hasher, gdf)
+    for column in _digest_columns(gdf, columns):
+        _hash_column(hasher, gdf, column)
     return hasher.hexdigest()[:16]
 
 
@@ -290,6 +306,7 @@ def cached_raster_path(*, base_gdf, assumptions: dict,
                        all_touched: bool = False,
                        on_thin_features: str = "warn",
                        crop_border: bool = False) -> str | None:
+    # lizard forgives: keywords mirror build_cost_raster so the caller passes the same dict (callers use **kwargs)
     """The file ``build_cost_raster`` would reuse as a cache hit, else None.
 
     Takes the keywords of ``build_cost_raster`` (so the caller can pass the

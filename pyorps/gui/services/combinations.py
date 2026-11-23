@@ -344,8 +344,8 @@ def grid_payload(combo_gdf: gpd.GeoDataFrame, layer_name: str, *,
             record[str(c)] = None if row[c] is None else str(row[c])
         row_data.append(record)
     n_costs = combo_gdf["cost"].nunique() if len(combo_gdf) else 0
-    title = (f"{layer_name} — {len(combo_gdf)} combination(s), {n_costs} "
-             "distinct cost value(s), colour-coded to the map. Click a raster "
+    title = (f"{layer_name} — {len(combo_gdf)} combination(s), {n_costs} " +
+             "distinct cost value(s), colour-coded to the map. Click a raster " +
              "cell to select its combination.")
     return column_defs, row_data, title
 

@@ -121,7 +121,7 @@ BASEMAPS = [
 ]
 
 #: 1x1 transparent png — the "None" basemap tile (same URL for every tile)
-BLANK_TILE = ("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAA"
+BLANK_TILE = ("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAA" +
               "fFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
 
 BASEMAP_BY_NAME = {bm["name"]: bm for bm in BASEMAPS}
@@ -548,10 +548,10 @@ def _data_tab() -> html.Div:
                     _help(dbc.Checkbox(
                         id=ids.WFS_WHOLE_LAYER, value=False, className="small",
                         label="Load the whole layer (no study area)"),
-                        "Downloads EVERY feature of the layer and ignores the "
-                        "study area. A state-wide layer can be millions of "
-                        "features and gigabytes of memory, so leave this off "
-                        "unless you really need all of it. Off = only the "
+                        "Downloads EVERY feature of the layer and ignores the " +
+                        "study area. A state-wide layer can be millions of " +
+                        "features and gigabytes of memory, so leave this off " +
+                        "unless you really need all of it. Off = only the " +
                         "study area is loaded (draw one first).",
                         className="wfs-whole-layer"),
                     dcc.Loading(html.Span(id=ids.WFS_LOAD_STATUS),
@@ -769,7 +769,7 @@ def _cost_tab() -> html.Div:
                  "editable": True, "maxWidth": 110},
                 {"field": "buffer_m", "headerName": "Buffer (m)",
                  "editable": True, "maxWidth": 95,
-                 "headerTooltip": "Grow the matching features by this many "
+                 "headerTooltip": "Grow the matching features by this many " +
                                   "metres before burning (0 or more)."},
                 # how the row meets cells that are already forbidden, and the
                 # library's zone rule (ignore_value / forbidden_value /
@@ -778,23 +778,23 @@ def _cost_tab() -> html.Div:
                  "editable": True, "minWidth": 90, "maxWidth": 110,
                  "cellRenderer": "agCheckboxCellRenderer",
                  "cellEditor": "agCheckboxCellEditor",
-                 "headerTooltip": "On (default): cells that are already "
-                                  "forbidden (65535) stay forbidden. Off: "
+                 "headerTooltip": "On (default): cells that are already " +
+                                  "forbidden (65535) stay forbidden. Off: " +
                                   "this row may change them too."},
                 {"field": "forbidden_value", "headerName": "Forbid as",
                  "editable": True, "minWidth": 80, "maxWidth": 100,
-                 "headerTooltip": "Cost written for the zone value below "
-                                  "(a whole number, 0 or more; 65535 = "
+                 "headerTooltip": "Cost written for the zone value below " +
+                                  "(a whole number, 0 or more; 65535 = " +
                                   "forbidden)."},
                 {"field": "zone_column", "headerName": "Zone column",
                  "editable": True, "minWidth": 90, "maxWidth": 120,
-                 "headerTooltip": "Optional: a column of the dataset. "
-                                  "Features whose value in it equals the "
-                                  "zone value are burnt as 'Forbid as' "
+                 "headerTooltip": "Optional: a column of the dataset. " +
+                                  "Features whose value in it equals the " +
+                                  "zone value are burnt as 'Forbid as' " +
                                   "instead of Factor/cost."},
                 {"field": "forbidden_zone", "headerName": "Zone value",
                  "editable": True, "minWidth": 80, "maxWidth": 110,
-                 "headerTooltip": "The value in the zone column that marks "
+                 "headerTooltip": "The value in the zone column that marks " +
                                   "the forbidden zone (not 0 or empty)."},
             ],
             defaultColDef={"resizable": True},
@@ -839,8 +839,8 @@ def _cost_tab() -> html.Div:
                               min=0, step=0.5, size="sm")], size="sm"),
                     width=4),
             ], className="g-1"),
-                "Street buffers in metres for the street-type preset: A, B "
-                "and L are the buffer widths of the three street classes. "
+                "Street buffers in metres for the street-type preset: A, B " +
+                "and L are the buffer widths of the three street classes. " +
                 "Each is 0 or more."),
             html.Div("Custom preprocessing steps", className="gui-subhead"),
             html.Small("Ordered edits to the base dataset before rasterizing. " +
@@ -995,8 +995,8 @@ def _manual_cost_section() -> html.Details:
             dbc.Input(id=ids.MANUAL_COST, type="number", value=65535,
                       min=0, step=1, size="sm"),
         ], size="sm"),
-            "The cost a new polygon starts with (0 or more, whole numbers). "
-            "65535 marks the area forbidden. Edit each polygon's own cost "
+            "The cost a new polygon starts with (0 or more, whole numbers). " +
+            "65535 marks the area forbidden. Edit each polygon's own cost " +
             "in the table below."),
         dag.AgGrid(
             id=ids.MANUAL_GRID, rowData=[],
@@ -1054,8 +1054,8 @@ def _raster_tab() -> html.Div:
                 dbc.Input(id=ids.RES_M, type="number", value=1.0, min=0.1,
                           step=0.1, size="sm"),
             ], size="sm"),
-                "Cell size of the cost raster in metres (above 0; the field "
-                "takes 0.1 or more). 1 m suits parcel data; coarser cells "
+                "Cell size of the cost raster in metres (above 0; the field " +
+                "takes 0.1 or more). 1 m suits parcel data; coarser cells " +
                 "build faster and use less memory."),
             html.Div(id=ids.RASTER_SIZE_INFO, className="small text-info",
                      children="-"),
@@ -1065,9 +1065,9 @@ def _raster_tab() -> html.Div:
                     dbc.Input(id=ids.FILL_VALUE, type="number", value=65535,
                               min=0, max=65535, step=1, size="sm"),
                 ], size="sm", className="mb-1"),
-                    "Cost of cells no feature covers and of categories with "
-                    "no cost: a whole number from 0 to 65535 for uint16 (the "
-                    "range follows the data type below). 65535 = forbidden, "
+                    "Cost of cells no feature covers and of categories with " +
+                    "no cost: a whole number from 0 to 65535 for uint16 (the " +
+                    "range follows the data type below). 65535 = forbidden, " +
                     "0 = free."),
                 html.Small("Unmapped categories become this value — 65535 = " +
                            "forbidden (F11).", className="text-muted"),
@@ -1083,26 +1083,26 @@ def _raster_tab() -> html.Div:
                     dbc.Input(id=ids.GEOM_BUFFER, type="number", value=1,
                               min=0, step=0.5, size="sm"),
                 ], size="sm", className="mb-1"),
-                    "Outward buffer on every feature before it is burnt, in "
-                    "metres (0 or more). 1 m at 1 m cells clears most ALKIS "
-                    "sub-cell parcel defects. The GUI starts at 1 m; the "
+                    "Outward buffer on every feature before it is burnt, in " +
+                    "metres (0 or more). 1 m at 1 m cells clears most ALKIS " +
+                    "sub-cell parcel defects. The GUI starts at 1 m; the " +
                     "library's own default is 0 m."),
                 html.Div("Thin features", className="gui-subhead"),
                 _help(dbc.Switch(
                     id=ids.WIDEN_THIN, value=False, className="small",
                     label="Widen thin forbidden features"),
-                    "Off (default). On: a forbidden feature narrower than "
-                    "1.4 cells is widened to that width before it is burnt, "
-                    "so a thin wall cannot vanish between cell centres. It "
-                    "can also close a real gap in a thin wall; a finer "
+                    "Off (default). On: a forbidden feature narrower than " +
+                    "1.4 cells is widened to that width before it is burnt, " +
+                    "so a thin wall cannot vanish between cell centres. It " +
+                    "can also close a real gap in a thin wall; a finer " +
                     "resolution is the only exact fix."),
                 _help(dbc.Switch(
                     id=ids.ALL_TOUCHED, value=False, className="small",
                     label="Burn forbidden features into every touched cell"),
-                    "Off (default): a cell is forbidden only if its centre "
-                    "lies inside a forbidden feature. On: also every cell a "
-                    "forbidden feature merely touches, so a forbidden zone "
-                    "grows by up to one cell. This also seals real openings "
+                    "Off (default): a cell is forbidden only if its centre " +
+                    "lies inside a forbidden feature. On: also every cell a " +
+                    "forbidden feature merely touches, so a forbidden zone " +
+                    "grows by up to one cell. This also seals real openings " +
                     "narrower than a cell (a gate, a gap between parcels)."),
                 _help(html.Div([
                     _lbl("If a thin feature is lost", ids.ON_THIN),
@@ -1113,17 +1113,17 @@ def _raster_tab() -> html.Div:
                                     "value": "raise"},
                                    {"label": "ignore", "value": "ignore"}]),
                 ], className="mb-1"),
-                    "What happens when the burn does not represent the data "
-                    "faithfully (a forbidden feature dropped, split or holed, "
-                    "or a repair that sealed open space): warn shows a "
-                    "notice, raise stops the build with an error, ignore "
+                    "What happens when the burn does not represent the data " +
+                    "faithfully (a forbidden feature dropped, split or holed, " +
+                    "or a repair that sealed open space): warn shows a " +
+                    "notice, raise stops the build with an error, ignore " +
                     "skips the check."),
                 html.Div("Extent", className="gui-subhead"),
                 _help(dbc.Switch(
                     id=ids.CROP_BORDER, value=False, className="small",
                     label="Crop the outer forbidden border"),
-                    "Off (default). On: after the build, rows and columns at "
-                    "the edge that hold only forbidden cells (65535) are cut "
+                    "Off (default). On: after the build, rows and columns at " +
+                    "the edge that hold only forbidden cells (65535) are cut " +
                     "off, so the raster is no larger than the passable area."),
             ], title="Advanced")], start_collapsed=True),
             _lbl("Save raster as", ids.RASTER_SAVE_PATH),
@@ -1338,9 +1338,9 @@ def _routes_tab() -> html.Div:
                     id=ids.GRAPH_API, clearable=False, className="small",
                     value=routing.DEFAULT_BACKEND,
                     options=routing.backend_options()),
-            ], title="Which pyorps graph backend runs the search. cython is "
-                     "the default. A backend whose package is not installed "
-                     "is greyed out and names the install command; the GPU "
+            ], title="Which pyorps graph backend runs the search. cython is " +
+                     "the default. A backend whose package is not installed " +
+                     "is greyed out and names the install command; the GPU " +
                      "backends need CuPy and a CUDA GPU."), width=5),
             dbc.Col(html.Div([
                 _lbl("Algorithm", ids.ALGORITHM),
@@ -1352,8 +1352,8 @@ def _routes_tab() -> html.Div:
                                        "value": a} for a in
                                       routing.backend_algorithms(
                                           routing.DEFAULT_BACKEND)]),
-            ], title="Only the algorithms the chosen backend really runs are "
-                     "listed. Changing the backend resets this to the "
+            ], title="Only the algorithms the chosen backend really runs are " +
+                     "listed. Changing the backend resets this to the " +
                      "backend's default."), width=7),
         ], className="g-1"),
         html.Div(dbc.InputGroup([
@@ -1361,28 +1361,28 @@ def _routes_tab() -> html.Div:
             dbc.Input(id=ids.NEIGHBORHOOD, type="number", value=2, min=0,
                       max=127, step=1, size="sm"),
         ], size="sm", className="mt-1"),
-            title="How many neighbours each raster cell connects to: k = 0 "
-                  "gives 4 directions, 1 gives 8, 2 gives 16 (recommended), "
-                  "3 gives 32. A larger k turns the route less angular but "
+            title="How many neighbours each raster cell connects to: k = 0 " +
+                  "gives 4 directions, 1 gives 8, 2 gives 16 (recommended), " +
+                  "3 gives 32. A larger k turns the route less angular but " +
                   "makes the search much heavier. Whole number from 0 to 127."),
         html.Div(dbc.InputGroup([
             _addon("Search buffer (m)", ids.SEARCH_BUFFER),
             dbc.Input(id=ids.SEARCH_BUFFER, type="number", placeholder="auto",
                       min=0, step=10, size="sm"),
         ], size="sm", className="mt-1"),
-            title="How far around the control points the search may look, in "
-                  "metres. Empty or 0 = automatic: the larger of 1000 m and "
+            title="How far around the control points the search may look, in " +
+                  "metres. Empty or 0 = automatic: the larger of 1000 m and " +
                   "1.5 times the point distance."),
         html.Div(dbc.Switch(
             id=ids.FULL_WINDOW, value=False, className="small",
             label="Use the whole raster as search window"),
-            title="Search the entire raster instead of a window around the "
-                  "points. The route can then never be cut off by a small "
-                  "buffer, but a large raster makes the run slow and "
-                  "memory-hungry. The buffer above is not used while this is "
+            title="Search the entire raster instead of a window around the " +
+                  "points. The route can then never be cut off by a small " +
+                  "buffer, but a large raster makes the run slow and " +
+                  "memory-hungry. The buffer above is not used while this is " +
                   "on."),
         html.Div(id=ids.SEARCH_BUFFER_INFO, className="small text-info mb-1",
-                 children="blank = max(1000 m, 1.5 x distance); or switch "
+                 children="blank = max(1000 m, 1.5 x distance); or switch " +
                           "on 'whole raster'"),
         # ``ignore_max_cost=True`` is the library's switch that makes cells at
         # the maximum cost (65535, forbidden) hard barriers; it also moves a
@@ -1390,10 +1390,10 @@ def _routes_tab() -> html.Div:
         _help(dbc.Checkbox(
             id=ids.IGNORE_MAX_COST, value=True, className="small",
             label="Forbidden cells are barriers (route around them)"),
-            "On (default): cells at the maximum cost (65535, forbidden) can "
-            "never be crossed, and a source or target standing on one is "
-            "moved to the nearest routable cell (the shift is reported). "
-            "Off: forbidden cells may be crossed, each metre costing 65535, "
+            "On (default): cells at the maximum cost (65535, forbidden) can " +
+            "never be crossed, and a source or target standing on one is " +
+            "moved to the nearest routable cell (the shift is reported). " +
+            "Off: forbidden cells may be crossed, each metre costing 65535, " +
             "and points are not moved."),
         dbc.Checkbox(id=ids.PAIRWISE, value=False, className="small",
                      label="Pairwise (source i → target i)"),
@@ -1407,8 +1407,8 @@ def _routes_tab() -> html.Div:
                 dbc.Input(id=ids.SIMPLIFY_TOL, type="number", value=1.0,
                           min=0, step=0.1, size="sm")], width=4),
         ], className="g-1"),
-            "Simplify tolerance in metres (0 or more). Only the drawn and "
-            "exported line is simplified; costs stay those of the full "
+            "Simplify tolerance in metres (0 or more). Only the drawn and " +
+            "exported line is simplified; costs stay those of the full " +
             "route."),
         dbc.Accordion([dbc.AccordionItem([
             html.Div(dbc.InputGroup([
@@ -1484,8 +1484,8 @@ def _routes_tab() -> html.Div:
                 {"field": "terrain", "headerName": "Terrain length (m)",
                  "editable": False, "type": "numericColumn", "maxWidth": 110,
                  "wrapHeaderText": True, "autoHeaderHeight": True,
-                 "headerTooltip": "Length along the terrain model (3-D), in "
-                                  "metres; empty for a route computed without "
+                 "headerTooltip": "Length along the terrain model (3-D), in " +
+                                  "metres; empty for a route computed without " +
                                   "a terrain model. 'len m' is the map length."},
                 {"field": "from", "headerName": "source", "editable": False,
                  "minWidth": 120},
@@ -1578,9 +1578,9 @@ def _routes_tab() -> html.Div:
             html.Div(html.Button(
                 "↶ Undo last edit", id=ids.EDIT_UNDO_BTN, type="button",
                 disabled=True, className="btn btn-outline-secondary btn-sm",
-                title="Bring back the route as it was before the last edit. "
+                title="Bring back the route as it was before the last edit. " +
                       "One step only.",
-                **{"aria-label": "Undo last edit: bring back the route as it "
+                **{"aria-label": "Undo last edit: bring back the route as it " +
                                  "was before the last edit. One step only."})),
             html.Div("Simplify displayed/exported line (F5)",
                      className="small"),
@@ -1673,15 +1673,15 @@ def _ohl_options() -> list:
             _lbl("DEM file (slope and clearance, optional)", ids.OHL_DEM),
             dbc.Input(id=ids.OHL_DEM, size="sm", className="mt-1",
                       placeholder="DEM path (slope and clearance, optional)"),
-        ], title="Terrain model: the ground height. The search uses it for slopes and, with a profile that has "
-                 "tower height, conductor weight, conductor tension and ground clearance, for the clearance "
+        ], title="Terrain model: the ground height. The search uses it for slopes and, with a profile that has " +
+                 "tower height, conductor weight, conductor tension and ground clearance, for the clearance " +
                  "check, which is off without a DEM."),
         html.Div([
             _lbl("DSM file (trees and buildings, needs the DEM)", ids.OHL_DSM),
             dbc.Input(id=ids.OHL_DSM, size="sm", className="mt-1",
                       placeholder="DSM path (trees and buildings, needs the DEM)"),
-        ], title="Surface model, optional: read only together with the DEM. DSM minus DEM is the height of trees "
-                 "and buildings, which the clearance check then counts as well. With a DEM alone the check "
+        ], title="Surface model, optional: read only together with the DEM. DSM minus DEM is the height of trees " +
+                 "and buildings, which the clearance check then counts as well. With a DEM alone the check " +
                  "counts the bare ground; a DSM without a DEM is ignored."),
         # shown only while a heavy constrained run works in the background
         dbc.Button("⏹ Stop", id=ids.OHL_STOP_BTN, size="sm", color="danger",
@@ -2092,7 +2092,9 @@ def _job_status_text(kind: str, job: Any) -> str:
         import importlib
 
         try:
-            function = getattr(importlib.import_module(f"{__package__}.{target[0]}"), target[1])
+            # nosemgrep: the names come from the JOB_STATUS_TEXT table above, not from input
+            module = importlib.import_module(f"{__package__}.{target[0]}")
+            function = getattr(module, target[1])
             return function(job)
         except Exception:  # pylint: disable=broad-exception-caught  # a status line must never take the page down
             _LOG.warning("status text of the %s job failed; showing the generic line", kind, exc_info=True)

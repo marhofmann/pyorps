@@ -47,7 +47,8 @@ PRESET_BUTTONS: dict[str, str] = {
     ids.OBJ_PRESET_SHORTEST_BTN: "shortest",
     ids.OBJ_PRESET_GENTLEST_BTN: "gentlest",
 }
-assert tuple(PRESET_BUTTONS.values()) == tuple(service.PRESETS)
+if tuple(PRESET_BUTTONS.values()) != tuple(service.PRESETS):
+    raise RuntimeError("PRESET_BUTTONS and service.PRESETS differ")
 PRESET_LABELS: dict[str, str] = {"classic": "Cost only", "shortest": "Shortest", "gentlest": "Gentlest (needs DEM)"}
 PRESET_HELP: dict[str, str] = {
     "classic": "Cost weight 1, the other weights 0: the classic routing. Layers, terrain model and slope "
@@ -59,7 +60,8 @@ PRESET_HELP: dict[str, str] = {
 
 #: weight key -> the number input of the weight
 WEIGHT_IDS: dict[str, str] = {"cost": ids.OBJ_W_COST, "length": ids.OBJ_W_LENGTH, "gradient": ids.OBJ_W_GRADIENT}
-assert tuple(WEIGHT_IDS) == service.WEIGHT_KEYS
+if tuple(WEIGHT_IDS) != service.WEIGHT_KEYS:
+    raise RuntimeError("WEIGHT_IDS and service.WEIGHT_KEYS differ")
 
 #: slope response key -> its control (the order of ``service.OBJECTIVE_DEFAULTS["gradient"]``)
 GRADIENT_IDS: dict[str, str] = {
@@ -74,7 +76,8 @@ GRADIENT_IDS: dict[str, str] = {
     "bin_width_pct": ids.OBJ_GRAD_BIN_PCT,
     "s_max_pct": ids.OBJ_GRAD_SMAX_PCT,
 }
-assert tuple(GRADIENT_IDS) == tuple(service.OBJECTIVE_DEFAULTS["gradient"])
+if tuple(GRADIENT_IDS) != tuple(service.OBJECTIVE_DEFAULTS["gradient"]):
+    raise RuntimeError("GRADIENT_IDS and the objective gradient defaults differ")
 #: the two slope response keys that are a list choice (shown as "none" when blank)
 CHOICE_KEYS = ("additive", "multiplier")
 
@@ -111,20 +114,20 @@ SHAPE_OPTIONS: dict[str, str] = {
     **{shape: shape for shape in service.ADDITIVE_SHAPES},
 }
 MULTIPLIER_OPTIONS: dict[str, str] = {"none": "none", **{model: model for model in service.MULTIPLIER_MODELS}}
-SHAPE_HELP = ("How the slope weight grows with the slope: linear, quadratic or exponential. Blank (none): linear "
+SHAPE_HELP = ("How the slope weight grows with the slope: linear, quadratic or exponential. Blank (none): linear " +
               "as soon as the slope weight is above 0.")
 MULTIPLIER_HELP = "Multiplies the whole per-metre cost on slopes (a steeper cell costs a multiple of a flat one)."
 
-INTRO = ("What a plain route minimises: the cost raster, a length term, a slope term from a terrain model and "
-         "extra raster layers. Cost only is the classic routing and changes nothing. Constrained routing and the "
+INTRO = ("What a plain route minimises: the cost raster, a length term, a slope term from a terrain model and " +
+         "extra raster layers. Cost only is the classic routing and changes nothing. Constrained routing and the " +
          "corridor graph do not use these settings.")
-DEM_HELP = ("Elevation in metres, taken from a loaded raster layer. It must use the coordinate system of the cost "
-            "raster. With a terrain model every route length is the 3-D length, the cost weight stays in force "
+DEM_HELP = ("Elevation in metres, taken from a loaded raster layer. It must use the coordinate system of the cost " +
+            "raster. With a terrain model every route length is the 3-D length, the cost weight stays in force " +
             "(a terrain model always switches the objective on), and on cython only the Dijkstra algorithm runs.")
-LAYERS_HELP = ("Extra raster layers that add to the objective: weight x layer value x metres. Name a layer, pick "
-               "its raster (or the slope from the terrain model), then press + Add layer. Cells above 'Forbid "
+LAYERS_HELP = ("Extra raster layers that add to the objective: weight x layer value x metres. Name a layer, pick " +
+               "its raster (or the slope from the terrain model), then press + Add layer. Cells above 'Forbid " +
                "above' or below 'Forbid below' become forbidden.")
-SLOPE_HELP = ("The shape and the limit of the slope term. Open it to see every field; each one is explained on "
+SLOPE_HELP = ("The shape and the limit of the slope term. Open it to see every field; each one is explained on " +
               "hover.")
 PRECISION_LABEL = "Weight precision"
 PRECISION_HELP = "Use 32-bit when a warning says the combined surface lost resolution."

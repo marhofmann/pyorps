@@ -185,8 +185,8 @@ def register(app, state) -> None:  # pylint: disable=too-many-statements
         slot=_SLOT, label=service.JOB_LABEL, poll=ids.COR_POLL, ack=ids.JOB_ACK_CORRIDOR,
         results=((ids.LAYERS_VIEW, "data"), (ids.COR_STATUS, "children")),
         status=(ids.COR_STATUS, "children"),
-        running_text=lambda job: service.status_text(job),
-        finalize=lambda st, job: corridor_outcome(st, job)))
+        running_text=lambda job: service.status_text(job),  # pylint: disable=unnecessary-lambda  # looked up at call time: tests patch the target
+        finalize=lambda st, job: corridor_outcome(st, job)))  # pylint: disable=unnecessary-lambda  # looked up at call time: tests patch the target
 
     # ------------------------------------------------ save: after the gate (the question was answered or not needed)
     @app.callback(

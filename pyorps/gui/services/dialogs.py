@@ -91,23 +91,35 @@ def _stop(proc: subprocess.Popen) -> None:
         pass
 
 
+def _json_reply(line: str):
+    """The decoded value of one output line, or None when the line is not a JSON object line."""
+    line = line.strip()
+    if not line.startswith("{"):
+        return None
+    try:
+        return json.loads(line)
+    except ValueError:
+        return None
+
+
+def _reply_result(reply) -> DialogResult | None:
+    """The result a decoded reply stands for, or None when it is not an answer of the helper."""
+    status = reply.get("status") if isinstance(reply, dict) else None
+    if status == "path" and reply.get("path"):
+        return DialogResult.chosen(str(reply["path"]))
+    if status == "cancelled":
+        return DialogResult.cancelled()
+    if status == "unavailable":
+        return DialogResult.unavailable(str(reply.get("reason") or ""))
+    return None
+
+
 def _parse_reply(returncode: int | None, stdout: str, stderr: str) -> DialogResult:
     """Turn the child's output into a result; a crash is "unavailable"."""
     for line in reversed((stdout or "").splitlines()):
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            reply = json.loads(line)
-        except ValueError:
-            continue
-        status = reply.get("status") if isinstance(reply, dict) else None
-        if status == "path" and reply.get("path"):
-            return DialogResult.chosen(str(reply["path"]))
-        if status == "cancelled":
-            return DialogResult.cancelled()
-        if status == "unavailable":
-            return DialogResult.unavailable(str(reply.get("reason") or ""))
+        result = _reply_result(_json_reply(line))
+        if result is not None:
+            return result
     tail = (stderr or "").strip().splitlines()[-1:]      # last stderr line, if any
     detail = f": {tail[0]}" if tail else ""
     return DialogResult.unavailable(
@@ -118,7 +130,7 @@ def _parse_reply(returncode: int | None, stdout: str, stderr: str) -> DialogResu
 def _run(request: dict) -> DialogResult:
     with _dialog_lock:      # released only after the child has really ended
         try:
-            proc = subprocess.Popen(  # nosec B603 - fixed argv: our own helper, no shell
+            proc = subprocess.Popen(  # nosec B603  # nosemgrep - fixed argv: our own helper, no shell
                 [sys.executable, "-I", str(_WORKER)],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=True, encoding="utf-8",

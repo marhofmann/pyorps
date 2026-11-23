@@ -47,7 +47,6 @@ TAB_DATA = "tab-data"
 TAB_COST = "tab-cost"
 TAB_RASTER = "tab-raster"
 TAB_ROUTES = "tab-routes"
-TAB_EDIT = "tab-edit"
 TAB_LAYERS = "tab-layers"
 TAB_ATTRS = "tab-attrs"
 
@@ -238,7 +237,6 @@ OHL_BACKEND = "ohl-backend"
 OHL_EXPERIMENTAL = "ohl-experimental"
 OHL_DEM = "ohl-dem"
 OHL_DSM = "ohl-dsm"
-OHL_RUN_BTN = "ohl-run-btn"
 OHL_STATUS = "ohl-status"
 
 # ---------------------------------------------- route selection & editing

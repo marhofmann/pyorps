@@ -159,8 +159,8 @@ def load_dem_raster(url: str, coverage_id: str, bounds, *,
     ax_e, ax_n = axis_labels
     # Build the query by hand: many WCS servers reject percent-encoded SUBSET
     # parentheses/commas, so those must stay literal.
-    query = (f"SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage"
-             f"&COVERAGEID={coverage_id}&FORMAT=image/tiff"
+    query = ("SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage" +
+             f"&COVERAGEID={coverage_id}&FORMAT=image/tiff" +
              f"&SUBSET={ax_e}({minx},{maxx})&SUBSET={ax_n}({miny},{maxy})")
     parts = urlparse(url)
     full = urlunparse(parts._replace(

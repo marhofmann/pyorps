@@ -142,7 +142,7 @@ class BackgroundJob:
     done: int = 0
     total: int = 0
     stage: str = ""
-    started: float = field(default_factory=lambda: _clock())
+    started: float = field(default_factory=lambda: _clock())  # pylint: disable=unnecessary-lambda  # looked up at call time: tests patch the target
     finished: float | None = None
     result: Any = None               # what work(job) returned (kept for "cancelled" too, when it returned)
     error: BaseException | None = None

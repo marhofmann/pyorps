@@ -91,7 +91,8 @@ STATUS_CLASS_OK = "small mt-1 text-muted"
 STATUS_CLASS_PROBLEM = "small mt-1 text-danger"
 
 # --------------------------------------------------------------------------- objective weights (round 16)
-assert tuple(ids.OHLO_KEYS) == objective_service.WEIGHT_KEYS
+if tuple(ids.OHLO_KEYS) != objective_service.WEIGHT_KEYS:
+    raise RuntimeError("ids.OHLO_KEYS and the objective weight keys differ")
 #: weight key -> the number input of the weight (the order of ``objective_service.WEIGHT_KEYS``)
 WEIGHT_IDS: dict[str, str] = dict(ids.OHLO_IDS)
 #: problem key of the objective weights -> the component the "Go fix" button of its notice takes the user to
@@ -99,14 +100,17 @@ OBJECTIVE_CONTROLS: dict[str, str] = {
     **WEIGHT_IDS, "backend": ids.OHL_BACKEND, "clearance": ids.OHLF_IDS["min_clearance_m"]}
 
 # --------------------------------------------------------------------------- line ends (round 17)
-assert tuple(ids.OHLE_KEYS) == ends_service.HEIGHT_KEYS
+if tuple(ids.OHLE_KEYS) != ends_service.HEIGHT_KEYS:
+    raise RuntimeError("ids.OHLE_KEYS and the connection-height keys differ")
 #: height key -> the number input of the height (the order of ``ends_service.HEIGHT_KEYS``)
 HEIGHT_IDS: dict[str, str] = dict(ids.OHLE_IDS)
 #: the select of the end-span rule, a field of the profile form
 RULE_ID = ids.OHLF_IDS["terminal_span_rule"]
 #: the select shows the library's four values with the labels of ``constrained_ends`` (one table for both)
-assert [o["value"] for o in ends_service.rule_options()] == list(service.FIELD_SPECS["terminal_span_rule"].options)
-assert service.FIELD_SPECS["terminal_span_rule"].default == ends_service.DEFAULT_RULE
+if [o["value"] for o in ends_service.rule_options()] != list(service.FIELD_SPECS["terminal_span_rule"].options):
+    raise RuntimeError("the end-span rule options of the form and of the ends service differ")
+if service.FIELD_SPECS["terminal_span_rule"].default != ends_service.DEFAULT_RULE:
+    raise RuntimeError("the end-span rule default of the form and of the ends service differ")
 #: form key -> the options (label and value) of a select whose labels are not the plain values
 OPTION_LABELS: dict[str, list[dict[str, str]]] = {"terminal_span_rule": ends_service.rule_options()}
 
@@ -311,7 +315,7 @@ def objective_block(weights: Mapping | None = None, view: objective_service.View
     view = view or objective_service.view(weights)
     text, css = objective_status_props(view)
     return _group("Objective weights (advanced)", [
-        html.Small("Multiply the turn costs and the tower costs of the profile, for example to make bends "
+        html.Small("Multiply the turn costs and the tower costs of the profile, for example to make bends " +
                    "cheaper or towers dearer. Both weights at 1 route exactly as the profile says.",
                    className="text-muted d-block"),
         html.Div(text, id=ids.OHLO_STATUS, className=css, style={"whiteSpace": "pre-line"}),
@@ -363,12 +367,18 @@ def rule_view(rule: Any, *, backend: str | None, experimental: bool, profile: Ma
     if not support.enabled:
         return RuleView(support.reason, STATUS_CLASS_OK, True)
     value = rule if isinstance(rule, str) and rule else ends_service.DEFAULT_RULE
+    lines = _rule_lines(value, support)
+    return RuleView("\n".join(lines), STATUS_CLASS_PROBLEM if value in support.refused else STATUS_CLASS_OK, False)
+
+
+def _rule_lines(value: str, support) -> list[str]:
+    """The help of the chosen rule, then (on a backend that refuses rules) which ones are refused."""
     entry = ends_service.RULE_LABELS.get(value)
     lines = [entry.help] if entry else []
     if support.refused:
         names = "; ".join(ends_service.rule_label(refused) for refused in support.refused)
         lines.append(f"Refused on this backend: {names}. {support.refused_reason}")
-    return RuleView("\n".join(lines), STATUS_CLASS_PROBLEM if value in support.refused else STATUS_CLASS_OK, False)
+    return lines
 
 
 def ends_controls(heights: Mapping | None, profile: Mapping | None, dem: str | None) -> dict[str, str]:
@@ -426,8 +436,8 @@ def line_ends_block(heights: Mapping | None = None, view: objective_service.View
     text, css = ends_status_props(view)
     rule_default = service.form_values({})[0]["terminal_span_rule"]
     return _group("Line ends", [
-        html.Small("What happens at the two ends of the line: the end-span rule (a setting of the profile) and the "
-                   "heights at which the conductor leaves the structure at the source and at the target (a setting "
+        html.Small("What happens at the two ends of the line: the end-span rule (a setting of the profile) and the " +
+                   "heights at which the conductor leaves the structure at the source and at the target (a setting " +
                    "of this run).", className="text-muted d-block"),
         _rule_field(rule_default, rule.disabled),
         html.Div(rule.text, id=ids.OHLE_RULE_STATUS, className=rule.css, style={"whiteSpace": "pre-line"}),
@@ -440,6 +450,18 @@ def line_ends_block(heights: Mapping | None = None, view: objective_service.View
               "Leave both connection heights blank: the line ends behave as before."),
         dcc.Store(id=ids.OHLE_SETTINGS, data=ends_service.normalise(heights)),
     ], open=(not ends_service.is_default(heights)) if open is None else open, id=ids.OHLE_BLOCK)
+
+
+def _tower_group(values: Mapping):
+    """The group "Tower heights and clearance" (the heights, the conductor and the clearance line)."""
+    return _group("Tower heights and clearance", [
+        _pair(("tower_height_m", "tower_heights_m"), values),
+        _pair(("tower_height_cost_per_increment", "terminal_tower_height_m"), values),
+        _pair(("terminal_tower_cost", "conductor_weight_per_m"), values),
+        _pair(("conductor_tension_n", "min_clearance_m"), values),
+        html.Div(id=ids.OHLF_CLEARANCE_INFO, className="small text-muted mb-1",
+                 children=service.clearance_status({})),
+    ])
 
 
 def section() -> list:
@@ -459,7 +481,7 @@ def section() -> list:
         _group("Spans", [
             _pair(("min_span_m", "max_span_m"), values),
             _field("span_bin_size_m", values),
-            html.Small("The end-span rule and the connection heights at the line ends are in the group Line ends "
+            html.Small("The end-span rule and the connection heights at the line ends are in the group Line ends " +
                        "below.", className="text-muted d-block"),
         ]),
         _group("Terrain and slope", [
@@ -467,14 +489,7 @@ def section() -> list:
             _table(service.TABLE_TERRAIN),
             _pair(("max_gradient_percent", "gradient_scale"), values),
         ]),
-        _group("Tower heights and clearance", [
-            _pair(("tower_height_m", "tower_heights_m"), values),
-            _pair(("tower_height_cost_per_increment", "terminal_tower_height_m"), values),
-            _pair(("terminal_tower_cost", "conductor_weight_per_m"), values),
-            _pair(("conductor_tension_n", "min_clearance_m"), values),
-            html.Div(id=ids.OHLF_CLEARANCE_INFO, className="small text-muted mb-1",
-                     children=service.clearance_status({})),
-        ]),
+        _tower_group(values),
         _group("Foundations and tower types", [
             _pair(("tower_ground_area_m2", "tower_area_cost_mode"), values),
             _table(service.TABLE_TYPES),
@@ -486,11 +501,11 @@ def section() -> list:
         line_ends_block(),      # last: it holds the 24th form field (the page shows the fields in key order)
     ]
     return [html.Div([
-        html.Small("Every change here updates the YAML profile that a run uses. Keys the form does not "
+        html.Small("Every change here updates the YAML profile that a run uses. Keys the form does not " +
                    "show stay in the YAML.", className="text-muted d-block"),
         _help(dbc.Button("YAML → form", id=ids.OHLF_FROM_YAML_BTN, size="sm", color="secondary",
                          outline=True, className="my-1"),
-              "Fill the form from the text in Raw YAML (advanced). Use it after you edited that "
+              "Fill the form from the text in Raw YAML (advanced). Use it after you edited that " +
               "text by hand."),
         html.Div(id=ids.OHLF_STATUS, className=STATUS_CLASS_OK, style={"whiteSpace": "pre-line"},
                  children=""),
@@ -505,7 +520,7 @@ def yaml_block() -> list:
     return [
         html.Details([
             html.Summary("Raw YAML (advanced)"),
-            html.Small("The form above edits this text. Edit it by hand only for settings the form does "
+            html.Small("The form above edits this text. Edit it by hand only for settings the form does " +
                        "not show, then press \"YAML → form\".", className="text-muted d-block"),
             _lbl("Infrastructure profile (YAML)", ids.OHL_PROFILE_TEXT),
             dbc.Textarea(id=ids.OHL_PROFILE_TEXT, size="sm",
@@ -526,12 +541,25 @@ def prefill(state, put: Callable[[str, str, Any], None]) -> None:
     settings = (getattr(state, "gui_settings", None) or {}).get("constrained")
     if not isinstance(settings, Mapping) or not settings:
         return
-    profile = settings.get("profile")
-    if isinstance(profile, Mapping) and profile:
-        for (component_id, prop), value in zip(FORM_TARGETS, form_props(profile)):
-            put(component_id, prop, value)
-        with contextlib.suppress(PyorpsError):   # without PyYAML the text stays empty; the form still shows
-            put(ids.OHL_PROFILE_TEXT, "value", service.profile_to_text(profile))
+    _prefill_profile(settings.get("profile"), put)
+    _prefill_run_options(settings, put)
+    prefill_objective(settings, put)
+    prefill_ends(settings, put)
+    put(ids.OHL_SETTINGS, "data", dict(settings))
+
+
+def _prefill_profile(profile: Any, put: Callable[[str, str, Any], None]) -> None:
+    """The saved profile into the form, the tables, the base store, the status lines and the YAML text."""
+    if not isinstance(profile, Mapping) or not profile:
+        return
+    for (component_id, prop), value in zip(FORM_TARGETS, form_props(profile)):
+        put(component_id, prop, value)
+    with contextlib.suppress(PyorpsError):   # without PyYAML the text stays empty; the form still shows
+        put(ids.OHL_PROFILE_TEXT, "value", service.profile_to_text(profile))
+
+
+def _prefill_run_options(settings: Mapping, put: Callable[[str, str, Any], None]) -> None:
+    """The saved backend, experimental flag, DEM and DSM into their controls."""
     if settings.get("backend"):
         put(ids.OHL_BACKEND, "value", settings["backend"])
     if "experimental" in settings:
@@ -539,9 +567,6 @@ def prefill(state, put: Callable[[str, str, Any], None]) -> None:
     for key, component_id in (("dem", ids.OHL_DEM), ("dsm", ids.OHL_DSM)):
         if settings.get(key):
             put(component_id, "value", settings[key])
-    prefill_objective(settings, put)
-    prefill_ends(settings, put)
-    put(ids.OHL_SETTINGS, "data", dict(settings))
 
 
 def prefill_objective(settings: Mapping, put: Callable[[str, str, Any], None]) -> None:
@@ -567,6 +592,19 @@ def prefill_objective(settings: Mapping, put: Callable[[str, str, Any], None]) -
     put(ids.OHLO_BLOCK, "open", not objective_service.is_default(weights))
 
 
+def _put_ends_status(view: objective_service.View, rview: RuleView,
+                     put: Callable[[str, str, Any], None]) -> None:
+    """The two status lines of the "Line ends" group and the disabled states they decide."""
+    text, css = ends_status_props(view)
+    put(ids.OHLE_STATUS, "children", text)
+    put(ids.OHLE_STATUS, "className", css)
+    put(ids.OHLE_FIELDS, "disabled", not view.enabled)
+    put(ids.OHLE_FIELDS, "title", view.reason or None)
+    put(ids.OHLE_RULE_STATUS, "children", rview.text)
+    put(ids.OHLE_RULE_STATUS, "className", rview.css)
+    put(RULE_ID, "disabled", rview.disabled)
+
+
 def prefill_ends(settings: Mapping, put: Callable[[str, str, Any], None]) -> None:
     """First-paint values of the "Line ends" group from ``settings["ends"]`` and the saved profile.
 
@@ -587,16 +625,19 @@ def prefill_ends(settings: Mapping, put: Callable[[str, str, Any], None]) -> Non
     rule = profile.get("terminal_span_rule")
     rview = rule_view(rule, backend=backend, experimental=experimental, profile=profile)
     if has_heights:
-        for key, value in ends_service.input_values(heights).items():
-            put(HEIGHT_IDS[key], "value", value)
-        put(ids.OHLE_SETTINGS, "data", ends_service.normalise(heights))
-    text, css = ends_status_props(view)
-    put(ids.OHLE_STATUS, "children", text)
-    put(ids.OHLE_STATUS, "className", css)
-    put(ids.OHLE_FIELDS, "disabled", not view.enabled)
-    put(ids.OHLE_FIELDS, "title", view.reason or None)
-    put(ids.OHLE_RULE_STATUS, "children", rview.text)
-    put(ids.OHLE_RULE_STATUS, "className", rview.css)
-    put(RULE_ID, "disabled", rview.disabled)
+        _put_ends_heights(heights, put)
+    _put_ends_status(view, rview, put)
+    put(ids.OHLE_BLOCK, "open", _ends_open(has_heights, heights, rule))
+
+
+def _put_ends_heights(heights: Mapping, put: Callable[[str, str, Any], None]) -> None:
+    """The saved connection heights into their inputs and the mirror store."""
+    for key, value in ends_service.input_values(heights).items():
+        put(HEIGHT_IDS[key], "value", value)
+    put(ids.OHLE_SETTINGS, "data", ends_service.normalise(heights))
+
+
+def _ends_open(has_heights: bool, heights: Any, rule: Any) -> bool:
+    """Open when a height is set or the saved profile names a rule other than the default."""
     rule_changed = isinstance(rule, str) and rule != ends_service.DEFAULT_RULE
-    put(ids.OHLE_BLOCK, "open", has_heights and not ends_service.is_default(heights) or rule_changed)
+    return has_heights and not ends_service.is_default(heights) or rule_changed

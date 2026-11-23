@@ -315,8 +315,6 @@ def build_tile_layer(raster_source: Any, *, name: str = "Cost raster",
     # in THIS thread until the client is garbage collected, and when that
     # happens inside another raster read, the read loses its environment
     # ("No GDAL environment exists"). Opened inside this block it holds none.
-    import rasterio
-
     with rasterio.Env():
         client = TileClient(str(tif_path), cors_all=True)
         # Advertise "localhost" rather than the raw server host. The background

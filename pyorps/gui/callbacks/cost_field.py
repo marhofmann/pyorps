@@ -49,7 +49,7 @@ STOP_HIDDEN = job_poll.STOP_HIDDEN
 #: where the state keeps the job
 _SLOT = jobs.kind_slot(JOB_KIND)
 #: what a stop is promised to do, for the status line and the Stop answer
-STOP_NOTE = ("Stop acts between fixed points: the fixed point being solved always finishes (seconds to minutes on "
+STOP_NOTE = ("Stop acts between fixed points: the fixed point being solved always finishes (seconds to minutes on " +
              "a large window), and a stopped run adds no layer.")
 #: a refused run's status line shows at most this many messages
 _PROBLEM_LINES = 3
@@ -260,7 +260,7 @@ def plan_click(state, raster_layer_id, draft, raw: dict, notices: list[dict]):
     raster_path = _raster_path(state, raster_layer_id)
     if raster_path is None:
         problems = [service.Problem(
-            "raster", "Cost raster (raster): no raster layer is picked. Allowed: a cost raster picked under "
+            "raster", "Cost raster (raster): no raster layer is picked. Allowed: a cost raster picked under " +
                       "'Route on raster' (build or load one in the Raster tab).")]
         notices.append(problem_notice(problems, picking=True))
         return None, problems_text(problems), notices
@@ -345,8 +345,8 @@ def register(app, state) -> None:  # pylint: disable=too-many-statements
         results=((ids.LAYERS_VIEW, "data"), (ids.MAP_VIEW, "data"), (ids.CF_STATUS, "children"),
                  (ids.CF_BEST_INFO, "children")),
         status=(ids.CF_STATUS, "children"),
-        running_text=lambda job: status_text(job),
-        finalize=lambda st, job: cost_field_outcome(st, job)))
+        running_text=lambda job: status_text(job),  # pylint: disable=unnecessary-lambda  # looked up at call time: tests patch the target
+        finalize=lambda st, job: cost_field_outcome(st, job)))  # pylint: disable=unnecessary-lambda  # looked up at call time: tests patch the target
 
     # ------------------------------------------------ Stop
     @app.callback(

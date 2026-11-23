@@ -376,7 +376,7 @@ STOP_HIDDEN = job_poll.STOP_HIDDEN
 #: where the state keeps the rasterize job
 _RASTERIZE_SLOT = jobs.kind_slot(rasterize_service.JOB_KIND)
 #: what a stop is promised to do, for the status line and the Stop answer
-STOP_NOTE = ("The raster is built in stages (base layer, each modifier, crop, save): the run stops when the "
+STOP_NOTE = ("The raster is built in stages (base layer, each modifier, crop, save): the run stops when the " +
              "stage in flight is finished, and then builds nothing.")
 
 

@@ -653,7 +653,9 @@ def test_the_service_imports_nothing_of_dash_ids_or_the_layout():
         if isinstance(node, ast.Import):
             modules |= {alias.name for alias in node.names}
         elif isinstance(node, ast.ImportFrom):
-            assert node.level == 0, "a relative import (ids, layout, a sibling service) is not allowed here"
+            assert node.level == 0 or (node.level == 1 and (node.module or "").startswith("objective_")), (
+                "a relative import (ids, layout, another service) is not allowed here; "
+                "only the module's own split-off sibling objective_* is")
             modules.add(node.module or "")
     roots = {name.split(".")[0] for name in modules}
     assert not {"dash", "dash_bootstrap_components", "dash_leaflet", "dash_ag_grid"} & roots

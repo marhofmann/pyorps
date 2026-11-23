@@ -204,6 +204,14 @@ def is_default(raw: Any) -> bool:
 
 
 # --------------------------------------------------------------------------- problems
+def _range_problem(spec: FieldSpec, number: float, lead: str, allowed: str) -> str | None:
+    if spec.minimum is not None and (number < spec.minimum or (number == spec.minimum and not spec.allow_equal)):
+        return f"{lead} is too low. {allowed}"
+    if spec.maximum is not None and number > spec.maximum:
+        return f"{lead} is too high. {allowed}"
+    return None
+
+
 def _value_problem(spec: FieldSpec, value: Any) -> str | None:
     """Why ``value`` is not an allowed weight, or None (the sentence names setting, value, range and unit)."""
     subject = f"{spec.label} ({spec.key})"
@@ -213,11 +221,7 @@ def _value_problem(spec: FieldSpec, value: Any) -> str | None:
         kind = "a finite number" if isinstance(value, float) else "a number"
         return f"{subject}: {_shown(value)} is not {kind}. {allowed}"
     shown = f"{format_number(number)} {spec.unit}".rstrip()
-    if spec.minimum is not None and (number < spec.minimum or (number == spec.minimum and not spec.allow_equal)):
-        return f"{subject}: {shown} is too low. {allowed}"
-    if spec.maximum is not None and number > spec.maximum:
-        return f"{subject}: {shown} is too high. {allowed}"
-    return None
+    return _range_problem(spec, number, f"{subject}: {shown}", allowed)
 
 
 def _changed_text(settings: Mapping[str, Any]) -> str:
@@ -234,8 +238,8 @@ def backend_reason(backend: str | None) -> str:
 
 
 CLEARANCE_REASON = (
-    "The profile has the clearance check on (tower height, conductor weight, conductor tension and ground "
-    "clearance are all set), and the library does not take objective weights together with it yet. Clear one "
+    "The profile has the clearance check on (tower height, conductor weight, conductor tension and ground " +
+    "clearance are all set), and the library does not take objective weights together with it yet. Clear one " +
     "of these four fields in the profile form, or press Reset weights.")
 
 

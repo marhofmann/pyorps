@@ -243,7 +243,8 @@ GATES: tuple[Gate, ...] = (
          ((ids.COR_SAVE_PATH, "value"),), _ask_save_corridor),
 )
 GATE_BY_ACTION = {gate.action: gate for gate in GATES}
-assert tuple(gate.go for gate in GATES) == ids.GO_STORES
+if tuple(gate.go for gate in GATES) != ids.GO_STORES:
+    raise RuntimeError("GATES and ids.GO_STORES list different stores")
 
 
 def go_signal() -> int:

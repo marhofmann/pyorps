@@ -316,7 +316,7 @@ def register(app, state) -> None:
             f"Custom cost layer '{display}' — {len(rows)} polygon(s)",
             meaning="Edit names/costs in the table; use it as a Cost dataset "
                     "or a per-feature override modifier (Column = cost)."))
-        status = (f"Created '{display}' with {len(rows)} polygon(s). "
+        status = (f"Created '{display}' with {len(rows)} polygon(s). " +
                   "Edit names/costs in the table.")
         return state.layers_view(), rows, status, notices
 

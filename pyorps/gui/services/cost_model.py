@@ -100,8 +100,6 @@ def seed_assumptions(gdf, feature_keys: tuple[str, ...]) -> dict:
         return default_land_use_costs()[NOTEBOOK_KEYS]
     main = feature_keys[0]
     if len(feature_keys) == 1:
-        import pandas as pd
-
         # a numeric column (e.g. a drawn cost layer's ``cost``, F5) seeds to
         # itself — the value already *is* the cost — instead of zero.
         numeric = pd.api.types.is_numeric_dtype(gdf[main])
@@ -134,10 +132,20 @@ class InvalidCostValueError(ValueError):
         self.problems = list(problems or [])
 
 
+def _is_blank_cost(value: Any) -> bool:
+    return value is None or (isinstance(value, float) and math.isnan(value))
+
+
+def _not_a_number(value: Any) -> InvalidCostValueError:
+    return InvalidCostValueError(
+        f"'{value}' is not a number - enter a cost such as 405 or 1,5.",
+        [{"row": None, "feature": "", "text": str(value)}])
+
+
 def _coerce_cost(value: Any) -> float | int:
     """A cost cell -> number. Accepts a decimal comma ("1,5" -> 1.5); anything
     else that is not a finite number raises :class:`InvalidCostValueError`."""
-    if value is None or (isinstance(value, float) and math.isnan(value)):
+    if _is_blank_cost(value):
         return 0
     text = value
     if isinstance(value, str):
@@ -147,13 +155,9 @@ def _coerce_cost(value: Any) -> float | int:
     try:
         number = float(text)
     except (TypeError, ValueError) as exc:
-        raise InvalidCostValueError(
-            f"'{value}' is not a number - enter a cost such as 405 or 1,5.",
-            [{"row": None, "feature": "", "text": str(value)}]) from exc
+        raise _not_a_number(value) from exc
     if math.isnan(number):
-        raise InvalidCostValueError(
-            f"'{value}' is not a number - enter a cost such as 405 or 1,5.",
-            [{"row": None, "feature": "", "text": str(value)}])
+        raise _not_a_number(value)
     return int(number) if number.is_integer() else number
 
 
@@ -223,6 +227,21 @@ def cost_problem_notice(rows: list[dict],
         focus_id="tab-cost", focus_control="cost-grid").to_dict()
 
 
+def _invalid_cost_error(problems: list[dict]) -> InvalidCostValueError:
+    """The error naming the first cost cell that is not a number (and how many more there are)."""
+    first = problems[0]
+    return InvalidCostValueError(
+        f"Cost of row {first['row']}"
+        + (f" ({first['feature']})" if first["feature"] else "")
+        + f" is not a number: '{first['text']}'"
+        + (f" (+{len(problems) - 1} more)" if len(problems) > 1 else "")
+        + ".", problems)
+
+
+def _key_text(row: dict, key: str) -> str:
+    return "" if row.get(key) is None else str(row.get(key))
+
+
 def assumptions_from_grid_rows(rows: list[dict],
                                feature_keys: tuple[str, ...]) -> dict:
     """Flat grid rows -> nested cost dict; forbidden flag wins over cost.
@@ -231,25 +250,17 @@ def assumptions_from_grid_rows(rows: list[dict],
     number (see :func:`invalid_cost_cells`)."""
     problems = invalid_cost_cells(rows, feature_keys)
     if problems:
-        first = problems[0]
-        raise InvalidCostValueError(
-            f"Cost of row {first['row']}"
-            + (f" ({first['feature']})" if first["feature"] else "")
-            + f" is not a number: '{first['text']}'"
-            + (f" (+{len(problems) - 1} more)" if len(problems) > 1 else "")
-            + ".", problems)
+        raise _invalid_cost_error(problems)
     main = feature_keys[0]
     result: dict = {}
     for row in rows or []:
         cost = FORBIDDEN if row.get("forbidden") else _coerce_cost(
             row.get("cost"))
-        main_val = "" if row.get(main) is None else str(row.get(main))
+        main_val = _key_text(row, main)
         if len(feature_keys) == 1:
             result[main_val] = cost
         else:
-            side = feature_keys[1]
-            side_val = "" if row.get(side) is None else str(row.get(side))
-            result.setdefault(main_val, {})[side_val] = cost
+            result.setdefault(main_val, {})[_key_text(row, feature_keys[1])] = cost
     return result
 
 

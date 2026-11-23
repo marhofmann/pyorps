@@ -38,7 +38,8 @@ SETTING_IDS: dict[str, str] = {
     "max_pair_cost": ids.COR_MAX_PAIR_COST,
     "validate_pair_costs": ids.COR_VALIDATE,
 }
-assert tuple(SETTING_IDS) == service.SETTING_KEYS
+if tuple(SETTING_IDS) != service.SETTING_KEYS:
+    raise RuntimeError("SETTING_IDS and service.SETTING_KEYS differ")
 
 #: problem key -> the component the "Go fix" button of a notice takes the user to. Four of the problem keys of
 #: the service belong to other cards of the Routes tab: the draft's points table (points), the raster dropdown
@@ -62,18 +63,19 @@ TERMINAL_LABELS: dict[str, str] = {
     service.TERMINALS_ALL: "All control points",
     service.TERMINALS_ENDS: "Sources and targets only",
 }
-assert tuple(TERMINAL_LABELS) == service.TERMINAL_CHOICES
+if tuple(TERMINAL_LABELS) != service.TERMINAL_CHOICES:
+    raise RuntimeError("TERMINAL_LABELS and service.TERMINAL_CHOICES differ")
 
-INTRO = ("Joins the points of the route draft by their cheapest routes and charges every trench section that "
+INTRO = ("Joins the points of the route draft by their cheapest routes and charges every trench section that " +
          "several routes share only once.")
 
-HELP = ("It is built on the plain cost raster chosen under 'Route on raster', on the cython backend only: no DEM, "
-        "no objective weights and no constrained profile are used. It reads the neighbourhood order, the search "
-        "buffer, the whole-raster switch and the forbidden-cells switch of 'Algorithm & search'. The run cannot be "
+HELP = ("It is built on the plain cost raster chosen under 'Route on raster', on the cython backend only: no DEM, " +
+        "no objective weights and no constrained profile are used. It reads the neighbourhood order, the search " +
+        "buffer, the whole-raster switch and the forbidden-cells switch of 'Algorithm & search'. The run cannot be " +
         "stopped, but the page stays usable while it runs.")
 
-HELP_SAVE = ("The graph itself is not stored in the project file. After a project is reloaded (opened again, or the "
-             "GUI started with --project) its map layers are back, but build the graph again before you save it as "
+HELP_SAVE = ("The graph itself is not stored in the project file. After a project is reloaded (opened again, or the " +
+             "GUI started with --project) its map layers are back, but build the graph again before you save it as " +
              "a GeoPackage.")
 
 
@@ -100,9 +102,9 @@ def readiness(graph_api: Any, draft: Any, terminals: Any) -> tuple[bool, str]:
     except InvalidInputError:
         count = 0
     if count < 2:
-        return False, (f"A corridor graph connects at least 2 points, but the route draft gives {count}. Add more "
-                       f"points on the map (sources, targets and, with '{TERMINAL_LABELS[service.TERMINALS_ALL]}', "
-                       f"waypoints).")
+        return False, (f"A corridor graph connects at least 2 points, but the route draft gives {count}. Add more " +
+                       f"points on the map (sources, targets and, with '{TERMINAL_LABELS[service.TERMINALS_ALL]}', " +
+                       "waypoints).")
     return True, f"Build the shared-trench corridor graph of the {count} points of the route draft."
 
 
@@ -178,7 +180,7 @@ def section() -> list:
             dbc.Input(id=ids.COR_SAVE_PATH, size="sm", placeholder="Save the latest corridor graph as .gpkg"),
             _browse(ids.COR_SAVE_PATH, "the corridor graph file"),
             dbc.Button("Save graph", id=ids.COR_SAVE_BTN, size="sm", color="secondary", outline=True,
-                       title="Write the latest corridor graph as a GeoPackage with the layers "
+                       title="Write the latest corridor graph as a GeoPackage with the layers " +
                              f"{service.SEGMENTS_LAYER} and {service.NODES_LAYER}"),
         ], size="sm"),
     ]

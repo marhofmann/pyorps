@@ -47,8 +47,8 @@ from .jobs import RUNNING, JobCancelled
 STABLE_BACKENDS = ("cython",)
 EXPERIMENTAL_BACKENDS = ("cython_parallel", "raster_gpu", "raster_gpu_v4")
 
-F9_CAVEAT = ("Terrain cost shown is 2-D: the optimizer used 3-D penalties "
-             "but reports the plain 2-D terrain cost (known limitation). "
+F9_CAVEAT = ("Terrain cost shown is 2-D: the optimizer used 3-D penalties " +
+             "but reports the plain 2-D terrain cost (known limitation). " +
              "Compare variants by length + tower cost too.")
 
 #: the key of the background job in ``ProjectState.jobs`` (the one the page's
@@ -57,9 +57,9 @@ JOB_KIND = "constrained"
 JOB_LABEL = "Constrained routing"
 #: what a Stop is promised to do, for the status line and the Stop answer. The
 #: library offers no cancel point inside one search, so Stop acts between segments.
-STOP_NOTE = ("A segment (one search from a point to the next one) cannot be "
-             "interrupted: the run stops when the segment in flight has "
-             "finished (a run without waypoints is one single segment), and "
+STOP_NOTE = ("A segment (one search from a point to the next one) cannot be " +
+             "interrupted: the run stops when the segment in flight has " +
+             "finished (a run without waypoints is one single segment), and " +
              "then adds no route.")
 
 
@@ -400,18 +400,51 @@ def _tower_text(tower) -> str:
     return f"{'height not stated' if height is None else f'{height:g} m'}, cost {float(tower.total_cost or 0):,.0f}"
 
 
+def _at_place(towers, place) -> bool:
+    """True when every tower stands at ``place`` (within :data:`_SAME_PLACE`)."""
+    return all(abs(t.location.x - place[0]) <= _SAME_PLACE and abs(t.location.y - place[1]) <= _SAME_PLACE
+               for t in towers)
+
+
+def _frames_aligned(pairs) -> bool:
+    """True when every ``(frame, towers)`` pair has a frame with one row per tower."""
+    return all(frame is not None and len(frame) == len(towers) for frame, towers in pairs)
+
+
 def _waypoint_pair(frames, tower_lists, lines, j):
     """The two towers at interior waypoint j (0-based: between segment j and j + 1), or None unless both exist."""
     first, second = tower_lists[j], tower_lists[j + 1]
     if not first or not second:
         return None
-    place = lines[j].coords[-1]
     end, start = first[-1], second[0]
-    same = all(abs(t.location.x - place[0]) <= _SAME_PLACE and abs(t.location.y - place[1]) <= _SAME_PLACE
-               for t in (end, start))
-    aligned = all(frame is not None and len(frame) == len(towers)
-                  for frame, towers in ((frames[j], first), (frames[j + 1], second)))
+    same = _at_place((end, start), lines[j].coords[-1])
+    aligned = _frames_aligned(((frames[j], first), (frames[j + 1], second)))
     return (end, start) if same and aligned else None
+
+
+def _height_rank(tower) -> float:
+    """The tower height, ``-inf`` when it states none (so that a stated height is the taller one)."""
+    return -math.inf if tower.height_m is None else float(tower.height_m)
+
+
+def _keep_choice(end, start) -> tuple[bool, bool, bool]:
+    """``(keep_start, costs_differ, heights_differ)``: the dearer tower is kept, at equal cost the taller one."""
+    cost_end, cost_start = float(end.total_cost or 0), float(start.total_cost or 0)
+    height_end, height_start = _height_rank(end), _height_rank(start)
+    costs_differ = not math.isclose(cost_end, cost_start, rel_tol=1e-9, abs_tol=1e-9)
+    heights_differ = height_end != height_start
+    keep_start = (cost_start > cost_end) if costs_differ else (height_start > height_end)
+    return keep_start, costs_differ, heights_differ
+
+
+def _disagreement_note(j, end, start, keep_start, differ) -> str:
+    """The sentence of waypoint j whose two reports disagree; ``differ`` is ``(costs_differ, heights_differ)``."""
+    costs_differ, heights_differ = differ
+    what = "heights and costs" if costs_differ and heights_differ else "costs" if costs_differ else "heights"
+    return (f"Waypoint {j + 1}: its two segments report different {what} for the structure there (segment "
+            f"{j + 1}: {_tower_text(end)}; segment {j + 2}: {_tower_text(start)}). One structure stands there: "
+            f"the dearer one (at equal cost the taller one; here segment {j + 2 if keep_start else j + 1}'s) is "
+            f"kept and its cost is counted once.")
 
 
 def _merge_waypoint_towers(frames, tower_lists, lines):
@@ -437,28 +470,57 @@ def _merge_waypoint_towers(frames, tower_lists, lines):
         if pair is None:
             continue
         end, start = pair
-        cost_end, cost_start = float(end.total_cost or 0), float(start.total_cost or 0)
-        height_end = -math.inf if end.height_m is None else float(end.height_m)
-        height_start = -math.inf if start.height_m is None else float(start.height_m)
-        costs_differ = not math.isclose(cost_end, cost_start, rel_tol=1e-9, abs_tol=1e-9)
-        heights_differ = height_end != height_start
-        keep_start = (cost_start > cost_end) if costs_differ else (height_start > height_end)
+        keep_start, costs_differ, heights_differ = _keep_choice(end, start)
         loser, segment = (end, j) if keep_start else (start, j + 1)
         drop[segment].add(len(tower_lists[segment]) - 1 if keep_start else 0)
         dropped.append(loser)
         if costs_differ or heights_differ:
-            what = "heights and costs" if costs_differ and heights_differ else "costs" if costs_differ else "heights"
-            notes.append(
-                f"Waypoint {j + 1}: its two segments report different {what} for the structure there (segment "
-                f"{j + 1}: {_tower_text(end)}; segment {j + 2}: {_tower_text(start)}). One structure stands there: "
-                f"the dearer one (at equal cost the taller one; here segment {j + 2 if keep_start else j + 1}'s) is "
-                f"kept and its cost is counted once.")
+            notes.append(_disagreement_note(j, end, start, keep_start, (costs_differ, heights_differ)))
     return drop, dropped, notes
 
 
 #: the summary keys the line ends add (each only where the library reports something)
 END_SUMMARY_KEYS = ("terminal_span_rule", "span_notes", "removed_towers", "search_notes", "source_connection_height_m",
                     "target_connection_height_m", "span_bin_size_m", "height_premiums")
+
+
+def _custom_rule(result) -> str | None:
+    """The ``terminal_span_rule`` the result reports when it is not the default one, else None."""
+    rule = getattr(result, "terminal_span_rule", None)
+    return rule if isinstance(rule, str) and rule != constrained_ends.DEFAULT_RULE else None
+
+
+def _notes_of(result, name: str) -> list | None:
+    """The list the result reports under ``name``, or None when it is empty or missing."""
+    return list(getattr(result, name, None) or []) or None
+
+
+def _removed_summary(result, breakdown) -> dict | None:
+    """``{"count", "cost"}`` of the towers the rule removed, or None when it removed none."""
+    removed = list(getattr(result, "removed_towers", None) or [])
+    if not removed:
+        return None
+    cost = breakdown.get("removed_towers")
+    if cost is None:
+        cost = sum(float(getattr(t, "total_cost", 0) or 0) for t in removed)
+    return {"count": len(removed), "cost": float(cost)}
+
+
+def _height_summary(result) -> dict[str, float]:
+    """The connection heights the result reports (those that are set), as floats."""
+    heights = {key: getattr(result, key, None) for key in constrained_ends.HEIGHT_KEYS}
+    return {key: float(value) for key, value in heights.items() if value is not None}
+
+
+def _bin_and_premium_summary(result, breakdown, search_notes) -> dict[str, float]:
+    """``span_bin_size_m`` (only with a search note) and ``height_premiums``, where the result reports them."""
+    out: dict[str, float] = {}
+    bin_size = getattr(result, "span_bin_size_m", None)
+    if bin_size is not None and search_notes:
+        out["span_bin_size_m"] = float(bin_size)
+    if breakdown.get("height_premiums") is not None:
+        out["height_premiums"] = float(breakdown["height_premiums"])
+    return out
 
 
 def _end_summary(result) -> dict:
@@ -473,31 +535,43 @@ def _end_summary(result) -> dict:
     reports it). A run without a rule, a height or a note adds none of these keys; a default ``"remove"``
     run still shows ``removed_towers`` and ``span_notes`` when the library removed a tower and says why.
     """
-    out: dict[str, Any] = {}
-    rule = getattr(result, "terminal_span_rule", None)
-    if isinstance(rule, str) and rule != constrained_ends.DEFAULT_RULE:
-        out["terminal_span_rule"] = rule
-    span_notes = list(getattr(result, "span_notes", None) or [])
-    if span_notes:
-        out["span_notes"] = span_notes
     breakdown = getattr(result, "cost_breakdown", None) or {}
-    removed = list(getattr(result, "removed_towers", None) or [])
-    if removed:
-        cost = breakdown.get("removed_towers")
-        if cost is None:
-            cost = sum(float(getattr(t, "total_cost", 0) or 0) for t in removed)
-        out["removed_towers"] = {"count": len(removed), "cost": float(cost)}
-    search_notes = list(getattr(result, "search_notes", None) or [])
-    if search_notes:
-        out["search_notes"] = search_notes
-    heights = {key: getattr(result, key, None) for key in constrained_ends.HEIGHT_KEYS}
-    out.update({key: float(value) for key, value in heights.items() if value is not None})
-    bin_size = getattr(result, "span_bin_size_m", None)
-    if bin_size is not None and search_notes:
-        out["span_bin_size_m"] = float(bin_size)
-    if breakdown.get("height_premiums") is not None:
-        out["height_premiums"] = float(breakdown["height_premiums"])
+    search_notes = _notes_of(result, "search_notes")
+    first_parts = (("terminal_span_rule", _custom_rule(result)),
+                   ("span_notes", _notes_of(result, "span_notes")),
+                   ("removed_towers", _removed_summary(result, breakdown)),
+                   ("search_notes", search_notes))
+    out: dict[str, Any] = {key: value for key, value in first_parts if value is not None}
+    out.update(_height_summary(result))
+    out.update(_bin_and_premium_summary(result, breakdown, search_notes))
     return out
+
+
+def _merged_span_notes(summaries: list[dict]) -> list[str] | None:
+    """Every segment's span notes in segment order ("Segment k of n:" in front for a run of several segments)."""
+    n = len(summaries)
+    notes = [(f"Segment {i + 1} of {n}: {text}" if n > 1 else text)
+             for i, s in enumerate(summaries) for text in s.get("span_notes", [])]
+    return notes or None
+
+
+def _merged_search_notes(summaries: list[dict]) -> list[str] | None:
+    """The search notes of all segments, a note that repeats said once."""
+    return list(dict.fromkeys(text for s in summaries for text in s.get("search_notes", []))) or None
+
+
+def _merged_removed(summaries: list[dict]) -> dict | None:
+    """The removed towers of all segments summed, or None when no segment reports any."""
+    removed = [s["removed_towers"] for s in summaries if "removed_towers" in s]
+    if not removed:
+        return None
+    return {"count": sum(r["count"] for r in removed), "cost": sum(r["cost"] for r in removed)}
+
+
+def _merged_reduce(summaries: list[dict], key: str, reduce):
+    """``reduce`` (``min`` or ``sum``) of the values the segments report under ``key``; None when none does."""
+    values = [s[key] for s in summaries if key in s]
+    return reduce(values) if values else None
 
 
 def merge_end_summaries(summaries: list[dict]) -> dict:
@@ -508,28 +582,17 @@ def merge_end_summaries(summaries: list[dict]) -> dict:
     the smallest one, a connection height is the first one a segment reports (only the first segment holds the
     source height and only the last the target height), the rule is the one every segment shares.
     """
-    n = len(summaries)
     out: dict[str, Any] = {}
     for key in ("terminal_span_rule", *constrained_ends.HEIGHT_KEYS):
         found = [s[key] for s in summaries if key in s]
         if found:
             out[key] = found[0]
-    span_notes = [(f"Segment {i + 1} of {n}: {text}" if n > 1 else text)
-                  for i, s in enumerate(summaries) for text in s.get("span_notes", [])]
-    if span_notes:
-        out["span_notes"] = span_notes
-    search_notes = list(dict.fromkeys(text for s in summaries for text in s.get("search_notes", [])))
-    if search_notes:
-        out["search_notes"] = search_notes
-    removed = [s["removed_towers"] for s in summaries if "removed_towers" in s]
-    if removed:
-        out["removed_towers"] = {"count": sum(r["count"] for r in removed), "cost": sum(r["cost"] for r in removed)}
-    sizes = [s["span_bin_size_m"] for s in summaries if "span_bin_size_m" in s]
-    if sizes:
-        out["span_bin_size_m"] = min(sizes)
-    premiums = [s["height_premiums"] for s in summaries if "height_premiums" in s]
-    if premiums:
-        out["height_premiums"] = sum(premiums)
+    later_parts = (("span_notes", _merged_span_notes(summaries)),
+                   ("search_notes", _merged_search_notes(summaries)),
+                   ("removed_towers", _merged_removed(summaries)),
+                   ("span_bin_size_m", _merged_reduce(summaries, "span_bin_size_m", min)),
+                   ("height_premiums", _merged_reduce(summaries, "height_premiums", sum)))
+    out.update({key: value for key, value in later_parts if value is not None})
     return out
 
 
@@ -560,6 +623,7 @@ def snapshot_run_inputs(raster_source: Any, *, points, profile: dict,
                         dsm: str | None,
                         objective: dict[str, float] | None = None,
                         ends: dict[str, Any] | None = None) -> dict[str, Any]:
+    # lizard forgives: keyword-only run settings, one per run_constrained_path input; callers pass them by name
     """The ``run_constrained_path`` inputs of a background run, as the worker may keep them.
 
     The worker thread must never see the project change under it (the user can

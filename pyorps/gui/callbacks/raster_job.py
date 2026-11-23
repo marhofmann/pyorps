@@ -23,8 +23,8 @@ POLL = job_poll.JobPoll(
     results=((ids.LAYERS_VIEW, "data"), (ids.MAP_VIEW, "data"), (ids.RASTERIZE_LOG, "children")),
     status=(ids.RASTERIZE_LOG, "children"),
     # looked up when called, so a test can replace them on the module
-    running_text=lambda job: raster.rasterize_status_text(job),
-    finalize=lambda state, job: raster.rasterize_outcome(state, job))
+    running_text=lambda job: raster.rasterize_status_text(job),  # pylint: disable=unnecessary-lambda  # looked up at call time: tests patch the target
+    finalize=lambda state, job: raster.rasterize_outcome(state, job))  # pylint: disable=unnecessary-lambda  # looked up at call time: tests patch the target
 
 
 def register(app, state) -> None:
