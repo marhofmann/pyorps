@@ -1,9 +1,9 @@
 ---
 title: "Certify (research)"
 summary: "Experimental bound-and-prune, window and relax-and-verify certificates for free siting."
-status: unreleased
-since: "unreleased"
-available_in: source
+status: experimental
+since: "0.5.0"
+available_in: pypi
 module: "pyorps.certify"
 api:
   - pyorps.certify.BoundAndPruneResult
@@ -39,8 +39,8 @@ It belongs to the research method for free siting of a wind-farm substation.
 instances. The method is not complete: there is no certificate file, no
 independent checker and no per-connection-point prune yet. Its inputs are
 partly placeholders. Interfaces may change, and nothing here produces a result
-that can be quoted. The package is in the development tree. A PyPI release may hold an older, partial
-copy of it, so use a source checkout (see {doc}`../getting_started/release_status`). It is not imported by `pyorps`;
+that can be quoted. The package is in the PyPI release from 0.5.0 on (0.4.0 holds an older, partial
+copy of it; see {doc}`../getting_started/release_status`). It is not imported by `pyorps`;
 import it as `pyorps.certify`.
 
 ---

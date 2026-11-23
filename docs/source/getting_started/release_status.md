@@ -22,14 +22,14 @@ This page tells you what you get from each way of installing PYORPS. Every page 
 
 | `available_in` | Where you can get it |
 |---|---|
-| `pypi` | `pip install pyorps` (latest release, 0.4.0). |
+| `pypi` | `pip install pyorps` (latest release, 0.5.0). |
 | `main` | The `main` branch on GitHub, not released yet. |
 | `source` | A source checkout of the development tree only. |
 
 (release-status-pypi)=
-## `pip install pyorps` (0.4.0)
+## `pip install pyorps` (0.5.0)
 
-Everything documented here is in the 0.4.0 wheel. Install extras for the optional parts (`gui`, `gpu`, `gpu-full`, `simplify`, `viz`, `graph`; see {doc}`installation`).
+Everything documented here is in the 0.5.0 wheel. Install extras for the optional parts (`gui`, `gpu`, `gpu-full`, `simplify`, `viz`, `graph`; see {doc}`installation`).
 
 | Area | Status | Page |
 |---|---|---|
@@ -44,12 +44,12 @@ Everything documented here is in the 0.4.0 wheel. Install extras for the optiona
 | GPU backends `raster_gpu` and `raster_fim`, `.gpur` files | experimental | {doc}`../api/graph_backends`, {doc}`../api/eikonal_fim` |
 | Interactive GUI (`pyorps.gui`, extra `gui`) | experimental | {doc}`../api/gui` |
 
-The packages `pyorps.collector`, `pyorps.certify`, `pyorps.costmodel` and `pyorps.siting` are research code. They are not exported from `pyorps` and carry no stability promise. The development tree documents them as experimental ({doc}`../api/collector`, {doc}`../api/certify`, {doc}`../api/costmodel`, {doc}`../api/siting`). The 0.4.0 wheel may hold an older, partial copy; use a source checkout to get the documented state.
+The packages `pyorps.collector`, `pyorps.certify`, `pyorps.costmodel` and `pyorps.siting` are research code. They are not exported from `pyorps` and carry no stability promise. They are documented as experimental ({doc}`../api/collector`, {doc}`../api/certify`, {doc}`../api/costmodel`, {doc}`../api/siting`) and are complete in the 0.5.0 wheel; the 0.4.0 wheel holds an older, partial copy.
 
 (release-status-main)=
 ## GitHub `main`
 
-`main` is the 0.4.0 release.
+`main` is the 0.5.0 release.
 
 (release-status-source)=
 ## Source checkout

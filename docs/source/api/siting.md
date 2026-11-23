@@ -1,9 +1,9 @@
 ---
 title: "Siting (research)"
 summary: "Experimental footprint pricing, candidate lattices, bounds and site fields for free siting."
-status: unreleased
-since: "unreleased"
-available_in: source
+status: experimental
+since: "0.5.0"
+available_in: pypi
 module: "pyorps.siting"
 api:
   - pyorps.siting.Footprint
@@ -55,8 +55,8 @@ candidates. That is the job of an optimiser outside this package.
 **Status: experimental research code.** The mathematics is tested on synthetic
 instances. The method is not complete, and some inputs (site prices, pad size)
 are placeholders. Interfaces may change, and nothing here produces a result
-that can be quoted. The package is in the development tree. A PyPI release may hold an older, partial
-copy of it, so use a source checkout (see {doc}`../getting_started/release_status`). It is not imported by `pyorps`;
+that can be quoted. The package is in the PyPI release from 0.5.0 on (0.4.0 holds an older, partial
+copy of it; see {doc}`../getting_started/release_status`). It is not imported by `pyorps`;
 import it as `pyorps.siting`.
 
 ---

@@ -115,9 +115,6 @@ Re-routing is especially useful when exploring alternative endpoints on the same
 (path-finder-simplify)=
 ## Simplifying the Route Geometry
 
-```{pyorps-status} unreleased main
-```
-
 By default a route follows the cell centres and has one vertex per cell. `find_route(..., simplify={...})` replaces this geometry with a simplified line that has far fewer vertices, for display and export. The route cost and length stay those of the unsimplified route, because a simplified line can cut across forbidden cells, and a warning says so. The dictionary names the method and its tolerance. The route start and end never move.
 
 ```python

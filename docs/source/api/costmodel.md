@@ -1,9 +1,9 @@
 ---
 title: "Cost model (research)"
 summary: "Experimental cost catalogue, loss capitalisation and cost inputs for free siting."
-status: unreleased
-since: "unreleased"
-available_in: source
+status: experimental
+since: "0.5.0"
+available_in: pypi
 module: "pyorps.costmodel"
 api:
   - pyorps.costmodel.CostCatalogue
@@ -38,8 +38,8 @@ protected areas, an access-road cost model and the 110 kV leg.
 instances. The method is not complete, and many input values are placeholders
 tagged `assumption` in the input files. Several model terms are still missing
 or set to zero. Interfaces may change, and nothing here produces a result that
-can be quoted. The package is in the development tree. A PyPI release may hold an older, partial
-copy of it, so use a source checkout (see {doc}`../getting_started/release_status`). It is not imported by `pyorps`;
+can be quoted. The package is in the PyPI release from 0.5.0 on (0.4.0 holds an older, partial
+copy of it; see {doc}`../getting_started/release_status`). It is not imported by `pyorps`;
 import it as `pyorps.costmodel`.
 
 ---

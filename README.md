@@ -36,6 +36,19 @@ While tailored for distribution grids, it can be adapted for various infrastruct
 </table>
 
 
+## What's new in 0.5.0
+
+- **Python 3.12 to 3.15.** Wheels for Windows, Linux and macOS (macOS 15 or newer); Python 3.11 is no longer supported.
+- **GUI cards.** Objective & terrain (weights, extra metric layers, DEM), cost field, corridor graph, a form for the
+  constrained-routing profile, background runs with a Stop button, and settings saved in the project file.
+- **Overhead-line line ends.** `terminal_span_rule` and the connection heights of `ConstrainedPathFinder`.
+- **Geographic data.** Data in degrees (for example EPSG:4326) is reprojected to the local UTM zone automatically.
+- **Research packages** `pyorps.collector`, `pyorps.certify`, `pyorps.costmodel` and `pyorps.siting` with exports and API
+  pages (experimental).
+
+The full list, including the changes that can alter results, is in the
+[changelog](https://pyorps.readthedocs.io/en/latest/reference/changelog.html).
+
 ## What's new in 0.4.0
 
 - **Route length in CRS units.** Lengths and costs no longer change with the raster resolution (breaking change for

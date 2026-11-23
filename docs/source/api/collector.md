@@ -1,9 +1,9 @@
 ---
 title: "Collector (research)"
 summary: "Experimental trench-sharing medium-voltage collector, its bounds and its voltage check."
-status: unreleased
-since: "unreleased"
-available_in: source
+status: experimental
+since: "0.5.0"
+available_in: pypi
 module: "pyorps.collector"
 api:
   - pyorps.collector.CableType
@@ -98,8 +98,8 @@ independently and checks the voltage limit.
 instances. The method is not complete: the raster engine is a dense prototype
 that does not fit large instances, and the lengths are planimetric (no DEM).
 Interfaces may change, and nothing here produces a result that can be quoted.
-The package is in the development tree. A PyPI release may hold an older, partial
-copy of it, so use a source checkout (see {doc}`../getting_started/release_status`). It is not imported by `pyorps`; import it as
+The package is in the PyPI release from 0.5.0 on (0.4.0 holds an older, partial
+copy of it; see {doc}`../getting_started/release_status`). It is not imported by `pyorps`; import it as
 `pyorps.collector`.
 
 ---
