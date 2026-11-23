@@ -64,6 +64,38 @@ class ConditionC:
                 "groups": self.groups}
 
 
+def _cheapest_per_p(model: CollectorModel, mask: int, m: int) -> dict:
+    """For one system ``mask`` in a trench of ``m`` conductors: parallel count ``p`` -> cheapest feasible type cost."""
+    per_p = {}
+    for p in range(1, model.p_max + 1):
+        costs = [model.rho(mask, (ti, p))
+                 for ti in range(len(model.types))
+                 if model.feasible(mask, (ti, p), m)]
+        if costs:
+            per_p[p] = min(costs)
+    return per_p
+
+
+def _extend_dp(dp: dict, per_p: dict, m: int) -> dict:
+    """Add one system to the table ``conductors used -> cheapest cost`` (at most ``m`` conductors)."""
+    nxt: dict[int, float] = {}
+    for used, cost in dp.items():
+        for p, rho in per_p.items():
+            if used + p <= m and cost + rho < nxt.get(used + p, INF):
+                nxt[used + p] = cost + rho
+    return nxt
+
+
+def _conductor_table(model: CollectorModel, masks: list[int], m: int) -> dict:
+    """Cheapest cost of serving all ``masks`` per number of conductors used, for a trench of ``m`` conductors."""
+    dp = {0: 0.0}                          # conductors used -> cheapest cost
+    for mask in masks:
+        dp = _extend_dp(dp, _cheapest_per_p(model, mask, m), m)
+        if not dp:
+            break
+    return dp
+
+
 def _rate(model: CollectorModel, masks: list[int], cache: dict) -> float:
     """Per-metre rate of one trench carrying the systems ``masks``, every
     system on its cheapest feasible ``(type, p)`` for the trench's conductor
@@ -75,27 +107,37 @@ def _rate(model: CollectorModel, masks: list[int], cache: dict) -> float:
     m_hi = min(model.m_cap(), k * model.p_max)
     best = INF
     for m in range(k, m_hi + 1):
-        dp = {0: 0.0}                      # conductors used -> cheapest cost
-        for mask in masks:
-            per_p = {}
-            for p in range(1, model.p_max + 1):
-                costs = [model.rho(mask, (ti, p))
-                         for ti in range(len(model.types))
-                         if model.feasible(mask, (ti, p), m)]
-                if costs:
-                    per_p[p] = min(costs)
-            nxt: dict[int, float] = {}
-            for used, cost in dp.items():
-                for p, rho in per_p.items():
-                    if used + p <= m and cost + rho < nxt.get(used + p, INF):
-                        nxt[used + p] = cost + rho
-            dp = nxt
-            if not dp:
-                break
+        dp = _conductor_table(model, masks, m)
         if m in dp:
             best = min(best, dp[m] + model.sigma_eur_per_m * (m - 1))
     cache[key] = best
     return best
+
+
+def _split_masks(masks: list[int], k: int, sel: int) -> tuple[list[int], list[int]]:
+    """The two disjoint groups ``a`` (holds ``masks[0]``) and ``b`` selected by the bit pattern ``sel``."""
+    a = [masks[0]] + [masks[j + 1] for j in range(k - 1)
+                      if sel >> j & 1]
+    b = [masks[j + 1] for j in range(k - 1) if not sel >> j & 1]
+    return a, b
+
+
+def _worst_merge(model: CollectorModel, masks: list[int], cache: dict, worst: float,
+                 groups: int) -> tuple[float, int]:
+    """Fold every split of the systems ``masks`` into the running ``worst`` premium and the merge count ``groups``."""
+    k = len(masks)
+    both = _rate(model, masks, cache)
+    for sel in range((1 << (k - 1)) - 1):
+        a, b = _split_masks(masks, k, sel)
+        groups += 1
+        ra, rb = _rate(model, a, cache), _rate(model, b, cache)
+        if ra == INF or rb == INF:
+            continue
+        if both == INF:
+            worst = INF
+            continue
+        worst = max(worst, both - ra - rb)
+    return worst, groups
 
 
 def condition_c(model: CollectorModel, min_trench_rate: float) -> ConditionC:
@@ -111,19 +153,7 @@ def condition_c(model: CollectorModel, min_trench_rate: float) -> ConditionC:
             if k < 2 or k > cap:
                 continue
             masks = [sum(1 << i for i in b) for b in blocks]
-            both = _rate(model, masks, cache)
-            for sel in range((1 << (k - 1)) - 1):
-                a = [masks[0]] + [masks[j + 1] for j in range(k - 1)
-                                  if sel >> j & 1]
-                b = [masks[j + 1] for j in range(k - 1) if not sel >> j & 1]
-                groups += 1
-                ra, rb = _rate(model, a, cache), _rate(model, b, cache)
-                if ra == INF or rb == INF:
-                    continue
-                if both == INF:
-                    worst = INF
-                    continue
-                worst = max(worst, both - ra - rb)
+            worst, groups = _worst_merge(model, masks, cache, worst, groups)
     return ConditionC(delta=worst, min_trench_rate=float(min_trench_rate),
                       margin=float(min_trench_rate) - worst,
                       holds=worst <= min_trench_rate * (1 + 1e-12),

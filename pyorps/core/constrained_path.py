@@ -133,45 +133,54 @@ class ConstrainedPath(Path):
         that still has a geometry column, the CRS and the columns every tower
         row has.
         """
-        records = []
         with_notes = any(t.note for t in self.towers)
         with_premium = any(t.height_premium for t in self.towers)
-        for t in self.towers:
-            if (t.ground_area_m2 is not None and t.ground_area_m2 > 1.0
-                    and t.bisector_angle_rad is not None):
-                side = math.sqrt(t.ground_area_m2)
-                geom = self._rotated_square(
-                    t.location.x, t.location.y, side, t.bisector_angle_rad)
-            else:
-                geom = t.location
-
-            rec = {
-                "tower_id": t.tower_id,
-                "geometry": geom,
-                "tower_type": t.tower_type,
-                "turn_angle_deg": t.turn_angle_deg,
-                "terrain_cost": t.terrain_cost,
-                "angle_cost": t.angle_cost,
-                "total_cost": t.total_cost,
-                "span_to_previous_m": t.span_to_previous_m,
-                "span_to_next_m": t.span_to_next_m,
-            }
-            if t.height_m is not None:
-                rec["height_m"] = t.height_m
-            if t.ground_area_m2 is not None:
-                rec["ground_area_m2"] = t.ground_area_m2
-            if with_premium:  # a column only when a premium was charged: older exports keep their columns
-                rec["height_premium"] = t.height_premium
-            if with_notes:  # a column only when a tower says something: older exports keep their columns
-                rec["note"] = t.note
-            records.append(rec)
+        records = [self._tower_record(t, with_premium, with_notes)
+                   for t in self.towers]
         if not records:
-            # geopandas cannot assign a CRS to a frame without a geometry column
-            empty = {"tower_id": [], "geometry": gpd.GeoSeries([], crs=crs), "tower_type": [],
-                     "turn_angle_deg": [], "terrain_cost": [], "angle_cost": [], "total_cost": [],
-                     "span_to_previous_m": [], "span_to_next_m": []}
-            return gpd.GeoDataFrame(empty, geometry="geometry")
+            return self._empty_tower_frame(crs)
         return gpd.GeoDataFrame(records, crs=crs)
+
+    def _tower_geometry(self, t):
+        """Foundation square of a tower, or its location when no area is set."""
+        if (t.ground_area_m2 is not None and t.ground_area_m2 > 1.0
+                and t.bisector_angle_rad is not None):
+            side = math.sqrt(t.ground_area_m2)
+            return self._rotated_square(
+                t.location.x, t.location.y, side, t.bisector_angle_rad)
+        return t.location
+
+    def _tower_record(self, t, with_premium, with_notes) -> dict:
+        """One row of the tower GeoDataFrame."""
+        rec = {
+            "tower_id": t.tower_id,
+            "geometry": self._tower_geometry(t),
+            "tower_type": t.tower_type,
+            "turn_angle_deg": t.turn_angle_deg,
+            "terrain_cost": t.terrain_cost,
+            "angle_cost": t.angle_cost,
+            "total_cost": t.total_cost,
+            "span_to_previous_m": t.span_to_previous_m,
+            "span_to_next_m": t.span_to_next_m,
+        }
+        if t.height_m is not None:
+            rec["height_m"] = t.height_m
+        if t.ground_area_m2 is not None:
+            rec["ground_area_m2"] = t.ground_area_m2
+        if with_premium:  # a column only when a premium was charged: older exports keep their columns
+            rec["height_premium"] = t.height_premium
+        if with_notes:  # a column only when a tower says something: older exports keep their columns
+            rec["note"] = t.note
+        return rec
+
+    @staticmethod
+    def _empty_tower_frame(crs) -> gpd.GeoDataFrame:
+        """Empty tower frame that still has a geometry column and the CRS."""
+        # geopandas cannot assign a CRS to a frame without a geometry column
+        empty = {"tower_id": [], "geometry": gpd.GeoSeries([], crs=crs), "tower_type": [],
+                 "turn_angle_deg": [], "terrain_cost": [], "angle_cost": [], "total_cost": [],
+                 "span_to_previous_m": [], "span_to_next_m": []}
+        return gpd.GeoDataFrame(empty, geometry="geometry")
 
     def to_geodataframe_dict(self) -> dict:
         """Extended dict for GeoDataFrame export (includes tower summary)."""

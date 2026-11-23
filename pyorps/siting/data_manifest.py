@@ -106,6 +106,17 @@ class LayerEntry:
 
     def __post_init__(self):
         where = f"layer {self.id!r}"
+        self._check_basics(where)
+        if self.status == "present":
+            self._check_present(where)
+        if self.captured_at is not None:
+            self._check_captured_at(where)
+        if isinstance(self.used_for, str) or not all(
+                isinstance(u, str) for u in self.used_for):
+            raise ManifestError(f"{where}: used_for must be a list of strings")
+
+    def _check_basics(self, where: str) -> None:
+        """The kind, format, status, source and licence checks."""
         if self.kind not in KINDS:
             raise ManifestError(f"{where}: kind {self.kind!r} not in {KINDS}")
         if self.format not in _FORMATS:
@@ -114,31 +125,32 @@ class LayerEntry:
             raise ManifestError(f"{where}: status must be one of {_STATUS}")
         if not self.source or not self.licence:
             raise ManifestError(f"{where}: source and licence are required")
-        if self.status == "present":
-            if not self.path:
-                raise ManifestError(f"{where}: a present layer needs a path")
-            if not self.sha256 or not _SHA.match(self.sha256):
-                raise ManifestError(f"{where}: sha256 must be 64 hex digits")
-            try:
-                _dt.date.fromisoformat(str(self.captured))
-            except ValueError as exc:
-                raise ManifestError(
-                    f"{where}: captured must be an ISO date") from exc
-        if self.captured_at is not None:
-            try:
-                stamp = _dt.datetime.fromisoformat(str(self.captured_at))
-            except ValueError as exc:
-                raise ManifestError(
-                    f"{where}: captured_at must be an ISO 8601 time") from exc
-            if stamp.tzinfo is None:
-                raise ManifestError(
-                    f"{where}: captured_at needs a UTC offset")
-            if self.captured and stamp.date().isoformat() != str(self.captured):
-                raise ManifestError(
-                    f"{where}: captured_at is not on the captured date")
-        if isinstance(self.used_for, str) or not all(
-                isinstance(u, str) for u in self.used_for):
-            raise ManifestError(f"{where}: used_for must be a list of strings")
+
+    def _check_present(self, where: str) -> None:
+        """The checks of a layer whose file is on disk."""
+        if not self.path:
+            raise ManifestError(f"{where}: a present layer needs a path")
+        if not self.sha256 or not _SHA.match(self.sha256):
+            raise ManifestError(f"{where}: sha256 must be 64 hex digits")
+        try:
+            _dt.date.fromisoformat(str(self.captured))
+        except ValueError as exc:
+            raise ManifestError(
+                f"{where}: captured must be an ISO date") from exc
+
+    def _check_captured_at(self, where: str) -> None:
+        """The checks of the optional exact capture time."""
+        try:
+            stamp = _dt.datetime.fromisoformat(str(self.captured_at))
+        except ValueError as exc:
+            raise ManifestError(
+                f"{where}: captured_at must be an ISO 8601 time") from exc
+        if stamp.tzinfo is None:
+            raise ManifestError(
+                f"{where}: captured_at needs a UTC offset")
+        if self.captured and stamp.date().isoformat() != str(self.captured):
+            raise ManifestError(
+                f"{where}: captured_at is not on the captured date")
 
     def as_dict(self) -> dict[str, Any]:
         out = {"kind": self.kind, "format": self.format, "path": self.path,
@@ -174,6 +186,47 @@ class RasterWindow:
     sha256: str
 
 
+_LAYER_FIELDS = frozenset({"kind", "format", "path", "status",
+                           "source", "licence", "captured", "sha256",
+                           "crs", "notes", "captured_at",
+                           "retrieved_with", "used_for"})
+
+
+def _normalise_dates(body: dict) -> None:
+    """Turn YAML dates and datetimes of a layer body into ISO strings, in place."""
+    if isinstance(body.get("captured"), (_dt.date, _dt.datetime)):
+        body["captured"] = body["captured"].isoformat()[:10]
+    if isinstance(body.get("captured_at"), _dt.datetime):
+        body["captured_at"] = body["captured_at"].isoformat()
+
+
+def _layer_from_body(lid, body) -> LayerEntry:
+    """Validate one manifest layer body and build its :class:`LayerEntry`."""
+    if not isinstance(body, dict):
+        raise ManifestError(f"layer {lid!r}: not a mapping")
+    body = dict(body)
+    _normalise_dates(body)
+    unknown = set(body) - _LAYER_FIELDS
+    if unknown:
+        raise ManifestError(
+            f"layer {lid!r}: unknown field(s) {sorted(unknown)}")
+    try:
+        return LayerEntry(id=str(lid), **{
+            "kind": body.get("kind"), "format": body.get("format"),
+            "path": body.get("path"),
+            "status": body.get("status", "pending"),
+            "source": body.get("source"),
+            "licence": body.get("licence"),
+            "captured": body.get("captured"),
+            "sha256": body.get("sha256"),
+            "crs": body.get("crs"), "notes": body.get("notes"),
+            "captured_at": body.get("captured_at"),
+            "retrieved_with": body.get("retrieved_with"),
+            "used_for": tuple(body.get("used_for") or ())})
+    except TypeError as exc:                    # pragma: no cover
+        raise ManifestError(f"layer {lid!r}: {exc}") from exc
+
+
 @dataclass
 class DataManifest:
     """The layers of one case study, read from a YAML file."""
@@ -199,35 +252,7 @@ class DataManifest:
             raise ManifestError(f"{path}: no layers")
         layers = {}
         for lid, body in raw.items():
-            if not isinstance(body, dict):
-                raise ManifestError(f"layer {lid!r}: not a mapping")
-            body = dict(body)
-            if isinstance(body.get("captured"), (_dt.date, _dt.datetime)):
-                body["captured"] = body["captured"].isoformat()[:10]
-            if isinstance(body.get("captured_at"), _dt.datetime):
-                body["captured_at"] = body["captured_at"].isoformat()
-            unknown = set(body) - {"kind", "format", "path", "status",
-                                   "source", "licence", "captured", "sha256",
-                                   "crs", "notes", "captured_at",
-                                   "retrieved_with", "used_for"}
-            if unknown:
-                raise ManifestError(
-                    f"layer {lid!r}: unknown field(s) {sorted(unknown)}")
-            try:
-                layers[str(lid)] = LayerEntry(id=str(lid), **{
-                    "kind": body.get("kind"), "format": body.get("format"),
-                    "path": body.get("path"),
-                    "status": body.get("status", "pending"),
-                    "source": body.get("source"),
-                    "licence": body.get("licence"),
-                    "captured": body.get("captured"),
-                    "sha256": body.get("sha256"),
-                    "crs": body.get("crs"), "notes": body.get("notes"),
-                    "captured_at": body.get("captured_at"),
-                    "retrieved_with": body.get("retrieved_with"),
-                    "used_for": tuple(body.get("used_for") or ())})
-            except TypeError as exc:                    # pragma: no cover
-                raise ManifestError(f"layer {lid!r}: {exc}") from exc
+            layers[str(lid)] = _layer_from_body(lid, body)
         return cls(layers=layers, path=path, meta=dict(doc.get("meta") or {}))
 
     def save(self, path=None) -> Path:

@@ -44,6 +44,23 @@ from pyorps.utils.traversal import construct_edges, construct_edges_3d
 from .graph_api import GraphAPI
 
 
+def _unknown_option_names(given, allowed, ignored) -> list[str]:
+    """The given keys that are neither allowed nor explicitly ignored."""
+    skip = set(allowed) | {str(name) for name in ignored}
+    return [str(key) for key in given if str(key) not in skip]
+
+
+def _suggestion_candidates(allowed, also_suggest) -> list[str]:
+    """Allowed names followed by the further "did you mean" candidates."""
+    return allowed + [str(n) for n in also_suggest if str(n) not in allowed]
+
+
+def _describe_unknown_option(key, candidates) -> str:
+    """The key with its closest candidate, if any."""
+    close = get_close_matches(key, candidates, n=1)
+    return f"{key!r} (did you mean {close[0]!r}?)" if close else repr(key)
+
+
 def reject_unknown_options(
         given: Iterable[str],
         allowed: Iterable[str],
@@ -75,15 +92,11 @@ def reject_unknown_options(
             (difflib.get_close_matches) and the accepted names.
     """
     allowed = [str(name) for name in allowed]
-    skip = set(allowed) | {str(name) for name in ignored}
-    unknown = [str(key) for key in given if str(key) not in skip]
+    unknown = _unknown_option_names(given, allowed, ignored)
     if not unknown:
         return
-    candidates = allowed + [str(n) for n in also_suggest if str(n) not in allowed]
-    parts = []
-    for key in unknown:
-        close = get_close_matches(key, candidates, n=1)
-        parts.append(f"{key!r} (did you mean {close[0]!r}?)" if close else repr(key))
+    candidates = _suggestion_candidates(allowed, also_suggest)
+    parts = [_describe_unknown_option(key, candidates) for key in unknown]
     accepted = ", ".join(repr(name) for name in sorted(allowed)) or "none"
     message = (f"{where} got unexpected keyword argument(s) {', '.join(parts)}. "
                f"Accepted here: {accepted}.")

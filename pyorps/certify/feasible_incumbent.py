@@ -79,6 +79,57 @@ def _worst(records: list[dict]) -> dict:
     }
 
 
+@dataclass(frozen=True)
+class _GridContext:
+    """The fixed inputs of one ``make_feasible`` call (everything except the design that changes between rounds)."""
+    graph: object
+    turbines: object
+    model: object
+    vmodel: object
+    rules: object
+    plant_for_leg: Callable[[float], object]
+    grid_km: np.ndarray
+    root_transit: bool
+    tap_policy: str
+
+
+def _grid_facts(ctx: _GridContext) -> list:
+    """``[first, last, count]`` of the checked grid, as reported in every record."""
+    grid_km = ctx.grid_km
+    return [float(grid_km[0]), float(grid_km[-1]), len(grid_km)]
+
+
+def _check_grid(ctx: _GridContext, cur) -> list:
+    """The plant check of ``cur`` at every grid length."""
+    tree = electrical_tree(cur, ctx.graph, ctx.turbines, ctx.model, ctx.vmodel, root_transit=ctx.root_transit)
+    return [check_plant_tree(tree, ctx.vmodel, ctx.plant_for_leg(float(L)), ctx.rules, tap_policy=ctx.tap_policy)
+            for L in ctx.grid_km]
+
+
+def _passed_result(ctx: _GridContext, cur, cost0: float, rounds: int, steps: list, recs: list[dict]) -> FeasibleResult:
+    """The verdict for a design that passed at every grid length."""
+    cost, _ = reprice(cur, ctx.graph, ctx.turbines, ctx.model, root_transit=ctx.root_transit)
+    return FeasibleResult(True, float(cost - cost0), cur, {
+        "grid_km": _grid_facts(ctx),
+        "rounds": rounds, "repair_steps": steps,
+        "price_before_eur": float(cost0), "price_after_eur": float(cost), **_worst(recs)})
+
+
+def _failed_result(ctx: _GridContext, rounds: int, steps: list, failing: list[int], recs: list[dict],
+                   repair_note: str | None = None) -> FeasibleResult:
+    """The verdict for a design that fails and is not (or cannot be) repaired."""
+    first = failing[0]
+    record = {
+        "grid_km": _grid_facts(ctx),
+        "rounds": rounds, "repair_steps": steps,
+        "failing_lengths": len(failing), "first_failing_km": float(ctx.grid_km[first]),
+        "violations": list(recs[first]["violations"][:6])}
+    if repair_note is not None:
+        record["repair"] = repair_note
+    record.update(_worst(recs))
+    return FeasibleResult(False, math.inf, None, record)
+
+
 def make_feasible(design, graph, turbines, model, vmodel, rules, plant_for_leg: Callable[[float], object],
                   grid_km: np.ndarray, *, root_transit: bool = True, tap_policy: str = "per_turbine",
                   repair: bool = True, max_rounds: int = 6) -> FeasibleResult:
@@ -88,37 +139,23 @@ def make_feasible(design, graph, turbines, model, vmodel, rules, plant_for_leg: 
     design that cannot be repaired gets ``extra_eur = inf`` and must never serve as ``Z_UB``. The returned extra cost is
     the re-priced cost of the final design minus that of the input.
     """
+    # lizard forgives: public signature (12 parameters) is part of the API and pinned by the callers and tests
+    ctx = _GridContext(graph, turbines, model, vmodel, rules, plant_for_leg, grid_km, root_transit, tap_policy)
     cost0, _ = reprice(design, graph, turbines, model, root_transit=root_transit)
     cur = design
     rounds, steps = 0, []
     while True:
-        tree = electrical_tree(cur, graph, turbines, model, vmodel, root_transit=root_transit)
-        checks = [check_plant_tree(tree, vmodel, plant_for_leg(float(L)), rules, tap_policy=tap_policy)
-                  for L in grid_km]
+        checks = _check_grid(ctx, cur)
         failing = [i for i, c in enumerate(checks) if not c.voltage_ok]
         recs = [c.as_record() for c in checks]
         if not failing:
-            cost, _ = reprice(cur, graph, turbines, model, root_transit=root_transit)
-            return FeasibleResult(True, float(cost - cost0), cur, {
-                "grid_km": [float(grid_km[0]), float(grid_km[-1]), len(grid_km)],
-                "rounds": rounds, "repair_steps": steps,
-                "price_before_eur": float(cost0), "price_after_eur": float(cost), **_worst(recs)})
-        first = failing[0]
+            return _passed_result(ctx, cur, cost0, rounds, steps, recs)
         if not repair or rounds >= max_rounds:
-            return FeasibleResult(False, math.inf, None, {
-                "grid_km": [float(grid_km[0]), float(grid_km[-1]), len(grid_km)],
-                "rounds": rounds, "repair_steps": steps,
-                "failing_lengths": len(failing), "first_failing_km": float(grid_km[first]),
-                "violations": list(recs[first]["violations"][:6]), **_worst(recs)})
+            return _failed_result(ctx, rounds, steps, failing, recs)
         rep = repair_design(cur, graph, turbines, model, vmodel, root_transit=root_transit, tap_policy=tap_policy,
-                            plant=plant_for_leg(float(grid_km[first])), rules=rules)
+                            plant=plant_for_leg(float(grid_km[failing[0]])), rules=rules)
         rounds += 1
         if not rep.passed:
-            return FeasibleResult(False, math.inf, None, {
-                "grid_km": [float(grid_km[0]), float(grid_km[-1]), len(grid_km)],
-                "rounds": rounds, "repair_steps": steps,
-                "failing_lengths": len(failing), "first_failing_km": float(grid_km[first]),
-                "violations": list(recs[first]["violations"][:6]), "repair": "no sequence of upgrades passes",
-                **_worst(recs)})
+            return _failed_result(ctx, rounds, steps, failing, recs, "no sequence of upgrades passes")
         steps += [list(map(str, s)) for s in rep.steps]
         cur = rep.design

@@ -40,6 +40,33 @@ WATER_ZONE_SHIFT = 8
 WATER_ZONE_MASK = 0xF
 
 
+def _read_class(name: str, body, hdd, statuses: dict[str, str]) -> ConsentClass:
+    """One class of the file; refuse an unpriced class and bad limits, record its statuses in ``statuses``."""
+    if body.get("treatment") != "priced":
+        raise InvalidInputError(f"{name}: only priced classes are supported (owner decision, 2026-10-05)")
+    mult_node = body["per_metre_multiplier"]
+    mult = hdd if mult_node.get("use") == "hdd_multiplier" else float(mult_node["value"])
+    one = body["one_off_eur"]
+    lo, hi = float(one["low"]), float(one["high"])
+    if not (0.0 <= lo <= hi) or mult < 1.0 or float(body["delay_months"]["value"]) < 0:
+        raise InvalidInputError(f"{name}: need 0 <= low <= high, multiplier >= 1, delay >= 0")
+    for key in ("per_metre_multiplier", "one_off_eur", "delay_months"):
+        statuses[f"{name}.{key}"] = body[key]["status"]
+    return ConsentClass(
+        name=name, bit=int(body["bit"]), multiplier=float(mult), one_off_eur=0.5 * (lo + hi),
+        one_off_range=(lo, hi), delay_months=float(body["delay_months"]["value"]),
+        confidence=str(body.get("confidence", "LOW")))
+
+
+def _read_water(wz, statuses: dict[str, str]) -> dict[int, float]:
+    """The water-zone multipliers (digit keys of ``wz``); record the block's status in ``statuses``."""
+    statuses["water_zones.per_metre_multiplier"] = wz["status"]
+    water = {int(k): float(v) for k, v in wz.items() if str(k).isdigit()}
+    if any(v < 1.0 for v in water.values()):
+        raise InvalidInputError("water zone multipliers must be >= 1")
+    return water
+
+
 @dataclass(frozen=True)
 class ConsentClass:
     """One protected-area class.
@@ -86,27 +113,10 @@ class ConsentTable:
         statuses: dict[str, str] = {"hdd_multiplier": doc["hdd_multiplier"]["status"]}
         classes: dict[str, ConsentClass] = {}
         for name, body in doc["classes"].items():
-            if body.get("treatment") != "priced":
-                raise InvalidInputError(f"{name}: only priced classes are supported (owner decision, 2026-10-05)")
-            mult_node = body["per_metre_multiplier"]
-            mult = hdd if mult_node.get("use") == "hdd_multiplier" else float(mult_node["value"])
-            one = body["one_off_eur"]
-            lo, hi = float(one["low"]), float(one["high"])
-            if not (0.0 <= lo <= hi) or mult < 1.0 or float(body["delay_months"]["value"]) < 0:
-                raise InvalidInputError(f"{name}: need 0 <= low <= high, multiplier >= 1, delay >= 0")
-            for key in ("per_metre_multiplier", "one_off_eur", "delay_months"):
-                statuses[f"{name}.{key}"] = body[key]["status"]
-            classes[name] = ConsentClass(
-                name=name, bit=int(body["bit"]), multiplier=float(mult), one_off_eur=0.5 * (lo + hi),
-                one_off_range=(lo, hi), delay_months=float(body["delay_months"]["value"]),
-                confidence=str(body.get("confidence", "LOW")))
+            classes[name] = _read_class(name, body, hdd, statuses)
         if len({c.bit for c in classes.values()}) != len(classes):
             raise InvalidInputError("two classes share a flag bit")
-        wz = doc["water_zones"]["per_metre_multiplier"]
-        statuses["water_zones.per_metre_multiplier"] = wz["status"]
-        water = {int(k): float(v) for k, v in wz.items() if str(k).isdigit()}
-        if any(v < 1.0 for v in water.values()):
-            raise InvalidInputError("water zone multipliers must be >= 1")
+        water = _read_water(doc["water_zones"]["per_metre_multiplier"], statuses)
         dc = doc["delay_cost"]
         statuses["delay_cost"] = dc["status"]
         bad = {k: s for k, s in statuses.items() if s not in _STATUSES}

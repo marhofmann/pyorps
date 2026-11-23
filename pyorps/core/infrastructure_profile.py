@@ -146,17 +146,29 @@ class InfrastructureProfile:
 
     def __post_init__(self):
         """Validate profile configuration."""
+        self._check_terminal_span_rule()
+        self._check_span_constraints()
+        self._check_angle_limits()
+        self._check_tower_area()
+
+    def _check_terminal_span_rule(self) -> None:
         if not isinstance(self.terminal_span_rule, str) or self.terminal_span_rule not in TERMINAL_SPAN_RULES:
             raise InvalidInputError(
                 f"terminal_span_rule must be one of {', '.join(repr(v) for v in TERMINAL_SPAN_RULES)}, "
                 f"got {self.terminal_span_rule!r}")
+
+    def _check_span_constraints(self) -> None:
         if self.has_span_constraints:
             if self.span_bin_size_m is None or self.span_bin_size_m <= 0:
                 raise InvalidInputError("span_bin_size_m must be positive when span constraints are set")
             if self.min_span_m > self.max_span_m:
                 raise InvalidInputError(f"min_span_m ({self.min_span_m}) must be <= max_span_m ({self.max_span_m})")
+
+    def _check_angle_limits(self) -> None:
         if self.hard_angle_limit_deg < self.soft_angle_limit_deg:
             raise InvalidInputError("hard_angle_limit_deg must be >= soft_angle_limit_deg")
+
+    def _check_tower_area(self) -> None:
         if self.tower_ground_area_m2 < 1.0:
             raise InvalidInputError("tower_ground_area_m2 must be >= 1.0")
         if self.tower_area_cost_mode not in ("uniform", "exact"):

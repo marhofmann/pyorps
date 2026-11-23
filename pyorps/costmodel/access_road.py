@@ -18,6 +18,7 @@ import hashlib
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -41,6 +42,46 @@ def _walk_status(node, prefix: str, out: dict[str, str]) -> None:
     for key, val in node.items():
         if isinstance(val, Mapping):
             _walk_status(val, f"{prefix}{key}.", out)
+
+
+def _catalogue_value(catalogue, node):
+    return catalogue.value(node["catalogue_key"]) if "catalogue_key" in node else node["value"]
+
+
+def _check_statuses(path, st: dict[str, str], certified: bool) -> None:
+    """Refuse an invalid status and, when ``certified``, any remaining assumption."""
+    bad = [f"{k}: {s!r}" for k, s in st.items() if s not in STATUSES]
+    if bad:
+        raise InvalidInputError(f"{path}: invalid status in " + "; ".join(bad))
+    assumed = sorted(k for k, s in st.items() if s == "assumption")
+    if certified and assumed:
+        raise InvalidInputError("a certified build needs sourced inputs; assumptions remain: " + ", ".join(assumed))
+
+
+def _bands_contiguous(bands, g_max: float) -> bool:
+    if not bands or bands[0][0] != 0.0 or bands[-1][1] != g_max:
+        return False
+    return all(bands[i][1] == bands[i + 1][0] for i in range(len(bands) - 1))
+
+
+def _check_bands(bands, g_max: float) -> None:
+    if not _bands_contiguous(bands, g_max):
+        raise InvalidInputError("slope_bands must be contiguous from 0 to g_max_percent")
+
+
+def _read_rules(classes) -> dict[tuple[str, str], str]:
+    """``{(nutzart, bez): rule}`` from the ``classes`` block; refuse an unknown rule or a doubled class."""
+    rules: dict[tuple[str, str], str] = {}
+    for rule, pairs in classes.items():
+        if rule == "status":
+            continue
+        if rule not in RULE_NAMES:
+            raise InvalidInputError(f"unknown class rule {rule!r}")
+        for nutzart, bez in pairs:
+            if (nutzart, bez) in rules:
+                raise InvalidInputError(f"class {(nutzart, bez)} is listed twice")
+            rules[(nutzart, bez)] = rule
+    return rules
 
 
 def _ceil(x: float) -> int:
@@ -89,35 +130,16 @@ class AccessConstraints:
         d = yaml.safe_load(raw.decode("utf-8"))
         st: dict[str, str] = {}
         _walk_status(d, "", st)
-        bad = [f"{k}: {s!r}" for k, s in st.items() if s not in STATUSES]
-        if bad:
-            raise InvalidInputError(f"{path}: invalid status in " + "; ".join(bad))
-        assumed = sorted(k for k, s in st.items() if s == "assumption")
-        if certified and assumed:
-            raise InvalidInputError("a certified build needs sourced inputs; assumptions remain: " + ", ".join(assumed))
-
-        def val(node):
-            return catalogue.value(node["catalogue_key"]) if "catalogue_key" in node else node["value"]
+        _check_statuses(path, st, certified)
+        val = partial(_catalogue_value, catalogue)
 
         r, t = d["road"], d["terrain"]
         new, simple = float(val(r["new_eur_per_m"])), float(val(r["simple_track_eur_per_m"]))
         public = int(val(r["public_road_eur_per_m"]))
         bands = tuple((float(a), float(b), float(m)) for a, b, m in val(t["slope_bands"]))
         g_max = float(val(t["g_max_percent"]))
-        edges_ok = bands and bands[0][0] == 0.0 and bands[-1][1] == g_max and all(
-            bands[i][1] == bands[i + 1][0] for i in range(len(bands) - 1))
-        if not edges_ok:
-            raise InvalidInputError("slope_bands must be contiguous from 0 to g_max_percent")
-        rules: dict[tuple[str, str], str] = {}
-        for rule, pairs in d["classes"].items():
-            if rule == "status":
-                continue
-            if rule not in RULE_NAMES:
-                raise InvalidInputError(f"unknown class rule {rule!r}")
-            for nutzart, bez in pairs:
-                if (nutzart, bez) in rules:
-                    raise InvalidInputError(f"class {(nutzart, bez)} is listed twice")
-                rules[(nutzart, bez)] = rule
+        _check_bands(bands, g_max)
+        rules = _read_rules(d["classes"])
         return cls(path=Path(path), sha256=hashlib.sha256(raw).hexdigest(),
                    width_m=float(val(r["width_m"])), new_eur_m=new, simple_eur_m=simple,
                    forest_mult=float(val(r["forest_multiplier"])), upgrade_eur_m=new - simple,

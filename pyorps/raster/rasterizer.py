@@ -53,6 +53,65 @@ from pyorps.raster.thinness import (
 )
 
 
+# Value checks used by GeoRasterizer._check_numeric_value and
+# GeoRasterizer._check_cost_table.
+def _check_factor_value(value, number: float, name: str) -> None:
+    """A multiplier must be a finite number of at least 0."""
+    if not math.isfinite(number) or number < 0:
+        raise InvalidInputError(
+            f"{name} is a multiplier and must be a finite number of "
+            f"at least 0, got {value!r}.")
+
+
+def _check_float_value(value, number: float, name: str, target: np.dtype) -> None:
+    """A finite value must lie within the range of the float dtype ``target``."""
+    limits = np.finfo(target)
+    if math.isfinite(number) and abs(number) > float(limits.max):
+        raise InvalidInputError(
+            f"{name}={value!r} is outside the range of the "
+            f"{target.name} raster ({float(limits.min):g} to "
+            f"{float(limits.max):g}).")
+
+
+def _check_integer_value(value, number: float, name: str, target: np.dtype) -> None:
+    """The value must be a whole number within the range of the integer dtype."""
+    limits = np.iinfo(target)
+    allowed = f"{limits.min} to {limits.max}"
+    if target.kind == 'u' and limits.max == IMPASSABLE_CELL_COST:
+        allowed += f", where {IMPASSABLE_CELL_COST} marks a forbidden cell"
+    if not math.isfinite(number) or number != math.floor(number):
+        raise InvalidInputError(
+            f"{name}={value!r} cannot be stored in a {target.name} raster: "
+            f"only whole numbers fit (allowed range {allowed}).")
+    if not limits.min <= number <= limits.max:
+        raise InvalidInputError(
+            f"{name}={value!r} is outside the range of the {target.name} "
+            f"raster (allowed range {allowed}); it would wrap around "
+            "silently.")
+
+
+def _is_undefined_cost(value) -> bool:
+    """True for a cost-table entry without a number (None or NaN)."""
+    if value is None:
+        return True
+    try:
+        return math.isnan(value)
+    except TypeError:
+        return False
+
+
+def _undefined_cost_keys(table: dict) -> list:
+    """Keys (``(key, sub_key)`` for nested tables) of entries without a number."""
+    keys = []
+    for key, value in table.items():
+        if isinstance(value, dict):
+            keys.extend((key, sub_key) for sub_key, leaf in value.items()
+                        if _is_undefined_cost(leaf))
+        elif _is_undefined_cost(value):
+            keys.append(key)
+    return keys
+
+
 class GeoRasterizer:
     """
     A class for preparing and rasterizing geospatial data with cost assumptions.
@@ -153,45 +212,18 @@ class GeoRasterizer:
         does not carry itself. Whatever cannot take effect is named in ONE
         warning, with the way to get it applied, instead of being dropped.
         """
-        if isinstance(input_data, os.PathLike):
-            input_data = os.fspath(input_data)
-        # Duck-typed on purpose: anything that can load itself is a dataset.
-        is_dataset = (isinstance(input_data, GeoDataset)
-                      or hasattr(input_data, 'load_data'))
-        if is_dataset:
-            dataset = input_data
-        else:
-            dataset = initialize_geo_dataset(input_data, default_crs, bbox, mask)
-
+        dataset = cls._as_dataset(input_data, bbox, mask, default_crs)
         is_vector = isinstance(dataset, VectorDataset)
         loaded = dataset.data is not None
         ignored = []
-        if bbox is not None:
-            if is_vector and not loaded and dataset.bbox is None:
-                dataset.bbox = bbox
-            else:
-                same = is_vector and (dataset.bbox is bbox or (
-                    isinstance(bbox, tuple) and isinstance(dataset.bbox, tuple)
-                    and dataset.bbox == bbox))
-                if not same:
-                    ignored.append('bbox')
-        if mask is not None and is_vector and not loaded and dataset.mask is None:
-            dataset.mask = mask
-        if default_crs is not None:
-            if is_vector and not loaded and dataset.crs is None:
-                dataset.crs = default_crs
-            elif not ((is_vector or loaded)
-                      and cls._same_crs(dataset.crs, default_crs)):
-                # A raster file brings its own CRS when it is read, so only a
-                # loaded raster can be said to agree with default_crs.
-                ignored.append('default_crs')
+        if bbox is not None and cls._bbox_ignored(dataset, bbox, is_vector, loaded):
+            ignored.append('bbox')
+        cls._adopt_mask(dataset, mask, is_vector, loaded)
+        if default_crs is not None and cls._crs_ignored(dataset, default_crs,
+                                                        is_vector, loaded):
+            ignored.append('default_crs')
         if ignored:
-            if not is_vector:
-                reason = "raster data is read in its own extent and CRS"
-            elif loaded:
-                reason = "the dataset is already loaded"
-            else:
-                reason = "the dataset carries its own setting"
+            reason = cls._ignored_reason(is_vector, loaded)
             warnings.warn(
                 f"GeoRasterizer ignores {' and '.join(ignored)}: {reason}. "
                 "Pass bbox and crs to initialize_geo_dataset() before loading, "
@@ -199,6 +231,57 @@ class GeoRasterizer:
                 "GeoDataFrame.to_crs().",
                 UserWarning, stacklevel=3)
         return dataset
+
+    @staticmethod
+    def _as_dataset(input_data, bbox, mask, default_crs):
+        """``input_data`` as a GeoDataset (see :meth:`_resolve_base_dataset`)."""
+        if isinstance(input_data, os.PathLike):
+            input_data = os.fspath(input_data)
+        # Duck-typed on purpose: anything that can load itself is a dataset.
+        if isinstance(input_data, GeoDataset) or hasattr(input_data, 'load_data'):
+            return input_data
+        return initialize_geo_dataset(input_data, default_crs, bbox, mask)
+
+    @staticmethod
+    def _same_bbox(current, bbox) -> bool:
+        """True when the dataset's ``current`` bbox already is ``bbox``."""
+        return current is bbox or (
+            isinstance(bbox, tuple) and isinstance(current, tuple)
+            and current == bbox)
+
+    @classmethod
+    def _bbox_ignored(cls, dataset, bbox, is_vector, loaded) -> bool:
+        """Adopt ``bbox`` where the dataset can take it; True when it cannot."""
+        if is_vector and not loaded and dataset.bbox is None:
+            dataset.bbox = bbox
+            return False
+        return not (is_vector and cls._same_bbox(dataset.bbox, bbox))
+
+    @staticmethod
+    def _adopt_mask(dataset, mask, is_vector, loaded) -> None:
+        """An unloaded vector dataset without a mask adopts ``mask``."""
+        if mask is not None and is_vector and not loaded and dataset.mask is None:
+            dataset.mask = mask
+
+    @classmethod
+    def _crs_ignored(cls, dataset, default_crs, is_vector, loaded) -> bool:
+        """Adopt ``default_crs`` where the dataset can take it; True when it cannot."""
+        if is_vector and not loaded and dataset.crs is None:
+            dataset.crs = default_crs
+            return False
+        # A raster file brings its own CRS when it is read, so only a
+        # loaded raster can be said to agree with default_crs.
+        return not ((is_vector or loaded)
+                    and cls._same_crs(dataset.crs, default_crs))
+
+    @staticmethod
+    def _ignored_reason(is_vector, loaded) -> str:
+        """Why a setting passed to the constructor cannot take effect."""
+        if not is_vector:
+            return "raster data is read in its own extent and CRS"
+        if loaded:
+            return "the dataset is already loaded"
+        return "the dataset carries its own setting"
 
     @property
     def base_data(self) -> GeoDataFrame:
@@ -749,35 +832,13 @@ class GeoRasterizer:
                 f"{value!r}.")
         number = float(value)
         if factor:
-            if not math.isfinite(number) or number < 0:
-                raise InvalidInputError(
-                    f"{name} is a multiplier and must be a finite number of "
-                    f"at least 0, got {value!r}.")
+            _check_factor_value(value, number, name)
             return
         target = np.dtype(dtype)
         if target.kind == 'f':
-            limits = np.finfo(target)
-            if math.isfinite(number) and abs(number) > float(limits.max):
-                raise InvalidInputError(
-                    f"{name}={value!r} is outside the range of the "
-                    f"{target.name} raster ({float(limits.min):g} to "
-                    f"{float(limits.max):g}).")
-            return
-        if target.kind not in 'iu':
-            return
-        limits = np.iinfo(target)
-        allowed = f"{limits.min} to {limits.max}"
-        if target.kind == 'u' and limits.max == IMPASSABLE_CELL_COST:
-            allowed += f", where {IMPASSABLE_CELL_COST} marks a forbidden cell"
-        if not math.isfinite(number) or number != math.floor(number):
-            raise InvalidInputError(
-                f"{name}={value!r} cannot be stored in a {target.name} raster: "
-                f"only whole numbers fit (allowed range {allowed}).")
-        if not limits.min <= number <= limits.max:
-            raise InvalidInputError(
-                f"{name}={value!r} is outside the range of the {target.name} "
-                f"raster (allowed range {allowed}); it would wrap around "
-                "silently.")
+            _check_float_value(value, number, name, target)
+        elif target.kind in 'iu':
+            _check_integer_value(value, number, name, target)
 
     @staticmethod
     def _check_ignore_value(ignore_value) -> None:
@@ -824,22 +885,7 @@ class GeoRasterizer:
         table = self.cost_manager.cost_assumptions
         if not isinstance(table, dict):
             return
-
-        def undefined(value) -> bool:
-            if value is None:
-                return True
-            try:
-                return math.isnan(value)
-            except TypeError:
-                return False
-
-        keys = []
-        for key, value in table.items():
-            if isinstance(value, dict):
-                keys.extend((key, sub_key) for sub_key, leaf in value.items()
-                            if undefined(leaf))
-            elif undefined(value):
-                keys.append(key)
+        keys = _undefined_cost_keys(table)
         if keys:
             raise FormatError(
                 f"The cost table has no number (NaN or empty) for {len(keys)} "

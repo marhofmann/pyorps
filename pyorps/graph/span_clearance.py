@@ -81,6 +81,7 @@ class SpanClearance:
 
 def _clearance_at(x, row, col, *, attach_a, attach_b, span_len, cond_w, cond_t, dem, obstacle):
     """Conductor height above ground plus obstacle at distance ``x`` from tower A (float32, like the kernel)."""
+    # lizard forgives: ten keyword inputs mirror the kernel's signature one to one
     chord_z = attach_a + (attach_b - attach_a) * x / span_len
     # a float numerator over a double denominator, stored as float (see the module docstring)
     sag_x = _F32(float(cond_w * x * (span_len - x)) / (2.0 * float(cond_t)))
@@ -120,6 +121,7 @@ def span_clearance(dem, obstacle_heights, tower_a, step, n_steps, step_distance_
     Raises:
         InvalidInputError: ``step`` is (0, 0), a raster is not two-dimensional or the two do not have one shape.
     """
+    # lizard forgives: kernel-mirroring inputs and branches; reworked by the strict-clearance package (round 4)
     dr, dc = int(step[0]), int(step[1])
     if dr == 0 and dc == 0:
         raise InvalidInputError("span_clearance: step must not be (0, 0)")
@@ -207,6 +209,7 @@ def path_span_clearance(dem, obstacle_heights, rows, cols, pos_a: int, pos_b: in
     (``sqrt(dr^2 + dc^2) * cell_size``, as the search computes them). Returns None when the stretch is not
     straight (see :func:`straight_step`). ``strict`` and ``start_cell`` are passed on (see :func:`span_clearance`).
     """
+    # lizard forgives: the inputs mirror span_clearance one to one
     step = straight_step(rows, cols, pos_a, pos_b)
     if step is None:
         return None

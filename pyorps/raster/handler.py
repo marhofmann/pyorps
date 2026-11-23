@@ -11,52 +11,31 @@ import warnings
 from typing import Any
 
 import numpy as np
-from pyproj import CRS, Transformer
+from pyproj import Transformer
 from rasterio import open as rio_open
 from rasterio.features import rasterize
-from rasterio.transform import Affine, array_bounds, from_origin, rowcol
+from rasterio.transform import Affine, from_origin, rowcol
 from rasterio.transform import xy as transform_xy
 from rasterio.windows import Window
-from rasterio.windows import bounds as window_bounds
 from rasterio.windows import transform as transform_window
 from shapely.geometry import LineString, MultiPoint, Polygon
 
-from pyorps.core.exceptions import InvalidInputError, PyorpsError, RasterShapeError
+from pyorps.core.exceptions import InvalidInputError, RasterShapeError
 from pyorps.core.types import CoordinateList, CoordinateTuple
 from pyorps.io.geo_dataset import RasterDataset
+from pyorps.raster.handler_helpers import (
+    _check_finite_points,
+    _empty_search_space_error,
+    _is_single_coordinate,
+    _max_distance_pair,
+    _raise_if_outside_window,
+    _require_integer_dtype,
+)
 
-
-def _crs_name(crs: Any) -> str:
-    """Short printable name of a CRS (``EPSG:32632`` where possible)."""
-    if crs is None:
-        return "None (unknown)"
-    try:
-        parsed = CRS.from_user_input(crs)
-    except Exception:  # noqa: BLE001  # any unparsable CRS: print it raw
-        return str(crs)
-    epsg = parsed.to_epsg()
-    return f"EPSG:{epsg}" if epsg is not None else parsed.to_string()
-
-
-def _require_integer_dtype(dtype: Any, why: str, remedy: str) -> None:
-    """Raise PyorpsError when ``dtype`` has no integer maximum."""
-    if np.issubdtype(np.dtype(dtype), np.integer):
-        return
-    raise PyorpsError(
-        f"Unsupported raster dtype {np.dtype(dtype).name!r}: {why}, which "
-        f"exists only for integer dtypes. Either {remedy}, or use a uint16 "
-        f"cost raster (the dtype PathFinder routes on; cast with "
-        f".astype('uint16') after clipping to 0..65534, 65535 = forbidden).")
-
-
-def _is_projected(crs: Any) -> bool:
-    """True when ``crs`` parses as a projected CRS (metres, not degrees)."""
-    if crs is None:
-        return False
-    try:
-        return bool(CRS.from_user_input(crs).is_projected)
-    except Exception:  # noqa: BLE001  # unparsable: make no claim
-        return False
+# The module-level helpers live in handler_helpers; every name stays importable
+# from this module as the same object (the redundant aliases re-export them).
+from pyorps.raster.handler_helpers import _crs_name as _crs_name
+from pyorps.raster.handler_helpers import _is_projected as _is_projected
 
 
 class RasterHandler:
@@ -188,17 +167,8 @@ class RasterHandler:
                                                            raster_crs)
 
         # Determine if we're working with single coordinates or multiple coordinates
-        is_single_source = isinstance(transformed_source_coords, tuple) or (
-                isinstance(transformed_source_coords, list) and
-                len(transformed_source_coords) == 2 and
-                not isinstance(transformed_source_coords[0], (list, tuple))
-        )
-
-        is_single_target = isinstance(transformed_target_coords, tuple) or (
-                isinstance(transformed_target_coords, list) and
-                len(transformed_target_coords) == 2 and
-                not isinstance(transformed_target_coords[0], (list, tuple))
-        )
+        is_single_source = _is_single_coordinate(transformed_source_coords)
+        is_single_target = _is_single_coordinate(transformed_target_coords)
 
         # Create appropriate geometry and buffer it
         if is_single_source and is_single_target:
@@ -238,20 +208,8 @@ class RasterHandler:
             # A negative buffer SHRINKS the hull, and empties it for the same
             # hulls (and for any hull narrower than twice the buffer); the
             # cause is then the sign, not a zero.
-            if self.search_space_buffer_m < 0:
-                cause = (f"a negative buffer shrinks the source/target hull "
-                         f"(a {buffer_geom.geom_type}) by "
-                         f"{abs(self.search_space_buffer_m)} m on every side, "
-                         f"and nothing of it is left")
-            else:
-                cause = (f"the source/target hull is a "
-                         f"{buffer_geom.geom_type} with no area, so buffering "
-                         f"it by zero removes it")
-            raise InvalidInputError(
-                f"search_space_buffer_m={self.search_space_buffer_m} leaves an "
-                f"empty search space: {cause}. Pass a positive buffer, or "
-                f"pyorps.full_window_buffer_m(dataset) to search the whole "
-                f"raster.")
+            raise _empty_search_space_error(self.search_space_buffer_m,
+                                            buffer_geom.geom_type)
 
         # Calculate pixel bounds for the buffered geometry
         transform = self.raster_dataset.transform
@@ -510,10 +468,7 @@ class RasterHandler:
             return coords
 
         transformer = Transformer.from_crs(input_crs, target_crs, always_xy=True)
-        is_coord_list = (isinstance(coords, list) and
-                         len(coords) == 2 and
-                         not isinstance(coords[0], (list, tuple)))
-        if isinstance(coords, tuple) or is_coord_list:
+        if _is_single_coordinate(coords):
             # Single coordinate pair
             x, y = transformer.transform(coords[0], coords[1])
             return x, y
@@ -646,33 +601,7 @@ class RasterHandler:
         Returns:
             A tuple containing the two points with the maximum distance (point1, point2)
         """
-
-        # Normalize inputs to lists of tuples
-        def normalize_coords(coords):
-            is_coord_list = (len(coords) == 0 or not isinstance(coords[0], tuple))
-            if isinstance(coords, tuple) and is_coord_list:
-                return [coords]
-            return coords
-
-        coords1_list = normalize_coords(coords1)
-        coords2_list = normalize_coords(coords2)
-
-        if not coords1_list or not coords2_list:
-            return None  # Handle empty inputs
-
-        max_distance = -1
-        max_pair = None
-
-        for point1 in coords1_list:
-            for point2 in coords2_list:
-                # Calculate Euclidean distance
-                distance = np.sqrt(sum((a - b) ** 2 for a, b in zip(point1, point2)))
-
-                if distance > max_distance:
-                    max_distance = distance
-                    max_pair = (point1, point2)
-
-        return max_pair, max_distance
+        return _max_distance_pair(coords1, coords2)
 
     def apply_geometry_mask(
             self,
@@ -783,59 +712,15 @@ class RasterHandler:
     @staticmethod
     def _check_finite(xs, ys) -> None:
         """Raise PyorpsError naming the first non-finite (x, y) point."""
-        try:
-            x_arr = np.atleast_1d(np.asarray(xs, dtype=float))
-            y_arr = np.atleast_1d(np.asarray(ys, dtype=float))
-        except (TypeError, ValueError):
-            return  # not numeric: leave the error to rowcol, as before
-        if x_arr.shape != y_arr.shape:
-            return
-        bad = ~(np.isfinite(x_arr) & np.isfinite(y_arr))
-        if bad.any():
-            i = int(np.flatnonzero(bad)[0])
-            raise PyorpsError(
-                f"Coordinate ({float(x_arr[i])!r}, {float(y_arr[i])!r}) is not finite "
-                f"({int(bad.sum())} of {bad.size} point(s) are NaN or "
-                f"infinite). Allowed: finite (x, y) numbers in the raster "
-                f"CRS.")
+        _check_finite_points(xs, ys)
 
     def _check_indices_in_window(self, indices: np.ndarray, xs, ys) -> None:
         """Raise PyorpsError if any (row, col) lies outside the window data.
 
         Runs once per call on the given points (never per cell).
         """
-        n_rows, n_cols = self.data.shape[-2:]
-        rows = indices[:, 0]
-        cols = indices[:, 1]
-        outside = (rows < 0) | (rows >= n_rows) | (cols < 0) | (cols >= n_cols)
-        if not outside.any():
-            return
-        i = int(np.flatnonzero(outside)[0])
-        x = float(np.atleast_1d(np.asarray(xs, dtype=float))[i])
-        y = float(np.atleast_1d(np.asarray(ys, dtype=float))[i])
-        transform = self.raster_dataset.transform
-        left, bottom, right, top = window_bounds(self.window, transform)
-        height, width = self.raster_dataset.shape[-2:]
-        full_w, full_s, full_e, full_n = array_bounds(height, width, transform)
-        crs = self.raster_dataset.crs
-        message = (
-            f"Point ({x!r}, {y!r}) lies outside the search window: it maps to "
-            f"window cell (row {int(rows[i])}, col {int(cols[i])}), but the "
-            f"window has {n_rows} x {n_cols} cells "
-            f"({int(outside.sum())} of {outside.size} point(s) are outside). "
-            f"Search window bounds (left, bottom, right, top) = "
-            f"({left:.3f}, {bottom:.3f}, {right:.3f}, {top:.3f}); full raster "
-            f"bounds = ({full_w:.3f}, {full_s:.3f}, {full_e:.3f}, {full_n:.3f}); "
-            f"raster CRS = {_crs_name(crs)}. Allowed: points inside the "
-            f"search window, given in the raster CRS.")
-        if -180.0 <= x <= 180.0 and -90.0 <= y <= 90.0 and _is_projected(crs):
-            message += (
-                f" The point looks like longitude/latitude degrees while the "
-                f"raster CRS is projected: this is probably a CRS mismatch. "
-                f"Reproject the point to {_crs_name(crs)} first, e.g. with "
-                f"pyproj.Transformer.from_crs('EPSG:4326', "
-                f"'{_crs_name(crs)}', always_xy=True).")
-        raise PyorpsError(message)
+        _raise_if_outside_window(indices, xs, ys, self.data.shape[-2:],
+                                 self.window, self.raster_dataset)
 
     def indices_to_coords(self, indices: list[tuple[int, int]]) -> np.ndarray:
         """

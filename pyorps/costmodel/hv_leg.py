@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -42,6 +43,33 @@ def _walk_status(node, prefix: str, out: dict[str, str]) -> None:
     for key, val in node.items():
         if isinstance(val, Mapping):
             _walk_status(val, f"{prefix}{key}.", out)
+
+
+def _catalogue_value(catalogue, node):
+    return catalogue.value(node["catalogue_key"]) if "catalogue_key" in node else node["value"]
+
+
+def _check_statuses(path, st: dict[str, str], certified: bool) -> None:
+    """Refuse an invalid status and, when ``certified``, any remaining assumption."""
+    bad = [f"{k}: {s!r}" for k, s in st.items() if s not in STATUSES]
+    if bad:
+        raise InvalidInputError(f"{path}: invalid status in " + "; ".join(bad))
+    assumed = sorted(k for k, s in st.items() if s == "assumption")
+    if certified and assumed:
+        raise InvalidInputError("a certified build needs sourced inputs; assumptions remain: " + ", ".join(assumed))
+
+
+def _price_sections(secs, cores: int, mat, omega: float, loss_terms) -> tuple[dict[int, dict[str, float]], int]:
+    """``({mm2: {"material", "loss", "total"}}, section with the smallest total)``; ``loss_terms`` is
+    ``(coef, r90, factor, w_all)``."""
+    coef, r90, factor, w_all = loss_terms
+    sections = {}
+    for m in secs:
+        material = cores * mat[m] * (1.0 + omega)
+        loss_eur = coef * float(r90[m]) * factor / 1e3 * w_all
+        sections[m] = {"material": material, "loss": loss_eur, "total": material + loss_eur}
+    best = min(sections, key=lambda m: sections[m]["total"])
+    return sections, best
 
 
 @dataclass
@@ -84,17 +112,11 @@ class HvLegConstraints:
         d = yaml.safe_load(raw.decode("utf-8"))
         st: dict[str, str] = {}
         _walk_status(d, "", st)
-        bad = [f"{k}: {s!r}" for k, s in st.items() if s not in STATUSES]
-        if bad:
-            raise InvalidInputError(f"{path}: invalid status in " + "; ".join(bad))
-        assumed = sorted(k for k, s in st.items() if s == "assumption")
-        if certified and assumed:
-            raise InvalidInputError("a certified build needs sourced inputs; assumptions remain: " + ", ".join(assumed))
+        _check_statuses(path, st, certified)
         if int(d["route"]["circuits"]["value"]) != 1:
             raise InvalidInputError("only one circuit is modelled: there is no trench sharing on the 110 kV side")
 
-        def val(node):
-            return catalogue.value(node["catalogue_key"]) if "catalogue_key" in node else node["value"]
+        val = partial(_catalogue_value, catalogue)
 
         cab = d["cable"]
         cores = int(val(cab["cores_per_circuit"]))
@@ -113,12 +135,7 @@ class HvLegConstraints:
         r90 = yaml.safe_load(vfile.read_text(encoding="utf-8"))["cables"]["r_ac90_ohm_per_km"]["value"]
         alpha = float(ci["alpha_aluminium_per_k"]["value"])
         factor = (1 + alpha * (float(ci["loss_temperature_c"]["value"]) - 20.0)) / (1 + alpha * 70.0)
-        sections = {}
-        for m in secs:
-            material = cores * mat[m] * (1.0 + omega)
-            loss_eur = coef * float(r90[m]) * factor / 1e3 * w_all
-            sections[m] = {"material": material, "loss": loss_eur, "total": material + loss_eur}
-        best = min(sections, key=lambda m: sections[m]["total"])
+        sections, best = _price_sections(secs, cores, mat, omega, (coef, r90, factor, w_all))
         return cls(path=Path(path), sha256=hashlib.sha256(raw).hexdigest(),
                    catalogue_sha256=getattr(catalogue, "sha256", ""), loss_inputs_sha256=getattr(inputs, "sha256", ""),
                    omega=omega, cores=cores, sections=sections, section_mm2=best, rho_eur_m=sections[best]["total"],

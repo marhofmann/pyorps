@@ -23,6 +23,7 @@ import json
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 
 from pyorps.collector.condition_c import ConditionC, condition_c
@@ -175,6 +176,74 @@ def _cable_electrics(voltage_file: Path, u_kv: float, sections: list[int],
     return {m: (amp[m], float(r90[m]) * factor / 1e3) for m in sections}
 
 
+def _check_build_args(inputs: CollectorInputs, loss: LossCategories, rated_mw, price: str,
+                      certified: bool) -> tuple[tuple[str, ...], list[float]]:
+    """``(assumptions, rated MW per turbine)``; refuse what ``build_collector_model`` refuses up front."""
+    assumed = tuple(inputs.assumptions())
+    if certified and assumed:
+        raise InvalidInputError(
+            f"a certified build needs sourced inputs; {len(assumed)} "
+            "assumption(s) remain: " + ", ".join(assumed))
+    rated = [float(x) for x in rated_mw]
+    if loss.n != len(rated):
+        raise InvalidInputError(f"the loss table has {loss.n} turbines, "
+                                f"rated_mw has {len(rated)}")
+    if price not in ("headline", "sensitivity"):
+        raise InvalidInputError("price must be 'headline' or 'sensitivity'")
+    return assumed, rated
+
+
+def _loss_economics(lc, price: str, u_kv: float) -> tuple[float, float, float]:
+    """``(annuity factor, loss price EUR/MWh, loss coefficient)`` from the ``loss`` block."""
+    years, rate, growth = (float(_val(lc[k])) for k in
+                           ("years", "rate", "growth"))
+    af = annuity_factor(years, rate, growth)
+    price_eur = float(_val(lc["price_eur_per_mwh"][price]))
+    coef = loss_coef(price_eur_per_mwh=price_eur, u_kv=u_kv, years=years,
+                     rate=rate, growth=growth)
+    return af, price_eur, coef
+
+
+def _cable_types(inputs: CollectorInputs, catalogue: CostCatalogue, cab, u_kv: float, af: float,
+                 voltage_file) -> tuple[tuple[CableType, ...], float, Path]:
+    """``(cable types, O&M share, voltage data file)`` from the ``cable`` block."""
+    sections = [int(m) for m in _val(cab["sections_mm2"])]
+    vfile = Path(voltage_file) if voltage_file else (
+        inputs.path.parent / cab["voltage_data_file"])
+    electrics = _cable_electrics(
+        vfile, u_kv, sections, float(_val(cab["alpha_aluminium_per_k"])),
+        float(_val(cab["loss_temperature_c"])))
+    prices = _price_table(cab["price_eur_per_m"], u_kv)
+    om = catalogue.value(cab["om_share_of_capex"]["catalogue_key"])
+    extra = (float(_val(cab["end_of_life_eur_per_m"]))
+             + float(_val(cab["dielectric_loss_eur_per_m"])))
+    types = tuple(
+        CableType(name=f"NA2XS(F)2Y 1x{m} Al {u_kv:g} kV",
+                  ampacity_a=electrics[m][0],
+                  cost_eur_per_m=prices[m] * (1.0 + om * af) + extra,
+                  r_ohm_per_m=electrics[m][1])
+        for m in sections)
+    return types, om, vfile
+
+
+def _sigma_eur_per_m(sg, catalogue: CostCatalogue) -> float:
+    civil = catalogue.value(sg["civil_base_catalogue_key"])
+    return civil * float(_val(sg["extra_width_per_system_m"])) / float(
+        _val(sg["base_trench_width_m"]))
+
+
+def _catalogue_item(catalogue: CostCatalogue, node) -> float:
+    return catalogue.value(node["catalogue_key"]) / float(
+        node.get("divisor", 1.0))
+
+
+def _model_sha256(model: CollectorModel) -> str:
+    return hashlib.sha256(json.dumps(
+        model.describe(), sort_keys=True,
+        default=lambda x: None if math.isinf(x) else x).encode()
+    ).hexdigest()
+
+
 def build_collector_model(inputs: CollectorInputs, catalogue: CostCatalogue,
                           loss: LossCategories, *, u_kv: float,
                           rated_mw, price: str = "headline",
@@ -201,53 +270,17 @@ def build_collector_model(inputs: CollectorInputs, catalogue: CostCatalogue,
         :class:`BuiltCollector`.
     """
     d = inputs.data
-    assumed = tuple(inputs.assumptions())
-    if certified and assumed:
-        raise InvalidInputError(
-            f"a certified build needs sourced inputs; {len(assumed)} "
-            "assumption(s) remain: " + ", ".join(assumed))
-    rated = [float(x) for x in rated_mw]
-    if loss.n != len(rated):
-        raise InvalidInputError(f"the loss table has {loss.n} turbines, "
-                                f"rated_mw has {len(rated)}")
-    if price not in ("headline", "sensitivity"):
-        raise InvalidInputError("price must be 'headline' or 'sensitivity'")
+    assumed, rated = _check_build_args(inputs, loss, rated_mw, price, certified)
 
     lc = d["loss"]
-    years, rate, growth = (float(_val(lc[k])) for k in
-                           ("years", "rate", "growth"))
-    af = annuity_factor(years, rate, growth)
-    price_eur = float(_val(lc["price_eur_per_mwh"][price]))
-    coef = loss_coef(price_eur_per_mwh=price_eur, u_kv=u_kv, years=years,
-                     rate=rate, growth=growth)
+    af, price_eur, coef = _loss_economics(lc, price, u_kv)
 
     cab = d["cable"]
-    sections = [int(m) for m in _val(cab["sections_mm2"])]
-    vfile = Path(voltage_file) if voltage_file else (
-        inputs.path.parent / cab["voltage_data_file"])
-    electrics = _cable_electrics(
-        vfile, u_kv, sections, float(_val(cab["alpha_aluminium_per_k"])),
-        float(_val(cab["loss_temperature_c"])))
-    prices = _price_table(cab["price_eur_per_m"], u_kv)
-    om = catalogue.value(cab["om_share_of_capex"]["catalogue_key"])
-    extra = (float(_val(cab["end_of_life_eur_per_m"]))
-             + float(_val(cab["dielectric_loss_eur_per_m"])))
-    types = tuple(
-        CableType(name=f"NA2XS(F)2Y 1x{m} Al {u_kv:g} kV",
-                  ampacity_a=electrics[m][0],
-                  cost_eur_per_m=prices[m] * (1.0 + om * af) + extra,
-                  r_ohm_per_m=electrics[m][1])
-        for m in sections)
+    types, om, vfile = _cable_types(inputs, catalogue, cab, u_kv, af, voltage_file)
 
     ts, sw = d["trench_sharing"], d["switchgear"]
-    sg = ts["sigma_eur_per_m"]
-    civil = catalogue.value(sg["civil_base_catalogue_key"])
-    sigma = civil * float(_val(sg["extra_width_per_system_m"])) / float(
-        _val(sg["base_trench_width_m"]))
-
-    def cat(node):
-        return catalogue.value(node["catalogue_key"]) / float(
-            node.get("divisor", 1.0))
+    sigma = _sigma_eur_per_m(ts["sigma_eur_per_m"], catalogue)
+    cat = partial(_catalogue_item, catalogue)
 
     key = _level_key(u_kv)
     model = CollectorModel.from_turbines(
@@ -276,9 +309,6 @@ def build_collector_model(inputs: CollectorInputs, catalogue: CostCatalogue,
         "voltage_file": vfile.name,
         "assumptions": list(assumed),
         "certified": certified,
-        "model_sha256": hashlib.sha256(json.dumps(
-            model.describe(), sort_keys=True,
-            default=lambda x: None if math.isinf(x) else x).encode()
-        ).hexdigest(),
+        "model_sha256": _model_sha256(model),
     }
     return BuiltCollector(model=model, record=record, assumptions=assumed)

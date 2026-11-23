@@ -180,13 +180,17 @@ class WFSVectorDataset(LocalVectorDataset):
         self.max_workers = max_workers
         self.allow_partial = allow_partial
 
-    def load_data(self, **kwargs):
+    def _check_source(self):
+        """Raise InvalidInputError unless ``file_source`` has 'url' and 'layer'."""
         if (not isinstance(self.file_source, dict) or "url" not in self.file_source
                 or "layer" not in self.file_source):
             raise InvalidInputError(f"Unsupported dataset source for WFSVectorDataset: "
                              f"{self.file_source}!"
                              f"\nPlease provide a dictionary with a valid 'url' and "
                              f"'layer' key-value pairs!")
+
+    def _request_bbox(self):
+        """The bbox of the WFS request (the mask's bounds become ``self.bbox``)."""
         request_bbox = self.bbox
         if request_bbox is None and self.mask is not None:
             # a shapely geometry, GeoSeries, GeoDataFrame or list of geometries
@@ -196,6 +200,11 @@ class WFSVectorDataset(LocalVectorDataset):
               and not hasattr(request_bbox, "total_bounds")):
             # a shapely geometry used as bbox: its bounds are the request bbox
             request_bbox = _get_bbox_from_mask(request_bbox)
+        return request_bbox
+
+    def load_data(self, **kwargs):
+        self._check_source()
+        request_bbox = self._request_bbox()
         url, layer = self.file_source["url"], self.file_source["layer"]
         self.data = load_from_wfs(
             url=url,

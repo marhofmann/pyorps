@@ -43,6 +43,12 @@ def _validate_kernel_inputs(raster_data, steps) -> None:
     Raises:
         PyorpsError: naming the offending value and what is allowed.
     """
+    _validate_kernel_raster(raster_data)
+    _validate_kernel_steps(steps)
+
+
+def _validate_kernel_raster(raster_data) -> None:
+    """Shape and dtype check of the raster for the Cython kernels."""
     if not isinstance(raster_data, ndarray):
         raise PyorpsError(
             f"raster_data must be a 2-D uint16 numpy array, got "
@@ -58,6 +64,10 @@ def _validate_kernel_inputs(raster_data, steps) -> None:
             f".astype('uint16') after clipping to 0..65534 (65535 marks "
             f"forbidden cells); float32 rasters need a float backend "
             f"(networkit, networkx, igraph, rustworkx, raster_gpu, raster_fim).")
+
+
+def _validate_kernel_steps(steps) -> None:
+    """Type, shape and dtype check of the neighbourhood steps."""
     if steps is None:
         raise PyorpsError(
             f"steps is None: the cython backend needs a neighbourhood, "
@@ -200,12 +210,15 @@ class CythonAPI(GraphAPI):
         sources = self._to_array(source_indices)
         targets = self._to_array(target_indices)
 
-        # Determine the scenario
-        is_single_source = len(sources) == 1
-        is_single_target = len(targets) == 1
         is_pairwise = kwargs.pop('pairwise', False)  # Remove from kwargs after reading
 
-        # Validate algorithm
+        algo = self._checked_algorithm(algorithm)
+
+        # Route to appropriate implementation
+        return self._dispatch_paths(sources, targets, algo, is_pairwise, kwargs)
+
+    def _checked_algorithm(self, algorithm):
+        """Lower-cased algorithm name; raises for an unknown or unsupported one."""
         algo = algorithm.lower() if isinstance(algorithm, str) else algorithm
         if algo not in self.ALGORITHMS:
             allowed = ", ".join(repr(a) for a in self.ALGORITHMS)
@@ -217,9 +230,12 @@ class CythonAPI(GraphAPI):
                 "In-search gradient terms are currently supported by the "
                 "cython 'dijkstra' algorithm only (delta-stepping support "
                 "is a later phase of the feasibility plan).")
+        return algo
 
-        # Route to appropriate implementation
-        if is_single_source and is_single_target:
+    def _dispatch_paths(self, sources, targets, algo, is_pairwise, kwargs):
+        """Pick the single, one-to-many, pairwise or many-to-many kernel."""
+        is_single_source = len(sources) == 1
+        if is_single_source and len(targets) == 1:
             return self._single_path(sources[0], targets[0], algo, **kwargs)
         if is_single_source:
             return self._single_to_multi(sources, targets, algo, **kwargs)

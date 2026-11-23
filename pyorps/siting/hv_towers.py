@@ -23,6 +23,29 @@ TRACTION_OPERATOR = "DB Energie"
 TRACTION_FREQUENCY = "16.7"
 
 
+def _require_shared_projected_crs(lines, towers) -> None:
+    """Raise :class:`InvalidInputError` unless both frames share one projected CRS."""
+    if lines.crs is None or towers.crs is None or lines.crs != towers.crs or not lines.crs.is_projected:
+        raise InvalidInputError("lines and towers must share one projected CRS")
+
+
+def _traction_flagged_lines(lines, voltage_token, line_power, traction_operator, traction_frequency):
+    """The lines of the accepted ``power`` values whose voltage has the token, with a ``traction`` column."""
+    sel = (lines["voltage"].fillna("").astype(str).str.contains(voltage_token, regex=False)
+           & lines["power"].isin(line_power))
+    ln = lines[sel].copy()
+    operator = ln["operator"].fillna("").astype(str) if "operator" in ln else ln["power"].astype(str).str.slice(0, 0)
+    freq = ln["frequency"].fillna("").astype(str) if "frequency" in ln else operator.str.slice(0, 0)
+    ln["traction"] = operator.str.contains(traction_operator, case=False, regex=False) \
+        | freq.str.contains(traction_frequency, regex=False)
+    return ln
+
+
+def _line_osm_ids(ln):
+    """The ``osm_id`` column of the lines, or their index as text when there is none."""
+    return ln["osm_id"] if "osm_id" in ln else ln.index.astype(str)
+
+
 def verified_110kv_towers(lines, towers, *, tol_m: float = 1.0, voltage_token: str = "110000",
                           line_power=("line",), tower_power=SUPPORT_TYPES, exclude_traction: bool = True,
                           traction_operator: str = TRACTION_OPERATOR, traction_frequency: str = TRACTION_FREQUENCY):
@@ -49,23 +72,17 @@ def verified_110kv_towers(lines, towers, *, tol_m: float = 1.0, voltage_token: s
     Returns:
         The matching towers with the added columns ``line_osm_id``, ``line_voltage``, ``traction`` and ``line_dist_m``.
     """
+    # lizard forgives: public API, the nine keyword parameters are part of the signature and cannot change
     import geopandas as gpd
 
-    if lines.crs is None or towers.crs is None or lines.crs != towers.crs or not lines.crs.is_projected:
-        raise InvalidInputError("lines and towers must share one projected CRS")
-    sel = (lines["voltage"].fillna("").astype(str).str.contains(voltage_token, regex=False)
-           & lines["power"].isin(line_power))
-    ln = lines[sel].copy()
-    operator = ln["operator"].fillna("").astype(str) if "operator" in ln else ln["power"].astype(str).str.slice(0, 0)
-    freq = ln["frequency"].fillna("").astype(str) if "frequency" in ln else operator.str.slice(0, 0)
-    ln["traction"] = operator.str.contains(traction_operator, case=False, regex=False) \
-        | freq.str.contains(traction_frequency, regex=False)
+    _require_shared_projected_crs(lines, towers)
+    ln = _traction_flagged_lines(lines, voltage_token, line_power, traction_operator, traction_frequency)
     if exclude_traction:
         ln = ln[~ln["traction"]]
     tw = towers[towers["power"].isin(tower_power)]
     if ln.empty or tw.empty:
         return tw.iloc[0:0].assign(line_osm_id=None, line_voltage=None, traction=False, line_dist_m=0.0)
-    right = ln.assign(line_osm_id=ln["osm_id"] if "osm_id" in ln else ln.index.astype(str),
+    right = ln.assign(line_osm_id=_line_osm_ids(ln),
                       line_voltage=ln["voltage"])[["line_osm_id", "line_voltage", "traction", "geometry"]]
     joined = gpd.sjoin_nearest(tw, right, how="inner", max_distance=float(tol_m), distance_col="line_dist_m")
     joined = joined[~joined.index.duplicated(keep="first")].drop(columns="index_right")

@@ -857,6 +857,167 @@ def _partial_wfs_error(message: str, cause: BaseException | None) -> WFSError:
     return WFSError(message)
 
 
+class _ChunkedWFSDownload:
+    """State of one chunked WFS download run by :func:`_load_data_in_parallel`.
+
+    Module globals (``_fetch_wfs_data``, ``_create_grid``, ``MAX_CHUNK_DEPTH``,
+    ...) are looked up at call time, so patching them on the module works.
+    """
+
+    def __init__(self, url, layer, filter_params, mask, srs, allow_partial):
+        self.url = url
+        self.layer = layer
+        self.filter_params = filter_params
+        self.mask = mask
+        self.srs = srs
+        self.allow_partial = allow_partial
+        self.all_gdfs = []
+        self.n_features = 0       # features kept so far (before de-duplication)
+        self.n_requests_ok = 0    # chunk requests that were answered
+        self.holes: list[str] = []  # allow_partial only: one line per request that left a hole
+        self.chunks_to_process = deque()
+        self.processed_chunks = set()
+        self.failed_in_a_row = 0
+
+    def incomplete(self, message: str, cause: BaseException | None = None) -> None:
+        """A request left a hole in the result: fail now, or remember it."""
+        message = (f"{message} Received so far: {self.n_features} features from "
+                   f"{self.n_requests_ok} successful chunk requests.")
+        if not self.allow_partial:
+            raise _partial_wfs_error(
+                f"WFS download of layer '{self.layer}' from {self.url} is incomplete. "
+                f"{message}", cause) from cause
+        logger.warning("WFS download of layer '%s' is incomplete: %s",
+                       self.layer, message)
+        self.holes.append(message)
+
+    def masked_grid(self, bbox):
+        """A 2x2 grid over ``bbox``, filtered by the mask if one is given."""
+        chunks = _create_grid(bbox, 2, 2)
+        if self.mask is not None:
+            chunks = [chunk for chunk in chunks
+                      if _chunk_intersects_mask(chunk, self.mask)]
+        return chunks
+
+    def subdivide(self, chunk_info):
+        """Queue the 2x2 sub-chunks of a chunk one level deeper."""
+        chunk, x_div, y_div, depth = chunk_info
+        sub_chunks = self.masked_grid(chunk)
+        self.chunks_to_process.extend(
+            [(sub_chunk, x_div * 2, y_div * 2, depth + 1)
+             for sub_chunk in sub_chunks]
+        )
+
+    def take_batch(self, max_workers):
+        """Pop the next batch and mark its not yet processed chunks as processed."""
+        # Take a batch of chunks for parallel processing
+        current_batch = [self.chunks_to_process.popleft()
+                         for _ in range(min(max_workers,
+                                            len(self.chunks_to_process)))]
+
+        # Skip any chunks that have been processed before
+        filtered_batch = [
+            chunk_info for chunk_info in current_batch
+            if _chunk_to_key(chunk_info[0]) not in self.processed_chunks
+        ]
+
+        # Mark chunks as processed
+        for chunk_info in filtered_batch:
+            self.processed_chunks.add(_chunk_to_key(chunk_info[0]))
+        return filtered_batch
+
+    def submit_batch(self, executor, filtered_batch):
+        """Submit one request per chunk; map each future to its chunk info."""
+        future_to_chunk_info = {}
+        for chunk_info in filtered_batch:
+            chunk = chunk_info[0]
+            future = executor.submit(_fetch_wfs_data, self.url, self.layer,
+                                     chunk, self.filter_params, self.srs)
+            future_to_chunk_info[future] = chunk_info
+        return future_to_chunk_info
+
+    def handle_future(self, future, chunk_info):
+        """Collect one finished chunk request."""
+        try:
+            gdf = future.result()
+        except WFSRequestRejectedError:
+            # The request itself is wrong; smaller chunks cannot help
+            raise
+        except (WFSError, requests.RequestException) as exc:
+            self._on_failure(chunk_info, exc)
+            return
+
+        self.failed_in_a_row = 0
+        self.n_requests_ok += 1
+        self._on_result(gdf, chunk_info)
+
+    def _on_failure(self, chunk_info, exc):
+        """A chunk request failed: give up, leave a hole, or subdivide."""
+        chunk, depth, srs = chunk_info[0], chunk_info[3], self.srs
+        self.failed_in_a_row += 1
+        if self.failed_in_a_row > MAX_CONSECUTIVE_CHUNK_FAILURES:
+            self.incomplete(
+                f"{self.failed_in_a_row} chunk requests failed in a row; "
+                f"giving up. Last failed request: chunk {chunk} "
+                f"({srs}): {exc}", exc)
+            self.chunks_to_process.clear()
+        # Guard: don't subdivide on error if depth exceeded
+        elif depth >= MAX_CHUNK_DEPTH:
+            self.incomplete(
+                f"Request for chunk {chunk} ({srs}) failed and the "
+                f"maximum subdivision depth {MAX_CHUNK_DEPTH} is "
+                f"reached: {exc}", exc)
+        # Guard: don't subdivide on error if chunk is too small
+        elif _chunk_area(chunk) < MIN_CHUNK_AREA:
+            self.incomplete(
+                f"Request for chunk {chunk} ({srs}) failed and its "
+                f"area ({_chunk_area(chunk):.2e}) is below the "
+                f"minimum ({MIN_CHUNK_AREA:.2e}): {exc}", exc)
+        else:
+            # If a chunk fails, try to subdivide it
+            self.subdivide(chunk_info)
+
+    def _on_result(self, gdf, chunk_info):
+        """A chunk request was answered: keep its features, split if truncated."""
+        if gdf is None or gdf.empty:
+            return
+
+        # Apply mask if provided
+        if self.mask is not None:
+            gdf = _clip_data_by_mask(gdf, self.mask)
+            if gdf.empty:
+                return
+
+        # Add successful results
+        self.all_gdfs.append(gdf)
+        self.n_features += len(gdf)
+
+        # Check if we likely hit a feature limit
+        if len(gdf) in (10_000, 100_000, 1_000, 5_000, 50_000):
+            self._on_feature_limit(len(gdf), chunk_info)
+
+    def _on_feature_limit(self, n_rows, chunk_info):
+        """A chunk returned a typical server limit: leave a hole or subdivide."""
+        chunk, depth, srs = chunk_info[0], chunk_info[3], self.srs
+        # Guard: stop subdividing if max depth reached
+        if depth >= MAX_CHUNK_DEPTH:
+            self.incomplete(
+                f"Chunk {chunk} ({srs}) returned exactly {n_rows} "
+                f"features at the maximum subdivision depth "
+                f"{MAX_CHUNK_DEPTH}; the server's feature limit "
+                f"probably truncates it.")
+        # Guard: stop subdividing if chunk is too small
+        elif _chunk_area(chunk) < MIN_CHUNK_AREA:
+            self.incomplete(
+                f"Chunk {chunk} ({srs}) returned exactly {n_rows} "
+                f"features and its area ({_chunk_area(chunk):.2e}) "
+                f"is below the minimum ({MIN_CHUNK_AREA:.2e}); the "
+                f"server's feature limit probably truncates it.")
+        else:
+            # Create subchunks and add them to the queue
+            self.subdivide(chunk_info)
+
+
 def _load_data_in_parallel(
         url: str,
         layer: str,
@@ -867,7 +1028,6 @@ def _load_data_in_parallel(
         srs: str = 'EPSG:25832',
         allow_partial: bool = False
 ) -> gpd.GeoDataFrame | None:
-    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     """
     Load WFS data in chunks using parallel processing.
 
@@ -909,32 +1069,9 @@ def _load_data_in_parallel(
         WFSRequestRejectedError: If the server rejects a request as invalid.
         WFSError: If the download is incomplete and ``allow_partial`` is False.
     """
-    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    all_gdfs = []
-    n_features = 0       # features kept so far (before de-duplication)
-    n_requests_ok = 0    # chunk requests that were answered
-    holes: list[str] = []  # allow_partial only: one line per request that left a hole
+    run = _ChunkedWFSDownload(url, layer, filter_params, mask, srs, allow_partial)
 
-    def incomplete(message: str, cause: BaseException | None = None) -> None:
-        """A request left a hole in the result: fail now, or remember it."""
-        message = (f"{message} Received so far: {n_features} features from "
-                   f"{n_requests_ok} successful chunk requests.")
-        if not allow_partial:
-            raise _partial_wfs_error(
-                f"WFS download of layer '{layer}' from {url} is incomplete. "
-                f"{message}", cause) from cause
-        logger.warning("WFS download of layer '%s' is incomplete: %s", layer, message)
-        holes.append(message)
-
-    # Start with a 2x2 grid of chunks
-    initial_chunks = _create_grid(bbox, 2, 2)
-
-    # Filter chunks by mask if provided
-    if mask is not None:
-        initial_chunks = [chunk for chunk in initial_chunks
-                          if _chunk_intersects_mask(chunk, mask)]
-
-    # Track chunks to process and processed chunks
+    # Start with a 2x2 grid of chunks (filtered by mask if provided).
     # Each entry is (chunk_bbox, x_div, y_div, depth)
     # A deque, not a list: the batch is taken from the FRONT on every
     # iteration, and slicing a list to do that copies the whole queue each
@@ -942,153 +1079,31 @@ def _load_data_in_parallel(
     # to sum(4**d for d in 0..8) = 87 381 chunks; at max_workers=1 the list
     # version rebuilt that queue once per chunk -- O(n^2), ~3.8e9 element
     # copies, which reads as a hang rather than a slow call.
-    chunks_to_process = deque((chunk, 2, 2, 0) for chunk in initial_chunks)
-    processed_chunks = set()
-    failed_in_a_row = 0
+    run.chunks_to_process = deque((chunk, 2, 2, 0)
+                                  for chunk in run.masked_grid(bbox))
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        while chunks_to_process:
-            # Take a batch of chunks for parallel processing
-            current_batch = [chunks_to_process.popleft()
-                             for _ in range(min(max_workers,
-                                                len(chunks_to_process)))]
-
-            # Skip any chunks that have been processed before
-            filtered_batch = [
-                chunk_info for chunk_info in current_batch
-                if _chunk_to_key(chunk_info[0]) not in processed_chunks
-            ]
-
+        while run.chunks_to_process:
+            filtered_batch = run.take_batch(max_workers)
             if not filtered_batch:
                 continue
 
-            # Mark chunks as processed
-            for chunk_info in filtered_batch:
-                processed_chunks.add(_chunk_to_key(chunk_info[0]))
-
-            # Create a dictionary mapping futures to their chunk info
-            future_to_chunk_info = {}
-            for chunk_info in filtered_batch:
-                chunk = chunk_info[0]
-                future = executor.submit(_fetch_wfs_data, url, layer,
-                                         chunk, filter_params, srs)
-                future_to_chunk_info[future] = chunk_info
+            future_to_chunk_info = run.submit_batch(executor, filtered_batch)
 
             # Process results as they complete
             for future in concurrent.futures.as_completed(future_to_chunk_info):
-                chunk_info = future_to_chunk_info[future]
-                chunk, x_div, y_div, depth = chunk_info
+                run.handle_future(future, future_to_chunk_info[future])
 
-                try:
-                    gdf = future.result()
-                except WFSRequestRejectedError:
-                    # The request itself is wrong; smaller chunks cannot help
-                    raise
-                except (WFSError, requests.RequestException) as exc:
-                    failed_in_a_row += 1
-                    if failed_in_a_row > MAX_CONSECUTIVE_CHUNK_FAILURES:
-                        incomplete(
-                            f"{failed_in_a_row} chunk requests failed in a row; "
-                            f"giving up. Last failed request: chunk {chunk} "
-                            f"({srs}): {exc}", exc)
-                        chunks_to_process.clear()
-                        continue
-
-                    # Guard: don't subdivide on error if depth exceeded
-                    if depth >= MAX_CHUNK_DEPTH:
-                        incomplete(
-                            f"Request for chunk {chunk} ({srs}) failed and the "
-                            f"maximum subdivision depth {MAX_CHUNK_DEPTH} is "
-                            f"reached: {exc}", exc)
-                        continue
-
-                    # Guard: don't subdivide on error if chunk is too small
-                    if _chunk_area(chunk) < MIN_CHUNK_AREA:
-                        incomplete(
-                            f"Request for chunk {chunk} ({srs}) failed and its "
-                            f"area ({_chunk_area(chunk):.2e}) is below the "
-                            f"minimum ({MIN_CHUNK_AREA:.2e}): {exc}", exc)
-                        continue
-
-                    # If a chunk fails, try to subdivide it
-                    sub_chunks = _create_grid(chunk, 2, 2)
-
-                    # Filter sub-chunks by mask if provided
-                    if mask is not None:
-                        sub_chunks = [
-                            sub_chunk for sub_chunk in sub_chunks
-                            if _chunk_intersects_mask(sub_chunk, mask)
-                        ]
-
-                    chunks_to_process.extend(
-                        [(sub_chunk, x_div * 2, y_div * 2, depth + 1)
-                         for sub_chunk in sub_chunks]
-                    )
-                    continue
-
-                failed_in_a_row = 0
-                n_requests_ok += 1
-
-                if gdf is None or gdf.empty:
-                    continue
-
-                # Apply mask if provided
-                if mask is not None:
-                    gdf = _clip_data_by_mask(gdf, mask)
-                    if gdf.empty:
-                        continue
-
-                # Add successful results
-                all_gdfs.append(gdf)
-                n_features += len(gdf)
-
-                # Check if we likely hit a feature limit
-                if len(gdf) in (10_000, 100_000, 1_000, 5_000, 50_000):
-                    # Guard: stop subdividing if max depth reached
-                    if depth >= MAX_CHUNK_DEPTH:
-                        incomplete(
-                            f"Chunk {chunk} ({srs}) returned exactly {len(gdf)} "
-                            f"features at the maximum subdivision depth "
-                            f"{MAX_CHUNK_DEPTH}; the server's feature limit "
-                            f"probably truncates it.")
-                        continue
-
-                    # Guard: stop subdividing if chunk is too small
-                    if _chunk_area(chunk) < MIN_CHUNK_AREA:
-                        incomplete(
-                            f"Chunk {chunk} ({srs}) returned exactly {len(gdf)} "
-                            f"features and its area ({_chunk_area(chunk):.2e}) "
-                            f"is below the minimum ({MIN_CHUNK_AREA:.2e}); the "
-                            f"server's feature limit probably truncates it.")
-                        continue
-
-                    # Create subchunks
-                    new_x_div, new_y_div = x_div * 2, y_div * 2
-                    sub_chunks = _create_grid(chunk, 2, 2)
-
-                    # Filter sub-chunks by mask if provided
-                    if mask is not None:
-                        sub_chunks = [
-                            sub_chunk for sub_chunk in sub_chunks
-                            if _chunk_intersects_mask(sub_chunk, mask)
-                        ]
-
-                    # Add new sub-chunks to queue
-                    chunks_to_process.extend(
-                        [(sub_chunk, new_x_div, new_y_div, depth + 1)
-                         for sub_chunk in sub_chunks]
-                    )
-
-    if holes:
+    if run.holes:
         warnings.warn(
             f"WFS download of layer '{layer}' from {url} is PARTIAL "
-            f"(allow_partial=True): {n_features} features from "
-            f"{n_requests_ok} successful chunk requests; {len(holes)} request(s) "
-            f"left a hole. First: {holes[0]}",
+            f"(allow_partial=True): {run.n_features} features from "
+            f"{run.n_requests_ok} successful chunk requests; {len(run.holes)} "
+            f"request(s) left a hole. First: {run.holes[0]}",
             UserWarning, stacklevel=2)
 
     # Combine all collected data
-    return _combine_geodataframes(all_gdfs)
+    return _combine_geodataframes(run.all_gdfs)
 
 
 def _chunk_to_key(chunk: tuple[float, float, float, float]) -> str:

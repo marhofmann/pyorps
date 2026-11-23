@@ -171,8 +171,6 @@ def grow_window(inside: np.ndarray, *, margin_cells: int, cap_cells: int,
         return WindowGrowth(cur, False, True,
                             f"{regrowths} regrowth(s) used, at most "
                             f"{max_regrowths} allowed", n, regrowths)
-    grown = cur.copy()
-    rows, cols = cur.shape
     # square dilation, separable: rows then columns
     k = int(margin_cells)
     tmp = cur.copy()

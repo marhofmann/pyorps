@@ -79,6 +79,69 @@ class BoundAndPruneResult:
     z_ub_history: tuple = field(default_factory=tuple)
 
 
+class _ExactCache:
+    """Memoised exact evaluator that checks admissibility of the bound at every newly evaluated position."""
+
+    def __init__(self, flat: Mapping, exact: Callable[[object, np.ndarray], np.ndarray], eps_adm: float):
+        self.flat = flat
+        self.exact = exact
+        self.eps_adm = eps_adm
+        self.cache: dict = {}
+
+    def _fill(self, b, need: list) -> None:
+        """Evaluate the positions ``need`` of branch ``b`` and store them; refuse an inadmissible bound."""
+        vals = np.asarray(self.exact(b, np.asarray(need, dtype=np.int64)), dtype=np.float64)
+        for i, v in zip(need, vals.tolist()):
+            if self.flat[b][i] - self.eps_adm > v:
+                raise ConsistencyCheckError(f"lower bound not admissible at branch {b!r}, position {i}: "
+                                            f"LB - eps_adm = {self.flat[b][i] - self.eps_adm} > exact {v}")
+            self.cache[(b, i)] = v
+
+    def __call__(self, b, idx) -> np.ndarray:
+        idx = np.asarray(idx, dtype=np.int64)
+        need = [i for i in idx.tolist() if (b, i) not in self.cache]
+        if need:
+            self._fill(b, need)
+        return np.asarray([self.cache[(b, i)] for i in idx.tolist()])
+
+
+def _lower_incumbent(flat: Mapping, ev: _ExactCache, z: float, eps_adm: float, f0_per_branch: int,
+                     f0_passes: int) -> tuple[float, list[float]]:
+    """The F0 loop: price the cheapest-bound positions of every branch to lower ``Z_UB``; returns ``(z, history)``."""
+    history = [z]
+    for _ in range(max(0, f0_passes)):
+        for b, v in flat.items():
+            keep = np.flatnonzero(prune_mask(v, z, eps_adm))
+            if keep.size == 0:
+                continue
+            first = keep[np.argsort(v[keep], kind="stable")[:f0_per_branch]]
+            vals = ev(b, first)
+            if vals.size:
+                z = min(z, float(vals.min()))
+        history.append(z)
+    return z, history
+
+
+def _evaluate_kept(flat: Mapping, ev: _ExactCache, z: float, eps_adm: float) -> tuple:
+    """Price the kept set of every branch exactly; returns ``(kept, total, dropped_min, best, argmin, evaluated)``."""
+    kept, total, dropped_min = {}, {}, math.inf
+    best, argmin = math.inf, None
+    evaluated = []
+    for b, v in flat.items():
+        mask = prune_mask(v, z, eps_adm)
+        idx = np.flatnonzero(mask)
+        kept[b], total[b] = int(idx.size), int(v.size)
+        if (~mask).any():
+            dropped_min = min(dropped_min, float(v[~mask].min()) - eps_adm)
+        if idx.size:
+            vals = ev(b, idx)
+            evaluated.extend((float(x), b, int(i)) for x, i in zip(vals, idx))
+            j = int(np.argmin(vals))
+            if vals[j] < best:
+                best, argmin = float(vals[j]), (b, int(idx[j]))
+    return kept, total, dropped_min, best, argmin, evaluated
+
+
 def bound_and_prune(lb: Mapping, exact: Callable[[object, np.ndarray], np.ndarray], *, z_ub: float, eps_adm: float,
                     eps_E: float = 0.0, f0_per_branch: int = 20, f0_passes: int = 2) -> BoundAndPruneResult:
     """Run the procedure of M4 on bound fields ``lb[b]`` (any shape) and an exact evaluator.
@@ -98,48 +161,9 @@ def bound_and_prune(lb: Mapping, exact: Callable[[object, np.ndarray], np.ndarra
             stop, the plan's phase-G acceptance test.
     """
     flat = {b: np.asarray(v, dtype=np.float64).ravel() for b, v in lb.items()}
-    cache: dict = {}
-
-    def ev(b, idx):
-        idx = np.asarray(idx, dtype=np.int64)
-        need = [i for i in idx.tolist() if (b, i) not in cache]
-        if need:
-            vals = np.asarray(exact(b, np.asarray(need, dtype=np.int64)), dtype=np.float64)
-            for i, v in zip(need, vals.tolist()):
-                if flat[b][i] - eps_adm > v:
-                    raise ConsistencyCheckError(f"lower bound not admissible at branch {b!r}, position {i}: "
-                                                f"LB - eps_adm = {flat[b][i] - eps_adm} > exact {v}")
-                cache[(b, i)] = v
-        return np.asarray([cache[(b, i)] for i in idx.tolist()])
-
-    z = float(z_ub)
-    history = [z]
-    for _ in range(max(0, f0_passes)):
-        for b, v in flat.items():
-            keep = np.flatnonzero(prune_mask(v, z, eps_adm))
-            if keep.size == 0:
-                continue
-            first = keep[np.argsort(v[keep], kind="stable")[:f0_per_branch]]
-            vals = ev(b, first)
-            if vals.size:
-                z = min(z, float(vals.min()))
-        history.append(z)
-
-    kept, total, dropped_min = {}, {}, math.inf
-    best, argmin = math.inf, None
-    evaluated = []
-    for b, v in flat.items():
-        mask = prune_mask(v, z, eps_adm)
-        idx = np.flatnonzero(mask)
-        kept[b], total[b] = int(idx.size), int(v.size)
-        if (~mask).any():
-            dropped_min = min(dropped_min, float(v[~mask].min()) - eps_adm)
-        if idx.size:
-            vals = ev(b, idx)
-            evaluated.extend((float(x), b, int(i)) for x, i in zip(vals, idx))
-            j = int(np.argmin(vals))
-            if vals[j] < best:
-                best, argmin = float(vals[j]), (b, int(idx[j]))
+    ev = _ExactCache(flat, exact, eps_adm)
+    z, history = _lower_incumbent(flat, ev, float(z_ub), eps_adm, f0_per_branch, f0_passes)
+    kept, total, dropped_min, best, argmin, evaluated = _evaluate_kept(flat, ev, z, eps_adm)
     z_star = min(best, z) if best < math.inf else best
     ties = tuple(sorted((b, i) for x, b, i in evaluated if x <= best + eps_adm)) if best < math.inf else ()
     z_lb = min(best - eps_E, dropped_min)

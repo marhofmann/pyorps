@@ -1252,7 +1252,7 @@ def _v5_kernel_source(steps, float_raster, specialize=True):
     head = head.replace(
         sig, "extern \"C\" __global__ __launch_bounds__(512, 1)\nvoid sssp_async_v5(")
     out = conv(head) + body + conv(src[i1:])
-    return out, kind + "-spec-" + hashlib.sha1(out.encode()).hexdigest()[:16]
+    return out, kind + "-spec-" + hashlib.sha1(out.encode(), usedforsecurity=False).hexdigest()[:16]
 
 # Post-pass predecessor validation/repair for V5. The hot-path pred store
 # races concurrent better atomicMin winners: on a multiply-improved vertex
@@ -2118,8 +2118,6 @@ def _ensure_cuda_path():
     import is too late. Instead, we find cudadevrt.lib and directly set
     CuPy's internal cached path variables.
     """
-    import os
-
     import cupy.cuda.compiler as _compiler
 
     # Already resolved

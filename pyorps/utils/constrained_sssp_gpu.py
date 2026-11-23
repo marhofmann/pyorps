@@ -71,6 +71,57 @@ CONSTRAINED_GPU_CHECKED_SETTINGS = (
 )
 
 
+def _positive_setting(name: str, value: float | None, suffix: str = "") -> list[str]:
+    """``[name=value suffix]`` when ``value`` is set and above 0, else an empty list."""
+    if value is not None and value > 0.0:
+        return [f"{name}={value:g}{suffix}"]
+    return []
+
+
+def _changed_setting(name: str, value: float | None, neutral: float) -> list[str]:
+    """``[name=value]`` when ``value`` is set and differs from ``neutral``, else an empty list."""
+    if value is not None and value != neutral:
+        return [f"{name}={value:g}"]
+    return []
+
+
+def _given_setting(name: str, value: float | None, suffix: str) -> list[str]:
+    """``[name=value suffix]`` when ``value`` is set (not None), else an empty list."""
+    if value is not None:
+        return [f"{name}={value:g}{suffix}"]
+    return []
+
+
+def _v4_ignored_settings(dem, obstacle_heights, min_clearance, max_gradient_pct, gradient_scale,
+                         area_offsets, area_offset_starts, area_offset_counts) -> list[str]:
+    """The terrain, clearance and footprint settings that ``raster_gpu_v4`` does not enforce, in report order."""
+    ignored = []
+    if dem is not None:
+        ignored.append("dem (terrain gradient penalty, gradient limit and clearance checks)")
+    if obstacle_heights is not None:
+        ignored.append("obstacle_heights (clearance above obstacles)")
+    ignored += _positive_setting("min_clearance", min_clearance)
+    ignored += _changed_setting("max_gradient_pct", max_gradient_pct, 100.0)
+    ignored += _changed_setting("gradient_scale", gradient_scale, 2.0)
+    if any(a is not None for a in (area_offsets, area_offset_starts, area_offset_counts)):
+        ignored.append("area_offsets (exact tower footprint, tower_area_cost_mode='exact')")
+    return ignored
+
+
+def _bin_grid_ignored_settings(n_span_bins, span_bin_size, max_span) -> list[str]:
+    """The ``max_span`` message when the span bin grid of a v1/v2 kernel reaches past ``max_span``."""
+    if n_span_bins is None or span_bin_size is None or max_span is None:
+        return []
+    tracked = float(n_span_bins) * float(span_bin_size)
+    if not tracked > float(max_span) * (1.0 + 1e-6):
+        return []
+    return [
+        f"max_span={max_span:g} (the kernel only stops a span at n_span_bins * span_bin_size = "
+        f"{n_span_bins} * {span_bin_size:g} = {tracked:g} m, so spans up to that length are accepted; "
+        f"max_span is only enforced when that product equals it - with ConstrainedPathFinder, when "
+        f"max_span_m is a multiple of min_span_m and at least twice min_span_m)"]
+
+
 def constrained_gpu_ignored_settings(
         solver: str,
         *,
@@ -102,40 +153,21 @@ def constrained_gpu_ignored_settings(
     Returns:
         One description per ignored setting; empty when the solver enforces everything that was asked for.
     """
+    # lizard forgives: public API, the keyword parameters are the settings that are checked and cannot change
     if solver not in CONSTRAINED_GPU_SOLVERS:
         raise InvalidInputError(
             f"Unknown constrained GPU solver {solver!r}; expected one of {sorted(CONSTRAINED_GPU_SOLVERS)}")
-    ignored = []
     if solver == "raster_gpu_v4":
-        if dem is not None:
-            ignored.append("dem (terrain gradient penalty, gradient limit and clearance checks)")
-        if obstacle_heights is not None:
-            ignored.append("obstacle_heights (clearance above obstacles)")
-        if min_clearance is not None and min_clearance > 0.0:
-            ignored.append(f"min_clearance={min_clearance:g}")
-        if max_gradient_pct is not None and max_gradient_pct != 100.0:
-            ignored.append(f"max_gradient_pct={max_gradient_pct:g}")
-        if gradient_scale is not None and gradient_scale != 2.0:
-            ignored.append(f"gradient_scale={gradient_scale:g}")
-        if area_offsets is not None or area_offset_starts is not None or area_offset_counts is not None:
-            ignored.append("area_offsets (exact tower footprint, tower_area_cost_mode='exact')")
-    elif n_span_bins is not None and span_bin_size is not None and max_span is not None:
-        tracked = float(n_span_bins) * float(span_bin_size)
-        if tracked > float(max_span) * (1.0 + 1e-6):
-            ignored.append(
-                f"max_span={max_span:g} (the kernel only stops a span at n_span_bins * span_bin_size = "
-                f"{n_span_bins} * {span_bin_size:g} = {tracked:g} m, so spans up to that length are accepted; "
-                f"max_span is only enforced when that product equals it - with ConstrainedPathFinder, when "
-                f"max_span_m is a multiple of min_span_m and at least twice min_span_m)")
-    if target_min_span is not None and target_min_span > 0.0:
-        ignored.append(f"target_min_span={target_min_span:g} (terminal_span_rule='enforce': every end span at "
-                       f"least min_span_m long)")
-    if source_attach_height is not None:
-        ignored.append(f"source_attach_height={source_attach_height:g} (source_connection_height_m: the first "
-                       f"span is checked from that height)")
-    if target_attach_height is not None:
-        ignored.append(f"target_attach_height={target_attach_height:g} (target_connection_height_m: the last "
-                       f"span is checked to that height)")
+        ignored = _v4_ignored_settings(dem, obstacle_heights, min_clearance, max_gradient_pct, gradient_scale,
+                                       area_offsets, area_offset_starts, area_offset_counts)
+    else:
+        ignored = _bin_grid_ignored_settings(n_span_bins, span_bin_size, max_span)
+    ignored += _positive_setting("target_min_span", target_min_span,
+                                 " (terminal_span_rule='enforce': every end span at least min_span_m long)")
+    ignored += _given_setting("source_attach_height", source_attach_height,
+                              " (source_connection_height_m: the first span is checked from that height)")
+    ignored += _given_setting("target_attach_height", target_attach_height,
+                              " (target_connection_height_m: the last span is checked to that height)")
     return ignored
 
 
