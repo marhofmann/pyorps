@@ -85,17 +85,17 @@ BACKENDS: dict[str, Backend] = {b.name: b for b in (
     Backend("cython", "cython", ("dijkstra", "delta-stepping",
                                  "delta-stepping-circular"), "delta-stepping",
             ("pyorps.utils._delta_stepping", "pyorps.utils._dijkstra"),
-            "the compiled search kernels are missing: reinstall pyorps or run "
+            "the compiled search kernels are missing: reinstall pyorps or run " +
             "python setup.py build_ext --inplace",
-            about="Compiled kernels on the raster itself (default, fastest "
+            about="Compiled kernels on the raster itself (default, fastest " +
                   "on the CPU)."),
     Backend("raster_gpu", "raster_gpu (GPU)", ("delta-stepping", "dijkstra"),
             "delta-stepping", ("cupy",), _GPU_HINT, gpu=True,
-            about="Delta-stepping on the NVIDIA GPU (needs CuPy and a CUDA "
+            about="Delta-stepping on the NVIDIA GPU (needs CuPy and a CUDA " +
                   "GPU)."),
     Backend("raster_fim", "raster_fim (GPU)", ("fim", "eikonal", "dijkstra"),
             "fim", ("cupy",), _GPU_HINT, gpu=True,
-            about="Continuous eikonal solver on the NVIDIA GPU (needs CuPy "
+            about="Continuous eikonal solver on the NVIDIA GPU (needs CuPy " +
                   "and a CUDA GPU)."),
     Backend("networkx", "networkx", _LIBRARY_ALGORITHMS, "dijkstra",
             ("networkx",), _GRAPH_HINT,

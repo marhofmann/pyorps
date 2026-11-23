@@ -342,8 +342,8 @@ def _left_out_notices(graph: Any, n_points: int) -> list[dict]:
         return []
     return [_notice(
         "warning", "Some points are not connected",
-        f"Point(s) {', '.join(map(str, left_out))} appear in no connected pair: they are enclosed by forbidden "
-        f"cells, outside the search window, or every route to them runs through another point's region.",
+        f"Point(s) {', '.join(map(str, left_out))} appear in no connected pair: they are enclosed by forbidden " +
+        "cells, outside the search window, or every route to them runs through another point's region.",
         "They are missing from the corridor graph.",
         "Check the cost raster around them, or widen the search buffer under 'Algorithm & search'.")]
 
@@ -360,8 +360,8 @@ def _validation_notices(validation: dict | None) -> list[dict]:
         return []
     return [_notice(
         "warning", "The exact pair costs disagree with the network",
-        f"A pair was priced {abs(validation['min_excess']) * 100:.2f} % below its exact least-cost route, which "
-        f"cannot happen for a real route.", "Treat the pair prices of this graph with care.",
+        f"A pair was priced {abs(validation['min_excess']) * 100:.2f} % below its exact least-cost route, which " +
+        "cannot happen for a real route.", "Treat the pair prices of this graph with care.",
         "Report it together with the raster and the points.")]
 
 

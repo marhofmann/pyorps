@@ -48,8 +48,8 @@ def _coverage_text(state, dataset_id, feature_keys, rows) -> str:
     problems = cost_model.invalid_cost_cells(rows or [], tuple(feature_keys))
     if problems:
         first = problems[0]
-        return (f"⚠ {len(problems)} cost(s) are not numbers (row "
-                f"{first['row']}: '{first['text']}') - coverage is checked "
+        return (f"⚠ {len(problems)} cost(s) are not numbers (row " +
+                f"{first['row']}: '{first['text']}') - coverage is checked " +
                 "once every cost is a number.")
     assumptions = cost_model.assumptions_from_grid_rows(
         rows or [], tuple(feature_keys))
@@ -58,7 +58,7 @@ def _coverage_text(state, dataset_id, feature_keys, rows) -> str:
     if not missing:
         return "✓ every category is covered (or has a \"\" catch-all)."
     shown = ", ".join(missing[:6]) + ("…" if len(missing) > 6 else "")
-    return (f"⚠ {len(missing)} categories without cost → forbidden (F4): "
+    return (f"⚠ {len(missing)} categories without cost → forbidden (F4): " +
             f"{shown}")
 
 

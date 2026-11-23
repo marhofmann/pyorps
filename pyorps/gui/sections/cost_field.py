@@ -90,9 +90,9 @@ TIP_ALGORITHM = ("auto picks the fastest full-field kernel of the backend. dijks
 
 
 def tip_threads() -> str:
-    return ("Worker threads of the parallel CPU kernel (cython backend). 0 = automatic: the library takes three "
-            f"quarters of the cores. Allowed: whole numbers from 0 to {service.max_threads()} threads; every core "
-            "is not offered, because the parallel kernel gets very slow when it uses all of them. "
+    return ("Worker threads of the parallel CPU kernel (cython backend). 0 = automatic: the library takes three " +
+            f"quarters of the cores. Allowed: whole numbers from 0 to {service.max_threads()} threads; every core " +
+            "is not offered, because the parallel kernel gets very slow when it uses all of them. " +
             "Not used by dijkstra or the GPU backends.")
 
 

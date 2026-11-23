@@ -59,21 +59,21 @@ FIELD_SPECS: dict[str, SettingSpec] = {s.key: s for s in (
         help="All control points: sources, waypoints and targets. Sources and targets only: waypoints are left out."),
     SettingSpec(
         "k_per_pair", "Crossings kept per point pair", minimum=1, maximum=5, whole=True, default=1,
-        help="How many of the cheapest crossings between two neighbouring points are kept. The extra crossings are "
+        help="How many of the cheapest crossings between two neighbouring points are kept. The extra crossings are " +
              "usually near-duplicates of the first, so 1 is almost always right."),
     SettingSpec(
         "min_shared_length_m", "Ignore shared runs shorter than", unit="m", minimum=0, maximum=10000, default=0.0,
-        help="Two routes that run side by side for less than this length are not treated as sharing a trench. "
+        help="Two routes that run side by side for less than this length are not treated as sharing a trench. " +
              "0 keeps the construction exact."),
     SettingSpec(
         "max_pair_cost", "Skip pairs costing more than", unit="cost units x m", minimum=0, allow_equal=False,
         default=None, required=False, blank_means="every pair is kept",
-        help="Connections between two points that cost more than this are not built. The cost is the cell value "
-             "times the length in metres (the unit of a section's construction cost: EUR when the raster holds "
+        help="Connections between two points that cost more than this are not built. The cost is the cell value " +
+             "times the length in metres (the unit of a section's construction cost: EUR when the raster holds " +
              "EUR/m). Blank keeps every pair."),
     SettingSpec(
         "validate_pair_costs", "Also compute exact pair costs", kind="bool", default=False,
-        help="Runs one extra least-cost search per point and reports how far the network's pair prices are above "
+        help="Runs one extra least-cost search per point and reports how far the network's pair prices are above " +
              "the exact ones. Slower."),
 )}
 SETTING_KEYS = tuple(FIELD_SPECS)
@@ -454,5 +454,5 @@ def backend_problem(graph_api: Any) -> Problem | None:
     name = str(graph_api or routing.DEFAULT_BACKEND).strip().lower()
     if name == "cython":
         return None
-    return ("graph_api", f"The corridor graph runs on the cython backend only; the Backend field is set to '{name}'. "
-                         f"Choose cython under Backend in 'Algorithm & search'.")
+    return ("graph_api", f"The corridor graph runs on the cython backend only; the Backend field is set to '{name}'. " +
+                         "Choose cython under Backend in 'Algorithm & search'.")

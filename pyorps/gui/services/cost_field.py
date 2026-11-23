@@ -54,7 +54,7 @@ from pyorps.raster.handler import RasterHandler
 from . import errors, geo, routing
 
 # The run half lives in ``cost_field_run``; its public names stay importable from here (same objects).
-from .cost_field_run import (  # noqa: F401
+from .cost_field_run import (  # noqa: F401  # pylint: disable=unused-import
     _TAB,
     FIELD_BACKENDS,
     NODATA,

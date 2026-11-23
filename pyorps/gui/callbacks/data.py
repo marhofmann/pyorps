@@ -42,9 +42,9 @@ def _study_area_info(state) -> str:
     if bounds is None:
         return "No study area drawn."
     minx, miny, maxx, maxy = bounds
-    return (f"Area {abs(maxx - minx) / 1000:.1f} x "
-            f"{abs(maxy - miny) / 1000:.1f} km "
-            f"({state.project_crs}) — bbox ({minx:,.0f}, {miny:,.0f}, "
+    return (f"Area {abs(maxx - minx) / 1000:.1f} x " +
+            f"{abs(maxy - miny) / 1000:.1f} km " +
+            f"({state.project_crs}) — bbox ({minx:,.0f}, {miny:,.0f}, " +
             f"{maxx:,.0f}, {maxy:,.0f})")
 
 

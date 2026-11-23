@@ -36,7 +36,7 @@ from typing import Any
 from shapely.geometry import LineString
 
 from . import cost
-from .routing_backends import (  # noqa: F401  # re-exported: the matrix lives in routing_backends
+from .routing_backends import (  # noqa: F401  # pylint: disable=unused-import  (re-exported: matrix lives there)
     ALGORITHMS,
     BACKENDS,
     CPU_BACKENDS,
@@ -477,7 +477,7 @@ def terrain_length_sentence(lengths) -> str:
         return f"Terrain length {float(terrain):,.0f} m{map_part}."
     shortest = min(float(terrain) for _plain, terrain in known)
     longest = max(float(terrain) for _plain, terrain in known)
-    return (f"Terrain length of the {len(known)} routes {shortest:,.0f} to {longest:,.0f} m "
+    return (f"Terrain length of the {len(known)} routes {shortest:,.0f} to {longest:,.0f} m " +
             "(the map lengths are 2-D).")
 
 

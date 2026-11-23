@@ -59,7 +59,7 @@ from typing import Any
 
 # The data model (constants, specs, normalisation, accessors) lives in ``objective_model``; every public name
 # is re-exported here, so ``pyorps.gui.services.objective`` stays the module the rest of the GUI imports.
-from .objective_model import (  # noqa: F401
+from .objective_model import (  # noqa: F401  # pylint: disable=unused-import
     _GRADIENT_CHOICES,
     _GRADIENT_OPTIONAL,
     ADDITIVE_SHAPES,
@@ -126,17 +126,17 @@ def _terrain_backend_issue(graph_api: str, algorithm: str) -> tuple[str, str, st
         reason = ("The raster_fim backend cannot route over a terrain model (DEM): its eikonal solution is " +
                   "continuous, not the discrete least-cost route. Choose cython, a graph library or raster_gpu " +
                   "in the Backend field.")
-        return ("graph_api", "Backend", f"is {graph_api}, which cannot route over a terrain model (DEM): "
+        return ("graph_api", "Backend", f"is {graph_api}, which cannot route over a terrain model (DEM): " +
                 "choose cython, a graph library or raster_gpu", reason)
     if graph_api not in GRADIENT_BACKENDS:
         reason = (f"The {graph_api} backend cannot apply the slope terms of a terrain model (DEM). Choose one of " +
                   f"{', '.join(GRADIENT_BACKENDS)} in the Backend field.")
-        return ("graph_api", "Backend", f"is {graph_api}, which cannot apply the slope terms of a terrain "
+        return ("graph_api", "Backend", f"is {graph_api}, which cannot apply the slope terms of a terrain " +
                 f"model (DEM); allowed: {', '.join(GRADIENT_BACKENDS)}", reason)
     if graph_api == "cython" and str(algorithm).startswith("delta"):
         reason = ("Delta-stepping has no slope terms: with a terrain model (DEM) the cython backend runs " +
                   "Dijkstra only. Choose Dijkstra in the Algorithm field.")
-        return ("algorithm", "Algorithm", f"is {algorithm}, but delta-stepping has no slope terms: with a "
+        return ("algorithm", "Algorithm", f"is {algorithm}, but delta-stepping has no slope terms: with a " +
                 "terrain model (DEM) the cython backend runs Dijkstra only; choose Dijkstra", reason)
     return None
 

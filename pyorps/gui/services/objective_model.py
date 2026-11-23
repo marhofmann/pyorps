@@ -447,7 +447,7 @@ def check_layer_name(name: Any, existing: Iterable[str] = ()) -> str | None:
     if not text:
         return "must not be empty"
     if not LAYER_NAME_PATTERN.match(text):
-        return (f"is {text!r}, which is not allowed: start with a letter and use only letters, digits and "
+        return (f"is {text!r}, which is not allowed: start with a letter and use only letters, digits and " +
                 "underscores (at most 32 characters)")
     if text in RESERVED_LAYER_NAMES:
         return f"is {text!r}, which is reserved ({', '.join(RESERVED_LAYER_NAMES)})"

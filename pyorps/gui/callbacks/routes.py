@@ -313,7 +313,7 @@ def _held_routing_job(state, notices: list):
     if phase is None:
         return None
     if phase == jobs.HELD_RUNNING:
-        return (no_update, "a routing job is already running — press "
+        return (no_update, "a routing job is already running — press " +
                 "⏹ Stop first", no_update, no_update, notices,
                 False, no_update, no_update, no_update)
     if phase == jobs.HELD_HANDOVER:
@@ -505,7 +505,7 @@ def register(app, state) -> None:
         Input(ids.FULL_WINDOW, "value"))
     def buffer_info(buffer_m, draft, full_window):
         if full_window:
-            return ("the whole raster is the search window - exact, but slow "
+            return ("the whole raster is the search window - exact, but slow " +
                     "and memory-hungry on a large raster")
         draft = draft or {}
         sources = [(p["x"], p["y"]) for p in draft.get("sources", [])]
@@ -514,9 +514,9 @@ def register(app, state) -> None:
             return f"routing window: points buffered by {buffer_m} m"
         if sources and targets:
             auto = routing.default_search_buffer(sources, targets)
-            return (f"blank → auto {auto:,.0f} m "
+            return (f"blank → auto {auto:,.0f} m " +
                     "(max(1000, 1.5 x distance) — F1)")
-        return ("blank = max(1000 m, 1.5 x distance); or switch on 'whole "
+        return ("blank = max(1000 m, 1.5 x distance); or switch on 'whole " +
                 "raster'")
 
     @app.callback(

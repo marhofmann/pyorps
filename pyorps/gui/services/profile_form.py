@@ -38,7 +38,7 @@ from pyorps.core.exceptions import InvalidInputError, PyorpsError
 from pyorps.core.infrastructure_profile import InfrastructureProfile
 
 from .errors import Notice
-from .profile_form_checks import (
+from .profile_form_checks import (  # pylint: disable=unused-import  (re-exported names)
     _PROFILE_REQUIRED,
     ANGLE_COLUMNS,
     ANGLE_FUNCTIONS,
@@ -492,7 +492,7 @@ def clearance_status(profile: Any) -> str:
             data.get("conductor_tension_n") is not None,
             data.get("min_clearance_m") is not None)
     if state == "off":
-        return ("Clearance check: off (the profile needs base height, conductor weight, tension and "
+        return ("Clearance check: off (the profile needs base height, conductor weight, tension and " +
                 f"clearance; {CLEARANCE_RUN_NEEDS})")
     missing = ", ".join(n for n, ok in zip(names, have) if not ok)
     return f"Clearance check: off, still missing: {missing} ({CLEARANCE_RUN_NEEDS})"

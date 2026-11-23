@@ -412,8 +412,6 @@ def condition_mask(gdf, column: str | None, operator: str | None, value: Any):
     conditional modifier editor (F5) and the preprocessing-step builder (F4).
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    import pandas as pd
-
     operator = (operator or "all").strip()
     if operator in ("", "all"):
         return None

@@ -73,18 +73,18 @@ FIELD_SPECS: dict[str, FieldSpec] = {s.key: s for s in (
           help="The route may never turn by more than this at a tower. At least the soft limit."),
     _spec("angle_cost_function", "Turn cost shape", kind="select", options=ANGLE_FUNCTIONS,
           default="piecewise", required=True,
-          help="How the cost of a turn grows with the angle: a table (piecewise), "
+          help="How the cost of a turn grows with the angle: a table (piecewise), " +
                "factor times angle (linear) or factor times angle squared (quadratic)."),
     _spec("angle_cost_scale", "Turn cost factor", unit="cost per deg or deg2", minimum=0,
           maximum=1e9, default=1.0, path=("angle_cost_params", "scale"),
-          help="Used for linear and quadratic turn cost only. The turn table is used for "
+          help="Used for linear and quadratic turn cost only. The turn table is used for " +
                "piecewise."),
     _spec("min_span_m", "Shortest span", unit="m", minimum=0, allow_equal=False,
           help="Shortest allowed distance between two towers. Set both spans or neither."),
     _spec("max_span_m", "Longest span", unit="m", minimum=0, allow_equal=False, maximum=5000,
           help="Longest allowed distance between two towers. Set both spans or neither."),
     _spec("span_bin_size_m", "Span step", unit="m", minimum=0, allow_equal=False,
-          help="Resolution of the span search. Needed with spans; keep it at or below the "
+          help="Resolution of the span search. Needed with spans; keep it at or below the " +
                "raster cell size or the search gets slow."),
     _spec("terrain_interpolation", "Between table values", kind="select",
           options=INTERPOLATIONS, default="linear",
@@ -92,11 +92,11 @@ FIELD_SPECS: dict[str, FieldSpec] = {s.key: s for s in (
           help="How foundation cost is read between two raster values of the terrain table."),
     _spec("max_gradient_percent", "Steepest allowed slope", unit="%", minimum=0,
           allow_equal=False, maximum=1000,
-          help="Cells steeper than this are blocked. Blank: the router uses 100 %. "
+          help="Cells steeper than this are blocked. Blank: the router uses 100 %. " +
                "Needs a DEM."),
     _spec("gradient_scale", "Slope penalty factor", unit="", minimum=0, maximum=100,
           default=2.0, path=("gradient_cost_params", "scale"),
-          help="How strongly steeper ground is penalised. The router reads only this value; "
+          help="How strongly steeper ground is penalised. The router reads only this value; " +
                "blank means 2."),
     _spec("tower_height_m", "Base attachment height", unit="m", minimum=0, allow_equal=False,
           maximum=300, help="Lowest conductor attachment height. Part of the clearance check."),
@@ -107,7 +107,7 @@ FIELD_SPECS: dict[str, FieldSpec] = {s.key: s for s in (
           default=0, help="Added to a tower for each 3 m above the lowest height."),
     _spec("terminal_tower_height_m", "Height at the end points", unit="m", minimum=0,
           allow_equal=False, maximum=300,
-          help="Reported only, the search does not use it: the attachment height of the towers at both ends in "
+          help="Reported only, the search does not use it: the attachment height of the towers at both ends in " +
                "the route report. The search uses the connection heights of the Line ends block."),
     _spec("terminal_tower_cost", "Cost of each end tower", unit="EUR", minimum=0, default=0,
           help="Price of one end (dead-end) tower."),
@@ -117,24 +117,24 @@ FIELD_SPECS: dict[str, FieldSpec] = {s.key: s for s in (
     _spec("conductor_tension_n", "Conductor tension", unit="N", minimum=0, allow_equal=False,
           maximum=1e7, help="Horizontal conductor tension. Part of the clearance check."),
     _spec("min_clearance_m", "Ground clearance", unit="m", minimum=0, maximum=100,
-          help="Minimum distance between conductor and ground or obstacles. "
+          help="Minimum distance between conductor and ground or obstacles. " +
                "Part of the clearance check."),
     _spec("tower_ground_area_m2", "Foundation area", unit="m2", minimum=1, maximum=10000,
           default=1, help="Footprint of one tower foundation."),
     _spec("tower_area_cost_mode", "Foundation pricing", kind="select", options=AREA_MODES,
           default="uniform",
-          help="uniform: every cell under the foundation costs like the centre cell. "
+          help="uniform: every cell under the foundation costs like the centre cell. " +
                "exact: the real footprint is summed."),
     _spec("recommended_buffer_m", "Suggested corridor width (info only)", unit="m", minimum=0,
           help="Information only: the router does not read it."),
     # round 17 (P5): the options are the library's four values; the page words them from
     # ``constrained_ends.RULE_LABELS`` (that module imports this one, so the labels cannot be read here)
     _spec("terminal_span_rule", "End-span rule", kind="select", options=TERMINAL_SPAN_RULES, default="remove",
-          help="What happens to an end tower, the first or the last tower of the line next to its connection point, "
-               "when the search placed it closer to the line end than the shortest span: it can be removed "
-               "afterwards (the end span then gets longer), removed only if the line stays valid without it, or kept "
-               "(the end span stays shorter than the shortest span). 'Never place one' makes the search itself "
-               "keep every end span at least as long as the shortest span; it needs the exact search (more memory "
+          help="What happens to an end tower, the first or the last tower of the line next to its connection point, " +
+               "when the search placed it closer to the line end than the shortest span: it can be removed " +
+               "afterwards (the end span then gets longer), removed only if the line stays valid without it, or kept " +
+               "(the end span stays shorter than the shortest span). 'Never place one' makes the search itself " +
+               "keep every end span at least as long as the shortest span; it needs the exact search (more memory " +
                "and time) and a CPU backend. Needs both span limits."),
 )}
 
@@ -179,7 +179,7 @@ TABLE_SPECS: dict[str, TableSpec] = {t.key: t for t in (
          _spec("max_angle_deg", "Largest turn", unit="deg", minimum=0, maximum=180),
          _spec("base_cost", "Base cost", unit="EUR", minimum=0)),
         ("tower_cost_params", "angle_types"),
-        help="Tower type chosen by the turn angle at the tower: the first type whose "
+        help="Tower type chosen by the turn angle at the tower: the first type whose " +
              "largest turn is not exceeded."),
 )}
 

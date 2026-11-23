@@ -2092,8 +2092,8 @@ def _job_status_text(kind: str, job: Any) -> str:
         import importlib
 
         try:
-            # nosemgrep: the names come from the JOB_STATUS_TEXT table above, not from input
-            module = importlib.import_module(f"{__package__}.{target[0]}")
+            # the names come from the JOB_STATUS_TEXT table above, never from input
+            module = importlib.import_module(f"{__package__}.{target[0]}")  # nosemgrep
             function = getattr(module, target[1])
             return function(job)
         except Exception:  # pylint: disable=broad-exception-caught  # a status line must never take the page down

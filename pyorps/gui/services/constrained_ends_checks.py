@@ -81,16 +81,16 @@ class RuleLabel(NamedTuple):
 #: the four values in the library's order, from one table (the page package builds the select from it)
 RULE_LABELS: dict[str, RuleLabel] = {r.value: r for r in (
     RuleLabel("remove", "Remove it (old behaviour; can leave a span above the longest span)",
-              "A tower the search placed closer than the shortest span to a line end is removed afterwards. The "
+              "A tower the search placed closer than the shortest span to a line end is removed afterwards. The " +
               "end span then becomes longer and can end up above the longest span; a warning says so."),
     RuleLabel("remove_if_valid", "Remove it only if every span stays valid",
-              "The tower is removed only when the line stays valid without it (a straight stretch, a span below "
+              "The tower is removed only when the line stays valid without it (a straight stretch, a span below " +
               "the longest span, ground clearance kept); otherwise it is kept and flagged."),
     RuleLabel("keep", "Keep it (the end span may be shorter than the shortest span)",
               "Every tower the search placed is kept. A short end span is flagged in the route's notes."),
     RuleLabel("enforce", "Never place one (end spans at least the shortest span)",
-              "The search itself keeps every end span at least as long as the shortest span, so nothing has to be "
-              "removed or repaired afterwards. It searches on exact span bins (more memory and time than a "
+              "The search itself keeps every end span at least as long as the shortest span, so nothing has to be " +
+              "removed or repaired afterwards. It searches on exact span bins (more memory and time than a " +
               "default run) and works on the CPU backends only."),
 )}
 

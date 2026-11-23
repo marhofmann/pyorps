@@ -139,7 +139,7 @@ def register(app, state) -> None:  # pylint: disable=unused-argument  # uniform 
         if not open_now:
             return False, no_update, no_update
         return (True, logbook.read_log(),
-                f"Saved to {logbook.log_file_path()} "
+                f"Saved to {logbook.log_file_path()} " +
                 f"(kept ~{logbook.BACKUP_DAYS} days).")
 
     @app.callback(Output(ids.NOTICES, "data", allow_duplicate=True),

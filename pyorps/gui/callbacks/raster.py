@@ -993,8 +993,8 @@ def register(app, state) -> None:
                 layer.meta.get("source_path") or layer.tile.source_path,
                 mode, int(number_or_default(classes, 5)), colormap)
             graduated.apply_to_layer(layer, config)
-            return (f"{config['classes']} classes "
-                    f"({graduated.METHODS.get(mode, mode)}) — edit the "
+            return (f"{config['classes']} classes " +
+                    f"({graduated.METHODS.get(mode, mode)}) — edit the " +
                     "class colours in the legend below")
 
         status, notices = guard(_classify, notices=notices)

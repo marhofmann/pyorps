@@ -441,10 +441,10 @@ def _disagreement_note(j, end, start, keep_start, differ) -> str:
     """The sentence of waypoint j whose two reports disagree; ``differ`` is ``(costs_differ, heights_differ)``."""
     costs_differ, heights_differ = differ
     what = "heights and costs" if costs_differ and heights_differ else "costs" if costs_differ else "heights"
-    return (f"Waypoint {j + 1}: its two segments report different {what} for the structure there (segment "
-            f"{j + 1}: {_tower_text(end)}; segment {j + 2}: {_tower_text(start)}). One structure stands there: "
-            f"the dearer one (at equal cost the taller one; here segment {j + 2 if keep_start else j + 1}'s) is "
-            f"kept and its cost is counted once.")
+    return (f"Waypoint {j + 1}: its two segments report different {what} for the structure there (segment " +
+            f"{j + 1}: {_tower_text(end)}; segment {j + 2}: {_tower_text(start)}). One structure stands there: " +
+            f"the dearer one (at equal cost the taller one; here segment {j + 2 if keep_start else j + 1}'s) is " +
+            "kept and its cost is counted once.")
 
 
 def _merge_waypoint_towers(frames, tower_lists, lines):

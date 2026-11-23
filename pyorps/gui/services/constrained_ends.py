@@ -60,7 +60,7 @@ from typing import Any, NamedTuple
 from pyorps.core.exceptions import InvalidInputError
 from pyorps.core.infrastructure_profile import TERMINAL_SPAN_RULES
 
-from .constrained_ends_checks import (  # noqa: F401  (the names this module re-exports are its public API)
+from .constrained_ends_checks import (  # noqa: F401  # pylint: disable=unused-import  (re-exported: public API)
     DEFAULT_RULE,
     DEFAULTS,
     ENFORCE_RULE,
@@ -163,8 +163,8 @@ def _named(settings: Mapping[str, Any], keys: Sequence[str] = HEIGHT_KEYS) -> st
 
 def gpu_reason(backend: str | None) -> str:
     """Why the heights cannot apply with this backend (no GPU solver takes them)."""
-    return (f"The GPU backends ({', '.join(gpu_backends())}) take no connection heights and no end-span rule "
-            f"'{ENFORCE_RULE}': their search has no end-span check. The backend is {backend}: choose a CPU backend "
+    return (f"The GPU backends ({', '.join(gpu_backends())}) take no connection heights and no end-span rule " +
+            f"'{ENFORCE_RULE}': their search has no end-span check. The backend is {backend}: choose a CPU backend " +
             "(cython or cython_parallel) in the Backend field.")
 
 
@@ -318,7 +318,7 @@ def _no_effect_note(settings: Mapping[str, Any], eff: Effect, profile: Any, dem:
     if not set_keys or eff.clearance:
         return None
     reasons = no_effect_reasons(profile, dem)
-    return (f"The {_named(settings, set_keys)} is reported only, the route does not change: "
+    return (f"The {_named(settings, set_keys)} is reported only, the route does not change: " +
             f"{' and '.join(reasons)}. The height is still shown as the height of the end tower.")
 
 
@@ -333,8 +333,8 @@ def _exact_bins_note(eff: Effect) -> str | None:
     """The note of a run that needs exact span bins, or None."""
     if not eff.exact_bins:
         return None
-    return ("This run searches with exact span bins (as short as one step) so that no feasible route is "
-            "hidden: it needs more memory and time than a default run, and the library refuses a window "
+    return ("This run searches with exact span bins (as short as one step) so that no feasible route is " +
+            "hidden: it needs more memory and time than a default run, and the library refuses a window " +
             "whose search would not fit.")
 
 
@@ -357,7 +357,7 @@ def summary(raw: Any) -> str:
     """One line: what the heights make of the run."""
     settings = normalise(raw)
     if is_default(settings):
-        return ("No connection heights are set: the line ends behave as before (the profile's terminal tower "
+        return ("No connection heights are set: the line ends behave as before (the profile's terminal tower " +
                 "height is reported only).")
     return f"Connection heights: {_named(settings)} (metres above the ground at the end point)."
 

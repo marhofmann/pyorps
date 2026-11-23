@@ -78,12 +78,12 @@ class FieldSpec(NamedTuple):
 
 FIELD_SPECS: dict[str, FieldSpec] = {s.key: s for s in (
     FieldSpec("smoothness", "Turn penalty weight", "x profile turn cost", 0.0, WEIGHT_MAXIMUM, True, 1.0,
-              "Multiplies the cost of every bend in the line (the turn cost of the profile). 1 keeps the "
-              "profile as written, 0 makes bends free, 2 makes them twice as expensive. The hard turn limit "
+              "Multiplies the cost of every bend in the line (the turn cost of the profile). 1 keeps the " +
+              "profile as written, 0 makes bends free, 2 makes them twice as expensive. The hard turn limit " +
               "of the profile is never changed."),
     FieldSpec("tower", "Tower cost weight", "x profile tower cost", 0.0, WEIGHT_MAXIMUM, True, 1.0,
-              "Multiplies the cost of every tower (the profile's foundation cost by ground value and its "
-              "tower-type cost by turn angle). 1 keeps the profile as written, 0 makes towers free, 2 makes "
+              "Multiplies the cost of every tower (the profile's foundation cost by ground value and its " +
+              "tower-type cost by turn angle). 1 keeps the profile as written, 0 makes towers free, 2 makes " +
               "them twice as expensive. Towers exist only when the profile sets min_span_m and max_span_m."),
 )}
 
@@ -232,8 +232,8 @@ def _changed_text(settings: Mapping[str, Any]) -> str:
 
 def backend_reason(backend: str | None) -> str:
     """Why the weights cannot apply with this backend (the library runs an objective on ``cython`` only)."""
-    return (f"Objective weights work with the {SUPPORTED_BACKEND} backend only: the parallel and GPU variants "
-            f"do not take them yet. The backend is {backend or SUPPORTED_BACKEND}: choose {SUPPORTED_BACKEND} "
+    return (f"Objective weights work with the {SUPPORTED_BACKEND} backend only: the parallel and GPU variants " +
+            f"do not take them yet. The backend is {backend or SUPPORTED_BACKEND}: choose {SUPPORTED_BACKEND} " +
             "in the Backend field, or press Reset weights.")
 
 

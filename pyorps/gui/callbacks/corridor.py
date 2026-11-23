@@ -120,7 +120,7 @@ def _save(state, path, notices: list[dict], *, overwrite: bool) -> tuple[str, li
         meaning=f"The graph{of_layer} with {sections} trench section{'' if sections == 1 else 's'} was written to "
                 f"{written}.",
         impact=f"The GeoPackage holds the layers {service.SEGMENTS_LAYER} and {service.NODES_LAYER}.").to_dict())
-    return (f"Saved the corridor graph{of_layer} ({sections} trench section{'' if sections == 1 else 's'}) to "
+    return (f"Saved the corridor graph{of_layer} ({sections} trench section{'' if sections == 1 else 's'}) to " +
             f"{written}."), cap_notices(notices)
 
 
