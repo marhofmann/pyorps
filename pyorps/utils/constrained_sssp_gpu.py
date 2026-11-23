@@ -117,9 +117,9 @@ def _bin_grid_ignored_settings(n_span_bins, span_bin_size, max_span) -> list[str
         return []
     return [
         f"max_span={max_span:g} (the kernel only stops a span at n_span_bins * span_bin_size = "
-        f"{n_span_bins} * {span_bin_size:g} = {tracked:g} m, so spans up to that length are accepted; "
-        f"max_span is only enforced when that product equals it - with ConstrainedPathFinder, when "
-        f"max_span_m is a multiple of min_span_m and at least twice min_span_m)"]
+        + f"{n_span_bins} * {span_bin_size:g} = {tracked:g} m, so spans up to that length are accepted; "
+        + "max_span is only enforced when that product equals it - with ConstrainedPathFinder, when "
+        + "max_span_m is a multiple of min_span_m and at least twice min_span_m)"]
 
 
 def constrained_gpu_ignored_settings(
