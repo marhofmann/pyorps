@@ -25,7 +25,6 @@ from pyorps.utils.eikonal_gpu import (
     FINITE_LIMIT,
     _disk_init_values,
     _masked_gradient,
-    _slowness_field,
     polyline_to_cells,
     trace_path,
     trace_paths,

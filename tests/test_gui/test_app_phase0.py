@@ -1,10 +1,10 @@
 """Phase 0 headless-callback tests: app builds, notifications flow works."""
 import json
 
+from conftest import invoke
+
 from pyorps.gui import ids
 from pyorps.gui.services.errors import Notice
-
-from conftest import invoke
 
 
 def test_build_app_has_layout_and_state(app, state):

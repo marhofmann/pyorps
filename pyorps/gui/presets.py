@@ -11,7 +11,7 @@ street-buffer preprocessor.
 from __future__ import annotations
 
 import copy
-from typing import Callable
+from collections.abc import Callable
 
 #: uint16 exclusion sentinel — "forbidden", first-class in the GUI (F11).
 FORBIDDEN = 65535

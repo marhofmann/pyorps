@@ -1,9 +1,14 @@
 import unittest
-from unittest.mock import patch, MagicMock
-import numpy as np
+from unittest.mock import MagicMock, patch
 
-from pyorps.core.exceptions import NoPathFoundError, AlgorithmNotImplementedError
-from pyorps.graph.api.networkit_api import NetworkitAPI
+import numpy as np
+import pytest
+
+# networkit is optional (and has no wheel for macOS before 26): skip this module without it.
+pytest.importorskip("networkit")
+
+from pyorps.core.exceptions import AlgorithmNotImplementedError, NoPathFoundError  # noqa: E402
+from pyorps.graph.api.networkit_api import NetworkitAPI  # noqa: E402
 
 
 class TestNetworkitAPI(unittest.TestCase):
@@ -167,7 +172,8 @@ class TestNetworkitAPI(unittest.TestCase):
             astar_instance.getPath.return_value = [0, 3, 4]
 
             # Create heuristic function and call method
-            heuristic = lambda u, v: abs(u - v)
+            def heuristic(u, v):
+                return abs(u - v)
 
             # Patch _compute_single_path to avoid the actual AStar call
             with patch.object(self.api, '_compute_single_path') as mock_compute:

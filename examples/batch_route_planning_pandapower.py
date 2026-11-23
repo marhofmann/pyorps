@@ -25,8 +25,8 @@ from pathlib import Path as FilePath
 
 import geopandas as gpd
 import numpy as np
-import pandas as pd
 import pandapower as pp
+import pandas as pd
 from rasterio.features import geometry_mask
 from scipy.spatial import Delaunay
 from shapely.geometry import shape
@@ -40,15 +40,15 @@ from pyorps import (
 )
 from pyorps.core.exceptions import NoPathFoundError
 
-
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
 
-NET_JSON = FilePath(
-    "../gis2pp/output/example_2025_eamex/example_2025.json"
-)
-OUTPUT_DIR = FilePath("output/example_2025_eamex/route_planning")
+# All locations are resolved from this file, so the script works from any working directory.
+REPO_ROOT = FilePath(__file__).resolve().parent.parent
+# The grid model comes from the sibling project gis2pp (next to this repository); it is not shipped here.
+NET_JSON = REPO_ROOT.parent / "gis2pp" / "output" / "example_2025_eamex" / "example_2025.json"
+OUTPUT_DIR = REPO_ROOT / "output" / "example_2025_eamex" / "route_planning"
 
 # Optional post-routing LineString simplification. Set to None to disable.
 # When enabled, every routed path is simplified for export but cost and
@@ -69,10 +69,8 @@ GEOMETRY_BUFFER_M = 1.0
 # 20 kV cable + conduits + "ohne Oberfläche" surface) and only on cells that
 # ALKIS has NOT already classified as street / path / square / rail /
 # forbidden (the ALKIS "official" dataset always wins).
-OSM_STREETS_PATH = FilePath(
-    r"<local-path>"
-    r"\Zielnetzplanung\Daten\PYORPS-Routes\open_street_map_streets.geojson"
-)
+# Optional input, not shipped: put an OSM street/path extract at this (git-ignored) location to enable the overlay.
+OSM_STREETS_PATH = REPO_ROOT / "examples" / "data" / "shapes" / "open_street_map_streets.geojson"
 OSM_BUFFER_M = 2.0
 OSM_PATH_COST = 281
 OSM_STREET_PATH_TAGS = frozenset({

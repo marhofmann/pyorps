@@ -14,6 +14,10 @@ bookkeeping (`get_relaxation_stats`) and a capacity hook
 import numpy as np
 import pytest
 
+# The referee re-prices a path in float64 from the raster alone, independently
+# of the compiled kernels (tests/exactness_referee.py, plan item 0.5); its
+# own arithmetic is pinned by tests/test_exactness_referee.py.
+from exactness_referee import EdgeModel, reprice_path
 from pyorps.utils._delta_stepping import (
     delta_stepping_2d,
     delta_stepping_2d_persistent,
@@ -23,11 +27,6 @@ from pyorps.utils._delta_stepping import (
     set_relaxation_buffer_capacity,
 )
 from pyorps.utils._dijkstra import dijkstra_2d_cython
-
-# The referee re-prices a path in float64 from the raster alone, independently
-# of the compiled kernels (tests/exactness_referee.py, plan item 0.5); its
-# own arithmetic is pinned by tests/test_exactness_referee.py.
-from exactness_referee import EdgeModel, reprice_path
 
 STEPS_8 = np.array([
     [0, 1], [0, -1], [1, 0], [-1, 0],

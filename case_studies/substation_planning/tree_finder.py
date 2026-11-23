@@ -1,9 +1,9 @@
+import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
 import pandapower as pp
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from check_tree_topologies import get_line_gdf, print_result_summary, net_valid
+from check_tree_topologies import get_line_gdf, net_valid
 
 
 def create_nk_graph(net, line_param=None, respect_switches=True):
@@ -150,7 +150,6 @@ def find_topology(net, slack=None, plot=False, max_line_loading=50, max_slack_li
         slack = net.ext_grid.bus.values[0]
 
     slack_lines = net.line.loc[((net.line.from_bus == slack) | (net.line.to_bus == slack))].index.values
-    edge_lkp = dict(zip(net.line.index.values, zip(net.line.from_bus.values, net.line.to_bus.values)))
 
     line_lkp = dict(zip(zip(net.line.from_bus.values, net.line.to_bus.values), net.line.index.values))
     line_lkp.update(dict(zip(zip(net.line.to_bus.values, net.line.from_bus.values), net.line.index.values)))
@@ -269,7 +268,7 @@ def find_topology(net, slack=None, plot=False, max_line_loading=50, max_slack_li
     lines = get_line_gdf(net)
     ax = lines.plot(column="loading_percent", legend=True, cmap="jet", figsize=(13, 8),
                     legend_kwds={'label': "Line loading in %"})
-    ax.set_title(f"Result")
+    ax.set_title("Result")
     plt.tight_layout()
     #plt.savefig(f"results\my_method_result_05.png", dpi=300)
     plt.pause(5)  # Pause for 1 second
@@ -294,9 +293,9 @@ def topology_valid(net):
 if __name__ == "__main__":
     pd.set_option('display.max_columns', None)
     pd.set_option('display.max_rows', None)
-    net = pp.from_json((r"<local-path>"
+    net = pp.from_json(r"<local-path>"
                    r"\case_studies\substation_planning\substation_planning_pp_grid"
-                        r".json"))
+                        r".json")
 
     find_topology(net, plot=False, max_line_loading=50)
     [print(l) for l in net.line.loc[~net.line.in_service].index.values]

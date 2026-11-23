@@ -34,6 +34,30 @@ def test_tile_layer_serves_png(raster_path, tmp_path):
             shutdown()
 
 
+def test_tile_layer_keeps_no_raster_environment_open(raster_path, tmp_path):
+    """A tile layer must not leave a rasterio environment open in the calling thread.
+
+    Seen on CI (Linux, Python 3.14): the tile client's reader kept one open; when the client was garbage
+    collected inside another raster read, that read failed with "No GDAL environment exists".
+    """
+    import gc
+
+    import rasterio
+    import rasterio.env
+
+    assert not rasterio.env.hasenv(), "something before this test left a rasterio environment open"
+    layer = build_tile_layer(raster_path, name="cost", work_dir=tmp_path)
+    assert not rasterio.env.hasenv()
+    # the failing sequence: the client goes away while a raster read is in progress
+    shutdown = getattr(layer.tile_client, "shutdown", None)
+    if callable(shutdown):
+        shutdown()
+    with rasterio.Env():
+        del layer, shutdown
+        gc.collect()
+        assert rasterio.env.hasenv()
+
+
 def test_numpy_source_requires_crs_and_transform(tmp_path):
     import numpy as np
 

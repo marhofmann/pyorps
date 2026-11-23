@@ -5,8 +5,8 @@
 """Traceback of the cut-state DW and an independent M2 re-pricer of the witness."""
 from __future__ import annotations
 
-from .a_model import INF, popcount, union
 from .a_dp import tm
+from .a_model import INF, popcount, union
 
 
 def traceback(dp):

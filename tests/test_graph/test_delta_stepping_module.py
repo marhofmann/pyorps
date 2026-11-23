@@ -155,9 +155,7 @@ class TestDeltaStepping2DPersistent:
 
     def test_matches_standard_variant(self):
         """Persistent variant should produce same path as standard variant."""
-        from pyorps.utils._delta_stepping import (
-            delta_stepping_2d, delta_stepping_2d_persistent
-        )
+        from pyorps.utils._delta_stepping import delta_stepping_2d, delta_stepping_2d_persistent
 
         raster = np.full((20, 20), 10, dtype=np.uint16)
         # Add some variation
@@ -182,9 +180,7 @@ class TestDeltaSteppingSingleSourceMultipleTargets:
 
     def test_three_targets_uniform_raster(self):
         """Find paths from one source to three targets."""
-        from pyorps.utils._delta_stepping import (
-            delta_stepping_single_source_multiple_targets
-        )
+        from pyorps.utils._delta_stepping import delta_stepping_single_source_multiple_targets
 
         raster = np.full((10, 10), 10, dtype=np.uint16)
         steps = np.array([[0, 1], [0, -1], [1, 0], [-1, 0]], dtype=np.int8)
@@ -203,9 +199,7 @@ class TestDeltaSteppingSingleSourceMultipleTargets:
 
     def test_empty_targets(self):
         """Empty target list should return empty list."""
-        from pyorps.utils._delta_stepping import (
-            delta_stepping_single_source_multiple_targets
-        )
+        from pyorps.utils._delta_stepping import delta_stepping_single_source_multiple_targets
 
         raster = np.full((5, 5), 10, dtype=np.uint16)
         steps = np.array([[0, 1], [0, -1], [1, 0], [-1, 0]], dtype=np.int8)
@@ -218,9 +212,7 @@ class TestDeltaSteppingSingleSourceMultipleTargets:
 
     def test_unreachable_target(self):
         """One reachable, one unreachable target."""
-        from pyorps.utils._delta_stepping import (
-            delta_stepping_single_source_multiple_targets
-        )
+        from pyorps.utils._delta_stepping import delta_stepping_single_source_multiple_targets
 
         raster = np.full((10, 10), 10, dtype=np.uint16)
         raster[:, 5] = 65535  # wall at col 5
@@ -245,9 +237,7 @@ class TestDeltaSteppingSingleSourceMultipleTargetsPersistent:
 
     def test_three_targets(self):
         """Find paths from one source to three targets -- persistent."""
-        from pyorps.utils._delta_stepping import (
-            delta_stepping_single_source_multiple_targets_persistent
-        )
+        from pyorps.utils._delta_stepping import delta_stepping_single_source_multiple_targets_persistent
 
         raster = np.full((10, 10), 10, dtype=np.uint16)
         steps = np.array([[0, 1], [0, -1], [1, 0], [-1, 0]], dtype=np.int8)

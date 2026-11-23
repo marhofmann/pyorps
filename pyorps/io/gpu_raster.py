@@ -16,10 +16,12 @@ Usage:
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
+
+from pyorps.core.exceptions import InputFileNotFoundError, InvalidInputError
 
 
 def save_gpu_raster(
@@ -67,7 +69,7 @@ def save_gpu_raster(
         "nodata": int(nodata) if nodata is not None else None,
         "band_index": band_index,
         "source_path": str(source_path),
-        "created": datetime.now(timezone.utc).isoformat(),
+        "created": datetime.now(UTC).isoformat(),
     }
 
     # Write JSON sidecar
@@ -104,12 +106,12 @@ def load_gpu_raster(
     sidecar_path = Path(str(path) + ".json")
 
     if not sidecar_path.exists():
-        raise FileNotFoundError(
+        raise InputFileNotFoundError(
             f"Sidecar metadata file not found: {sidecar_path}. "
             f"Use save_gpu_raster() to create .gpur files with metadata."
         )
 
-    with open(sidecar_path, "r", encoding="utf-8") as f:
+    with open(sidecar_path, encoding="utf-8") as f:
         metadata = json.load(f)
 
     shape = tuple(metadata["shape"])
@@ -118,7 +120,7 @@ def load_gpu_raster(
     # Validate dtype against allowlist
     _ALLOWED_DTYPES = {"uint16", "float32", "float64"}
     if dtype_str not in _ALLOWED_DTYPES:
-        raise ValueError(
+        raise InvalidInputError(
             f"Unsupported dtype '{dtype_str}' in sidecar metadata. "
             f"Only {sorted(_ALLOWED_DTYPES)} are allowed."
         )
@@ -128,7 +130,7 @@ def load_gpu_raster(
     expected_size = int(np.prod(shape)) * dtype.itemsize
     actual_size = path.stat().st_size
     if actual_size != expected_size:
-        raise ValueError(
+        raise InvalidInputError(
             f"Binary file size mismatch: expected {expected_size} bytes "
             f"(shape={shape}, dtype={dtype}), but file is {actual_size} "
             f"bytes. The .gpur file may be corrupted or the sidecar "

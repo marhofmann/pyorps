@@ -3,8 +3,6 @@ import importlib
 import sys
 import warnings
 
-import pytest
-
 
 def test_webviz_import_warns_deprecation():
     for module in list(sys.modules):

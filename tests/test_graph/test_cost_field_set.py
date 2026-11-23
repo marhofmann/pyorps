@@ -11,7 +11,6 @@ import rasterio
 
 import pyorps
 
-
 CELL = 2.0
 SHAPE = (70, 90)
 
@@ -121,7 +120,7 @@ class TestSpilling:
         keep = tmp_path / "keep"
         finder = _finder(path, terminals)
         with finder.cost_fields(terminals, labels=labels, spill=True,
-                                cache_dir=keep) as fields:
+                                cache_dir=keep):
             pass
         assert sorted(p.name for p in keep.glob("*.npz")) == [
             f"field_{lab}.npz" for lab in sorted(labels)]

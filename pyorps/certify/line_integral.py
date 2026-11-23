@@ -3,7 +3,7 @@
 The search prices a step with the implemented PYORPS rule: the sum of the
 cells it touches (both ends and the intermediates) times
 ``hypot(dr, dc) / (2 + n_int)`` -- a length-weighted MEAN of those cells
-(CIRED 2027 draft, eq. 1). A cable laid along the same polyline actually
+(the step-cost rule of the earlier draft, eq. 1). A cable laid along the same polyline actually
 pays ``integral of c(x) ds``: each cell's value times the length of the
 line inside that cell. The two agree on straight orthogonal runs over a
 uniform raster and differ wherever a diagonal or knight step clips cells

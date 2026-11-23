@@ -79,7 +79,6 @@ def load_wfs_vector(url: str, layer: str, bbox=None, mask=None,
     """Load a WFS layer via pyorps (typed WFS errors surface unchanged)."""
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     from pyorps import initialize_geo_dataset
-
     from pyorps.core.exceptions import WFSResponseParsingError
 
     if mask is not None and not hasattr(mask, "total_bounds"):

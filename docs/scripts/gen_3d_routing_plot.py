@@ -4,8 +4,8 @@ import os
 import sys
 
 import geopandas as gpd
-import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
 from rasterio.windows import from_bounds

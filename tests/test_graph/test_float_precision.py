@@ -15,6 +15,7 @@ from rasterio.transform import from_origin
 from shapely.geometry import Polygon
 
 from pyorps import PathFinder
+from pyorps.core.exceptions import FeatureNotImplementedError
 from pyorps.core.metric_stack import MetricStack
 from pyorps.core.objective import Objective
 
@@ -173,7 +174,9 @@ class TestFloatGradient(unittest.TestCase):
 
 class TestFloatGuards(unittest.TestCase):
     def test_cython_rejected(self):
-        with self.assertRaises(NotImplementedError):
+        # the documented class for "the backend does not support this
+        # combination of settings" (also a NotImplementedError)
+        with self.assertRaisesRegex(FeatureNotImplementedError, "cython"):
             make_finder("float32", graph_api="cython")
 
     def test_requires_objective(self):

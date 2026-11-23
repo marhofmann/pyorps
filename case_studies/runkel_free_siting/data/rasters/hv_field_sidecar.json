@@ -1,0 +1,58 @@
+{
+ "stats": {
+  "cells": 262329324,
+  "connection_points": [
+   0,
+   1,
+   2
+  ],
+  "stand_in_seeds": false,
+  "terminal_rule": "nearest allowed cells within TIE_M, label 0 (no route on forbidden cells)",
+  "tie_m": 1.5,
+  "min_step_cost": 642.0,
+  "gap_to_nearest_allowed_cell_m": {
+   "0": 42.0,
+   "1": 28.861739379323623,
+   "2": 38.01315561749642
+  },
+  "reached_share_of_all_cells": 0.8737624048465127,
+  "dist_max_eur": 12089522.0,
+  "k_max_rigorous": 18834,
+  "rounding_slack_relative": 0.003367781639099121,
+  "per_pcc": {
+   "0": {
+    "reached_share": 0.8737624048465127,
+    "gpu_solve_s_not_a_performance_figure": 19.7
+   },
+   "1": {
+    "reached_share": 0.8737624048465127,
+    "gpu_solve_s_not_a_performance_figure": 17.9
+   },
+   "2": {
+    "reached_share": 0.8737624048465127,
+    "gpu_solve_s_not_a_performance_figure": 19.7
+   }
+  },
+  "gpu_temp_max_c": 81.0,
+  "site_anchors": {
+   "feasible": 37425764,
+   "reached_share": 1.0,
+   "hv_eur_min": 421543.375,
+   "hv_eur_median": 4084890.0,
+   "hv_eur_p95": 7438131.5,
+   "note": "stand-in prices and assumption-tagged inputs: not quotable"
+  },
+  "rounding_rule": "L = d_f (1 - k_max eta), eta = 3 * 2^-24 (corrected 2026-10-08; first version used eta = 2^-24); k_max unchanged"
+ },
+ "grid_epsg25832": [
+  431373,
+  5582217,
+  454875,
+  5593379
+ ],
+ "note": "float32 GPU field of the 110 kV cable leg to the cheapest connection point (a BOUND: multiply by 1 - rounding_slack_relative for a lower bound); argmin = connection point id; cable only; every 5th cell",
+ "inputs_sha256_prefix": {
+  "hv_cost_priced_1m": "70606f1716f5e731",
+  "terminals": "e0be92b5a6e1c6d7"
+ }
+}

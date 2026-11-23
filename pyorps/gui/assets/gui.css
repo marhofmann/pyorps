@@ -200,6 +200,14 @@ small, .small {
 .gui-shell {
     height: 100vh;
     overflow: hidden;
+    /* A positioned shell is the containing block of every absolutely
+       positioned element in the app that has no positioned ancestor of its
+       own, so its overflow:hidden clips them. Without it Bootstrap's
+       .visually-hidden form labels (position:absolute, no offsets) belong to
+       the initial containing block, escape every clip below and make the
+       document taller than the window (Routes tab: scrollHeight 1148 at
+       1440 x 900), and a programmatic scroll then shifts the whole page. */
+    position: relative;
 }
 
 .gui-map-col {
@@ -243,6 +251,9 @@ small, .small {
     overflow-y: auto;
     min-height: 0;
     background: var(--bg);
+    position: relative;         /* contains the .visually-hidden labels: they
+                                   scroll with the tab instead of extending
+                                   the document (see .gui-shell) */
 }
 
 /* the drawer handle floats on the map at the sidebar boundary */
@@ -840,6 +851,17 @@ div[class*="ag-theme-"] {
     border: 1px solid var(--border);
     border-radius: var(--r-sm);
     font-size: 12px;
+}
+/* AG Grid 33+ gives the grid content-visibility:auto, so the browser skips
+   rendering a grid far outside the window. The Routes tab is long now (the
+   routes grid sits ~4000 px down with all cards open): a grid updated while
+   scrolled away keeps its old rendering until it is scrolled into view, so
+   its text (innerText, what tests and scripts read) shows stale rows, and
+   AG Grid keeps rows hidden that wait for a rendered header (ag-delay-render).
+   The sidebar grids are small, so render them always. (body raises the
+   specificity above AG Grid's own rule, which is injected after this file.) */
+body .ag-root-wrapper.ag-layout-normal {
+    content-visibility: visible;
 }
 .ag-header {
     background: var(--surface-2);

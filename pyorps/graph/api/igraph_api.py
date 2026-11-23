@@ -3,8 +3,8 @@ PYORPS: An Open-Source Tool for Automated Power Line Routing
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
-    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
+Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
 
 # Third party
@@ -13,12 +13,14 @@ from numpy import float64, ndarray
 from numpy import max as np_max
 
 # Project files
-from pyorps.core.exceptions import AlgorithmNotImplementedError, NoPathFoundError
+from pyorps.core.exceptions import NoPathFoundError
 from pyorps.core.types import Node, NodeList, NodePathList
 from pyorps.graph.api.graph_library_api import GraphLibraryAPI
 
 
 class IGraphAPI(GraphLibraryAPI):
+    #: Algorithm names shortest_path accepts (any letter case).
+    ALGORITHMS = ("dijkstra", "bellman_ford", "astar")
 
     def create_graph(
             self,
@@ -157,7 +159,7 @@ class IGraphAPI(GraphLibraryAPI):
                                                       output="vpath", mode="all")
 
         else:
-            raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
+            raise self.unsupported_algorithm(algorithm)
 
         if len(path) == 0:
             raise NoPathFoundError(source=source, target=target)
@@ -219,7 +221,7 @@ class IGraphAPI(GraphLibraryAPI):
                     paths.append([])
             return paths
 
-        raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
+        raise self.unsupported_algorithm(algorithm)
 
     def _all_pairs_shortest_path(
             self,

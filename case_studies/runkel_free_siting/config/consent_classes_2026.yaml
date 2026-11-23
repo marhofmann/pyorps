@@ -1,0 +1,84 @@
+# Consent classes of the case study: protected areas are PRICED (owner decision, 2026-10-05).
+#
+# Plan section 2.6 / 3.6: a protected area is not an exclusion but a class k with
+#   - a per-metre price while a trench lies inside it (a multiplier on the cell's trench cost; here the
+#     price of laying the cable by horizontal directional drilling underneath, "HDD"), which is separable
+#     and goes into the priced cost raster, and
+#   - a one-off cost C_k and a procedure time (months) when the design uses the class at all, which the
+#     relax-and-verify consent lattice (`pyorps.certify.rv.consent_lattice`) adds.
+# Status tags as in collector_inputs_2026.yaml: sourced / decided / catalogue / derived / assumption.
+# Every number below is a LOW-confidence stand-in taken from the plan's table (a range's middle), because no
+# primary German source for the permit costs was found; the owner keeps stand-ins and names them in the paper.
+# Hard exclusions remain only for the land-use classes the cost recipe marks forbidden.
+
+meta:
+  date: 2026-10-05
+  decision: "protected areas are priced, not forbidden (owner, 2026-10-05)"
+  flag_bits: "protection_flags_1m.tif: bits 0-5 the six classes below, bits 8-11 the water zone code"
+
+hdd_multiplier:
+  status: catalogue
+  catalogue_key: underground_cable_civil.hdd_mandatory_crossing.multiplier_on_open_cut_total
+  basis: "recommended multiplier on the open-cut cost of a directionally drilled crossing (catalogue, MEDIUM, GB transmission scale)"
+
+classes:
+  nature_reserves:
+    bit: 0
+    treatment: priced
+    per_metre_multiplier: {use: hdd_multiplier, status: assumption, basis: "HDD under the area instead of an open trench"}
+    one_off_eur: {low: 5000, high: 20000, status: assumption, basis: "plan 2.6, NSG: documents 5-20 kEUR (exemption); middle used"}
+    delay_months: {value: 3, status: assumption, basis: "plan 2.6, NSG: at least 3 months"}
+    confidence: LOW
+  landscape_protection:
+    bit: 1
+    treatment: priced
+    per_metre_multiplier: {value: 1.0, status: assumption, basis: "the plan's landscape surcharge of up to 3 compensation points per m2 has no sourced price per point, so it is not priced per metre"}
+    one_off_eur: {low: 1000, high: 5000, status: assumption, basis: "plan 2.6, LSG: permit 1-5 kEUR; middle used"}
+    delay_months: {value: 2, status: assumption, basis: "plan 2.6, LSG: 1-3 months; middle used"}
+    confidence: LOW
+  natura2000_habitats:
+    bit: 2
+    treatment: priced
+    per_metre_multiplier: {use: hdd_multiplier, status: assumption, basis: "plan 2.6: priced as HDD underneath (no habitat loss)"}
+    one_off_eur: {low: 15000, high: 60000, status: assumption, basis: "plan 2.6, Natura 2000: impact assessment (FFH-VP) 15-60 kEUR, surveys not included; middle used"}
+    delay_months: {value: 9, status: assumption, basis: "plan 2.6: 6-12 months including one survey season; middle used"}
+    confidence: LOW
+  bird_protection_areas:
+    bit: 3
+    treatment: priced
+    per_metre_multiplier: {use: hdd_multiplier, status: assumption, basis: "treated like a Natura 2000 habitat area; the plan table has no separate bird-area row"}
+    one_off_eur: {low: 15000, high: 60000, status: assumption, basis: "as the Natura 2000 habitat areas"}
+    delay_months: {value: 9, status: assumption, basis: "as the Natura 2000 habitat areas"}
+    confidence: LOW
+  biotopes_protected:
+    bit: 4
+    treatment: priced
+    per_metre_multiplier: {use: hdd_multiplier, status: assumption, basis: "HDD under the biotope; the plan prices like-for-like compensation per m2 with no sourced unit price"}
+    one_off_eur: {low: 0, high: 0, status: assumption, basis: "plan 2.6, section 30 biotopes: inside the interference permit"}
+    delay_months: {value: 3, status: assumption, basis: "plan 2.6: about 3 months"}
+    confidence: LOW
+  biotope_complexes_protected:
+    bit: 5
+    treatment: priced
+    per_metre_multiplier: {use: hdd_multiplier, status: assumption, basis: "as protected biotopes"}
+    one_off_eur: {low: 0, high: 0, status: assumption, basis: "as protected biotopes"}
+    delay_months: {value: 3, status: assumption, basis: "as protected biotopes"}
+    confidence: LOW
+
+# Drinking-water protection zones: priced by a per-metre multiplier only (no procedure of its own).
+# Codes as in cost_recipe.WATER_ZONE_CODES. Zone I and II are legally near-prohibitive; the owner chose pricing,
+# so they carry the very high CIRED 2026 multipliers and are reported as a sensitivity.
+water_zones:
+  per_metre_multiplier:
+    status: assumption
+    source: "CIRED 2026 script create_raster_for_windfarm_layout.py: multipliers 100, 2, 1.5, 1.2 for four zone steps, mapped here by order to I, II, III, IIIA/IIIB (the mapping of the sub-zones is a guess)"
+    "1": 100.0     # Schutzzone I
+    "2": 2.0       # Schutzzone II
+    "3": 1.5       # Schutzzone III
+    "4": 1.5       # Schutzzone IIIA
+    "5": 1.2       # Schutzzone IIIB
+
+delay_cost:
+  status: assumption
+  value_eur_per_month: 0.0
+  basis: "plan 2.6 expected effect: the delay value V(S) is about 0 for cable and substation designs (it bites on overhead-line planning approval), so no cost per month is charged; the longest procedure time is still reported"

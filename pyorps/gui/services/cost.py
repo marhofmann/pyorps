@@ -10,7 +10,7 @@ to ``Path.total_length`` / ``Path.total_cost``.
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025.
+Automated Power Line Routing', CIRED 2025.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from pyorps.utils.traversal import calculate_path_metrics_numba
 class RouteCost:
     """Cost breakdown of an edited route, in pyorps' native metric units."""
 
-    total_length: float          # path length in CRS units (metres)
+    total_length: float          # path length in CRS units (metres): the MAP length (2-D), also over a DEM
     total_cost: float            # distance-weighted terrain cost (cost x length)
     total_cell_cost: float       # raw sum of raster values along the path
     geodesic_length_m: float     # true geometric length in CRS units (metres)
@@ -35,6 +35,9 @@ class RouteCost:
     n_forbidden_cells: int = 0   # cells at the raster's max/forbidden value
     n_out_of_window: int = 0     # vertices/steps clipped to the raster window
     crosses_forbidden: bool = False
+    #: length along the terrain model (3-D), metres: set by ``routing.route_through_points`` for a route that
+    #: was searched over a DEM, None for every other route (``evaluate_route_cost`` never sets it)
+    terrain_length_m: float | None = None
 
 
 def _bresenham(r0: int, c0: int, r1: int, c1: int) -> list[tuple[int, int]]:

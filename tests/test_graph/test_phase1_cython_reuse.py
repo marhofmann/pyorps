@@ -21,10 +21,10 @@ Requires a rebuild of the cython extensions (``python setup.py build_ext
 import unittest
 
 import numpy as np
+from pyorps.utils._raster_context import py_path_cost_uint32
 
 from pyorps.core.types import IMPASSABLE_CELL_COST
 from pyorps.graph.api.cython_api import EXACT_TERMINATION_MARGIN, CythonAPI
-from pyorps.utils._raster_context import py_path_cost_uint32
 from pyorps.utils.neighborhood import get_neighborhood_steps
 
 ROWS, COLS = 60, 60

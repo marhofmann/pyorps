@@ -6,23 +6,26 @@ on machines without an NVIDIA GPU or CuPy installed.
 """
 
 import unittest
+
 import numpy as np
 
-from pyorps.utils.traversal_gpu import (
-    # The helper is private; this module is its only external caller and the
-    # public name it used to import no longer exists.
-    _intermediate_steps_cpu as intermediate_steps_cpu,
-    prepare_step_lookup_tables,
-    GPU_AVAILABLE,
-)
+from pyorps.utils.neighborhood import get_neighborhood_steps
 
 # Import CPU reference implementations for comparison
 from pyorps.utils.traversal import (
     construct_edges,
-    intermediate_steps_numba,
     get_cost_factor_numba,
+    intermediate_steps_numba,
 )
-from pyorps.utils.neighborhood import get_neighborhood_steps
+from pyorps.utils.traversal_gpu import (
+    GPU_AVAILABLE,
+    prepare_step_lookup_tables,
+)
+from pyorps.utils.traversal_gpu import (
+    # The helper is private; this module is its only external caller and the
+    # public name it used to import no longer exists.
+    _intermediate_steps_cpu as intermediate_steps_cpu,
+)
 
 
 class TestIntermediateStepsCPU(unittest.TestCase):

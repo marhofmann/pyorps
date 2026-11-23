@@ -52,7 +52,11 @@ class TestBackendsWithoutDeviceState:
 
     def test_before_any_graph_is_built(self):
         """Called on a fresh finder there is no backend at all yet."""
-        make_finder("cython").release_device_resources()
+        finder = make_finder("cython")
+        finder.release_device_resources()
+        assert finder._graph_api is None           # nothing was built, nothing is built by the call
+        assert finder._search_sessions == []
+        assert finder.find_route() is not None     # still usable
 
 
 @gpu_only
@@ -83,9 +87,12 @@ class TestGpuBackendReleasesMemory:
 
     def test_release_is_idempotent(self):
         finder = make_finder("raster_gpu", n=400)
-        finder.find_route()
+        first = finder.find_route()
         finder.release_device_resources()
         finder.release_device_resources()          # must not raise
+        second = finder.find_route()
+        assert list(second.path_indices) == list(first.path_indices)
+        assert second.total_cost == first.total_cost
 
     def test_keeping_the_pool_is_available(self):
         """free_pool=False releases the session but keeps blocks cached."""

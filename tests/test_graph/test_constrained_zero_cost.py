@@ -21,7 +21,6 @@ import textwrap
 
 import numpy as np
 import pytest
-
 from pyorps.utils._constrained_delta import (
     constrained_delta_stepping_2d,
     constrained_delta_stepping_height_2d,

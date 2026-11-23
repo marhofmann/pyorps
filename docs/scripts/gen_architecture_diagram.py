@@ -3,7 +3,6 @@
 import os
 
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 
 OUTPUT = os.path.join(
     os.path.dirname(__file__), "../source/_static/generated/architecture_flow.png"
@@ -37,7 +36,7 @@ ax.text(4.5, 5.5, "GeoDataset\n(normalize CRS/resolution)", ha="center", va="cen
         fontsize=11, fontweight="bold", bbox=highlight_style, color="white")
 
 # Arrows from inputs to GeoDataset
-for label, x, y in inputs:
+for _label, x, y in inputs:
     ax.annotate("", xy=(4.5, 5.9), xytext=(x, y - 0.35),
                 arrowprops=dict(arrowstyle="->", color="#7f8c8d", lw=1.5))
 

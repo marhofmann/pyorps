@@ -1,0 +1,61 @@
+# Constraints of the construction access road to the substation pad (plan 2026-10-06-paper-run-pipeline.md,
+# section 8 step 1). Owner decisions 2026-10-06: a heavy-transport road (turbine-component trucks); it ends at
+# the pad only (turbine hardstand roads do not depend on the site and are outside the comparison).
+#
+# Every value carries a `status`, as in collector_inputs_2026.yaml:
+#   sourced     a primary document, quoted in `source`
+#   decided     a user decision
+#   catalogue   read from the cost catalogue at build time (`catalogue_key`)
+#   derived     computed from other values by the formula in `basis`
+#   assumption  NO primary source yet; a stand-in. A certified build refuses while any assumption remains.
+#
+# Cost unit: EUR per metre of road centre line (uint16 in the raster; 65535 = forbidden). Public data only.
+
+meta:
+  date: 2026-10-06
+  note: >-
+    First fill. Prices come from the cost catalogue (section access_roads). Slope limit, clearance width,
+    class rules and slope bands have no primary source yet and are assumptions; research for the heavy-load
+    rules (transport vehicle gradient, curve radius, width) is open. Curve radius is NOT modelled (a raster
+    route cannot carry it); it is a stated limit of the model.
+
+road:
+  use_case:
+    {value: substation_access, status: decided, source: "owner 2026-10-06: heavy-transport road ending at the pad"}
+  width_m:
+    {value: 5.0, status: assumption, source: "catalogue note: turbine-grade road about 5 m; heavy_load_reinforced about 4 m"}
+  new_eur_per_m:
+    {catalogue_key: access_roads.base_rate_eur_per_running_m.heavy_load_reinforced, status: catalogue}
+  simple_track_eur_per_m:
+    {catalogue_key: access_roads.base_rate_eur_per_running_m.simple_agricultural_track, status: catalogue}
+  forest_multiplier:
+    {catalogue_key: access_roads.forest_surcharge_multiplier, status: catalogue}
+  upgrade_eur_per_m:
+    {basis: "new_eur_per_m - simple_track_eur_per_m (an existing track is widened and reinforced)", status: derived}
+  public_road_eur_per_m:
+    {value: 1, status: assumption, source: "existing public road: nearly free, kept above 0 so the field has no ties; must stay below every other class cost (the entry cells are found by this value)"}
+
+terrain:
+  # Along the route: a STEP steeper than g_max is forbidden and the cost of a step is multiplied by its band.
+  # This is the kernel's per-step grade table (pyorps.core.objective.GradientOptions, DEM at 1 m), not a raster.
+  g_max_percent:
+    {value: 10.0, status: assumption, source: "grade limit along the route for loaded heavy transport"}
+  slope_bands:
+    {value: [[0.0, 3.0, 1.00], [3.0, 6.0, 1.15], [6.0, 10.0, 1.40]], status: assumption,
+     source: "cost multiplier for cut and fill by grade band [from %, to %, multiplier]; the last band ends at g_max_percent"}
+  # Across the route: a cell whose ground is steeper than this is forbidden (raster rule; roads follow contours,
+  # so the steepness of the ground itself is not the grade limit).
+  cross_slope_max_percent:
+    {value: 30.0, status: assumption, source: "ground steeper than this cannot take a cut-and-fill road platform"}
+  slope_half_window_cells:
+    {value: 2, status: assumption, source: "ground slope = rise over run across 2 cells each side (4 m baseline) of the 1 m DEM; the single-cell slope is noise"}
+
+# class rules: which land-use class becomes which road case. Pairs are [nutzart, bez]; bez "*" = every sub-class.
+# A class that is listed nowhere is forbidden (conservative, as in the cable recipe).
+classes:
+  status: assumption
+  public_road:   [["Straßenverkehr", "Landstr."], ["Straßenverkehr", "Bundesstr."], ["Straßenverkehr", ""]]
+  track_upgrade: [["Weg", "*"], ["Platz", "*"]]
+  open_new:      [["Landwirtschaft", "*"], ["Heide", "*"], ["Unland/Vegetationslose Fläche", "*"]]
+  forest_new:    [["Wald", "*"], ["Gehölz", "*"]]
+  forbidden:     [["Straßenverkehr", "Autobahn"], ["Bahnverkehr", "*"], ["Fließgewässer", "*"], ["Stehendes Gewässer", "*"]]

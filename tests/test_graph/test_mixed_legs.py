@@ -13,7 +13,7 @@ import heapq
 import numpy as np
 import pytest
 
-from pyorps.certify.windows import drain
+from pyorps.graph.drain import drain
 from pyorps.graph.mixed_legs import mixed_leg_fixpoint
 from pyorps.graph.tower_field import (
     TowerFieldModel,

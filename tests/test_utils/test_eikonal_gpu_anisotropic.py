@@ -38,7 +38,7 @@ try:
 except ImportError:
     GPU = False
 
-from pyorps.utils.eikonal_gpu import (   # noqa: E402
+from pyorps.utils.eikonal_gpu import (  # noqa: E402
     FINITE_LIMIT,
     Q_ACUTE_LIMIT,
     metric_from_dem,
@@ -46,7 +46,7 @@ from pyorps.utils.eikonal_gpu import (   # noqa: E402
 )
 
 if GPU:
-    from pyorps.utils.eikonal_gpu import (   # noqa: E402
+    from pyorps.utils.eikonal_gpu import (  # noqa: E402
         eikonal_raster_gpu,
         eikonal_raster_gpu_naive,
         trace_paths_gpu,

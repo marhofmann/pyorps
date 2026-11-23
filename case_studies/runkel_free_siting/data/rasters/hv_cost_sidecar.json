@@ -1,0 +1,70 @@
+{
+ "constraints": {
+  "file": "hv_leg_constraints_2026.yaml",
+  "sha256": "2755e2769c040a7375c3354237ded1d3188b17ddc4c0116ca5627c80efb4a156",
+  "catalogue_sha256": "7ed3f86a72f692d897bbb1f0f671cd52c53ee91b8cc709452cd0a63edfca413b",
+  "loss_inputs_sha256": "e9f2c4c0e870dce8abd2a3533d335de38d904193b4cc6109dd068d9abb8cf5ac",
+  "omega": 0.39055199859127193,
+  "cores": 3,
+  "section_mm2": 240,
+  "rho_eur_per_m": 468.1250063216555,
+  "sections": {
+   "240": {
+    "material": 417.1655995773816,
+    "loss": 50.9594067442739,
+    "total": 468.1250063216555
+   },
+   "300": {
+    "material": 458.88215953511974,
+    "loss": 42.04151056402596,
+    "total": 500.9236700991457
+   },
+   "400": {
+    "material": 542.3152794505961,
+    "loss": 32.80511809162631,
+    "total": 575.1203975422225
+   },
+   "500": {
+    "material": 625.7483993660724,
+    "loss": 25.79819966428866,
+    "total": 651.546599030361
+   },
+   "630": {
+    "material": 730.0397992604178,
+    "loss": 20.383762697709557,
+    "total": 750.4235619581274
+   }
+  },
+  "trench_raster": "cost_priced_1m",
+  "priced_at_zero": [
+   "joints",
+   "cross_bonding",
+   "easement",
+   "fibre",
+   "dielectric_loss"
+  ],
+  "assumptions": [
+   "cable.ampacity_ok",
+   "cable.unpriced_per_metre_items",
+   "route.mode"
+  ]
+ },
+ "grid_epsg25832": [
+  431373,
+  5582217,
+  454875,
+  5593379
+ ],
+ "note": "built from cost_priced_1m: (1 + omega) c + rho, omega 0.3906, rho 468.1 EUR/m (240 mm2, 3 cores + capitalised losses from W(all)); forbidden cells equal the trench raster's; no weight below its trench rate; free-cell weight 642..65534 EUR/m over 229399386 cells; 1486 cells capped at 65534 (already capped in the trench raster); priced at zero: joints, cross_bonding, easement, fibre, dielectric_loss",
+ "inputs_sha256_prefix": {
+  "cost_priced_1m": "d33dc2f2729c25c1"
+ },
+ "limits": [
+  "one circuit, no trench sharing",
+  "cable field only: overhead and mixed legs are a separate bound",
+  "joints, cross-bonding, easement, fibre and dielectric loss priced at zero (no catalogue keys)",
+  "cells whose weight exceeds 65534 EUR/m are capped there (protected-area pricing in the trench raster is already capped)",
+  "the HDD multiplier of the consent model acts on the trench part only",
+  "the section's ampacity is assumed"
+ ]
+}

@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import math
 import os
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from .errors import Notice
 
@@ -78,7 +79,7 @@ def estimate_raster_size(bounds: tuple[float, float, float, float] | None,
     n_cells = width * height
     itemsize = np.dtype(dtype).itemsize
     n_bytes = n_cells * itemsize
-    label = (f"{width:,} x {height:,} = {n_cells:,} cells "
+    label = (f"{width:,} x {height:,} = {n_cells:,} cells " +
              f"(~{n_bytes / 1e6:,.0f} MB as {dtype})")
     return {"n_cells": n_cells, "bytes": n_bytes, "mb": n_bytes / 1e6,
             "label": label, "width": width, "height": height}

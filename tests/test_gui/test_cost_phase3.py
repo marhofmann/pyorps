@@ -1,16 +1,14 @@
 """Phase 3: cost-model editor + rasterization (R3, R5, F4/F11/F12)."""
-import json
 
 import geopandas as gpd
 import numpy as np
 import pytest
 import rasterio
+from conftest import invoke
 from shapely.geometry import Polygon
 
 from pyorps.gui import ids
 from pyorps.gui.services import cost_model, rasterize
-
-from conftest import invoke
 
 CRS = "EPSG:25832"
 
@@ -233,10 +231,11 @@ def test_rasterize_callback_end_to_end(app, state, loaded_state):
     grid_state = {"dataset_id": loaded_state.id,
                   "feature_keys": list(keys)}
     resp = invoke(
-        app, (f"{ids.RASTERIZE_LOG}.children", ids.RASTERIZE_BTN),
+        app, (f"{ids.RASTERIZE_LOG}.children", ids.GO_RASTERIZE),
         1, rows, grid_state, [], "none", 10, 4, 2, [],
         1.0, 65535, "uint16", 0, None, "viridis", [], "", "current",
-        triggered=[f"{ids.RASTERIZE_BTN}.n_clicks"])
+        False, False, "warn", False,
+        triggered=[f"{ids.GO_RASTERIZE}.data"])
     log = resp[ids.RASTERIZE_LOG]["children"]
     assert "base raster" in log and "saved" in log
     rasters = state.layers_of_kind("raster")
@@ -246,9 +245,10 @@ def test_rasterize_callback_end_to_end(app, state, loaded_state):
 
 def test_rasterize_without_table_warns(app, state):
     resp = invoke(
-        app, (f"{ids.RASTERIZE_LOG}.children", ids.RASTERIZE_BTN),
+        app, (f"{ids.RASTERIZE_LOG}.children", ids.GO_RASTERIZE),
         1, [], {}, [], "none", 10, 4, 2, [],
         1.0, 65535, "uint16", 0, None, "viridis", [], "", "current",
-        triggered=[f"{ids.RASTERIZE_BTN}.n_clicks"])
+        False, False, "warn", False,
+        triggered=[f"{ids.GO_RASTERIZE}.data"])
     assert resp[ids.NOTICES]["data"][-1]["title"] == \
         "Seed a cost table first"

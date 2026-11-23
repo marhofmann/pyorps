@@ -1,7 +1,6 @@
 
 from substation_planning import *
 
-
 if "__main__" == __name__:
     raster_path = r"<local-path>"
     source_path = r"<local-path>"

@@ -408,8 +408,7 @@ class TestMetaAndEdgeCases:
 
     def test_legacy_rounding_is_two_ulps(self):
         """m2: the reviewer's counter-example to the old 1.5 ulp."""
-        from pyorps.graph.search_session import (_nudge, _nudge_ulps,
-                                                 _raw_error_bound)
+        from pyorps.graph.search_session import _nudge, _nudge_ulps, _raw_error_bound
         label, cell = 2096785.9374999874, 1.0001707673072695
         stored = np.array([np.float32(label) * np.float32(cell)],
                           dtype=np.float32)
@@ -422,8 +421,7 @@ class TestMetaAndEdgeCases:
     def test_float32_overflow_stays_finite(self):
         """m3: a finite label past float32's range is clamped, and the
         bound then says it is unbounded rather than lying."""
-        from pyorps.graph.search_session import (_raw_error_bound,
-                                                 _store_labels)
+        from pyorps.graph.search_session import _raw_error_bound, _store_labels
         out = _store_labels(np.array([1.0, 1e39, np.inf]), 1.0, "float32")
         assert np.isfinite(out[1]) and out[1] == np.finfo(np.float32).max
         assert np.isinf(out[2])

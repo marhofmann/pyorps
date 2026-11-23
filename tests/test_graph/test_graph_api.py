@@ -1,4 +1,5 @@
 import unittest
+
 import numpy as np
 
 from pyorps.graph.api.graph_api import GraphAPI

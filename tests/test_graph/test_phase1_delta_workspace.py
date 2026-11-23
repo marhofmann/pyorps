@@ -20,7 +20,6 @@ the extra `workspace` parameter only exist in the rebuilt extension.
 
 import numpy as np
 import pytest
-
 from pyorps.utils._delta_stepping import (
     DeltaWorkspace,
     delta_stepping_2d,

@@ -1,11 +1,10 @@
 """Phase 7: constrained overhead-line routing (R13, F9/F10, Section 20)."""
 import numpy as np
 import pytest
+from conftest import invoke
 
 from pyorps.gui import ids
 from pyorps.gui.services import constrained
-
-from conftest import invoke
 
 MINI_PROFILE = {
     "soft_angle_limit_deg": 20.0,
@@ -64,8 +63,8 @@ def test_unconstrained_run_defers_when_constrained_on(app, state):
 
     with pytest.raises(PreventUpdate):
         invoke(app, (f"{ids.ROUTING_STATUS}.children", ids.RUN_ROUTING_BTN),
-               1, True, _ohl_draft(), None, "dijkstra", "cpu", "r1", 80, True,
-               False, False, 1.0, 100, 0, False, [], [],
+               1, True, _ohl_draft(), None, "dijkstra",
+               None, 1, 80, False, True, False, False, 1.0, 100, 0, None, [], [],
                triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
 
 
@@ -80,7 +79,7 @@ def test_ohl_waypoint_forces_tower(app, state, ohl_raster):
     draft["waypoints"] = [{"lat": 0, "lng": 0, "x": 50.0, "y": 50.0}]
     invoke(app, (f"{ids.OHL_STATUS}.children", ids.RUN_ROUTING_BTN),
            1, True, draft, raster_layer.id, yaml.safe_dump(MINI_PROFILE),
-           "cython", False, "r1", 100, None, None, [], [],
+           "cython", False, 1, 100, None, None, [], [],
            triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
     routes = state.layers_of_kind("route")
     assert len(routes) == 1
@@ -181,7 +180,7 @@ def test_ohl_run_via_callback(app, state, ohl_raster):
     resp = invoke(
         app, (f"{ids.OHL_STATUS}.children", ids.RUN_ROUTING_BTN),
         1, True, _ohl_draft(), raster_layer.id, profile_text, "raster_gpu_v4",
-        False, "r1", 100, None, None, [], [],
+        False, 1, 100, None, None, [], [],
         triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
     assert "towers" in resp[ids.OHL_STATUS]["children"]
     routes = state.layers_of_kind("route")
@@ -204,7 +203,7 @@ def test_ohl_run_invalid_profile_blocked(app, state, ohl_raster):
     bad = "soft_angle_limit_deg: 30\nhard_angle_limit_deg: 10\n"
     resp = invoke(
         app, ("notices.data", ids.RUN_ROUTING_BTN, ids.OHL_PROFILE_TEXT),
-        1, True, _ohl_draft(), raster_layer.id, bad, "cython", False, "r1",
+        1, True, _ohl_draft(), raster_layer.id, bad, "cython", False, 1,
         100, None, None, [], [],
         triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
     assert resp[ids.NOTICES]["data"][-1]["title"] == \

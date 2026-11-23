@@ -14,7 +14,6 @@ from dash import Input, Output, html
 from .. import ids
 from ..layout import WORKFLOW_STEPS
 
-
 #: compact step labels for the progress rail (full titles in the tooltip)
 _SHORT_LABELS = ["Area", "Data", "Costs", "Raster", "Routes"]
 
@@ -51,9 +50,14 @@ def register(app, state) -> None:
         Input(ids.COST_GRID_STATE, "data"),
         Input(ids.COST_DATASET, "value"),
         Input(ids.COST_FEATURE_KEYS, "value"),
-        Input(ids.ROUTE_RASTER, "value"))
+        Input(ids.ROUTE_RASTER, "value"),
+        Input(ids.RASTERIZE_BUSY, "data"),
+        Input(ids.RUN_ROUTING_BUSY, "data"),
+        Input(ids.RASTER_COMBINE_BUSY, "data"))
     def sync_workflow_and_gating(_view, grid_state, cost_dataset,
-                                 feature_keys, route_raster):  # pylint: disable=unused-argument  # Dash passes every Input
+                                 feature_keys, route_raster,
+                                 rasterize_busy=False, routing_busy=False,
+                                 combine_busy=False):  # pylint: disable=unused-argument  # Dash passes every Input
         vectors = state.layers_of_kind("vector")
         rasters = state.layers_of_kind("raster")
         routes = state.layers_of_kind("route")
@@ -67,8 +71,10 @@ def register(app, state) -> None:
         done = [has_area, has_data, cost_seeded, has_raster, has_routes]
 
         seed_disabled = not (cost_dataset and feature_keys)
-        rasterize_disabled = not cost_seeded
-        run_disabled = not has_raster
-        combine_disabled = len(rasters) < 2
+        # gated state OR "its callback is running": the gate is recomputed from
+        # the project every time, so a gated button never comes back enabled
+        rasterize_disabled = (not cost_seeded) or bool(rasterize_busy)
+        run_disabled = (not has_raster) or bool(routing_busy)
+        combine_disabled = len(rasters) < 2 or bool(combine_busy)
         return (_guide_children(done), seed_disabled, rasterize_disabled,
                 run_disabled, combine_disabled)

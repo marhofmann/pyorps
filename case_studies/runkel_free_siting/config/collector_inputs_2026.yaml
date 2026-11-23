@@ -1,0 +1,114 @@
+# Inputs of the trench-sharing MV collector model D_share (plan rev. 5, Phase C2).
+#
+# Every value carries a `status`:
+#   sourced     a primary or manufacturer document, quoted in `source`
+#   decided     a user decision (implementation log, section 1)
+#   catalogue   read from the cost catalogue at build time (`catalogue_key`), so it
+#               equals the catalogue item to the cent
+#   derived     computed from other values by the formula in `basis`
+#   assumption  NO primary source was found (research of 2026-10-05); a stand-in.
+#               A certified build refuses to start while any assumption remains
+#               (`pyorps.costmodel.collector_inputs`).
+#
+# Public data only. Operators are not named. Documents are cited, never stored.
+
+meta:
+  date: 2026-10-05
+  note: >-
+    First fill of the C2 inputs. Public-source research (2026-10-05) found no primary
+    source for group derating, sigma, MV panel prices, a station building price, a 2026
+    MV cable price per metre, MV O&M, end-of-life cost or dielectric loss. Those entries
+    are assumptions and are listed by `CollectorInputs.assumptions()`.
+
+loss:
+  years:  {value: 25,   status: decided, source: "plan 7.3 closed items (horizon 25 a)"}
+  rate:   {value: 0.04, status: decided, source: "plan 7.3 closed items (4 % real)"}
+  growth: {value: 0.0,  status: decided, source: "plan 7.3 closed items (0 % growth)"}
+  price_eur_per_mwh:
+    headline:    {value: 67.37, status: decided, source: "user decision D5, 2026-10-05: negative-price hours counted once (log deviation 1, clipped convention)"}
+    sensitivity: {value: 61.86, status: decided, source: "user decision D5, 2026-10-05: the plan's convention (log deviation 1)"}
+  weight_kind: {value: exact, status: decided, source: "hourly-record quadratic form (LossCategories.loss_weight)"}
+
+turbine_current:
+  gamma: {value: 1.10, status: decided, source: "switchgear margin gamma (plan 7.3 closed items)"}
+
+cable:
+  sections_mm2: {value: [150, 185, 240, 300, 400, 500, 630], status: decided, source: "plan C2: 630 mm2 (not 620)"}
+  voltage_data_file: voltage_2026.yaml        # ampacity and the resistances come from here
+  ampacity_rule: >-
+    trefoil ampacity in ground, the lowest of the manufacturer values listed in
+    voltage_2026.yaml (conservative; their laying conditions differ, see that file)
+  loss_temperature_c: {value: 43.3, status: decided, source: "plan C2: R_L at 43.3 degC"}
+  alpha_aluminium_per_k: {value: 0.00403, status: sourced, source: "IEC 60228 temperature coefficient of aluminium at 20 degC"}
+  resistance_rule: >-
+    r(43.3 degC) = r_ac90 * (1 + alpha*(43.3-20)) / (1 + alpha*(90-20)), r_ac90 from
+    voltage_2026.yaml; the skin-effect ratio at 90 degC is kept (derived)
+  price_eur_per_m:
+    status: assumption
+    source: >-
+      the old TopoMILP table (cost_assumptions_for_mv_lines, equipment-only midpoints, one
+      three-phase system per metre). Public retail prices found on 2026-10-05 (12/20 kV,
+      150/240/300 mm2, single core, gross: 15.69 / 16.58 / 31.06 EUR/m) are internally
+      inconsistent and cover no 30 or 33 kV class, so they do not replace the table.
+      The 630 mm2 row uses the old 620 mm2 price. 30 kV is the linear interpolation in kV
+      between the 20 and the 33 kV columns (the old 30 kV rows are unsourced and exceed the
+      33 kV rows).
+    "20": {150: 45, 185: 50, 240: 60, 300: 70, 400: 80, 500: 95, 630: 110}
+    "33": {150: 55, 185: 60, 240: 70, 300: 80, 400: 95, 500: 110, 630: 130}
+  om_share_of_capex:
+    status: catalogue
+    catalogue_key: personnel_and_om.om_annual_pct_of_capex
+    basis: >-
+      annual O&M as a share of the cable price, capitalised with the annuity factor of the
+      loss horizon (the catalogue's whole-system figure, applied to the cable material only)
+  end_of_life_eur_per_m: {value: 0.0, status: assumption, source: "no MV end-of-life cost per metre found (research 2026-10-05)"}
+  dielectric_loss_eur_per_m: {value: 0.0, status: assumption, source: "no datasheet value in W per m found (research 2026-10-05); formula Wd = omega*C*U0^2*tan(delta)"}
+
+trench_sharing:
+  m_max: {value: 4, status: decided, source: "user decision T1 (3 and no limit as sensitivities)"}
+  p_max: {value: 3, status: assumption, source: "user decision K1c allows parallel cables without a number; 3 follows the old pipeline's max_parallel_cables"}
+  derating:
+    status: assumption
+    values: [1.0, 0.79, 0.67, 0.61, 0.56, 0.53, 0.50]       # m = 1..7 systems
+    source: >-
+      PROXY ONLY. KEI Industries (India), "De-Rating Factors", Table 5 'touching' row, 3-core
+      cables, 1.5 K m/W soil, 0.90-1.05 m depth: 2 = 0.79, 3 = 0.67, 4 = 0.61, 5 = 0.56,
+      6 = 0.53, 7 = 0.50. The German table (DIN VDE 0298-4:2013-06 Table 24, VDE 0276-620)
+      exists but could not be read. The real table must replace this row. At 1.0 K m/W the
+      factors are lower.
+  sigma_eur_per_m:
+    status: assumption
+    basis: >-
+      sigma = civil_base_eur_per_m x (extra trench width per additional system / base
+      trench width), i.e. cost proportional to width. No priced figure per additional
+      system exists in public German sources (research 2026-10-05).
+    civil_base_catalogue_key: underground_cable_civil.civil_base_eur_per_m.mv_10_20_33_66kv
+    base_trench_width_m: {value: 0.5, status: sourced, source: "VDE-AR-N 4220 trench geometry 0.5 m x 0.7 m unpaved (catalogue personnel_and_om.trench_geometry_standard)"}
+    extra_width_per_system_m: {value: 0.10, status: assumption, source: "a generic German trench clause: +10 cm width per supplementary cable (low confidence)"}
+
+switchgear:
+  ring_panels: {value: 3, status: decided, source: "turbine ring: at most 3 connected conductors (log section 2; plan 3.2)"}
+  turbine_switchgear_a: {value: 630, status: sourced, source: "Siemens 8DJH 24/36 kV product sheets: ring-main and circuit-breaker feeders 630 A (36 kV sheet, 2017); tower switchgear of the same class"}
+  bay_a:
+    status: sourced
+    "20": {value: 1250, source: "Siemens NXPLUS C 24 kV brochure 04/2023: circuit-breaker panel 630 / 1250 A"}
+    "30": {value: 630,  source: "Siemens 8DJH 36 kV sheet 2017: circuit-breaker feeder 630 A (1250 A not found at 36 kV)"}
+    "33": {value: 630,  source: "as 30 kV"}
+  turbine_panel_eur:
+    status: assumption
+    catalogue_key: mv_rmu_panel_multiplier.base_2way_eur_estimate
+    divisor: 2
+    basis: "one way of a compact 2-way ring-main unit (catalogue base 8 250 EUR / 2); a load-break unit, not a breaker panel; no German panel price is public"
+  station_panel_eur:
+    status: assumption
+    catalogue_key: mv_rmu_panel_multiplier.base_2way_eur_estimate
+    divisor: 2
+    basis: "as the turbine panel"
+  station_building_eur:
+    status: assumption
+    catalogue_key: station_buildings_security.derived_building_cost_eur.compact_mv_switching_station_50_150m2
+    basis: "middle of the catalogue's 75-225 kEUR proxy range for a compact MV switching station (a building-cost proxy, LOW)"
+  bay_eur:
+    status: assumption
+    catalogue_key: mv_switchgear_by_voltage_class.usd_33kv_gis_bay
+    basis: "middle of the catalogue's USD 50-100k range for a 33 kV GIS bay, USED AS EUR (no exchange rate applied); an Asian-market proxy, LOW"

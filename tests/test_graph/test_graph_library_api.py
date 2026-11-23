@@ -1,9 +1,10 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 
+from pyorps.core.exceptions import NoPathFoundError
 from pyorps.graph.api.graph_library_api import GraphLibraryAPI
-from pyorps.core.exceptions import NoPathFoundError, PairwiseError
 
 
 class TestGraphLibraryAPI(unittest.TestCase):

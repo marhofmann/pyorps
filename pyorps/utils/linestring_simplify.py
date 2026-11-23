@@ -26,6 +26,7 @@ import numpy as np
 import shapely
 from shapely.geometry import LineString
 
+from pyorps.core.exceptions import ConsistencyCheckError, InvalidInputError, MissingDependencyError
 
 _METHODS: Final[tuple[str, ...]] = (
     "douglas_peucker",
@@ -60,12 +61,12 @@ def simplify_linestring(
         for short inputs.
     """
     if method not in _METHODS:
-        raise ValueError(
+        raise InvalidInputError(
             f"Unknown simplification method {method!r}; "
             f"expected one of {_METHODS}"
         )
     if tolerance < 0:
-        raise ValueError(f"tolerance must be non-negative, got {tolerance}")
+        raise InvalidInputError(f"tolerance must be non-negative, got {tolerance}")
 
     if len(line.coords) <= 2:
         return LineString(line.coords)
@@ -78,16 +79,18 @@ def simplify_linestring(
         return _simplify_visvalingam(line, tolerance)
     if method == "grid":
         return _simplify_grid(line, tolerance)
-    raise AssertionError("unreachable")  # pragma: no cover
+    raise ConsistencyCheckError(  # pragma: no cover
+        f"simplification method {method!r} passed the check but has no branch")
 
 
 def _simplify_visvalingam(line: LineString, area_tolerance: float) -> LineString:
     try:
         from simplification.cutil import simplify_coords_vw
     except ImportError as exc:  # pragma: no cover
-        raise ImportError(
+        raise MissingDependencyError(
             "The 'simplification' package is required for the 'visvalingam' "
-            "method. Install it with `pip install pyorps[simplify]`."
+            "method. Install it with `pip install pyorps[simplify]`.",
+            extra="simplify",
         ) from exc
 
     coords = np.asarray(line.coords, dtype=np.float64)

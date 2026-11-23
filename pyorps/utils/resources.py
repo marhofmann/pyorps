@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
+from pyorps.core.exceptions import InsufficientMemoryError, InvalidInputError
+
 __all__ = ["ResourceBudget", "resource_budget"]
 
 GIB = 1024 ** 3
@@ -65,15 +67,15 @@ def resource_budget(per_process_bytes: int, *, max_gb: float = 9.0,
             shrink the window instead.
     """
     if per_process_bytes <= 0:
-        raise ValueError("per_process_bytes must be positive")
+        raise InvalidInputError("per_process_bytes must be positive")
     if max_processes < 1:
-        raise ValueError("max_processes must be at least 1")
+        raise InvalidInputError("max_processes must be at least 1")
     free = _free_bytes() if free_bytes is None else int(free_bytes)
     cap = int(min(max_gb * GIB, free - reserve_gb * GIB))
     processes = min(int(max_processes), cap // int(per_process_bytes)
                     if cap > 0 else 0)
     if processes < 1:
-        raise MemoryError(
+        raise InsufficientMemoryError(
             f"one worker needs {per_process_bytes / GIB:.2f} GiB but the "
             f"cap is {max(cap, 0) / GIB:.2f} GiB (min({max_gb} GiB, free "
             f"{free / GIB:.2f} GiB - {reserve_gb} GiB reserve)); shrink "

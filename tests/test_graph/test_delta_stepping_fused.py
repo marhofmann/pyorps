@@ -10,7 +10,6 @@ Covers:
 
 import numpy as np
 import pytest
-
 from pyorps.utils._delta_stepping_fused import delta_stepping_2d_fused
 from pyorps.utils._dijkstra import dijkstra_2d_cython
 from pyorps.utils._raster_context import path_cost

@@ -43,6 +43,11 @@ from pyorps.utils._constrained_context cimport (
     _precompute_intermediate_cache, _precompute_gradient_cache,
     _check_span_clearance, _check_span_clearance_vh,
     _tower_terrain,
+    _span_starts_at, _end_span_ok,
+    _span_clearance_from, _check_exact_span_bins,
+)
+from pyorps.utils._constrained_context import (
+    line_end_target_min_span, line_end_attach_height,
 )
 
 cdef extern from "atomic_cas.h" nogil:
@@ -95,6 +100,37 @@ def _validate_span_bins(int n_span_bins, float span_bin_size, float max_span):
         )
 
 
+def _validate_target_min_span(target_min_span):
+    """The validated target_min_span as float32 (0 = off).
+
+    TypeError for bool, str and other non-numbers; ValueError for a
+    negative, non-finite, too large or float32-underflowing value (see
+    _constrained_context.line_end_target_min_span).
+    """
+    return line_end_target_min_span(target_min_span)
+
+
+def _attach_height(value, name):
+    """Parse a connection-point height: (1, height) or (0, 0.0) when off.
+
+    None or NaN switch the end height off (the search is then unchanged);
+    any other value must be a finite number above 0 and at most 1e6 m
+    (metres above the DEM); bool and str raise TypeError (see
+    _constrained_context.line_end_attach_height).
+    """
+    return line_end_attach_height(value, name)
+
+
+def _check_line_end_bins(np.ndarray step_distances, float span_bin_size,
+                         float max_span, int n_span_bins, float tms,
+                         int src_h_on, int tgt_h_on):
+    """With any line-end option on, every span length of one direction
+    needs its own span bin (ValueError otherwise); with all off nothing is
+    checked, so default runs are unchanged."""
+    if tms > 0.0 or src_h_on != 0 or tgt_h_on != 0:
+        _check_exact_span_bins(step_distances, span_bin_size, max_span, n_span_bins)
+
+
 # ===========================================================================
 # 1. BASIC PARALLEL CONSTRAINED DELTA-STEPPING
 # ===========================================================================
@@ -122,6 +158,7 @@ def constrained_delta_stepping_2d(
     np.ndarray[np.int32_t, ndim=1] area_offset_starts=None,
     np.ndarray[np.int32_t, ndim=1] area_offset_counts=None,
     int return_dist=0,
+    target_min_span=0.0,
 ):
     """Parallel constrained delta-stepping with tower placement.
 
@@ -131,8 +168,20 @@ def constrained_delta_stepping_2d(
 
     return_dist nonzero appends the optimal path cost (float) to the return
     tuple: (path, towers, dist). Unreachable targets report inf.
+
+    target_min_span (metres, 0 = off and the default): end-span rule, the
+    same as in constrained_dijkstra_2d. A state at the target is accepted
+    only when its last span is at least target_min_span (compared as the
+    tower placement compares a span with min_span) or when the span started
+    at the source (no line tower); while the rule is on, no line tower is
+    placed on the source cell. Negative, non-finite or too large values
+    and a positive value that is 0 in float32 raise ValueError, bool and
+    str TypeError; while the rule is on, span bins that merge two span
+    lengths of one direction raise ValueError.
     """
     _validate_span_bins(n_span_bins, span_bin_size, max_span)
+    cdef float tms = _validate_target_min_span(target_min_span)
+    _check_line_end_bins(step_distances, span_bin_size, max_span, n_span_bins, tms, 0, 0)
     cdef int rows = raster.shape[0]
     cdef int cols = raster.shape[1]
     cdef int n_dirs = steps.shape[0]
@@ -325,6 +374,11 @@ def constrained_delta_stepping_2d(
     cdef size_t p_cidx
     cdef ValidNeighbor p_nb
     cdef int p_skip, p_sb, p_cnt
+    # End-span rule (0 = off: the search is unchanged). While it is on, no
+    # line tower stands on the source cell. Read-only in the parallel phase.
+    cdef int end_rule = 1 if tms > 0.0 else 0
+    cdef int p_src_blk
+    cdef uint8_t tgt_dir
 
     try:
         while current_logical <= max_logical:
@@ -366,6 +420,16 @@ def constrained_delta_stepping_2d(
                     # Check target
                     cur_cell = <uint32_t>(cur_state / spc)
                     if cur_cell == target_cell:
+                        if end_rule != 0:
+                            tgt_dir = <uint8_t>(
+                                (cur_state - (<uint64_t>cur_cell) * spc) / n_span_bins)
+                            if _end_span_ok(
+                                    target_row, target_col, states[cur_state].span_dist,
+                                    tgt_dir, source_row, source_col, tms,
+                                    0, 0.0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, NULL, NULL,
+                                    rows, cols, directions, cached_steps,
+                                    step_dist_view[tgt_dir]) == 0:
+                                continue  # end-span rule: not a valid line end
                         if cur_dist < best_target_dist:
                             best_target_dist = cur_dist
                             best_target_state = cur_state
@@ -405,6 +469,9 @@ def constrained_delta_stepping_2d(
                                 p_cur_span_m = <double>states[cur_state].span_dist
                                 p_cur_raster_val = raster_ptr[p_cur_cell]
                                 p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
+                                p_src_blk = 0
+                                if end_rule != 0 and p_cur_cell == source_cell:
+                                    p_src_blk = 1
 
                                 p_nb_start = nb_offsets[p_cur_dir]
                                 p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
@@ -464,7 +531,7 @@ def constrained_delta_stepping_2d(
                                                     tbufs[tid].count = p_cnt + 1
 
                                         # Same direction: optional tower
-                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span and p_src_blk == 0:
                                             p_tower_cost = _tower_terrain(
                                                 use_area_cost, p_cur_row, p_cur_col,
                                                 p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
@@ -487,7 +554,7 @@ def constrained_delta_stepping_2d(
                                                     tbufs[tid].count = p_cnt + 1
                                     else:
                                         # Direction change: mandatory tower (min_span enforced)
-                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span and p_src_blk == 0:
                                             p_tower_cost = _tower_terrain(
                                                 use_area_cost, p_cur_row, p_cur_col,
                                                 p_cur_dir, p_nb.d_out, n_dirs, rows, cols,
@@ -592,8 +659,11 @@ def constrained_delta_stepping_2d(
             _unpack_state(prev_state_val, n_dirs, n_span_bins,
                          &prev_cell, &prev_dir, &prev_span)
             if (prev_span >= 1 and walk_span < prev_span) or (walk_dir != prev_dir):
-                if <int>prev_cell not in tower_cells:
-                    tower_cells.append(<int>prev_cell)
+                # One state transition places at most one tower. A route
+                # that crosses itself can stand a second tower on a cell
+                # it passed before: it is reported again (the distance
+                # pays for every tower), so a cell may repeat in the list.
+                tower_cells.append(<int>prev_cell)
 
     free(states); free(icache_status); free(icache_cost)
     if grad_penalty_ptr != NULL: free(grad_penalty_ptr)
@@ -1016,8 +1086,11 @@ def constrained_delta_stepping_clearance_2d(
             _unpack_state(prev_state_val, n_dirs, n_span_bins,
                          &prev_cell, &prev_dir, &prev_span)
             if (prev_span >= 1 and walk_span < prev_span) or (walk_dir != prev_dir):
-                if <int>prev_cell not in tower_cells:
-                    tower_cells.append(<int>prev_cell)
+                # One state transition places at most one tower. A route
+                # that crosses itself can stand a second tower on a cell
+                # it passed before: it is reported again (the distance
+                # pays for every tower), so a cell may repeat in the list.
+                tower_cells.append(<int>prev_cell)
 
     free(states); free(icache_status); free(icache_cost); free(grad_penalty_ptr)
     return (np.array(path_cells, dtype=np.uint32), np.array(tower_cells, dtype=np.uint32))
@@ -1050,6 +1123,9 @@ def constrained_delta_stepping_height_2d(
     np.ndarray[np.int32_t, ndim=1] area_offset_counts=None,
     int force_sparse=0,
     int return_dist=0,
+    target_min_span=0.0,
+    source_attach_height=None,
+    target_attach_height=None,
 ):
     """3D delta-stepping with variable tower heights and clearance.
 
@@ -1061,10 +1137,55 @@ def constrained_delta_stepping_height_2d(
     Automatically selects dense arrays when the state space fits in memory,
     otherwise uses sparse hash maps (heap-based Dijkstra).
 
+    Line ends (all off by default; then the search is unchanged):
+
+    target_min_span : float
+        Metres, 0 = off. A state at the target is accepted only when its
+        last span is at least target_min_span (compared as the tower
+        placement compares a span with min_span) or when the span started at
+        the source (a line without any line tower).
+    source_attach_height : float or None
+        Conductor attachment height (metres above the DEM at the source
+        cell) of the structure at the source, e.g. a substation gantry.
+        None or NaN = off: the source is seeded with every height class and
+        pays its premium, as before. When set, the source is seeded with one
+        state per direction (the last height class, no premium) and every
+        span that starts at the source is checked for clearance from this
+        height, so the first line tower's position and height are optimised
+        for it.
+    target_attach_height : float or None
+        The same at the target. When set, a state at the target is accepted
+        only when the last span clears the ground and obstacles between the
+        last line tower (its height class) or the source and this height at
+        the target, so the last tower's position and height are optimised
+        for it.
+
+    While target_min_span > 0 or a source_attach_height is set, no line
+    tower is placed on the source cell (only a route that returns to its
+    source could do so); a span that ends round(span / step) steps from the
+    source therefore started there. A span at a connection point is
+    sampled in full (its first lattice cell after the start included, the
+    source cell itself for a source height, a one-step last span too, and
+    the target cell itself must clear: target height - obstacle >= the
+    minimum clearance); spans between two line towers keep their sampling.
+    Invalid values raise ValueError (bool and str: TypeError). While any of
+    the three is on, span bins that merge two span lengths of one direction
+    raise ValueError (one search state per span length is needed).
+
     Returns:
         3-tuple: (path_cells uint32[], tower_cells uint32[], tower_heights float32[])
+        tower_heights[k] is the height of tower k itself. A route that
+        crosses itself may stand two towers on one cell: the cell is then
+        listed twice, each entry with its own height.
     """
     _validate_span_bins(n_span_bins, span_bin_size, max_span)
+    cdef float tms = _validate_target_min_span(target_min_span)
+    cdef int src_h_on, tgt_h_on
+    cdef float src_h, tgt_h
+    src_h_on, src_h = _attach_height(source_attach_height, "source_attach_height")
+    tgt_h_on, tgt_h = _attach_height(target_attach_height, "target_attach_height")
+    _check_line_end_bins(step_distances, span_bin_size, max_span, n_span_bins, tms,
+                         src_h_on, tgt_h_on)
     cdef int rows = raster.shape[0]
     cdef int cols = raster.shape[1]
     cdef int n_dirs = steps.shape[0]
@@ -1102,7 +1223,7 @@ def constrained_delta_stepping_height_2d(
             obstacle_heights, exclude_mask,
             max_gradient_pct, gradient_scale,
             use_area_cost, area_offsets_ptr, area_starts_ptr, area_counts_ptr,
-            return_dist,
+            return_dist, tms, src_h_on, src_h, tgt_h_on, tgt_h,
         )
 
     raster = np.ascontiguousarray(raster)
@@ -1235,19 +1356,31 @@ def constrained_delta_stepping_height_2d(
     cdef int sph = n_span_bins * n_heights  # span_bins * heights per direction
     cdef double init_dist
     cdef size_t init_logical
-    for d in range(n_dirs):
-        for h in range(n_heights):
-            state_idx = (<uint64_t>source_cell) * spc + d * sph + h
-            init_dist = <double>hp_ptr[h]
+    if src_h_on != 0:
+        # Source is a connection structure of height src_h: one state per
+        # direction (last height class as a placeholder, no premium); every
+        # span that starts here is checked from src_h instead of its class.
+        for d in range(n_dirs):
+            state_idx = (<uint64_t>source_cell) * spc + d * sph + (n_heights - 1)
             states[state_idx].touched = 1
-            states[state_idx].dist = init_dist
+            states[state_idx].dist = 0.0
             states[state_idx].pred = -1
             states[state_idx].span_dist = 0.0
-            init_logical = <size_t>(init_dist / delta_val)
-            buckets[init_logical & bucket_mask].push_back(state_idx)
-            if init_logical > 0:
-                if init_logical > <size_t>0:
-                    pass  # max_logical updated below
+            buckets[0].push_back(state_idx)
+    else:
+        for d in range(n_dirs):
+            for h in range(n_heights):
+                state_idx = (<uint64_t>source_cell) * spc + d * sph + h
+                init_dist = <double>hp_ptr[h]
+                states[state_idx].touched = 1
+                states[state_idx].dist = init_dist
+                states[state_idx].pred = -1
+                states[state_idx].span_dist = 0.0
+                init_logical = <size_t>(init_dist / delta_val)
+                buckets[init_logical & bucket_mask].push_back(state_idx)
+                if init_logical > 0:
+                    if init_logical > <size_t>0:
+                        pass  # max_logical updated below
 
     cdef uint64_t best_target_state = UINT64_MAX
     cdef double best_target_dist = INFINITY
@@ -1279,6 +1412,13 @@ def constrained_delta_stepping_height_2d(
     cdef int p_skip, p_sb, p_cnt, p_clearance_ok, p_hb
     cdef float p_h_a, p_h_b, p_hp_b
     cdef uint64_t p_sph = <uint64_t>sph
+    # Line ends (all off by default: the search is unchanged). Read-only in
+    # the parallel phase.
+    cdef int end_check = 1 if (tms > 0.0 or tgt_h_on != 0) else 0
+    cdef int no_src_tower = 1 if (tms > 0.0 or src_h_on != 0) else 0
+    cdef int p_src_blk, p_first_cell
+    cdef uint64_t tgt_rem
+    cdef uint8_t tgt_dir, tgt_hc
 
     try:
         while current_logical <= max_logical:
@@ -1311,6 +1451,19 @@ def constrained_delta_stepping_height_2d(
                     states[cur_state].visited = 1
                     cur_cell = <uint32_t>(cur_state / spc)
                     if cur_cell == target_cell:
+                        if end_check != 0:
+                            tgt_rem = cur_state - (<uint64_t>cur_cell) * spc
+                            tgt_dir = <uint8_t>(tgt_rem / p_sph)
+                            tgt_hc = <uint8_t>((tgt_rem % p_sph) % n_heights)
+                            if _end_span_ok(
+                                    target_row, target_col, states[cur_state].span_dist,
+                                    tgt_dir, source_row, source_col, tms,
+                                    src_h_on, src_h, tgt_h_on, tgt_h, th_ptr[tgt_hc],
+                                    conductor_weight_per_m, conductor_tension,
+                                    min_clearance_val, dem_ptr, obstacle_ptr,
+                                    rows, cols, directions, cached_steps,
+                                    step_dist_view[tgt_dir]) == 0:
+                                continue  # not a valid line end
                         if cur_dist < best_target_dist:
                             best_target_dist = cur_dist
                             best_target_state = cur_state
@@ -1351,6 +1504,21 @@ def constrained_delta_stepping_height_2d(
                                 p_cur_raster_val = raster_ptr[p_cur_cell]
                                 p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
                                 p_h_a = th_ptr[p_cur_hc]  # current tower height (tower A)
+                                # Line ends: a span from the source starts at the
+                                # connection height; no line tower on the source cell.
+                                p_src_blk = 0
+                                if no_src_tower != 0 and p_cur_cell == source_cell:
+                                    p_src_blk = 1
+                                # Ordinary spans keep their sampling (2); a span
+                                # from a source connection structure is sampled
+                                # from the source cell on (0).
+                                p_first_cell = 2
+                                if src_h_on != 0 and _span_starts_at(
+                                        p_cur_row, p_cur_col, <float>p_cur_span_m,
+                                        p_cur_dir, step_dist_view[p_cur_dir],
+                                        source_row, source_col, directions) != 0:
+                                    p_h_a = src_h
+                                    p_first_cell = 0
 
                                 p_nb_start = nb_offsets[p_cur_dir]
                                 p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
@@ -1407,17 +1575,17 @@ def constrained_delta_stepping_height_2d(
                                                     tbufs[tid].count = p_cnt + 1
 
                                         # Same direction: optional tower with height exploration
-                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span and p_src_blk == 0:
                                             # Loop over candidate heights for new tower B (descending)
                                             for p_hb in range(n_heights):
                                                 p_h_b = th_ptr[p_hb]
-                                                p_clearance_ok = _check_span_clearance_vh(
+                                                p_clearance_ok = _span_clearance_from(
                                                     p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
                                                     p_h_a, p_h_b,
                                                     conductor_weight_per_m, conductor_tension,
                                                     min_clearance_val, dem_ptr, obstacle_ptr,
                                                     rows, cols, directions, cached_steps,
-                                                    step_dist_view[p_cur_dir])
+                                                    step_dist_view[p_cur_dir], p_first_cell)
                                                 if not p_clearance_ok:
                                                     break  # heights sorted desc: shorter will also fail
                                                 p_hp_b = hp_ptr[p_hb]
@@ -1446,16 +1614,16 @@ def constrained_delta_stepping_height_2d(
                                                         tbufs[tid].count = p_cnt + 1
                                     else:
                                         # Direction change: mandatory tower (min_span enforced)
-                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span and p_src_blk == 0:
                                             for p_hb in range(n_heights):
                                                 p_h_b = th_ptr[p_hb]
-                                                p_clearance_ok = _check_span_clearance_vh(
+                                                p_clearance_ok = _span_clearance_from(
                                                     p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
                                                     p_h_a, p_h_b,
                                                     conductor_weight_per_m, conductor_tension,
                                                     min_clearance_val, dem_ptr, obstacle_ptr,
                                                     rows, cols, directions, cached_steps,
-                                                    step_dist_view[p_cur_dir])
+                                                    step_dist_view[p_cur_dir], p_first_cell)
                                                 if not p_clearance_ok:
                                                     break  # height-sorted early exit
                                                 p_hp_b = hp_ptr[p_hb]
@@ -1563,9 +1731,16 @@ def constrained_delta_stepping_height_2d(
             _unpack_state_h(prev_state_val, n_dirs, n_span_bins, n_heights,
                             &prev_cell, &prev_dir, &prev_span, &prev_hc)
             if (prev_span >= 1 and walk_span < prev_span) or (walk_dir != prev_dir):
-                if <int>prev_cell not in tower_cells:
-                    tower_cells.append(<int>prev_cell)
-                    tower_height_classes.append(<int>prev_hc)
+                # One state transition places at most one tower. A route
+                # that crosses itself can stand a second tower on a cell
+                # it passed before: it is reported again with its own
+                # height (the distance pays for every tower), so a cell
+                # may repeat; the two lists stay aligned.
+                tower_cells.append(<int>prev_cell)
+                # The tower at prev_cell set the class of the state
+                # that follows it: walk_hc is the tower's own height
+                # (prev_hc is the class of the tower before it).
+                tower_height_classes.append(<int>walk_hc)
 
     # Convert height classes to actual heights
     cdef np.ndarray[np.float32_t, ndim=1] tower_h_out = np.empty(
@@ -1610,6 +1785,9 @@ cdef _height_sparse(
     const int32_t* area_starts_arg=NULL,
     const int32_t* area_counts_arg=NULL,
     int return_dist=0,
+    float tms=0.0,
+    int src_h_on=0, float src_h=0.0,
+    int tgt_h_on=0, float tgt_h=0.0,
 ):
     """Compact-dense delta-stepping with variable heights and clearance.
 
@@ -1617,6 +1795,10 @@ cdef _height_sparse(
     distance lookups and visited checks. Hash maps only for predecessor and
     span_dist (written at tower placement, read only during reconstruction).
     Bucket queue + OpenMP parallel relaxation for speed.
+
+    The line-end arguments are those of constrained_delta_stepping_height_2d
+    (already validated there; tms is the validated target_min_span;
+    src_h_on / tgt_h_on = 0 means off).
     """
     cdef int rows = raster.shape[0]
     cdef int cols = raster.shape[1]
@@ -1777,16 +1959,26 @@ cdef _height_sparse(
     cdef float init_dist_f
     cdef size_t init_logical
 
-    for d in range(n_dirs):
-        for h in range(n_heights):
-            state_idx = (<uint64_t>source_cell) * spc + d * sph + h
-            init_dist_f = hp_ptr[h]
-            cdist[state_idx] = init_dist_f
+    if src_h_on != 0:
+        # Connection structure at the source (see the dense variant).
+        for d in range(n_dirs):
+            state_idx = (<uint64_t>source_cell) * spc + d * sph + (n_heights - 1)
+            cdist[state_idx] = 0.0
             cpred[state_idx] = -1
             cspan[state_idx] = 0.0
             cflags[state_idx] = FLAG_TOUCHED
-            init_logical = <size_t>(<double>init_dist_f / delta_val)
-            buckets[init_logical & bucket_mask].push_back(state_idx)
+            buckets[0].push_back(state_idx)
+    else:
+        for d in range(n_dirs):
+            for h in range(n_heights):
+                state_idx = (<uint64_t>source_cell) * spc + d * sph + h
+                init_dist_f = hp_ptr[h]
+                cdist[state_idx] = init_dist_f
+                cpred[state_idx] = -1
+                cspan[state_idx] = 0.0
+                cflags[state_idx] = FLAG_TOUCHED
+                init_logical = <size_t>(<double>init_dist_f / delta_val)
+                buckets[init_logical & bucket_mask].push_back(state_idx)
 
     cdef uint64_t best_target_state = UINT64_MAX
     cdef double best_target_dist = INFINITY
@@ -1822,6 +2014,13 @@ cdef _height_sparse(
     cdef size_t p_cidx
     cdef ValidNeighbor p_nb
     cdef int p_cnt, p_clearance_ok, p_hb
+    # Line ends (all off by default: the search is unchanged). Read-only in
+    # the parallel phase.
+    cdef int end_check = 1 if (tms > 0.0 or tgt_h_on != 0) else 0
+    cdef int no_src_tower = 1 if (tms > 0.0 or src_h_on != 0) else 0
+    cdef int p_src_blk, p_first_cell
+    cdef uint64_t tgt_rem
+    cdef uint8_t tgt_dir, tgt_hc
 
     try:
         while current_logical <= max_logical:
@@ -1863,6 +2062,19 @@ cdef _height_sparse(
                     cur_cell = <uint32_t>(cur_state / spc)
 
                     if cur_cell == target_cell:
+                        if end_check != 0:
+                            tgt_rem = cur_state - (<uint64_t>cur_cell) * spc
+                            tgt_dir = <uint8_t>(tgt_rem / u_sph)
+                            tgt_hc = <uint8_t>((tgt_rem % u_sph) % n_heights)
+                            if _end_span_ok(
+                                    target_row, target_col, cspan[cur_state],
+                                    tgt_dir, source_row, source_col, tms,
+                                    src_h_on, src_h, tgt_h_on, tgt_h, th_ptr[tgt_hc],
+                                    conductor_weight_per_m, conductor_tension,
+                                    min_clearance_val, dem_ptr, obstacle_ptr,
+                                    rows, cols, directions, cached_steps,
+                                    step_dist_view[tgt_dir]) == 0:
+                                continue  # not a valid line end
                         if cur_dist < best_target_dist:
                             best_target_dist = cur_dist
                             best_target_state = cur_state
@@ -1908,6 +2120,21 @@ cdef _height_sparse(
                                 p_cur_raster_val = raster_ptr[p_cur_cell]
                                 p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
                                 p_h_a = th_ptr[p_cur_hc]
+                                # Line ends: a span from the source starts at the
+                                # connection height; no line tower on the source cell.
+                                p_src_blk = 0
+                                if no_src_tower != 0 and p_cur_cell == source_cell:
+                                    p_src_blk = 1
+                                # Ordinary spans keep their sampling (2); a span
+                                # from a source connection structure is sampled
+                                # from the source cell on (0).
+                                p_first_cell = 2
+                                if src_h_on != 0 and _span_starts_at(
+                                        p_cur_row, p_cur_col, <float>p_cur_span_m,
+                                        p_cur_dir, step_dist_view[p_cur_dir],
+                                        source_row, source_col, directions) != 0:
+                                    p_h_a = src_h
+                                    p_first_cell = 0
 
                                 p_nb_start = nb_offsets[p_cur_dir]
                                 p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
@@ -1952,16 +2179,16 @@ cdef _height_sparse(
                                                     tbufs[tid].span_dists[p_cnt] = <float>p_new_span_m
                                                     tbufs[tid].count = p_cnt + 1
 
-                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span and p_src_blk == 0:
                                             for p_hb in range(n_heights):
                                                 p_h_b = th_ptr[p_hb]
-                                                p_clearance_ok = _check_span_clearance_vh(
+                                                p_clearance_ok = _span_clearance_from(
                                                     p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
                                                     p_h_a, p_h_b,
                                                     conductor_weight_per_m, conductor_tension,
                                                     min_clearance_val, dem_ptr, obstacle_ptr,
                                                     rows, cols, directions, cached_steps,
-                                                    step_dist_view[p_cur_dir])
+                                                    step_dist_view[p_cur_dir], p_first_cell)
                                                 if not p_clearance_ok:
                                                     break
                                                 p_hp_b = hp_ptr[p_hb]
@@ -1990,16 +2217,16 @@ cdef _height_sparse(
                                                         tbufs[tid].span_dists[p_cnt] = <float>p_reset_span_m
                                                         tbufs[tid].count = p_cnt + 1
                                     else:
-                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span and p_src_blk == 0:
                                             for p_hb in range(n_heights):
                                                 p_h_b = th_ptr[p_hb]
-                                                p_clearance_ok = _check_span_clearance_vh(
+                                                p_clearance_ok = _span_clearance_from(
                                                     p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
                                                     p_h_a, p_h_b,
                                                     conductor_weight_per_m, conductor_tension,
                                                     min_clearance_val, dem_ptr, obstacle_ptr,
                                                     rows, cols, directions, cached_steps,
-                                                    step_dist_view[p_cur_dir])
+                                                    step_dist_view[p_cur_dir], p_first_cell)
                                                 if not p_clearance_ok:
                                                     break
                                                 p_hp_b = hp_ptr[p_hb]
@@ -2115,9 +2342,16 @@ cdef _height_sparse(
             _unpack_state_h(prev_state_val, n_dirs, n_span_bins, n_heights,
                             &prev_cell, &prev_dir, &prev_span, &prev_hc)
             if (prev_span >= 1 and walk_span < prev_span) or (walk_dir != prev_dir):
-                if <int>prev_cell not in tower_cells:
-                    tower_cells.append(<int>prev_cell)
-                    tower_height_classes.append(<int>prev_hc)
+                # One state transition places at most one tower. A route
+                # that crosses itself can stand a second tower on a cell
+                # it passed before: it is reported again with its own
+                # height (the distance pays for every tower), so a cell
+                # may repeat; the two lists stay aligned.
+                tower_cells.append(<int>prev_cell)
+                # The tower at prev_cell set the class of the state
+                # that follows it: walk_hc is the tower's own height
+                # (prev_hc is the class of the tower before it).
+                tower_height_classes.append(<int>walk_hc)
 
     # Convert height classes to actual heights
     cdef np.ndarray[np.float32_t, ndim=1] tower_h_out = np.empty(
@@ -2162,6 +2396,9 @@ def constrained_delta_stepping_lazy(
     np.ndarray[np.int32_t, ndim=1] area_offset_starts=None,
     np.ndarray[np.int32_t, ndim=1] area_offset_counts=None,
     int return_dist=0,
+    target_min_span=0.0,
+    source_attach_height=None,
+    target_attach_height=None,
 ):
     """Parallel delta-stepping with lazy hash map state allocation and clearance.
 
@@ -2175,10 +2412,24 @@ def constrained_delta_stepping_lazy(
 
     Supports both fixed-height (n_heights=1) and variable-height (n_heights>1).
 
+    The line-end arguments target_min_span, source_attach_height and
+    target_attach_height (all off by default) behave exactly as in
+    constrained_delta_stepping_height_2d (argument checks, span-bin check,
+    full sampling of the spans at a connection point).
+
     Returns:
         3-tuple: (path_cells uint32[], tower_cells uint32[], tower_heights float32[])
+        tower_heights[k] is the height of tower k itself; a cell can repeat
+        when the route crosses itself (see constrained_delta_stepping_height_2d).
     """
     _validate_span_bins(n_span_bins, span_bin_size, max_span)
+    cdef float tms = _validate_target_min_span(target_min_span)
+    cdef int src_h_on, tgt_h_on
+    cdef float src_h, tgt_h
+    src_h_on, src_h = _attach_height(source_attach_height, "source_attach_height")
+    tgt_h_on, tgt_h = _attach_height(target_attach_height, "target_attach_height")
+    _check_line_end_bins(step_distances, span_bin_size, max_span, n_span_bins, tms,
+                         src_h_on, tgt_h_on)
     cdef int rows = raster.shape[0]
     cdef int cols = raster.shape[1]
     cdef int n_dirs = steps.shape[0]
@@ -2332,16 +2583,27 @@ def constrained_delta_stepping_lazy(
     cdef LazyState init_ls
     cdef size_t init_logical
 
-    for d in range(n_dirs):
-        for h in range(n_heights):
-            state_idx = (<uint64_t>source_cell) * spc + d * sph + h
-            init_ls.dist = <double>hp_ptr[h]
+    if src_h_on != 0:
+        # Connection structure at the source (see the dense height variant).
+        for d in range(n_dirs):
+            state_idx = (<uint64_t>source_cell) * spc + d * sph + (n_heights - 1)
+            init_ls.dist = 0.0
             init_ls.pred = -1
             init_ls.span_dist = 0.0
             init_ls.visited = 0
             states[state_idx] = init_ls
-            init_logical = <size_t>(init_ls.dist / delta_val)
-            buckets[init_logical & bucket_mask].push_back(state_idx)
+            buckets[0].push_back(state_idx)
+    else:
+        for d in range(n_dirs):
+            for h in range(n_heights):
+                state_idx = (<uint64_t>source_cell) * spc + d * sph + h
+                init_ls.dist = <double>hp_ptr[h]
+                init_ls.pred = -1
+                init_ls.span_dist = 0.0
+                init_ls.visited = 0
+                states[state_idx] = init_ls
+                init_logical = <size_t>(init_ls.dist / delta_val)
+                buckets[init_logical & bucket_mask].push_back(state_idx)
 
     cdef uint64_t best_target_state = UINT64_MAX
     cdef double best_target_dist = INFINITY
@@ -2382,6 +2644,14 @@ def constrained_delta_stepping_lazy(
     cdef unordered_map[uint64_t, LazyState].iterator it, it_nb, it_def, it_walk
     cdef LazyState new_ls
 
+    # Line ends (all off by default: the search is unchanged). Read-only in
+    # the parallel phase.
+    cdef int end_check = 1 if (tms > 0.0 or tgt_h_on != 0) else 0
+    cdef int no_src_tower = 1 if (tms > 0.0 or src_h_on != 0) else 0
+    cdef int p_src_blk, p_first_cell
+    cdef uint64_t tgt_rem
+    cdef uint8_t tgt_dir, tgt_hc
+
     try:
         while current_logical <= max_logical:
             if <double>current_logical * delta_val > best_target_dist:
@@ -2419,6 +2689,19 @@ def constrained_delta_stepping_lazy(
                     deref(it).second.visited = 1
                     cur_cell = <uint32_t>(cur_state / spc)
                     if cur_cell == target_cell:
+                        if end_check != 0:
+                            tgt_rem = cur_state - (<uint64_t>cur_cell) * spc
+                            tgt_dir = <uint8_t>(tgt_rem / p_sph)
+                            tgt_hc = <uint8_t>((tgt_rem % p_sph) % n_heights)
+                            if _end_span_ok(
+                                    target_row, target_col, deref(it).second.span_dist,
+                                    tgt_dir, source_row, source_col, tms,
+                                    src_h_on, src_h, tgt_h_on, tgt_h, th_ptr[tgt_hc],
+                                    conductor_weight_per_m, conductor_tension,
+                                    min_clearance_val, dem_ptr, obstacle_ptr,
+                                    rows, cols, directions, cached_steps,
+                                    step_dist_view[tgt_dir]) == 0:
+                                continue  # not a valid line end
                         if cur_dist < best_target_dist:
                             best_target_dist = cur_dist
                             best_target_state = cur_state
@@ -2466,6 +2749,21 @@ def constrained_delta_stepping_lazy(
                                 p_cur_raster_val = raster_ptr[p_cur_cell]
                                 p_cur_tower_terrain = <double>tower_terrain_ptr[p_cur_raster_val]
                                 p_h_a = th_ptr[p_cur_hc]
+                                # Line ends: a span from the source starts at the
+                                # connection height; no line tower on the source cell.
+                                p_src_blk = 0
+                                if no_src_tower != 0 and p_cur_cell == source_cell:
+                                    p_src_blk = 1
+                                # Ordinary spans keep their sampling (2); a span
+                                # from a source connection structure is sampled
+                                # from the source cell on (0).
+                                p_first_cell = 2
+                                if src_h_on != 0 and _span_starts_at(
+                                        p_cur_row, p_cur_col, <float>p_cur_span_m,
+                                        p_cur_dir, step_dist_view[p_cur_dir],
+                                        source_row, source_col, directions) != 0:
+                                    p_h_a = src_h
+                                    p_first_cell = 0
 
                                 p_nb_start = nb_offsets[p_cur_dir]
                                 p_n_valid = nb_offsets[p_cur_dir + 1] - p_nb_start
@@ -2509,16 +2807,16 @@ def constrained_delta_stepping_lazy(
                                                 tbufs[tid].count = p_cnt + 1
 
                                         # Same direction: optional tower with height exploration
-                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span and p_src_blk == 0:
                                             for p_hb in range(n_heights):
                                                 p_h_b = th_ptr[p_hb]
-                                                p_clearance_ok = _check_span_clearance_vh(
+                                                p_clearance_ok = _span_clearance_from(
                                                     p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
                                                     p_h_a, p_h_b,
                                                     conductor_weight_per_m, conductor_tension,
                                                     min_clearance_val, dem_ptr, obstacle_ptr,
                                                     rows, cols, directions, cached_steps,
-                                                    step_dist_view[p_cur_dir])
+                                                    step_dist_view[p_cur_dir], p_first_cell)
                                                 if not p_clearance_ok:
                                                     break
                                                 p_hp_b = hp_ptr[p_hb]
@@ -2546,16 +2844,16 @@ def constrained_delta_stepping_lazy(
                                                     tbufs[tid].count = p_cnt + 1
                                     else:
                                         # Direction change: mandatory tower
-                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span:
+                                        if n_span_bins > 1 and p_cur_span_m >= <double>min_span and p_src_blk == 0:
                                             for p_hb in range(n_heights):
                                                 p_h_b = th_ptr[p_hb]
-                                                p_clearance_ok = _check_span_clearance_vh(
+                                                p_clearance_ok = _span_clearance_from(
                                                     p_cur_row, p_cur_col, <float>p_cur_span_m, p_cur_dir,
                                                     p_h_a, p_h_b,
                                                     conductor_weight_per_m, conductor_tension,
                                                     min_clearance_val, dem_ptr, obstacle_ptr,
                                                     rows, cols, directions, cached_steps,
-                                                    step_dist_view[p_cur_dir])
+                                                    step_dist_view[p_cur_dir], p_first_cell)
                                                 if not p_clearance_ok:
                                                     break
                                                 p_hp_b = hp_ptr[p_hb]
@@ -2676,9 +2974,16 @@ def constrained_delta_stepping_lazy(
             _unpack_state_h(prev_state_val, n_dirs, n_span_bins, n_heights,
                             &prev_cell, &prev_dir, &prev_span, &prev_hc)
             if (prev_span >= 1 and walk_span < prev_span) or (walk_dir != prev_dir):
-                if <int>prev_cell not in tower_cells:
-                    tower_cells.append(<int>prev_cell)
-                    tower_height_classes.append(<int>prev_hc)
+                # One state transition places at most one tower. A route
+                # that crosses itself can stand a second tower on a cell
+                # it passed before: it is reported again with its own
+                # height (the distance pays for every tower), so a cell
+                # may repeat; the two lists stay aligned.
+                tower_cells.append(<int>prev_cell)
+                # The tower at prev_cell set the class of the state
+                # that follows it: walk_hc is the tower's own height
+                # (prev_hc is the class of the tower before it).
+                tower_height_classes.append(<int>walk_hc)
 
     cdef np.ndarray[np.float32_t, ndim=1] tower_h_out = np.empty(
         len(tower_height_classes), dtype=np.float32)

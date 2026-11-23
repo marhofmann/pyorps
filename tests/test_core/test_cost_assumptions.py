@@ -1,20 +1,22 @@
-import unittest
-from unittest.mock import patch
-import os
-import tempfile
-import geopandas as gpd
-from shapely.geometry import Polygon
-import pandas as pd
-import numpy as np
 import csv
 import json
+import os
+import tempfile
+import unittest
+from unittest.mock import patch
 
+import geopandas as gpd
+import numpy as np
+import pandas as pd
+from shapely.geometry import Polygon
 
 from pyorps.core.cost_assumptions import (
-    CostAssumptions, get_zero_cost_assumptions,
-    detect_feature_columns, save_empty_cost_assumptions,
+    CostAssumptions,
+    detect_feature_columns,
+    get_zero_cost_assumptions,
+    save_empty_cost_assumptions,
 )
-from pyorps.core.exceptions import InvalidSourceError, FormatError, FileLoadError
+from pyorps.core.exceptions import FileLoadError, FormatError, InvalidSourceError
 
 
 class TestCostAssumptions(unittest.TestCase):
@@ -228,7 +230,7 @@ class TestCostAssumptions(unittest.TestCase):
             self.assertGreater(os.path.getsize(temp_path), 0)
 
             # Load and verify basic structure (CSV will have headers)
-            with open(temp_path, 'r') as f:
+            with open(temp_path) as f:
                 content = f.read()
                 self.assertIn('landuse', content)
                 self.assertIn('type', content)
@@ -316,7 +318,7 @@ class TestCostAssumptions(unittest.TestCase):
         """Test saving to and loading from Excel files."""
         # Skip test if pandas doesn't have Excel support
         try:
-            import openpyxl
+            import openpyxl  # noqa: F401
         except ImportError:
             self.skipTest("Excel libraries not available")
 
@@ -365,9 +367,11 @@ class TestCostAssumptions(unittest.TestCase):
 
                     # Create CSV content with specific format
                     if decimal == '.':
-                        content = f"landuse{separator}cost\nforest{separator}1.0\nwater{separator}5.0\nurban{separator}2.0"
+                        content = (f"landuse{separator}cost\nforest{separator}1.0\n"
+                                   f"water{separator}5.0\nurban{separator}2.0")
                     else:
-                        content = f"landuse{separator}cost\nforest{separator}1,0\nwater{separator}5,0\nurban{separator}2,0"
+                        content = (f"landuse{separator}cost\nforest{separator}1,0\n"
+                                   f"water{separator}5,0\nurban{separator}2,0")
 
                     tmp.write(content.encode(encoding))
 
@@ -618,7 +622,7 @@ class TestCostAssumptions(unittest.TestCase):
         """Test Excel file loading including error handling."""
         # Skip test if pandas doesn't have Excel support
         try:
-            import openpyxl
+            import openpyxl  # noqa: F401
         except ImportError:
             self.skipTest("Excel libraries not available")
 
@@ -832,7 +836,7 @@ class TestCostAssumptions(unittest.TestCase):
             ca.to_csv(temp_path, decimal=',')
 
             # Read the file directly to check format
-            with open(temp_path, 'r') as f:
+            with open(temp_path) as f:
                 content = f.read()
 
             # Verify decimal comma was used
@@ -903,7 +907,7 @@ class TestCostAssumptions(unittest.TestCase):
             ca.to_json(json_path)
 
             # Check raw JSON to verify format
-            with open(json_path, 'r') as f:
+            with open(json_path) as f:
                 json_data = json.load(f)
 
             # Check metadata was saved
@@ -936,7 +940,7 @@ class TestCostAssumptions(unittest.TestCase):
     def test_excel_file_operations_complete(self):
         """Full test coverage for Excel file operations."""
         try:
-            import openpyxl
+            import openpyxl  # noqa: F401
         except ImportError:
             self.skipTest("Excel libraries not available")
 
@@ -1049,7 +1053,7 @@ class TestCostAssumptions(unittest.TestCase):
             ('\t', '.', 'utf-8', 'landuse\tcost\nforest\t1.5\nwater\t5.0\nurban\t2.0'),
         ]
 
-        for delimiter, decimal, encoding, content in formats:
+        for _delimiter, _decimal, encoding, content in formats:
             with tempfile.NamedTemporaryFile(suffix='.csv', delete=False) as tmp:
                 tmp_path = tmp.name
                 tmp.write(content.encode(encoding))

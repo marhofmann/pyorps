@@ -1,12 +1,18 @@
 # test_utils/test_neighborhood.py
-import unittest
-import numpy as np
 import math
+import unittest
+
+import numpy as np
 
 from pyorps.utils.neighborhood import (
-    get_neighborhood_steps, normalize_angle,
-    get_move_directions, find_adjacent_directions, elongation_error,
-    max_deviation, calculate_errors, find_max_errors
+    calculate_errors,
+    elongation_error,
+    find_adjacent_directions,
+    find_max_errors,
+    get_move_directions,
+    get_neighborhood_steps,
+    max_deviation,
+    normalize_angle,
 )
 
 

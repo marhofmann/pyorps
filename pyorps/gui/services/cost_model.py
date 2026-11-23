@@ -20,6 +20,8 @@ import math
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 from ..presets import FORBIDDEN, default_land_use_costs
 
 NOTEBOOK_KEYS = ("nutzart", "bez")
@@ -40,7 +42,9 @@ def propose_features(gdf, max_features_per_column: int = 100):
 
     candidates = [c for c in gdf.columns
                   if c != gdf.geometry.name
-                  and gdf[c].dtype == object
+                  # text is object dtype in pandas 2, the string dtype in pandas 3
+                  and (pd.api.types.is_object_dtype(gdf[c])
+                       or pd.api.types.is_string_dtype(gdf[c]))
                   and gdf[c].nunique() <= max_features_per_column]
     try:
         main, side = detect_feature_columns(
@@ -96,8 +100,6 @@ def seed_assumptions(gdf, feature_keys: tuple[str, ...]) -> dict:
         return default_land_use_costs()[NOTEBOOK_KEYS]
     main = feature_keys[0]
     if len(feature_keys) == 1:
-        import pandas as pd
-
         # a numeric column (e.g. a drawn cost layer's ``cost``, F5) seeds to
         # itself — the value already *is* the cost — instead of zero.
         numeric = pd.api.types.is_numeric_dtype(gdf[main])
@@ -118,14 +120,45 @@ def seed_assumptions(gdf, feature_keys: tuple[str, ...]) -> dict:
 
 
 # --------------------------------------------------------------- grid mapping
+class InvalidCostValueError(ValueError):
+    """A cost cell holds text that is not a number.
+
+    ``problems`` is the structured list ``[{"row": n, "feature": "a / b",
+    "text": "abc"}, ...]`` (``row`` is 1-based, as the user counts the grid).
+    """
+
+    def __init__(self, message: str, problems: list[dict] | None = None) -> None:
+        super().__init__(message)
+        self.problems = list(problems or [])
+
+
+def _is_blank_cost(value: Any) -> bool:
+    return value is None or (isinstance(value, float) and math.isnan(value))
+
+
+def _not_a_number(value: Any) -> InvalidCostValueError:
+    return InvalidCostValueError(
+        f"'{value}' is not a number - enter a cost such as 405 or 1,5.",
+        [{"row": None, "feature": "", "text": str(value)}])
+
+
 def _coerce_cost(value: Any) -> float | int:
-    if value is None or (isinstance(value, float) and math.isnan(value)):
+    """A cost cell -> number. Accepts a decimal comma ("1,5" -> 1.5); anything
+    else that is not a finite number raises :class:`InvalidCostValueError`."""
+    if _is_blank_cost(value):
         return 0
+    text = value
     if isinstance(value, str):
-        value = value.strip().replace(",", ".")
-        value = float(value) if value else 0.0
-    value = float(value)
-    return int(value) if value.is_integer() else value
+        text = value.strip().replace(",", ".")
+        if not text:
+            return 0
+    try:
+        number = float(text)
+    except (TypeError, ValueError) as exc:
+        raise _not_a_number(value) from exc
+    if math.isnan(number):
+        raise _not_a_number(value)
+    return int(number) if number.is_integer() else number
 
 
 def grid_rows_from_assumptions(assumptions: dict,
@@ -150,21 +183,84 @@ def grid_rows_from_assumptions(assumptions: dict,
     return rows
 
 
+def invalid_cost_cells(rows: list[dict],
+                       feature_keys: tuple[str, ...]) -> list[dict]:
+    """Every cost cell of the grid that is not a number (forbidden rows are
+    skipped: their cost is ignored). One ``{"row", "feature", "text"}`` per cell,
+    ``row`` counted from 1."""
+    problems: list[dict] = []
+    for number, row in enumerate(rows or [], start=1):
+        if row.get("forbidden"):
+            continue
+        try:
+            _coerce_cost(row.get("cost"))
+        except InvalidCostValueError:
+            feature = " / ".join(
+                str(row.get(key) if row.get(key) is not None else "")
+                for key in feature_keys)
+            problems.append({"row": number, "feature": feature,
+                             "text": str(row.get("cost"))})
+    return problems
+
+
+def cost_problem_notice(rows: list[dict],
+                        feature_keys: tuple[str, ...]) -> dict | None:
+    """A ``Notice`` dict naming the cost cells that are not numbers, or None.
+
+    The one check callbacks run before they turn grid rows into a cost
+    dict (``coverage``, "Build cost raster")."""
+    from .errors import Notice
+
+    problems = invalid_cost_cells(rows, feature_keys)
+    if not problems:
+        return None
+    shown = "; ".join(
+        f"row {p['row']}" + (f" ({p['feature']})" if p["feature"] else "")
+        + f": '{p['text']}'" for p in problems[:5])
+    more = f" (and {len(problems) - 5} more)" if len(problems) > 5 else ""
+    return Notice(
+        severity="warning", title="A cost is not a number",
+        meaning=f"The cost column holds text that is not a number - {shown}"
+                f"{more}.",
+        impact="The cost table was not used.",
+        fix="Type one number per cost cell (a decimal comma is fine: 1,5).",
+        focus_id="tab-cost", focus_control="cost-grid").to_dict()
+
+
+def _invalid_cost_error(problems: list[dict]) -> InvalidCostValueError:
+    """The error naming the first cost cell that is not a number (and how many more there are)."""
+    first = problems[0]
+    return InvalidCostValueError(
+        f"Cost of row {first['row']}"
+        + (f" ({first['feature']})" if first["feature"] else "")
+        + f" is not a number: '{first['text']}'"
+        + (f" (+{len(problems) - 1} more)" if len(problems) > 1 else "")
+        + ".", problems)
+
+
+def _key_text(row: dict, key: str) -> str:
+    return "" if row.get(key) is None else str(row.get(key))
+
+
 def assumptions_from_grid_rows(rows: list[dict],
                                feature_keys: tuple[str, ...]) -> dict:
-    """Flat grid rows -> nested cost dict; forbidden flag wins over cost."""
+    """Flat grid rows -> nested cost dict; forbidden flag wins over cost.
+
+    Raises :class:`InvalidCostValueError` naming the rows whose cost is not a
+    number (see :func:`invalid_cost_cells`)."""
+    problems = invalid_cost_cells(rows, feature_keys)
+    if problems:
+        raise _invalid_cost_error(problems)
     main = feature_keys[0]
     result: dict = {}
     for row in rows or []:
         cost = FORBIDDEN if row.get("forbidden") else _coerce_cost(
             row.get("cost"))
-        main_val = "" if row.get(main) is None else str(row.get(main))
+        main_val = _key_text(row, main)
         if len(feature_keys) == 1:
             result[main_val] = cost
         else:
-            side = feature_keys[1]
-            side_val = "" if row.get(side) is None else str(row.get(side))
-            result.setdefault(main_val, {})[side_val] = cost
+            result.setdefault(main_val, {})[_key_text(row, feature_keys[1])] = cost
     return result
 
 
@@ -264,6 +360,36 @@ def coerce_factor(value: Any) -> float:
             "(e.g. 1.25 to multiply) or a cost (e.g. 65535 to forbid).") from exc
 
 
+def clean_manual_rows(rows: list[dict] | None):
+    """Manual-cost grid rows with every ``cost`` as a float, or the problem.
+
+    Returns ``(rows, None)``; or ``(None, notice_dict)`` when a cost cell holds
+    text that is not a number (a decimal comma is accepted: "1,5" -> 1.5). The
+    notice names the polygon and the text."""
+    from .errors import Notice
+
+    cleaned: list[dict] = []
+    for number, row in enumerate(rows or [], start=1):
+        raw = row.get("cost")
+        if raw in (None, ""):
+            cleaned.append(dict(row))
+            continue
+        try:
+            value = coerce_factor(raw)
+        except ValueError:
+            label = row.get("name") or f"polygon {number}"
+            return None, Notice(
+                severity="warning", title="A cost is not a number",
+                meaning=f"The cost of '{label}' is '{raw}'.",
+                impact="The cost polygons were not updated.",
+                fix="Type one number in that cost cell (a decimal comma is "
+                    "fine: 1,5).",
+                focus_id="tab-cost", focus_control="manual-cost-grid"
+            ).to_dict()
+        cleaned.append({**row, "cost": value})
+    return cleaned, None
+
+
 def condition_label(column: str | None, operator: str | None,
                     value: Any) -> str:
     """Human-readable label for a modifier condition (logs / meta)."""
@@ -286,8 +412,6 @@ def condition_mask(gdf, column: str | None, operator: str | None, value: Any):
     conditional modifier editor (F5) and the preprocessing-step builder (F4).
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    import pandas as pd
-
     operator = (operator or "all").strip()
     if operator in ("", "all"):
         return None

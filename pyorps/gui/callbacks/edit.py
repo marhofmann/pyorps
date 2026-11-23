@@ -1,12 +1,13 @@
 """
-PYORPS GUI callbacks: route editing with lineage (R11, Sections 10.7 + 18).
+PYORPS GUI callbacks: route editing (R11, Sections 10.7 + 18).
 
-Routes are immutable once computed: click-to-place moves (8.4 default) and
-waypoint changes never mutate the active route — they clone its parameters +
-control points, recompute the chained least-cost path, and register a NEW
-route layer with ``parent_id`` back to the original. The Edit tab shows the
-lineage tree; the active route is drawn as a dedicated polyline that dashes
-while recomputing (8.5, via a clientside callback).
+Click-to-place moves (8.4 default) and waypoint changes clone the active
+route's parameters + control points, recompute the chained least-cost path and
+REPLACE the route by a new layer (owner decision, round 6; the base name is
+kept, ``parent_id`` is carried over). The replaced route is kept in memory as
+the one-step undo of the new one (``state.route_undo``, "Undo last edit").
+The active route is drawn as a dedicated polyline that dashes while
+recomputing (8.5, via a clientside callback).
 """
 from __future__ import annotations
 
@@ -15,10 +16,12 @@ from dash import Input, Output, State, html, no_update
 from dash.exceptions import PreventUpdate
 
 from .. import ids
+from ..services import objective as objective_service
 from ..services import routing
 from ..services.errors import Notice, guard, success
+from . import objective as objective_cb
 from .interaction import point_marker
-from .routes import add_route_layer
+from .routes import add_route_layer, number_or_default, numeric_field_problem
 
 _EDIT_LABEL = {"source": "moved source", "target": "moved target",
                "waypoint": "added waypoint", "move-waypoint": "moved waypoint"}
@@ -128,8 +131,11 @@ def cost_readout(layer):
     if not metrics:
         return html.Small("No metrics stored (imported route — edit it to "
                           "compute).", className="text-muted")
+    terrain = metrics.get(routing.TERRAIN_LENGTH_KEY)
     rows = [
-        ("Length", f"{metrics.get('total_length_m', 0):,.0f} m"),
+        ("Length" if terrain is None else "Length (map)", f"{metrics.get('total_length_m', 0):,.0f} m"),
+        # only a route that was searched over a terrain model has this line: the length along the terrain
+        *([] if terrain is None else [("Terrain length", f"{terrain:,.0f} m")]),
         ("Cost (distance-weighted)", f"{metrics.get('total_cost', 0):,.0f}"),
         ("Raw cell cost", f"{metrics.get('total_cell_cost', 0):,.0f}"),
         ("Geodesic length", f"{metrics.get('geodesic_length_m', 0):,.0f} m"),
@@ -145,14 +151,73 @@ def cost_readout(layer):
                                className="small mb-1"), *extras])
 
 
-def _get_or_build_finder(state, layer, points, notices):
+def _route_plan(params: dict, finder_backend: str | None = None):
+    """``(graph_api, algorithm, margin, direct)`` of a stored route.
+
+    ``direct`` is True when the route runs ``find_route`` (no retained
+    session): every graph-library backend, a delta-stepping route with a
+    termination margin, and a route whose stored objective forces it
+    (``objective.force_direct``: 32-bit weights, extra metric layers on a GPU
+    or FIM backend, a DEM on the GPU). A route without a stored backend (an imported one)
+    keeps whatever backend the cached finder has.
+    """
+    graph_api = (params.get("graph_api") or finder_backend
+                 or routing.DEFAULT_BACKEND)
+    algorithm = params.get("algorithm", "dijkstra")
+    margin = params.get("margin")
+    direct = (not routing.uses_session(graph_api, algorithm, margin)
+              or objective_service.force_direct(params.get("objective_spec"),
+                                                graph_api))
+    return graph_api, algorithm, margin, direct
+
+
+def _finder_fits(finder, params: dict, points=None) -> bool:
+    """True when a cached finder is the one this route was computed with.
+
+    The cache holds ONE finder per raster, and a later run with another
+    backend, neighbourhood or snapping setting replaces it; editing an older
+    route on that finder would silently run something else. Only settings the
+    route actually stored are compared. ``points`` (given for a direct route,
+    which cannot leave its finder's search window) must lie inside the window.
+    A route computed with an objective (weights, metric layers, a DEM, 32-bit
+    weights) only fits the finder that carries the same ``gui_objective_key``;
+    a plain route (no key) only fits a plain finder.
+    """
+    if params.get("objective_key") != getattr(finder, "gui_objective_key", None):
+        return False
+    if params.get("graph_api") and finder.graph_api_name != params["graph_api"]:
+        return False
+    if params.get("neighborhood") and \
+            str(finder.neighborhood_str) != str(params["neighborhood"]):
+        return False
+    if "ignore_max_cost" in params and \
+            bool(finder.ignore_max_cost) != bool(params["ignore_max_cost"]):
+        return False
+    if points is not None:
+        graph_api, algorithm, margin, _ = _route_plan(params,
+                                                      finder.graph_api_name)
+        wanted = routing.graph_api_options(
+            graph_api, algorithm, delta=params.get("delta", 100),
+            margin=margin)
+        if wanted != getattr(finder, "graph_api_options", None):
+            return False
+        return routing.points_in_finder_window(finder, points)
+    return True
+
+
+def _get_or_build_finder(state, layer, points, notices, *, direct=False):
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    """The cached PathFinder for the route's raster, rebuilt if needed."""
+    """The cached PathFinder for the route's raster, rebuilt if needed.
+
+    The cache is only used when it matches the route (:func:`_finder_fits`);
+    a ``direct`` route also needs its points inside the finder's window.
+    """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     params = layer.meta.get("params") or {}
     raster_layer_id = params.get("raster_layer_id")
     finder = state.finders.get(raster_layer_id)
-    if finder is not None:
+    if finder is not None and _finder_fits(finder, params,
+                                           points if direct else None):
         return finder, notices
     raster_layer = state.get(raster_layer_id) if raster_layer_id else None
     if raster_layer is None:
@@ -170,80 +235,164 @@ def _get_or_build_finder(state, layer, points, notices):
 
     from pyorps import PathFinder
 
+    graph_api, algorithm, margin, _ = _route_plan(
+        params, getattr(finder, "graph_api_name", None))
+    # the objective the route was computed with (weights, metric layers, DEM, precision); a layer that
+    # is no longer loaded means the finder cannot be rebuilt, so the edit is not applied
+    objective_run, missing = objective_cb.stored_run_kwargs(state, params, graph_api)
+    if objective_run is None:
+        notices.append(objective_cb.stored_layers_notice(missing))
+        return None, notices
     buffer_m = (params.get("search_space_buffer_m")
                 or routing.default_search_buffer([points[0]], [points[-1]]))
+    options = (routing.graph_api_options(
+        graph_api, algorithm, delta=params.get("delta", 100), margin=margin)
+        if direct else None)
     finder, notices = guard(
         PathFinder, raster_layer.meta.get("source_path"),
         source_coords=list(points), target_coords=[points[-1]],
-        graph_api=params.get("graph_api", "cython"),
+        graph_api=graph_api,
         neighborhood_str=params.get("neighborhood", "r2"),
         search_space_buffer_m=buffer_m,
         ignore_max_cost=params.get("ignore_max_cost", True),
+        **({"graph_api_options": options} if options else {}),
+        **objective_run.get("objective_kwargs", {}),
         notices=notices)
     if finder is not None:
+        if objective_run:
+            finder.gui_objective_key = params.get("objective_key")
         state.finders[raster_layer.id] = finder
         params.setdefault("raster_layer_id", raster_layer.id)
     return finder, notices
 
 
+def _constrained_edit_notice() -> dict:
+    """The box shown instead of silently re-routing an overhead line plainly."""
+    return Notice(
+        severity="warning",
+        title="Overhead-line routes cannot be edited here",
+        meaning="This route was computed with constrained (tower) routing. "
+                "An edit recomputes a plain least-cost path, which would "
+                "quietly turn it into a different kind of route.",
+        impact="The route was not changed.",
+        fix="Switch on 'Constrained routing', place the points again and "
+            "press Run routing to compute a new overhead-line route.",
+        focus_id=ids.TAB_ROUTES, focus_control=ids.OHL_ENABLE).to_dict()
+
+
 def recompute_variant(state, active_layer, new_points, edit_desc,
                       notices, waypoint_names=None):
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    """Clone params + points, recompute, register the NEW lineage'd route."""
+    """Clone params + points, recompute, register the NEW lineage'd route.
+
+    Backend, algorithm and margin are the stored ones: a graph-library route
+    recomputes with ``find_route`` on that backend (never the Cython session),
+    and an overhead-line route is refused (it would come back as a plain one).
+    """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     params = dict(active_layer.meta.get("params") or {})
+    params.pop("use_astar", None)          # a dead key of older saved projects
+    if params.get("constrained"):
+        notices.append(_constrained_edit_notice())
+        return None, notices
+    graph_api, algorithm, margin, direct = _route_plan(params)
     finder, notices = _get_or_build_finder(state, active_layer, new_points,
-                                           notices)
+                                           notices, direct=direct)
     if finder is None:
         return None, notices
-    algorithm = params.get("algorithm", "dijkstra")
     algo_kwargs = {
         "delta": params.get("delta", 100),
         "num_threads": params.get("num_threads", 0),
-        "use_astar": params.get("use_astar", False),
     }
-    session = state.search_sessions.pop(active_layer.id, None)
-    if session is not None and (
-            getattr(session, "_closed", False)
-            or not session.uses_same_raster(finder)):
-        session.close()
-        session = None
-    if session is None:
-        session = finder.search_session(algorithm=algorithm, **algo_kwargs)
+    # an objective route is priced on the plain cost raster of the window that really searched (euros per
+    # metre, not objective units); a plain route keeps pricing on the finder's own raster
+    price_kwargs = ({"cost_handler": routing.plain_cost_handler}
+                    if params.get("objective_spec") else {})
+    session = None
+    if direct:
+        state.search_sessions.pop(active_layer.id, None)
+        result, notices = guard(
+            routing.route_through_points, finder,
+            [tuple(p) for p in new_points], algorithm=algorithm,
+            notices=notices, **price_kwargs,
+            **routing.direct_route_kwargs(graph_api, algorithm,
+                                          delta=algo_kwargs["delta"],
+                                          num_threads=algo_kwargs["num_threads"],
+                                          margin=margin))
+        if result is None:
+            return None, notices
     else:
-        finder = session.finder
-    result, notices = guard(
-        routing.route_through_points, finder,
-        [tuple(p) for p in new_points], algorithm=algorithm,
-        session=session, notices=notices, **algo_kwargs)
-    if result is None:
-        if session is not None:
+        session = state.search_sessions.pop(active_layer.id, None)
+        if session is not None and (
+                getattr(session, "_closed", False)
+                or not session.uses_same_raster(finder)):
             session.close()
-        return None, notices
+            session = None
+        if session is None:
+            session, notices = guard(finder.search_session,
+                                     algorithm=algorithm, notices=notices,
+                                     **algo_kwargs)
+            if session is None:
+                return None, notices
+        else:
+            finder = session.finder
+        result, notices = guard(
+            routing.route_through_points, finder,
+            [tuple(p) for p in new_points], algorithm=algorithm,
+            session=session, notices=notices, **price_kwargs, **algo_kwargs)
+        if result is None:
+            if session is not None:
+                session.close()
+            return None, notices
     line, route_cost = result
     # an edit REPLACES the route: name off the base (strip prior edit/lineage
     # suffixes so repeated edits don't accumulate) and delete the old one.
     base_name = active_layer.name.split(" ←")[0].split(" (")[0]
     name = f"{base_name} ({edit_desc})"
-    new_layer = add_route_layer(
+    new_layer, notices = guard(
+        add_route_layer,
         state, line=line, route_cost=route_cost, params=params,
         control_points=new_points, crs=active_layer.crs,
         name=name, parent_id=active_layer.meta.get("parent_id"),
         origin="edited", edit=edit_desc,
         simplify_tol=active_layer.meta.get("simplify_tol"),
-        waypoint_names=waypoint_names)
+        waypoint_names=waypoint_names, notices=notices)
+    if new_layer is None:                   # the old route stays untouched
+        if session is not None:
+            session.close()
+        return None, notices
     # keep the edited route's group + style
     new_layer.meta["group"] = active_layer.meta.get("group")
     new_layer.style = dict(active_layer.style or {})
     state.remove_layer(active_layer.id)          # editing replaces (task 44)
+    _settle_replaced(active_layer)
+    state.keep_undo(new_layer.id, active_layer)  # one undo step per route
     if session is not None:
         state.search_sessions[new_layer.id] = session
     state.active_route_id = new_layer.id
+    terrain_line = routing.terrain_length_sentence(
+        [(route_cost.total_length, getattr(route_cost, "terrain_length_m", None))])
     notices.append(success(
         f"Route updated: {name}",
         meaning="Editing replaces the route (the old one is removed). Use "
-                "'Run routing' / 'New' to create additional routes."))
+                "'Run routing' / 'New' to create additional routes."
+                + (f" {terrain_line}" if terrain_line else "")))
     return new_layer, notices
+
+
+def _settle_replaced(layer) -> None:
+    """Make a replaced route's metadata its own again before it is kept.
+
+    A staged edit (auto-refresh off) overwrote the control points of the live
+    route while its line stayed the old one; the snapshot gets the points the
+    line was computed with back and loses the staging marks.
+    """
+    meta = layer.meta
+    staged_from = meta.pop("staged_from", None)
+    meta.pop("needs_refresh", None)
+    if staged_from:
+        meta["control_points"] = staged_from["control_points"]
+        meta["waypoint_names"] = staged_from["waypoint_names"]
 
 
 def _route_options(state):
@@ -371,6 +520,11 @@ def register(app, state) -> None:
         if auto_refresh is False:
             # stage the edit on the active route WITHOUT recomputing; the
             # markers move + the route dashes, and "Refresh edited" recomputes
+            active.meta.setdefault("staged_from", {
+                "control_points": [list(p) for p in
+                                   active.meta.get("control_points") or []],
+                "waypoint_names": list(active.meta.get("waypoint_names")
+                                       or [])})
             active.meta["control_points"] = [list(map(float, p))
                                              for p in new_points]
             active.meta["waypoint_names"] = [str(n or "") for n in new_names]
@@ -445,7 +599,8 @@ def register(app, state) -> None:
         State(ids.BUILD_POINTS_TABLE, "rowData"),
         State(ids.ROUTE_RASTER, "value"),
         State(ids.NOTICES, "data"),
-        prevent_initial_call=True)
+        prevent_initial_call=True,
+        running=[(Output(ids.POINTS_APPLY_BTN, "disabled"), True, False)])
     def apply_points(n_clicks, rows, raster_layer_id, notices):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         from .interaction import routing_crs
@@ -517,7 +672,8 @@ def register(app, state) -> None:
         Input(ids.EDIT_SIMPLIFY_BTN, "n_clicks"),
         State(ids.EDIT_SIMPLIFY_TOL, "value"),
         State(ids.NOTICES, "data"),
-        prevent_initial_call=True)
+        prevent_initial_call=True,
+        running=[(Output(ids.EDIT_SIMPLIFY_BTN, "disabled"), True, False)])
     def apply_simplify(n_clicks, tolerance, notices):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         notices = list(notices or [])
@@ -533,9 +689,20 @@ def register(app, state) -> None:
                 fix="Pick the active route in the Edit tab.",
                 focus_id=ids.TAB_ROUTES).to_dict())
             return no_update, no_update, notices
-        tolerance = float(tolerance or 0)
+        problem = numeric_field_problem(
+            tolerance, "Simplify tolerance (m)", control=ids.EDIT_SIMPLIFY_TOL,
+            tab=ids.TAB_ROUTES, minimum=0, impact="Nothing was changed.")
+        if problem is not None:
+            notices.append(problem)
+            return no_update, no_update, notices
+        tolerance = float(number_or_default(tolerance, 0))   # blank = off
+        previous = active.meta.get("simplify_tol")
         active.meta["simplify_tol"] = tolerance if tolerance > 0 else None
-        display = routing.refresh_route_display(active)
+        display, notices = guard(routing.refresh_route_display, active,
+                                 notices=notices)
+        if display is None:
+            active.meta["simplify_tol"] = previous
+            return no_update, no_update, notices
         full = active.gdf.geometry.iloc[0]
         if tolerance > 0:
             notices.append(success(
@@ -562,7 +729,8 @@ def register(app, state) -> None:
         Output(ids.NOTICES, "data", allow_duplicate=True),
         Input(ids.REFRESH_ROUTES_BTN, "n_clicks"),
         State(ids.NOTICES, "data"),
-        prevent_initial_call=True)
+        prevent_initial_call=True,
+        running=[(Output(ids.REFRESH_ROUTES_BTN, "disabled"), True, False)])
     def refresh_routes(n_clicks, notices):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         notices = list(notices or [])
@@ -600,6 +768,43 @@ def register(app, state) -> None:
                 route_positions(target), None, control_markers(target),
                 points_rows(target), cost_readout(target), notices)
 
+    # ------------------------------------------------------- undo last edit
+    @app.callback(
+        Output(ids.EDIT_UNDO_BTN, "disabled"),
+        Input(ids.LAYERS_VIEW, "data"),
+        Input(ids.EDIT_ROUTE_SELECT, "value"))
+    def undo_enabled(_view, route_id):
+        """Enabled only while the selected route holds an undo snapshot."""
+        return not routing.has_undo(state, route_id)
+
+    @app.callback(
+        Output(ids.LAYERS_VIEW, "data", allow_duplicate=True),
+        Output(ids.EDIT_ROUTE_SELECT, "options", allow_duplicate=True),
+        Output(ids.EDIT_ROUTE_SELECT, "value", allow_duplicate=True),
+        Output(ids.ACTIVE_ROUTE, "positions", allow_duplicate=True),
+        Output(ids.ACTIVE_ROUTE, "dashArray", allow_duplicate=True),
+        Output(ids.CONTROL_MARKERS, "children", allow_duplicate=True),
+        Output(ids.BUILD_POINTS_TABLE, "rowData", allow_duplicate=True),
+        Output(ids.EDIT_COST_READOUT, "children", allow_duplicate=True),
+        Output(ids.NOTICES, "data", allow_duplicate=True),
+        Input(ids.EDIT_UNDO_BTN, "n_clicks"),
+        State(ids.NOTICES, "data"),
+        prevent_initial_call=True)
+    def undo_edit(n_clicks, notices):
+        notices = list(notices or [])
+        if not n_clicks:
+            raise PreventUpdate
+        restored, notices = guard(routing.undo_last_edit, state,
+                                  state.active_route_id, notices=notices)
+        if restored is None:
+            return (no_update,) * 8 + (notices,)
+        notices.append(success(
+            "Brought back the route as it was before the last edit",
+            meaning=f"{restored.name} is the active route again."))
+        return (state.layers_view(), _route_options(state), restored.id,
+                route_positions(restored), None, control_markers(restored),
+                points_rows(restored), cost_readout(restored), notices)
+
     # -------------------------------------------------------- delete variant
     @app.callback(
         Output(ids.LAYERS_VIEW, "data", allow_duplicate=True),
@@ -607,10 +812,10 @@ def register(app, state) -> None:
         Output(ids.EDIT_ROUTE_SELECT, "value", allow_duplicate=True),
         Output(ids.ACTIVE_ROUTE, "positions", allow_duplicate=True),
         Output(ids.CONTROL_MARKERS, "children", allow_duplicate=True),
-        Input(ids.DELETE_VARIANT_BTN, "n_clicks"),
+        Input(ids.GO_DELETE_VARIANT, "data"),
         prevent_initial_call=True)
-    def delete_variant(n_clicks):
-        if not n_clicks or not state.active_route_id:
+    def delete_variant(go):
+        if not go or not state.active_route_id:
             raise PreventUpdate
         state.remove_layer(state.active_route_id)
         return (state.layers_view(), _route_options(state), None, [], [])
@@ -619,15 +824,16 @@ def register(app, state) -> None:
     @app.callback(
         Output(ids.EXPORT_STATUS, "children"),
         Output(ids.NOTICES, "data", allow_duplicate=True),
-        Input(ids.EXPORT_ROUTE_BTN, "n_clicks"),
+        Input(ids.GO_EXPORT_ROUTE, "data"),
         State(ids.EXPORT_ROUTE_PATH, "value"),
         State(ids.NOTICES, "data"),
-        prevent_initial_call=True)
-    def export_route(n_clicks, path, notices):
+        prevent_initial_call=True,
+        running=[(Output(ids.EXPORT_ROUTE_BTN, "disabled"), True, False)])
+    def export_route(go, path, notices):
         from ..services import project_io
 
         notices = list(notices or [])
-        if not n_clicks:
+        if not go:
             raise PreventUpdate
         active = (state.get(state.active_route_id)
                   if state.active_route_id else None)

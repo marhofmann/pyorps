@@ -6,14 +6,13 @@ import warnings
 
 import geopandas as gpd
 import pytest
+from conftest import SOURCE, TARGET, invoke
 from shapely.geometry import Polygon
+from test_routes_phase4 import _draft
 
 from pyorps.gui import ids
 from pyorps.gui.services import cost_model, data_io
 from pyorps.gui.services.errors import guard
-
-from conftest import SOURCE, TARGET, invoke
-from test_routes_phase4 import _draft
 
 
 def _write_geojson(tmp_path, n=2):
@@ -132,7 +131,6 @@ def test_browse_button_fills_input(app, monkeypatch):
 
 
 def test_browse_cancel_keeps_input(app, monkeypatch):
-    from dash.exceptions import PreventUpdate
 
     from pyorps.gui.services import dialogs
 
@@ -155,8 +153,7 @@ def built(app, state, raster_path):
     resp = invoke(
         app, (f"{ids.ROUTING_STATUS}.children", ids.RUN_ROUTING_BTN),
         1, False, _draft({"source": [SOURCE], "target": [TARGET]}),
-        raster_layer.id, "dijkstra", "cpu", "r1", 80, True, False,
-        False, 1.0, 100, 0, False, [], [],
+        raster_layer.id, "dijkstra", None, 1, 80, False, True, False, False, 1.0, 100, 0, None, [], [],
         triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
     return resp
 
@@ -174,7 +171,7 @@ def test_apply_style_and_rename(app, state, built):
 
     def cell_edit(col, data):
         invoke(app, ("layers-view.data", "routes-grid", "cellValueChanged"),
-               {"data": {"id": route.id, **data}, "colId": col},
+               {"data": {"id": route.id, **data}, "colId": col}, [],
                triggered=[f"{ids.ROUTES_GRID}.cellValueChanged"])
 
     cell_edit("name", {"name": "Trasse Nord"})

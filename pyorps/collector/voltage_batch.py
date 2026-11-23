@@ -51,6 +51,7 @@ from pyorps.collector.voltage import (
     electrical_tree,
     evaluate_limits,
 )
+from pyorps.core.exceptions import InvalidInputError
 
 __all__ = [
     "BACKENDS",
@@ -109,21 +110,21 @@ class DesignBatch:
         E = len(self.edge_u)
         self.active = np.asarray(self.active, dtype=bool)
         if self.active.ndim != 2 or self.active.shape[1] != E:
-            raise ValueError(f"active must be (B, {E}) for {self.n_slots} "
-                             f"slots")
+            raise InvalidInputError(f"active must be (B, {E}) for {self.n_slots} "
+                                    f"slots")
         for name in ("r_ohm", "x_ohm", "b_s"):
             a = np.asarray(getattr(self, name), dtype=np.float64)
             if a.shape != self.active.shape:
-                raise ValueError(f"{name} must have the shape of active")
+                raise InvalidInputError(f"{name} must have the shape of active")
             if not (np.isfinite(a).all() and (a >= 0).all()):
-                raise ValueError(f"{name} must be finite and >= 0")
+                raise InvalidInputError(f"{name} must be finite and >= 0")
             setattr(self, name, a)
         if self.n_slots < 1 + self.n:
-            raise ValueError("need at least 1 + n slots")
+            raise InvalidInputError("need at least 1 + n slots")
         if not self.keys:
             self.keys = list(range(len(self.active)))
         if len(self.keys) != len(self.active):
-            raise ValueError("one key per design")
+            raise InvalidInputError("one key per design")
 
     def __len__(self) -> int:
         return len(self.active)
@@ -163,12 +164,12 @@ class DesignBatch:
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if not trees:
-            raise ValueError("no designs")
+            raise InvalidInputError("no designs")
         need = max(1 + n + sum(1 for lab in t.labels if lab[0] == "junction")
                    for t in trees)
         S = need if n_slots is None else int(n_slots)
         if S < need:
-            raise ValueError(f"{need} slots needed, {S} given")
+            raise InvalidInputError(f"{need} slots needed, {S} given")
         _u, _v, index = slot_edges(S)
         B, E = len(trees), S * (S - 1) // 2
         active = np.zeros((B, E), dtype=bool)
@@ -178,17 +179,17 @@ class DesignBatch:
         base = {"root": 0, "turbine": 1, "junction": 1 + n}
         for i, tree in enumerate(trees):
             if tree.shunts:
-                raise ValueError(f"design {i}: node shunts are not part of "
-                                 f"the slot network (plant trees are "
-                                 f"checked one by one)")
+                raise InvalidInputError(f"design {i}: node shunts are not part of "
+                                        f"the slot network (plant trees are "
+                                        f"checked one by one)")
             if tree.u_kv != trees[0].u_kv:
-                raise ValueError("all designs of a batch share one level")
+                raise InvalidInputError("all designs of a batch share one level")
             slot = [base[k] + j for k, j in tree.labels]
             for br in tree.branches:
                 e = index[slot[br.child], slot[br.parent]]
                 if active[i, e]:
-                    raise ValueError(f"design {i}: two branches on one "
-                                     f"slot pair")
+                    raise InvalidInputError(f"design {i}: two branches on one "
+                                            f"slot pair")
                 active[i, e] = True
                 r[i, e], x[i, e], b[i, e] = br.r_ohm, br.x_ohm, br.b_s
         return cls(n=n, n_slots=S, u_kv=trees[0].u_kv, active=active,
@@ -211,7 +212,7 @@ def design_batch(designs, graph, turbines, model, vmodel: VoltageModel, *,
     graphs = (list(graph) if isinstance(graph, (list, tuple))
               else [graph] * len(designs))
     if len(graphs) != len(designs):
-        raise ValueError("one graph per design")
+        raise InvalidInputError("one graph per design")
     trees = [electrical_tree(d, g, turbines, model, vmodel,
                              root_transit=root_transit)
              for d, g in zip(designs, graphs)]
@@ -265,18 +266,18 @@ def _orient(batch: DesignBatch, s_base_mva: float) -> _Oriented:
         flat = rows * S + child
         if len(np.unique(flat)) != len(flat):
             bad = int(rows[np.argmax(np.bincount(flat) > 1)])
-            raise ValueError(f"design {bad}: the branches form a cycle")
+            raise InvalidInputError(f"design {bad}: the branches form a cycle")
         depth[rows, child] = d
         parent[rows, child] = par
         pedge[rows, child] = np.flatnonzero(m)
         open_ &= ~m
     if open_.any():
         bad = int(bi[np.flatnonzero(open_)[0]])
-        raise ValueError(f"design {bad}: a branch is on a cycle or not "
-                         f"connected to the UW")
+        raise InvalidInputError(f"design {bad}: a branch is on a cycle or not "
+                                f"connected to the UW")
     if (depth[:, 1:1 + n] < 0).any():
         bad = int(np.flatnonzero((depth[:, 1:1 + n] < 0).any(axis=1))[0])
-        raise ValueError(f"design {bad}: a turbine is not connected")
+        raise InvalidInputError(f"design {bad}: a turbine is not connected")
     used = depth >= 0
     key = np.where(used, depth, S)
     perm = np.argsort(key, axis=1, kind="stable")
@@ -365,7 +366,7 @@ def batch_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
     live = np.ones((C, B), dtype=bool)
     it = 0
     with np.errstate(all="ignore"):
-        for it in range(1, its + 1):
+        for it in range(1, its + 1):  # noqa: B007  (the last value is returned as iterations)
             acc = np.zeros((C, B, S), dtype=np.complex128)
             cur = np.conj(s_pos / V) - y * V
             for k in range(S - 1, 0, -1):
@@ -394,8 +395,8 @@ def batch_load_flow(batch: DesignBatch, vmodel: VoltageModel, *,
 
 def _check_level(batch: DesignBatch, vmodel: VoltageModel) -> None:
     if vmodel.n != batch.n or abs(vmodel.u_kv - batch.u_kv) > 1e-12:
-        raise ValueError("the batch and the voltage model differ in n or "
-                         "voltage level")
+        raise InvalidInputError("the batch and the voltage model differ in n or "
+                                "voltage level")
 
 
 _KERNEL_ERRORS = {1: "the branches form a cycle",
@@ -451,7 +452,7 @@ def _numba_solve(batch: DesignBatch, vmodel: VoltageModel, *,
         nb.set_num_threads(prev)
     if err.any():
         b = int(np.flatnonzero(err)[0])
-        raise ValueError(f"design {b}: {_KERNEL_ERRORS[int(err[b])]}")
+        raise InvalidInputError(f"design {b}: {_KERNEL_ERRORS[int(err[b])]}")
     used = np.zeros((B, S), dtype=bool)
     used[:, 0] = True
     used[bi, eu] = True
@@ -605,7 +606,7 @@ def batch_voltages(batch: DesignBatch, vmodel: VoltageModel, *,
         fn = (voltage_pgm.islands_load_flow if backend == "pgm_islands"
               else voltage_pgm.inflated_load_flow)
         return fn(batch, vmodel, **kw)
-    raise ValueError(f"unknown backend {backend!r}; one of {BACKENDS}")
+    raise InvalidInputError(f"unknown backend {backend!r}; one of {BACKENDS}")
 
 
 # -------------------------------------------------------------- check

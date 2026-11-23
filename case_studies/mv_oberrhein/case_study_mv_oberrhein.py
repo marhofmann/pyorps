@@ -23,16 +23,15 @@ Key components:
 - Economic evaluation of connection options
 """
 
-from typing import Optional, Union, Any
+from typing import Any
 
-import pandapower as pp
 import geopandas as gpd
+import pandapower as pp
 import pandas as pd
-from shapely.geometry import Point, Polygon, LineString
 from numpy import ndarray
+from shapely.geometry import LineString, Point, Polygon
 
 import pyorps
-
 
 # =============================================================================
 # GIS and Geo-processing Functions
@@ -45,7 +44,7 @@ import pyorps
 def get_bus_geoseries(
         net: pp.pandapowerNet,
         net_crs: str,
-        buses: Optional[list[int]] = None
+        buses: list[int] | None = None
 ) -> gpd.GeoSeries:
     """
     Convert bus geodata to a GeoSeries.
@@ -102,9 +101,9 @@ def create_bbox_from_net_data(
         net: pp.pandapowerNet,
         buffer: float = 1000,
         create_gdf: bool = False,
-        net_crs: Optional[str] = None,
-        reference_crs: Optional[str] = None,
-) -> Union[tuple[float, float, float, float], gpd.GeoDataFrame]:
+        net_crs: str | None = None,
+        reference_crs: str | None = None,
+) -> tuple[float, float, float, float] | gpd.GeoDataFrame:
     """
     Create a bounding box from network bus geodata.
 
@@ -422,7 +421,7 @@ def evaluate_connection_line(
         geom: LineString,
         neighborhood_lines: gpd.GeoDataFrame,
         bus_geoseries: gpd.GeoSeries,
-        original_sgen_p_mw: Union[pd.Series, ndarray],
+        original_sgen_p_mw: pd.Series | ndarray,
         buses_memo: set[int]
 ):
     """

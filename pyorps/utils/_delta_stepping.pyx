@@ -48,8 +48,11 @@ cdef extern from "atomic_cas.h" nogil:
     float unpack_dist(uint64_t packed)
     uint32_t unpack_pred(uint64_t packed)
     int atomic_try_update_dist_pred(volatile uint64_t* dist_pred, uint64_t v_idx,
-                                     float new_dist, uint32_t new_pred)
+                                     float new_dist, uint32_t new_pred,
+                                     float src_dist)
     uint64_t atomic_load_u64(volatile uint64_t* addr)
+    int64_t pred_chain_length(const uint64_t* dist_pred, uint64_t source,
+                              uint64_t target, uint64_t max_vertices)
 
 # Barrier and fetch-add for persistent thread pool
 cdef extern from "atomic_cas.h" nogil:
@@ -159,6 +162,69 @@ def invalidate_system_limits_memo():
 #   buffer address and the cell count, so an array re-pointed or resized in
 #   place is rejected rather than reused. Every top-level entry therefore
 #   re-derives the mask and the span statistic from the live raster.
+
+# ==================== BOUNDED PATH RECONSTRUCTION ====================
+#
+# Every predecessor walk in this module goes through walk_path(). A simple
+# path visits each cell at most once, so a chain that has not reached the
+# source after total_cells vertices runs in a cycle; it raises instead of
+# growing a list until max_path_length (about a billion entries) as the old
+# open-coded walks did when cost-0 cells pointed at each other.
+
+cdef object _raise_pred_cycle(uint64_t source_idx, uint64_t target_idx,
+                              uint64_t total_cells):
+    # Imported here: pyorps.core pulls in modules that import this one.
+    from pyorps.core.exceptions import PyorpsRuntimeError
+    raise PyorpsRuntimeError(
+        f"The predecessor chain from cell {target_idx} does not reach the "
+        f"source cell {source_idx} within {total_cells} cells: the "
+        f"predecessor field contains a cycle. This is a solver defect; "
+        f"please report it together with the raster.")
+
+
+cdef object walk_path(const uint64_t* dist_pred_ptr, uint64_t source_idx,
+                      uint64_t target_idx, uint64_t total_cells):
+    """Path source -> target (uint64 cell ids) from packed labels.
+
+    ``[source]`` when ``source == target``, empty when the chain ends in an
+    unreached cell, PyorpsRuntimeError when it runs in a cycle.
+    """
+    cdef int64_t n, k
+    cdef uint64_t current
+    cdef np.ndarray[uint64_t, ndim=1] out
+    if source_idx >= total_cells or target_idx >= total_cells:
+        return np.empty(0, dtype=np.uint64)
+    n = pred_chain_length(dist_pred_ptr, source_idx, target_idx, total_cells)
+    if n < 0:
+        _raise_pred_cycle(source_idx, target_idx, total_cells)
+    if n == 0:
+        return np.empty(0, dtype=np.uint64)
+    out = np.empty(n, dtype=np.uint64)
+    current = target_idx
+    for k in range(n - 1, -1, -1):
+        out[k] = current
+        if k > 0:
+            current = <uint64_t>unpack_pred(dist_pred_ptr[current])
+    return out
+
+
+def _walk_packed_path(dist_pred, uint64_t source_idx, uint64_t target_idx):
+    """Test hook: :func:`walk_path` on a caller-built packed label array.
+
+    ``dist_pred`` holds ``(float32 distance bits << 32) | predecessor`` per
+    cell, the kernels' layout. Not a public API.
+    """
+    cdef np.ndarray[uint64_t, ndim=1] arr = np.ascontiguousarray(
+        dist_pred, dtype=np.uint64).ravel()
+    cdef uint64_t n = <uint64_t>arr.shape[0]
+    preds = arr & np.uint64(0xFFFFFFFF)
+    if np.any((preds != np.uint64(0xFFFFFFFF)) & (preds >= np.uint64(n))):
+        from pyorps.core.exceptions import InvalidInputError
+        raise InvalidInputError("a predecessor id lies outside the array")
+    if n == 0:
+        return np.empty(0, dtype=np.uint64)
+    return walk_path(<const uint64_t*>arr.data, source_idx, target_idx, n)
+
 
 cdef class DeltaWorkspace:
     """Per-raster derivations and state arrays shared by one driver call.
@@ -271,33 +337,18 @@ cdef class DeltaWorkspace:
         return (packed & np.uint64(0xFFFFFFFF)).astype(np.uint32)
 
     def extract_path(self, uint64_t source_idx, uint64_t target_idx):
-        """Walk retained packed labels. Does not fill or re-solve."""
+        """Walk retained packed labels. Does not fill or re-solve.
+
+        Empty when the target is unreached; raises PyorpsRuntimeError when
+        the predecessor chain runs in a cycle (see walk_path).
+        """
         if self.dist_pred is None:
             return np.empty(0, dtype=np.uint64)
         if source_idx == target_idx:
             return np.array([source_idx], dtype=np.uint64)
         cdef np.ndarray[uint64_t, ndim=1] dist_pred_arr = self.dist_pred
-        cdef uint64_t* dist_pred_ptr = <uint64_t*>dist_pred_arr.data
-        cdef uint32_t pred_val = unpack_pred(dist_pred_ptr[target_idx])
-        if pred_val == 0xFFFFFFFF:
-            return np.empty(0, dtype=np.uint64)
-        cdef list path_vertices = []
-        cdef uint64_t current = target_idx
-        cdef uint64_t path_length = 0
-        cdef uint64_t max_len = self.total_cells + 1
-        while path_length < max_len:
-            path_vertices.append(current)
-            if current == source_idx:
-                break
-            pred_val = unpack_pred(dist_pred_ptr[current])
-            if pred_val == 0xFFFFFFFF:
-                return np.empty(0, dtype=np.uint64)
-            current = <uint64_t>pred_val
-            path_length += 1
-        else:
-            return np.empty(0, dtype=np.uint64)
-        path_vertices.reverse()
-        return np.array(path_vertices, dtype=np.uint64)
+        return walk_path(<const uint64_t*>dist_pred_arr.data, source_idx,
+                         target_idx, <uint64_t>dist_pred_arr.shape[0])
 
     def release(self):
         """Drop retained label arrays."""
@@ -571,9 +622,12 @@ cdef inline void relax_vertex_edges_inline(
 
         new_dist = current_dist + edge_weight
 
-        # Lock-free CAS update of distance + predecessor
+        # Lock-free CAS update of distance + predecessor. current_dist is
+        # passed so a tie over a zero-weight edge is rejected (atomic_cas.h,
+        # relax_accepts): accepting it let cost-0 cells point at each other.
         should_update = atomic_try_update_dist_pred(
-            <volatile uint64_t*>dist_pred, v, new_dist, <uint32_t>u
+            <volatile uint64_t*>dist_pred, v, new_dist, <uint32_t>u,
+            current_dist
         )
 
         # Add to thread-local buffer for bucket insertion
@@ -1127,30 +1181,14 @@ def delta_stepping_2d(np.ndarray[uint16_t, ndim=2] raster_arr,
         _relaxation_stats["rollovers"] = int(rollovers)
         _relaxation_stats["drops"] = int(drops)
 
-    # Path reconstruction
+    # Path reconstruction (bounded, raises on a predecessor cycle)
     pred_val = unpack_pred(dist_pred_ptr[target_idx])
     if not target_found or pred_val == 0xFFFFFFFF:
         if source_idx == target_idx:
             return np.array([source_idx], dtype=np.uint64)
         return np.empty(0, dtype=np.uint64)
 
-    path_vertices = []
-    current = target_idx
-    path_length = 0
-
-    while path_length < sys_limits.max_path_length:
-        path_vertices.append(current)
-        if current == source_idx:
-            break
-        pred_val = unpack_pred(dist_pred_ptr[current])
-        if pred_val == 0xFFFFFFFF:
-            return np.empty(0, dtype=np.uint64)
-        current = <uint64_t>pred_val
-        path_length += 1
-
-    path_vertices.reverse()
-
-    return np.array(path_vertices, dtype=np.uint64)
+    return walk_path(dist_pred_ptr, source_idx, target_idx, total_cells)
 
 def delta_stepping_single_source_multiple_targets(
         np.ndarray[uint16_t, ndim=2] raster_arr,
@@ -1565,37 +1603,12 @@ def delta_stepping_single_source_multiple_targets(
         _relaxation_stats["rollovers"] = int(rollovers)
         _relaxation_stats["drops"] = int(drops)
 
-    # Reconstruct paths for all targets
+    # Reconstruct paths for all targets (bounded, raises on a cycle;
+    # [source] for target == source, empty for an unreached target)
     for i in range(num_targets):
         target_idx = target_indices[i]
-
-        pred_val = unpack_pred(dist_pred_ptr[target_idx])
-        if pred_val == 0xFFFFFFFF:
-            if source_idx == target_idx:
-                paths.append(np.array([source_idx], dtype=np.uint64))
-            else:
-                paths.append(np.empty(0, dtype=np.uint64))
-            continue
-
-        path_vertices = []
-        current_vertex = target_idx
-        path_length = 0
-
-        while current_vertex != source_idx and path_length < sys_limits.max_path_length:
-            path_vertices.append(current_vertex)
-            pred_val = unpack_pred(dist_pred_ptr[current_vertex])
-            if pred_val == 0xFFFFFFFF:
-                paths.append(np.empty(0, dtype=np.uint64))
-                break
-            current_vertex = <uint64_t>pred_val
-            path_length += 1
-        else:
-            if current_vertex == source_idx:
-                path_vertices.append(source_idx)
-                path_vertices.reverse()
-                paths.append(np.array(path_vertices, dtype=np.uint64))
-            else:
-                paths.append(np.empty(0, dtype=np.uint64))
+        paths.append(walk_path(dist_pred_ptr, source_idx, target_idx,
+                               total_cells))
 
     return paths
 
@@ -1868,7 +1881,9 @@ def delta_stepping_2d_persistent(
         int num_threads=0,
         size_t max_buckets_in_memory=2048,
         float margin=1.00001,
-        DeltaWorkspace workspace=None):
+        DeltaWorkspace workspace=None,
+        *,
+        bint return_path=True):
     """
     Persistent-thread-pool variant of delta_stepping_2d.
 
@@ -1879,8 +1894,13 @@ def delta_stepping_2d_persistent(
     Eliminates all OpenMP fork/join overhead -- only one thread team
     creation/destruction per algorithm invocation.
 
-    Parameters: same as delta_stepping_2d
-    Returns: same as delta_stepping_2d
+    Parameters: same as delta_stepping_2d, plus
+        return_path: keyword-only. False skips the path reconstruction
+            and returns None once the search has run; the labels stay in
+            ``workspace`` (pass one). For field-only callers such as
+            ``SearchSession``'s full-field tree, whose target is a dummy.
+    Returns: same as delta_stepping_2d (None when return_path is False and
+        the search ran; the early-exit empty array otherwise)
     """
     # ============= ALL VARIABLE DECLARATIONS AT TOP =============
 
@@ -2483,30 +2503,18 @@ def delta_stepping_2d_persistent(
         _relaxation_stats["rollovers"] = int(ps.rollovers)
         _relaxation_stats["drops"] = int(drops)
 
-    # Path reconstruction (same as original)
+    if not return_path:
+        # Field-only solve: the labels stay in the workspace.
+        return None
+
+    # Path reconstruction (bounded, raises on a predecessor cycle)
     pred_val = unpack_pred(dist_pred_ptr[target_idx])
     if not target_found or pred_val == 0xFFFFFFFF:
         if source_idx == target_idx:
             return np.array([source_idx], dtype=np.uint64)
         return np.empty(0, dtype=np.uint64)
 
-    path_vertices = []
-    current = target_idx
-    path_length = 0
-
-    while path_length < sys_limits.max_path_length:
-        path_vertices.append(current)
-        if current == source_idx:
-            break
-        pred_val = unpack_pred(dist_pred_ptr[current])
-        if pred_val == 0xFFFFFFFF:
-            return np.empty(0, dtype=np.uint64)
-        current = <uint64_t>pred_val
-        path_length += 1
-
-    path_vertices.reverse()
-
-    return np.array(path_vertices, dtype=np.uint64)
+    return walk_path(dist_pred_ptr, source_idx, target_idx, total_cells)
 
 
 # ==================== PERSISTENT DELTA-STEPPING (MULTI TARGET) ====================
@@ -3105,37 +3113,12 @@ def delta_stepping_single_source_multiple_targets_persistent(
         _relaxation_stats["rollovers"] = int(ps.rollovers)
         _relaxation_stats["drops"] = int(drops)
 
-    # Reconstruct paths for all targets (same as original)
+    # Reconstruct paths for all targets (bounded, raises on a cycle;
+    # [source] for target == source, empty for an unreached target)
     for i in range(num_targets):
         target_idx = target_indices[i]
-
-        pred_val = unpack_pred(dist_pred_ptr[target_idx])
-        if pred_val == 0xFFFFFFFF:
-            if source_idx == target_idx:
-                paths.append(np.array([source_idx], dtype=np.uint64))
-            else:
-                paths.append(np.empty(0, dtype=np.uint64))
-            continue
-
-        path_vertices = []
-        current_vertex = target_idx
-        path_length = 0
-
-        while current_vertex != source_idx and path_length < sys_limits.max_path_length:
-            path_vertices.append(current_vertex)
-            pred_val = unpack_pred(dist_pred_ptr[current_vertex])
-            if pred_val == 0xFFFFFFFF:
-                paths.append(np.empty(0, dtype=np.uint64))
-                break
-            current_vertex = <uint64_t>pred_val
-            path_length += 1
-        else:
-            if current_vertex == source_idx:
-                path_vertices.append(source_idx)
-                path_vertices.reverse()
-                paths.append(np.array(path_vertices, dtype=np.uint64))
-            else:
-                paths.append(np.empty(0, dtype=np.uint64))
+        paths.append(walk_path(dist_pred_ptr, source_idx, target_idx,
+                               total_cells))
 
     return paths
 

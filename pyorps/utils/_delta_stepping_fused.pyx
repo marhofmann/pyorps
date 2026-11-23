@@ -56,8 +56,11 @@ cdef extern from "atomic_cas.h" nogil:
     float unpack_dist(uint64_t packed)
     uint32_t unpack_pred(uint64_t packed)
     int atomic_try_update_dist_pred(volatile uint64_t* dist_pred, uint64_t v_idx,
-                                     float new_dist, uint32_t new_pred)
+                                     float new_dist, uint32_t new_pred,
+                                     float src_dist)
     uint64_t atomic_load_u64(volatile uint64_t* addr)
+    int64_t pred_chain_length(const uint64_t* dist_pred, uint64_t source,
+                              uint64_t target, uint64_t max_vertices)
     int atomic_fetch_add_int(volatile int* addr, int val)
     uint8_t atomic_exchange_u8(volatile uint8_t* addr, uint8_t val)
     void thread_barrier_wait(volatile int* arrive_count, volatile int* sense,
@@ -198,8 +201,10 @@ cdef inline void _relax_one(
         v = <uint64_t>vr * cols + <uint64_t>vc
         new_dist = du + edge_weight
 
+        # du: a tie over a zero-weight edge is rejected (atomic_cas.h,
+        # relax_accepts), so cost-0 cells cannot point at each other.
         if atomic_try_update_dist_pred(
-                <volatile uint64_t*>dist_pred, v, new_dist, <uint32_t>u):
+                <volatile uint64_t*>dist_pred, v, new_dist, <uint32_t>u, du):
             if (not heavy_mode) and new_dist < we_dist:
                 # Producer side: queue only if not already queued -- this
                 # coalesces repeated improvements of the same vertex within
@@ -733,18 +738,23 @@ def delta_stepping_2d_fused(np.ndarray[uint16_t, ndim=2] raster_arr,
     if not target_found or pred_val == 0xFFFFFFFF:
         return np.empty(0, dtype=np.uint64)
 
-    cdef list path_vertices = []
+    # Bounded walk: a chain longer than total_cells runs in a cycle.
+    cdef int64_t n_path = pred_chain_length(dist_pred_ptr, source_idx,
+                                            target_idx, total_cells)
+    if n_path < 0:
+        from pyorps.core.exceptions import PyorpsRuntimeError
+        raise PyorpsRuntimeError(
+            f"The predecessor chain from cell {target_idx} does not reach "
+            f"the source cell {source_idx} within {total_cells} cells: the "
+            f"predecessor field contains a cycle. This is a solver defect; "
+            f"please report it together with the raster.")
+    if n_path == 0:
+        return np.empty(0, dtype=np.uint64)
+    cdef np.ndarray[uint64_t, ndim=1] path_out = np.empty(n_path, dtype=np.uint64)
     cdef uint64_t current = target_idx
-    cdef uint64_t path_length = 0
-    while path_length < sys_limits.max_path_length:
-        path_vertices.append(current)
-        if current == source_idx:
-            break
-        pred_val = unpack_pred(dist_pred_ptr[current])
-        if pred_val == 0xFFFFFFFF:
-            return np.empty(0, dtype=np.uint64)
-        current = <uint64_t>pred_val
-        path_length += 1
-
-    path_vertices.reverse()
-    return np.array(path_vertices, dtype=np.uint64)
+    cdef int64_t k_path
+    for k_path in range(n_path - 1, -1, -1):
+        path_out[k_path] = current
+        if k_path > 0:
+            current = <uint64_t>unpack_pred(dist_pred_ptr[current])
+    return path_out

@@ -10,10 +10,11 @@ on machines without an NVIDIA GPU or CuPy installed.
 """
 
 import unittest
+
 import numpy as np
 
-from pyorps.utils.traversal_gpu import GPU_AVAILABLE
 from pyorps.utils.traversal import construct_edges
+from pyorps.utils.traversal_gpu import GPU_AVAILABLE
 
 try:
     from networkit import Graph as NKGraph
@@ -91,8 +92,6 @@ class TestSSSPGpuVsNetworkit(unittest.TestCase):
     def _run_comparison(self, raster, steps, source, target,
                         cost_tol_pct=0.01, msg=""):
         """Run GPU SSSP and NetworkIt Dijkstra, compare path costs."""
-        size = raster.shape[1]
-
         # NetworkIt reference
         graph, from_nodes, to_nodes, costs = _build_nk_graph(raster, steps)
         nk_dist, nk_path = _nk_dijkstra(graph, int(source), int(target))

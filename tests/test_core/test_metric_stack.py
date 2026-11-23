@@ -15,6 +15,7 @@ from shapely.geometry import box
 
 from pyorps.core.exceptions import MetricStackError
 from pyorps.core.metric_stack import FORBIDDEN_VALUE, MetricStack
+from pyorps.core.warning_types import CoverageWarning
 
 TRANSFORM = from_origin(1000.0, 2000.0, 5.0, 5.0)  # 5 m cells
 CRS = "EPSG:25832"
@@ -128,6 +129,8 @@ class TestDem(unittest.TestCase):
             warnings.simplefilter("always")
             stack.attach_dem(dem)
         self.assertTrue(any("non-finite" in str(w.message) for w in caught))
+        self.assertTrue(any(w.category is CoverageWarning for w in caught
+                            if "non-finite" in str(w.message)))
         self.assertTrue(stack.forbidden_mask[2, 2])
         self.assertTrue(np.isfinite(stack.dem).all())
         self.assertAlmostEqual(float(stack.dem[2, 2]), 300.0, places=3)

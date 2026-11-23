@@ -24,6 +24,7 @@ from pyorps.utils.directional import primitive_directions
 
 @pytest.fixture(scope="module")
 def profile():
+    pytest.importorskip("yaml")
     return InfrastructureProfile.load("profiles/overhead_line_110kv.yaml")
 
 

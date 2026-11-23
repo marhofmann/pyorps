@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from pyorps.core.exceptions import InvalidInputError
+
 __all__ = ["Terminal", "load_terminals", "terminals_from_frame"]
 
 
@@ -42,19 +44,19 @@ def _normalise_id(value: Any, row: int, id_field: str) -> Any:
     import numpy as np
 
     if value is None or (isinstance(value, float) and math.isnan(value)):
-        raise ValueError(f"row {row} has no {id_field!r}")
+        raise InvalidInputError(f"row {row} has no {id_field!r}")
     if isinstance(value, (bool, np.bool_)):
-        raise ValueError(f"row {row}: {id_field!r} is a boolean ({value!r})")
+        raise InvalidInputError(f"row {row}: {id_field!r} is a boolean ({value!r})")
     if isinstance(value, (int, np.integer)):
         return int(value)
     if isinstance(value, (float, np.floating)):
         if float(value).is_integer():
             return int(value)
-        raise ValueError(f"row {row}: {id_field!r} = {value!r} is not an "
+        raise InvalidInputError(f"row {row}: {id_field!r} = {value!r} is not an "
                          f"integer")
     text = str(value).strip()
     if not text:
-        raise ValueError(f"row {row} has an empty {id_field!r}")
+        raise InvalidInputError(f"row {row} has an empty {id_field!r}")
     return text
 
 
@@ -80,11 +82,11 @@ def terminals_from_frame(frame, *, id_field: str = "id", prefix: str = "",
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if id_field not in frame.columns:
-        raise ValueError(f"no {id_field!r} attribute; have "
+        raise InvalidInputError(f"no {id_field!r} attribute; have "
                          f"{[c for c in frame.columns if c != 'geometry']}")
     if crs is not None:
         if frame.crs is None:
-            raise ValueError("the terminals have no CRS to reproject from")
+            raise InvalidInputError("the terminals have no CRS to reproject from")
         frame = frame.to_crs(crs)
     out: list[Terminal] = []
     seen: dict[str, int] = {}
@@ -93,11 +95,11 @@ def terminals_from_frame(frame, *, id_field: str = "id", prefix: str = "",
         ident = _normalise_id(value, row, id_field)
         if geom is None or geom.is_empty or geom.geom_type != "Point":
             kind = None if geom is None else geom.geom_type
-            raise ValueError(f"terminal {ident!r} (row {row}) is not a "
+            raise InvalidInputError(f"terminal {ident!r} (row {row}) is not a "
                              f"point: {kind}")
         label = f"{prefix}{ident}"
         if label in seen:
-            raise ValueError(f"label {label!r} appears twice (rows "
+            raise InvalidInputError(f"label {label!r} appears twice (rows "
                              f"{seen[label]} and {row})")
         seen[label] = row
         out.append(Terminal(label, ident, (float(geom.x), float(geom.y))))

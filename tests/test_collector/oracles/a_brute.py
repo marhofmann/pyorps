@@ -16,7 +16,7 @@ from __future__ import annotations
 import itertools
 from collections import deque
 
-from .a_model import INF, Inst, bits, popcount, union
+from .a_model import INF, Inst, popcount
 
 
 def expand(inst: Inst, K: int):

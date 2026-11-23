@@ -14,7 +14,9 @@ from ..core.exceptions import (
     WFSConnectionError,
     WFSError,
     WFSLayerNotFoundError,
+    WFSRequestRejectedError,
     WFSResponseParsingError,
+    WFSServerError,
 )
 from .geo_dataset import (
     # Base classes
@@ -31,8 +33,16 @@ from .geo_dataset import (
     # Factory function
     initialize_geo_dataset,
 )
+from .provenance import ProvenanceMismatch
 
 # Data loading functions
+from .raster_loader import (
+    combine_rasters,
+    create_combined_raster_dataset,
+    find_raster_files,
+    read_raster_files,
+    validate_raster_compatibility,
+)
 from .vector_loader import load_from_wfs
 
 __all__ = [
@@ -50,8 +60,12 @@ __all__ = [
 
     # Data loading functions
     "load_from_wfs",
+    "read_raster_files", "combine_rasters", "create_combined_raster_dataset",
+    "find_raster_files", "validate_raster_compatibility",
 
     # Exception classes
     "WFSError", "WFSConnectionError",
-    "WFSResponseParsingError", "WFSLayerNotFoundError"
+    "WFSResponseParsingError", "WFSLayerNotFoundError",
+    "WFSServerError", "WFSRequestRejectedError",
+    "ProvenanceMismatch",
 ]

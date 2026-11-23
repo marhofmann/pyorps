@@ -12,8 +12,7 @@ downstream of it, so every rate depends on flows only.
 """
 from __future__ import annotations
 
-import math
-from functools import lru_cache
+from functools import cache
 
 INF = float("inf")
 
@@ -103,7 +102,7 @@ def _add(t, *xs):
     return tuple(sorted(t + tuple(xs)))
 
 
-@lru_cache(maxsize=None)
+@cache
 def unary_ops(sig, n, with_down=True):
     """Local operations at a field cell. Returns tuple of (sig2, n_joints).
 

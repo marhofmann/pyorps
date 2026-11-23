@@ -17,7 +17,7 @@ from dash.exceptions import PreventUpdate
 
 from .. import ids
 from ..services import routing
-from ..services.errors import Notice, success
+from ..services.errors import Notice, guard, success
 from .edit import DASH_STYLES, _route_options, dash_style_name
 
 DEFAULT_COLOR = "#e6194b"
@@ -38,6 +38,7 @@ def _route_row(layer) -> dict:
     points = meta.get("control_points") or []
     cost = metrics.get("total_cost")
     length = metrics.get("total_length_m")
+    terrain = metrics.get(routing.TERRAIN_LENGTH_KEY)
     return {
         "id": layer.id,
         "name": layer.name,
@@ -48,6 +49,8 @@ def _route_row(layer) -> dict:
         "wp": max(0, len(points) - 2),
         "cost": int(round(float(cost))) if cost is not None else None,
         "length": int(round(float(length))) if length is not None else None,
+        # empty for a route without a terrain model (the map length above is the 2-D one)
+        "terrain": int(round(float(terrain))) if terrain is not None else None,
         "from": _fmt_point(points[0]) if points else "",
         "to": _fmt_point(points[-1]) if points else "",
     }
@@ -84,10 +87,14 @@ def register(app, state) -> None:
     @app.callback(
         Output(ids.LAYERS_VIEW, "data", allow_duplicate=True),
         Output(ids.EDIT_ROUTE_SELECT, "options", allow_duplicate=True),
+        Output(ids.NOTICES, "data", allow_duplicate=True),
         Input(ids.ROUTES_GRID, "cellValueChanged"),
+        State(ids.NOTICES, "data"),
         prevent_initial_call=True)
-    def apply_route_cell_edit(events):
+    def apply_route_cell_edit(events, notices):
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        notices = list(notices or [])
+        before = list(notices)
         if not events:
             raise PreventUpdate
         changed = False
@@ -100,7 +107,9 @@ def register(app, state) -> None:
                       or (event.get("column") or {}).get("colId"))
             if column == "name":
                 state.rename(layer.id, data.get("name"))
-                routing.refresh_route_display(layer)   # geojson carries name
+                # the route's geojson carries its name
+                _, notices = guard(routing.refresh_route_display, layer,
+                                   notices=notices)
             elif column == "visible":
                 state.set_visible(layer.id, bool(data.get("visible")))
             elif column == "color":
@@ -115,7 +124,10 @@ def register(app, state) -> None:
             changed = True
         if not changed:
             raise PreventUpdate
-        return state.layers_view(), _route_options(state)
+        # the store is only written when a box was added (a rewrite would make
+        # the notice stack re-render every stored toast)
+        return (state.layers_view(), _route_options(state),
+                notices if notices != before else no_update)
 
     # ----------------------------- clicking a grid row selects the active route
     @app.callback(Output(ids.EDIT_ROUTE_SELECT, "value", allow_duplicate=True),
@@ -325,13 +337,13 @@ def register(app, state) -> None:
         Output(ids.EDIT_ROUTE_SELECT, "options", allow_duplicate=True),
         Output(ids.EDIT_ROUTE_SELECT, "value", allow_duplicate=True),
         Output(ids.NOTICES, "data", allow_duplicate=True),
-        Input(ids.GROUP_DELETE_BTN, "n_clicks"),
+        Input(ids.GO_DELETE_GROUP, "data"),
         State(ids.GROUP_SELECT, "value"),
         State(ids.NOTICES, "data"),
         prevent_initial_call=True)
-    def delete_group(n_clicks, group, notices):
+    def delete_group(go, group, notices):
         notices = list(notices or [])
-        if not n_clicks:
+        if not go:
             raise PreventUpdate
         members = state.routes_in_group(group) if group else []
         if not members:

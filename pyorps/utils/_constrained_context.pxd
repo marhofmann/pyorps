@@ -178,3 +178,50 @@ cdef int _check_span_clearance_vh(
     vector[CachedStepData]& cached_steps,
     float step_distance,
 ) noexcept nogil
+
+cdef int _span_clearance_from(
+    int cur_row, int cur_col,
+    float span_dist_m,
+    uint8_t direction,
+    float height_a, float height_b,
+    float cond_w, float cond_t, float min_clearance,
+    const float* dem_ptr, const float* obstacle_ptr,
+    int rows, int cols,
+    vector[StepData]& directions,
+    vector[CachedStepData]& cached_steps,
+    float step_distance,
+    int first_cell,
+) noexcept nogil
+
+# ==================== LINE-END HELPERS ====================
+
+cdef int _span_starts_at(
+    int cur_row, int cur_col,
+    float span_dist_m,
+    uint8_t direction,
+    float step_distance,
+    int start_row, int start_col,
+    vector[StepData]& directions,
+) noexcept nogil
+
+cdef int _end_span_ok(
+    int tgt_row, int tgt_col,
+    float span_dist_m,
+    uint8_t direction,
+    int src_row, int src_col,
+    float target_min_span,
+    int src_h_on, float src_h,
+    int tgt_h_on, float tgt_h,
+    float height_a,
+    float cond_w, float cond_t, float min_clearance,
+    const float* dem_ptr, const float* obstacle_ptr,
+    int rows, int cols,
+    vector[StepData]& directions,
+    vector[CachedStepData]& cached_steps,
+    float step_distance,
+) noexcept nogil
+
+# Span-bin check of the line-end options (raises ValueError).
+cdef int _check_exact_span_bins(
+    float[:] step_dist, float span_bin_size, float max_span, int n_span_bins,
+) except -1

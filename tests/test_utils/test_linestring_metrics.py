@@ -1,10 +1,9 @@
 """Tests for the DDA-based linestring metric kernel."""
 import math
+
 import numpy as np
-import pytest
 
 from pyorps.utils._traversal_numba import calculate_linestring_metrics_numba
-
 
 # Helper: convert (x, y) -> fractional (row, col) for a unit raster whose
 # top-left corner sits at (0, 0), pixel size = 1, north-up.

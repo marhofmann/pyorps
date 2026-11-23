@@ -30,7 +30,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from pyorps.certify.windows import drain
+from pyorps.core.exceptions import InvalidInputError, PyorpsRuntimeError
+from pyorps.graph.drain import drain
 
 __all__ = ["MixedLegResult", "mixed_leg_fixpoint"]
 
@@ -91,7 +92,7 @@ def mixed_leg_fixpoint(cable_values, steps, cell_m: float, source_cell: int,
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if c_tr < 0:
-        raise ValueError("c_tr must be >= 0")
+        raise InvalidInputError("c_tr must be >= 0")
     vals = np.asarray(cable_values)
     cell = float(cell_m)
     trans = np.asarray(transitions, dtype=np.int64).reshape(-1, 2)
@@ -99,9 +100,9 @@ def mixed_leg_fixpoint(cable_values, steps, cell_m: float, source_cell: int,
     lat_shape = tower_solver.shape
     n_lat = int(np.prod(lat_shape))
     if (lat_idx < 0).any() or (lat_idx >= n_lat).any():
-        raise ValueError("a transition lies outside the tower lattice")
+        raise InvalidInputError("a transition lies outside the tower lattice")
     if (ras_idx < 0).any() or (ras_idx >= vals.size).any():
-        raise ValueError("a transition lies outside the cable raster")
+        raise InvalidInputError("a transition lies outside the cable raster")
     blocked = np.asarray(tower_solver.blocked).ravel()
     keep = ~blocked[lat_idx] & (vals.ravel()[ras_idx] != 65535)
     lat_idx, ras_idx = lat_idx[keep], ras_idx[keep]
@@ -142,7 +143,7 @@ def mixed_leg_fixpoint(cable_values, steps, cell_m: float, source_cell: int,
                     "overhead_improved": imp_o})
         if np.any(new_cable > cable * (1 + 1e-12) + 1e-9) or np.any(
                 new_over > overhead * (1 + 1e-12) + 1e-9):
-            raise RuntimeError("a Gauss-Seidel round raised a value: the "
+            raise PyorpsRuntimeError("a Gauss-Seidel round raised a value: the "
                                "layers are not monotone")
         cable, overhead = new_cable, new_over
         if fld2 is not None:
@@ -151,6 +152,6 @@ def mixed_leg_fixpoint(cable_values, steps, cell_m: float, source_cell: int,
             return MixedLegResult(cable=cable.reshape(vals.shape),
                                   overhead=overhead, rounds=rounds,
                                   tower_field=fld, log=log)
-    raise RuntimeError(f"mixed legs did not reach a fixpoint in "
+    raise PyorpsRuntimeError(f"mixed legs did not reach a fixpoint in "
                        f"{max_rounds} rounds")
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite

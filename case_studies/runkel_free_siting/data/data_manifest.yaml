@@ -1,0 +1,1082 @@
+schema: 1
+meta:
+  case: runkel_free_siting
+  created: 2026-10-05
+layers:
+  site_raster:
+    kind: site_raster
+    format: raster
+    path: null
+    status: pending
+    source: built by scripts/build_site_raster.py from the layers below (plan B1);
+      integer cents in uint32 on the routing grid
+    licence: derived work; follows the licences of its inputs
+  access_raster:
+    kind: access_raster
+    format: raster
+    path: rasters/access_cost_1m.tif
+    status: present
+    source: built from the road layer and the DEM (plan B3, term 3)
+    licence: derived work; follows the licences of its inputs
+    captured: '2026-10-06'
+    captured_at: '2026-10-06T16:12:10+02:00'
+    sha256: 6bdfa1eee769cd8fdd4a3bfab32a75ceabf148b5b6d705fd1e3682d6e2c9eb6c
+    crs: EPSG:25832
+    retrieved_with: build_access_raster.py (sha256 44bd9d89728d8adf), constraints
+      access_constraints_2026.yaml (sha256 c4b11ffb5471a319); python 3.13.5
+    notes: closure check passed (0 cells kept as public road); forbidden 28.91%; entry
+      cells 8227889; free-cell cost min 1, max 338
+    used_for:
+    - 'done 2026-10-06: built on the DEM grid 23502 x 11162, 1 m'
+    - 'planned: access-road term of the substation siting; not yet used in a result'
+  lines:
+    kind: lines
+    format: vector
+    path: layers/power_lines_110.geojson
+    status: present
+    source: OpenStreetMap power lines and substations with a 110 kV tag, extract of
+      the case study (plan B2)
+    licence: ODbL
+    captured: '2026-09-04'
+    sha256: 61b4495c5ee3bd1259e45a582025884272ab36962a1e9cbfdcb7168f4682a98e
+    crs: EPSG:25832
+    retrieved_with: 'register_existing_inputs_2026-10-05.py (sha256 3977f004051167fe):
+      shutil.copy2 from TopoMILP/data/cired2026/input/power_lines_110.geojson; python
+      3.13.5'
+    notes: 'capture date unknown: the file was recovered from a pyorps git stash on
+      2026-09-04 (TopoMILP/data/cired2026/README.md); `captured` is that recovery
+      date, not the date the data was first obtained'
+    used_for:
+    - 'done 2026-10-05: copied unchanged and hashed; 828 features, CRS EPSG:25832'
+    - 'planned: 110 kV network for the HV connection and the tap points; not yet used'
+  roads:
+    kind: roads
+    format: vector
+    path: null
+    status: pending
+    source: road and path classes of the ALKIS land-use layer (alkis_land_use), cross-checked
+      against OpenStreetMap (plan B3)
+    licence: to be confirmed at download
+  dem:
+    kind: dem
+    format: raster
+    path: dem/dgm1.tif
+    status: present
+    source: state survey (HVBG) DGM1 1 m terrain model, WCS 2.0.1 https://inspire-hessen.de/raster/dgm1/ows
+      coverage he_dgm1, fetched in tiles with pyorps' catalogue fetcher
+    licence: dl-de/zero-2-0 (Datenlizenz Deutschland Zero 2.0), as stated in the pyorps
+      service preset
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T14:54:54+02:00'
+    sha256: 782149e5ccc2e3534493fe30ede8f4b0d48e23c8ed6ea9a9bfeaae3d699146b0
+    crs: EPSG:25832
+    retrieved_with: 'fetch_dem.py (sha256 6433cc6a3dd735d3): 72 WCS tiles of 2000
+      m with the pyorps catalogue fetcher, written into one deflate-compressed tiled
+      GeoTIFF; python 3.13.5'
+    used_for:
+    - 'done 2026-10-05: fetched as 72 WCS tiles into one GeoTIFF, hashed, registered;
+      checked: 23 502 x 11 162 cells, no missing cell, elevation 105.8 to 398.3 m;
+      no result uses it yet'
+    - 'planned: slope limit for access roads (g_max) and terrain for the tower fields;
+      not yet used'
+  alkis_land_use:
+    kind: other
+    format: vector
+    path: layers/alkis_land_use.gpkg
+    status: present
+    source: state cadastre ALKIS actual land use (layer ave:Nutzung) by WFS https://www.gds.hessen.de/wfs2/aaa-suite/cgi-bin/alkis/vereinf/wfs;
+      98 038 polygons in the study area (counted 2026-10-05); includes road and path
+      classes (plan B1, B3) (fetched with pyorps WFS API, 31938 features)
+    licence: Der automatisierte Abruf und die Nutzung der Geobasisdaten und der zugehörigen
+      Metadaten sind kostenfrei. (§ 24 Hessisches Vermessungs- und Geoinformationsgesetz
+      - HVGG) | Jede Nutzung der Geobasisdaten und zugehörigen Metadaten ist ohne
+      Einschränkung oder Bedingung erlaubt. Die bereitgestellten Geobasisdaten und
+      Metadaten dürfen für die kommerzielle und nicht kommerzielle Nutzung insbesondere
+      1. vervielfältigt, ausgedruckt, präsentiert, verändert, bearbeitet sowie an
+      Dritte übermittelt werden, 2. mit eigenen Daten und Daten anderer zusammengeführt
+      und zu selbstständigen neuen Datensätzen verbunden werden, 3. in interne und
+      externe Geschäftsprozesse, Produkte und Anwendungen in öffentlichen und nicht
+      öffentlichen elektronischen Netzwerken eingebunden werden. Wird bei der Nutzung
+      der Geobasisdaten oder deren Metadaten ein Quellenvermerk beigegeben, ist in
+      diesem auf Veränderungen, Bearbeitungen, neue Gestaltungen oder sonstige Abwandlungen
+      der Daten oder Metadaten hinzuweisen. (§ 18 Hessisches Vermessungs- und Geoinformationsgesetz
+      – HVGG).
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T14:45:09+02:00'
+    sha256: 95d5e973f4ae9c90da3e4f9fd37f6934204a3581b08359d3cf898009539baa71
+    crs: EPSG:25832
+    retrieved_with: fetch_layers.py (sha256 b1d9944a20b45bbd) with the pyorps WFS
+      API initialize_geo_dataset(request, mask=raster_mask.shp); python 3.13.5
+    notes: 'large (tens to hundreds of MB): fetched only after the owner''s size approval'
+    used_for:
+    - 'done 2026-10-05: fetched, clipped to the study mask, saved, hashed, registered;
+      geometry validity and CRS checked; no result uses it yet'
+    - 'planned: base trench-cost raster and site-cost classes (class costs as in the
+      CIRED 2026 recipe create_raster_for_windfarm_layout.py); not yet used'
+    - 'planned: road and path classes for the access term and road crossings; not
+      yet used'
+  water_zones:
+    kind: protected_areas
+    format: vector
+    path: layers/water_zones.gpkg
+    status: present
+    source: HLNUG drinking-water protection zones, WFS https://geodienste-umwelt.hessen.de/arcgis/services/inspire/bewirtschaftungsgebiete/MapServer/WFSServer
+      layer TWS_HQS_TK25 (plan B5) (fetched with pyorps WFS API, 98 features)
+    licence: 'Dienst und Daten stellen keine rechtsverbindliche Auskunft dar. Die
+      kostenfreie Nutzung der Geo- und Metadaten sowie der Geodatendienste ist für
+      private und kommerzielle Zwecke erlaubt. Eine Darstellung auf einer nicht zugeordneten
+      Kartengrundlage (ALK bzw. TK25) ist nicht gestattet. Lizenz: Creative Commons
+      BY 4.0 (https://creativecommons.org/licenses/by/4.0/deed.de). Quellenvermerk
+      für Dienst: „Hessisches Landesamt für Naturschutz, Umwelt und Geologie (HLNUG)“.
+      Quellenvermerk für Daten: „Darstellung auf der Grundlage von Daten des Hessischen
+      Landesamtes für Naturschutz, Umwelt und Geologie (HLNUG)“.'
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T14:41:52+02:00'
+    sha256: 02d25cde9061b8ee21b0f16e7359cdeaf69c87675c5400dabaa1b41e510697a6
+    crs: EPSG:25832
+    retrieved_with: fetch_layers.py (sha256 b1d9944a20b45bbd) with the pyorps WFS
+      API initialize_geo_dataset(request, mask=raster_mask.shp); python 3.13.5
+    used_for:
+    - 'done 2026-10-05: fetched, clipped to the study mask, saved, hashed, registered;
+      geometry validity and CRS checked; no result uses it yet'
+    - 'planned: trench-cost multiplier or hard exclusion by zone; hard or priced is
+      the owner''s open legal decision (plan Q12); not yet used'
+  soil_units:
+    kind: other
+    format: vector
+    path: layers/soil_units.gpkg
+    status: present
+    source: HLNUG soil units 1:500 000, WFS https://geodienste-umwelt.hessen.de/arcgis/services/inspire/boden/MapServer/WFSServer
+      layer Bodeneinheiten_Bodenuebersicht_500000 (trench cost multipliers) (fetched
+      with pyorps WFS API, 31 features)
+    licence: 'Dienst und Daten stellen keine rechtsverbindliche Auskunft dar. Die
+      kostenfreie Nutzung der Geo- und Metadaten sowie der Geodatendienste ist für
+      private und kommerzielle Zwecke erlaubt. Lizenz: Creative Commons BY 4.0 (https://creativecommons.org/licenses/by/4.0/deed.de).
+      Quellenvermerk für Dienst: „Hessisches Landesamt für Naturschutz, Umwelt und
+      Geologie (HLNUG)“. Quellenvermerk für Daten: „Darstellung auf der Grundlage
+      von Daten des Hessischen Landesamtes für Naturschutz, Umwelt und Geologie (HLNUG)“.'
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T14:41:53+02:00'
+    sha256: e10a6e296646737fabc6642b9f52e4cfa4b732f7a62296885efdf8da64379c77
+    crs: EPSG:25832
+    retrieved_with: fetch_layers.py (sha256 b1d9944a20b45bbd) with the pyorps WFS
+      API initialize_geo_dataset(request, mask=raster_mask.shp); python 3.13.5
+    used_for:
+    - 'done 2026-10-05: fetched, clipped to the study mask, saved, hashed, registered;
+      geometry validity and CRS checked; no result uses it yet'
+    - 'planned: trench-cost multiplier by soil unit, as in CIRED 2026; not yet used'
+  nature_reserves:
+    kind: protected_areas
+    format: vector
+    path: layers/nature_reserves.gpkg
+    status: present
+    source: HMLU nature reserves (NSG), WFS https://geodienste-umwelt.hessen.de/arcgis/services/inspire/schutzgebiete/MapServer/WFSServer
+      layer Naturschutzgebiete (plan B5) (fetched with pyorps WFS API, 13 features)
+    licence: 'Dienst und Daten stellen keine rechtsverbindliche Auskunft dar. Die
+      kostenfreie Nutzung der Geo- und Metadaten sowie der Geodatendienste ist zulässig
+      1) für private Nutzung 2) für gewerbliche/kommerzielle Nutzung, sofern nicht
+      die Daten vollständig oder teilweise weiterveräußert werden (Die Erstellung
+      eines „eigenen“ Werks unter Verwendung der Daten/Dienste ist zulässig, aber
+      die reine Weitergabe der Daten gegen Gebühr ist unzulässig.) 3) für Planungszwecke.
+      Quellenvermerk für Dienst: „Hessisches Ministerium für Landwirtschaft und Umwelt,
+      Weinbau, Forsten, Jagd und Heimat (HMLU)“. Quellenvermerk für Daten: „Darstellung
+      auf der Grundlage von Daten des Hessischen Ministeriums für Landwirtschaft und
+      Umwelt, Weinbau, Forsten, Jagd und Heimat (HMLU)“. Für NATURPARKE: Dienst und
+      Daten stellen keine rechtsverbindliche Auskunft dar. Die kostenfreie Nutzung
+      der Geo- und Metadaten sowie der Geodatendienste ist für private und kommerzielle
+      Zwecke unter Angabe der Quelle: „Landesbetrieb HessenForst“ erlaubt, sofern
+      nicht die Daten vollständig oder teilweise weiterveräußert werden. Das Urheberrecht
+      bleibt beim Landesbetrieb HessenForst.'
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T14:41:54+02:00'
+    sha256: a2e11a8aa03991cd152250b46b73bc7f19ef71a45e21be46b5765cf093eb438b
+    crs: EPSG:25832
+    retrieved_with: fetch_layers.py (sha256 b1d9944a20b45bbd) with the pyorps WFS
+      API initialize_geo_dataset(request, mask=raster_mask.shp); python 3.13.5
+    used_for:
+    - 'done 2026-10-05: fetched, clipped to the study mask, saved, hashed, registered;
+      geometry validity and CRS checked; no result uses it yet'
+    - 'planned: consent class (hard or priced) in the cost raster and in relax-and-verify;
+      owner''s decision Q12 open; not yet used'
+  landscape_protection:
+    kind: protected_areas
+    format: vector
+    path: layers/landscape_protection.gpkg
+    status: present
+    source: HMLU landscape protection areas (LSG), WFS https://geodienste-umwelt.hessen.de/arcgis/services/inspire/schutzgebiete/MapServer/WFSServer
+      layer Landschaftsschutzgebiete (plan B5) (fetched with pyorps WFS API, 1 features)
+    licence: 'Dienst und Daten stellen keine rechtsverbindliche Auskunft dar. Die
+      kostenfreie Nutzung der Geo- und Metadaten sowie der Geodatendienste ist zulässig
+      1) für private Nutzung 2) für gewerbliche/kommerzielle Nutzung, sofern nicht
+      die Daten vollständig oder teilweise weiterveräußert werden (Die Erstellung
+      eines „eigenen“ Werks unter Verwendung der Daten/Dienste ist zulässig, aber
+      die reine Weitergabe der Daten gegen Gebühr ist unzulässig.) 3) für Planungszwecke.
+      Quellenvermerk für Dienst: „Hessisches Ministerium für Landwirtschaft und Umwelt,
+      Weinbau, Forsten, Jagd und Heimat (HMLU)“. Quellenvermerk für Daten: „Darstellung
+      auf der Grundlage von Daten des Hessischen Ministeriums für Landwirtschaft und
+      Umwelt, Weinbau, Forsten, Jagd und Heimat (HMLU)“. Für NATURPARKE: Dienst und
+      Daten stellen keine rechtsverbindliche Auskunft dar. Die kostenfreie Nutzung
+      der Geo- und Metadaten sowie der Geodatendienste ist für private und kommerzielle
+      Zwecke unter Angabe der Quelle: „Landesbetrieb HessenForst“ erlaubt, sofern
+      nicht die Daten vollständig oder teilweise weiterveräußert werden. Das Urheberrecht
+      bleibt beim Landesbetrieb HessenForst.'
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T14:41:55+02:00'
+    sha256: b3cd81f7193fb7d9e9d6fbb303765d5af25a096a8182affd587387321d5ba827
+    crs: EPSG:25832
+    retrieved_with: fetch_layers.py (sha256 b1d9944a20b45bbd) with the pyorps WFS
+      API initialize_geo_dataset(request, mask=raster_mask.shp); python 3.13.5
+    used_for:
+    - 'done 2026-10-05: fetched, clipped to the study mask, saved, hashed, registered;
+      geometry validity and CRS checked; no result uses it yet'
+    - 'planned: consent class in the cost raster and in relax-and-verify; owner''s
+      decision Q12 open; not yet used'
+  natura2000_habitats:
+    kind: protected_areas
+    format: vector
+    path: layers/natura2000_habitats.gpkg
+    status: present
+    source: HMLU Natura 2000 habitats directive areas (FFH), WFS https://geodienste-umwelt.hessen.de/arcgis/services/inspire/schutzgebiete/MapServer/WFSServer
+      layer Fauna-Flora-Habitate (plan B5) (fetched with pyorps WFS API, 9 features)
+    licence: 'Dienst und Daten stellen keine rechtsverbindliche Auskunft dar. Die
+      kostenfreie Nutzung der Geo- und Metadaten sowie der Geodatendienste ist zulässig
+      1) für private Nutzung 2) für gewerbliche/kommerzielle Nutzung, sofern nicht
+      die Daten vollständig oder teilweise weiterveräußert werden (Die Erstellung
+      eines „eigenen“ Werks unter Verwendung der Daten/Dienste ist zulässig, aber
+      die reine Weitergabe der Daten gegen Gebühr ist unzulässig.) 3) für Planungszwecke.
+      Quellenvermerk für Dienst: „Hessisches Ministerium für Landwirtschaft und Umwelt,
+      Weinbau, Forsten, Jagd und Heimat (HMLU)“. Quellenvermerk für Daten: „Darstellung
+      auf der Grundlage von Daten des Hessischen Ministeriums für Landwirtschaft und
+      Umwelt, Weinbau, Forsten, Jagd und Heimat (HMLU)“. Für NATURPARKE: Dienst und
+      Daten stellen keine rechtsverbindliche Auskunft dar. Die kostenfreie Nutzung
+      der Geo- und Metadaten sowie der Geodatendienste ist für private und kommerzielle
+      Zwecke unter Angabe der Quelle: „Landesbetrieb HessenForst“ erlaubt, sofern
+      nicht die Daten vollständig oder teilweise weiterveräußert werden. Das Urheberrecht
+      bleibt beim Landesbetrieb HessenForst.'
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T14:41:56+02:00'
+    sha256: 25271d383ec3d5165cc54ae9ed1a10e2b9da084583fa3648864b2afff3efc141
+    crs: EPSG:25832
+    retrieved_with: fetch_layers.py (sha256 b1d9944a20b45bbd) with the pyorps WFS
+      API initialize_geo_dataset(request, mask=raster_mask.shp); python 3.13.5
+    used_for:
+    - 'done 2026-10-05: fetched, clipped to the study mask, saved, hashed, registered;
+      geometry validity and CRS checked; no result uses it yet'
+    - 'planned: consent class in the cost raster and in relax-and-verify; owner''s
+      decision Q12 open; not yet used'
+  plan_layers:
+    kind: plan_layers
+    format: vector
+    path: null
+    status: pending
+    source: regional plan, 2010 version in force (priority areas), plus the 2025 draft
+      as a second flagged set (plan B5, MODEL-18)
+    licence: to be confirmed at download
+  archaeology:
+    kind: plan_layers
+    format: vector
+    path: null
+    status: pending
+    source: state archaeology register of ground monuments (plan B5)
+    licence: to be confirmed at download
+  terminals:
+    kind: terminals
+    format: vector
+    path: layers/pccs.gpkg
+    status: present
+    source: grid connection points of the case study (PCCs, `id` attribute only; pyorps.siting.terminals)
+    licence: derived from OpenStreetMap, ODbL
+    captured: '2026-09-04'
+    sha256: e0be92b5a6e1c6d7c4ffc866ad3affed12b37dbacf375cce4d1411b8704ae0a3
+    crs: EPSG:25832
+    retrieved_with: 'register_existing_inputs_2026-10-05.py (sha256 3977f004051167fe):
+      geopandas read of PCCs.shp, written to GeoPackage; python 3.13.5'
+    notes: 'capture date unknown: the file was recovered from a pyorps git stash on
+      2026-09-04 (TopoMILP/data/cired2026/README.md); `captured` is that recovery
+      date, not the date the data was first obtained. Rows keep the shapefile order
+      (ids 1, 2, 0); key by the `id` attribute, never by row.'
+    used_for:
+    - 'done 2026-10-05: converted from PCCs.shp to one GeoPackage, ids and row order
+      checked equal; 3 connection points'
+    - 'planned: the grid connection points (PCC) of the case study; not yet used'
+  turbine_evidence:
+    kind: turbine_evidence
+    format: vector
+    path: null
+    status: pending
+    source: state environment agency turbine register (cited, not committed)
+    licence: CC BY 4.0
+  bird_protection_areas:
+    kind: protected_areas
+    format: vector
+    path: layers/bird_protection_areas.gpkg
+    status: present
+    source: HMLU bird protection areas (SPA), WFS https://geodienste-umwelt.hessen.de/arcgis/services/inspire/schutzgebiete/MapServer/WFSServer
+      layer Vogelschutzgebiete (plan B5) (fetched with pyorps WFS API, 2 features)
+    licence: 'Dienst und Daten stellen keine rechtsverbindliche Auskunft dar. Die
+      kostenfreie Nutzung der Geo- und Metadaten sowie der Geodatendienste ist zulässig
+      1) für private Nutzung 2) für gewerbliche/kommerzielle Nutzung, sofern nicht
+      die Daten vollständig oder teilweise weiterveräußert werden (Die Erstellung
+      eines „eigenen“ Werks unter Verwendung der Daten/Dienste ist zulässig, aber
+      die reine Weitergabe der Daten gegen Gebühr ist unzulässig.) 3) für Planungszwecke.
+      Quellenvermerk für Dienst: „Hessisches Ministerium für Landwirtschaft und Umwelt,
+      Weinbau, Forsten, Jagd und Heimat (HMLU)“. Quellenvermerk für Daten: „Darstellung
+      auf der Grundlage von Daten des Hessischen Ministeriums für Landwirtschaft und
+      Umwelt, Weinbau, Forsten, Jagd und Heimat (HMLU)“. Für NATURPARKE: Dienst und
+      Daten stellen keine rechtsverbindliche Auskunft dar. Die kostenfreie Nutzung
+      der Geo- und Metadaten sowie der Geodatendienste ist für private und kommerzielle
+      Zwecke unter Angabe der Quelle: „Landesbetrieb HessenForst“ erlaubt, sofern
+      nicht die Daten vollständig oder teilweise weiterveräußert werden. Das Urheberrecht
+      bleibt beim Landesbetrieb HessenForst.'
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:02:58+02:00'
+    sha256: 9ecc2c6d2646f4f04df390040346961b2a2c67b28037feffebd650bc62e303fc
+    crs: EPSG:25832
+    retrieved_with: fetch_layers.py (sha256 07a8936505c453ab) with the pyorps WFS
+      API initialize_geo_dataset(request, mask=raster_mask.shp); python 3.13.5
+    used_for:
+    - 'done 2026-10-05: fetched, clipped to the study mask, saved, hashed, registered;
+      geometry validity and CRS checked; no result uses it yet'
+    - 'planned: consent class (hard or priced) in the cost raster and in relax-and-verify;
+      owner''s decision Q12 open; not yet used'
+  biotopes_protected:
+    kind: protected_areas
+    format: vector
+    path: layers/biotopes_protected.gpkg
+    status: present
+    source: HLNUG legally protected biotopes (section 30 BNatSchG), WFS https://geodienste-umwelt.hessen.de/arcgis/services/inspire/lebensraeume_biotope/MapServer/WFSServer
+      layer GESCH_BIOTOPE (plan B5) (fetched with pyorps WFS API, 1103 features)
+    licence: 'Dienst und Daten stellen keine rechtsverbindliche Auskunft dar. Die
+      kostenfreie Nutzung der Geo- und Metadaten sowie der Geodatendienste ist für
+      private und kommerzielle Zwecke erlaubt. Lizenz: Creative Commons BY 4.0 (https://creativecommons.org/licenses/by/4.0/deed.de).
+      Quellenvermerk für Dienst: „Hessisches Landesamt für Naturschutz, Umwelt und
+      Geologie (HLNUG)“. Quellenvermerk für Daten: „Darstellung auf der Grundlage
+      von Daten des Hessischen Landesamtes für Naturschutz, Umwelt und Geologie (HLNUG)“'
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:03:01+02:00'
+    sha256: b96a306d5bc55aa32fff77205981fd685879f7b37eed29673259f5c0b4c2b0c6
+    crs: EPSG:25832
+    retrieved_with: fetch_layers.py (sha256 07a8936505c453ab) with the pyorps WFS
+      API initialize_geo_dataset(request, mask=raster_mask.shp); python 3.13.5
+    used_for:
+    - 'done 2026-10-05: fetched, clipped to the study mask, saved, hashed, registered;
+      geometry validity and CRS checked; no result uses it yet'
+    - 'planned: consent class for legally protected biotopes (section 30) in the cost
+      raster; owner''s decision Q12 open; not yet used'
+  biotope_complexes_protected:
+    kind: protected_areas
+    format: vector
+    path: layers/biotope_complexes_protected.gpkg
+    status: present
+    source: HLNUG legally protected biotope complexes, WFS https://geodienste-umwelt.hessen.de/arcgis/services/inspire/lebensraeume_biotope/MapServer/WFSServer
+      layer GESCH_KOMPLEXE (plan B5) (fetched with pyorps WFS API, 42 features)
+    licence: 'Dienst und Daten stellen keine rechtsverbindliche Auskunft dar. Die
+      kostenfreie Nutzung der Geo- und Metadaten sowie der Geodatendienste ist für
+      private und kommerzielle Zwecke erlaubt. Lizenz: Creative Commons BY 4.0 (https://creativecommons.org/licenses/by/4.0/deed.de).
+      Quellenvermerk für Dienst: „Hessisches Landesamt für Naturschutz, Umwelt und
+      Geologie (HLNUG)“. Quellenvermerk für Daten: „Darstellung auf der Grundlage
+      von Daten des Hessischen Landesamtes für Naturschutz, Umwelt und Geologie (HLNUG)“'
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:03:02+02:00'
+    sha256: 159b9e90b3ab00d0d1e70553d78cd4c3b710ad9a1d3f1b3cd88632190bbb628a
+    crs: EPSG:25832
+    retrieved_with: fetch_layers.py (sha256 07a8936505c453ab) with the pyorps WFS
+      API initialize_geo_dataset(request, mask=raster_mask.shp); python 3.13.5
+    used_for:
+    - 'done 2026-10-05: fetched, clipped to the study mask, saved, hashed, registered;
+      geometry validity and CRS checked; no result uses it yet'
+    - 'planned: consent class for protected biotope complexes; owner''s decision Q12
+      open; not yet used'
+  towers_110:
+    kind: lines
+    format: vector
+    path: layers/towers_110.geojson
+    status: present
+    source: CIRED 2026 input towers_110.geojson (OpenStreetMap / state data as in
+      the CIRED 2026 study)
+    licence: OpenStreetMap contributors, ODbL
+    captured: '2026-09-04'
+    sha256: 2210e54f1a7296b7497ee20d76b0343f7f89e996c49f5f9cf4310c7ac6e6b79e
+    crs: EPSG:25832
+    retrieved_with: 'register_existing_inputs_2026-10-05.py (sha256 3977f004051167fe):
+      shutil.copy2 from TopoMILP/data/cired2026/input/towers_110.geojson; python 3.13.5'
+    notes: 'capture date unknown: the file was recovered from a pyorps git stash on
+      2026-09-04 (TopoMILP/data/cired2026/README.md); `captured` is that recovery
+      date, not the date the data was first obtained'
+    used_for:
+    - 'done 2026-10-05: copied unchanged and hashed; 4977 features, CRS EPSG:25832'
+    - 'planned: tower nodes (feasible tap cells) for overhead tap points; not yet
+      used'
+  turbines:
+    kind: other
+    format: vector
+    path: layers/wea.geojson
+    status: present
+    source: CIRED 2026 input wea.geojson (turbine positions of the case-study farm)
+    licence: not recorded in the CIRED 2026 data (positions of the case-study farm's
+      seven turbines; source of the coordinates to be stated by the owner)
+    captured: '2026-09-04'
+    sha256: a20a675466d52d7da6ab100c8eeb5f3dc6feae491b752f2433164cc3411367f3
+    crs: EPSG:25832
+    retrieved_with: 'register_existing_inputs_2026-10-05.py (sha256 3977f004051167fe):
+      shutil.copy2 from TopoMILP/data/cired2026/input/wea.geojson; python 3.13.5'
+    notes: 'capture date unknown: the file was recovered from a pyorps git stash on
+      2026-09-04 (TopoMILP/data/cired2026/README.md); `captured` is that recovery
+      date, not the date the data was first obtained'
+    used_for:
+    - 'done 2026-10-05: copied unchanged and hashed; 7 features, CRS EPSG:25832'
+    - 'planned: the seven turbine positions as collector nodes; not yet used'
+  cost_base_1m:
+    kind: other
+    format: raster
+    path: null
+    status: pending
+    source: 'built by build_cost_raster.py from alkis_land_use, biotope_complexes_protected,
+      biotopes_protected, bird_protection_areas, dem, landscape_protection, natura2000_habitats,
+      nature_reserves, soil_units, water_zones: EUR per metre of trench by land-use
+      class (CIRED 2026 stand-in recipe), 65535 forbidden'
+    licence: derived work; follows the licences of its inputs (ALKIS, HLNUG, HMLU)
+    crs: EPSG:25832
+    retrieved_with: build_cost_raster.py (sha256 cde74d0de5da1bbf) with cost_recipe.py
+      (sha256 a2eaec0bdc20bf3e), pyorps GeoRasterizer / rasterio; python 3.13.5
+    notes: 'SUPERSEDED 2026-10-05 by cost_base_1m_closed: this plain pixel-centre
+      burn lost forbidden land-use features (of 9 157: 15 burned no cell, 24 have
+      holes, 99 touch only at corners, 220 narrower than 1.41 m) and routes crossed
+      forbidden polygons (60 of 320 test routes). Kept for the comparison only; do
+      not use for routing. | DELETED 2026-10-08 on the owner''s instruction: superseded
+      by cost_base_1m_closed; last sha256 9c8e1c777848efe99ccd2e9407ab4fd9a9d8f5fe7b3c747751baf14872682b06.'
+    used_for:
+    - 'done 2026-10-05: built on the DEM grid 23502 x 11162, 1 m'
+    - 'planned: routing cost surface, protection classes for relax-and-verify, trench
+      multipliers by soil; not yet used in a result'
+  protection_flags_1m:
+    kind: other
+    format: raster
+    path: rasters/protection_flags_1m.tif
+    status: present
+    source: 'built by build_cost_raster.py from alkis_land_use, biotope_complexes_protected,
+      biotopes_protected, bird_protection_areas, dem, landscape_protection, natura2000_habitats,
+      nature_reserves, soil_units, water_zones: protection flags (bits 0-5) and water
+      zone code (bits 8-11); not burned into the cost'
+    licence: derived work; follows the licences of its inputs (ALKIS, HLNUG, HMLU)
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:08:50+02:00'
+    sha256: c74fb0ae87068cd8d919d6caada17dfa10d50e73704be76e7ffe690c1785f688
+    crs: EPSG:25832
+    retrieved_with: build_cost_raster.py (sha256 cde74d0de5da1bbf) with cost_recipe.py
+      (sha256 a2eaec0bdc20bf3e), pyorps GeoRasterizer / rasterio; python 3.13.5
+    used_for:
+    - 'done 2026-10-05: built on the DEM grid 23502 x 11162, 1 m'
+    - 'planned: routing cost surface, protection classes for relax-and-verify, trench
+      multipliers by soil; not yet used in a result'
+  soil_unit_ids_1m:
+    kind: other
+    format: raster
+    path: rasters/soil_unit_ids_1m.tif
+    status: present
+    source: 'built by build_cost_raster.py from alkis_land_use, biotope_complexes_protected,
+      biotopes_protected, bird_protection_areas, dem, landscape_protection, natura2000_habitats,
+      nature_reserves, soil_units, water_zones: soil unit id (table in soil_unit_ids_1m.json)'
+    licence: derived work; follows the licences of its inputs (ALKIS, HLNUG, HMLU)
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:08:50+02:00'
+    sha256: 6ad825f5d6d61ac975c10a8430b7993c855ab6d1e64a914db23a9f7abf3dddcb
+    crs: EPSG:25832
+    retrieved_with: build_cost_raster.py (sha256 cde74d0de5da1bbf) with cost_recipe.py
+      (sha256 a2eaec0bdc20bf3e), pyorps GeoRasterizer / rasterio; python 3.13.5
+    used_for:
+    - 'done 2026-10-05: built on the DEM grid 23502 x 11162, 1 m'
+    - 'planned: routing cost surface, protection classes for relax-and-verify, trench
+      multipliers by soil; not yet used in a result'
+  cost_base_1m_closed:
+    kind: other
+    format: raster
+    path: rasters/cost_base_1m_closed.tif
+    status: present
+    source: 'built by build_cost_raster.py from alkis_land_use, biotope_complexes_protected,
+      biotopes_protected, bird_protection_areas, dem, landscape_protection, natura2000_habitats,
+      nature_reserves, soil_units, water_zones: EUR per metre of trench by land-use
+      class (CIRED 2026 stand-in recipe), 65535 forbidden, every cell touched by a
+      forbidden polygon forbidden'
+    licence: derived work; follows the licences of its inputs (ALKIS, HLNUG, HMLU)
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:17:09+02:00'
+    sha256: 066023916c4e4fa1b076892da92d65ffd0b1310b46f47c1b9bbeb6198794cfb7
+    crs: EPSG:25832
+    retrieved_with: build_cost_raster.py (sha256 c8ca0eca3bcdc5c9) with cost_recipe.py
+      (sha256 f7f77cd29e1fd98d), pyorps GeoRasterizer / rasterio; python 3.13.5
+    notes: 'closure check passed: all 30843044 cells touched by the 9157 forbidden
+      polygons are 65535; 12.55% of the cells are forbidden; 2086894 further forbidden
+      cells come from land-use classes the recipe does not list'
+    used_for:
+    - 'done 2026-10-05: built on the DEM grid 23502 x 11162, 1 m'
+    - 'planned: routing cost surface, protection pricing, trench multipliers by soil;
+      not yet used in a result'
+  cost_priced_1m:
+    kind: other
+    format: raster
+    path: rasters/cost_priced_1m.tif
+    status: present
+    source: built by build_priced_cost.py from cost_base_1m_closed and protection_flags_1m
+    licence: derived work; follows the licences of its inputs (ALKIS, HLNUG, HMLU)
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:23:26+02:00'
+    sha256: d33dc2f2729c25c16eeea2190762cd80545856e01db19194ec3e39d2c76be745
+    crs: EPSG:25832
+    retrieved_with: build_priced_cost.py (sha256 a7c7806e16e28b8f), pyorps.costmodel.consent,
+      numpy/rasterio in 512-row blocks; python 3.13.5
+    notes: every protected-area cell priced by the class multiplier (consent_classes_2026.yaml,
+      sha256 4a46bf2e76fd9a9c; 20 stand-in values); forbidden cells unchanged; 101291952
+      of 262329324 cells changed; one-off permit costs and procedure times are NOT
+      in this raster (consent lattice)
+    used_for:
+    - 'done 2026-10-05: built; invariants checked over the whole raster'
+    - 'planned: the routing cost surface for the cost fields; not yet used in a result'
+  sc_tws_hqs_alk_farm:
+    kind: other
+    format: vector
+    path: layers/site_constraints/sc_tws_hqs_alk_farm.gpkg
+    status: present
+    source: site constraint 'TWS_HQS_ALK' from https://geodienste-umwelt.hessen.de/arcgis/services/inspire/bewirtschaftungsgebiete/MapServer/WFSServer
+      (wfs)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:32:46+02:00'
+    sha256: 34198b352a2be85951059e08d6b20237dee22cc5c8960ea3b64c6dfa6340dccd
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 09efb7d42c3307d4) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window farm, fetched over (441401.0, 5584464.0,
+      446375.0, 5588011.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_tws_hqs_alk_farm'
+  sc_biotope_farm:
+    kind: protected_areas
+    format: vector
+    path: layers/site_constraints/sc_biotope_farm.gpkg
+    status: present
+    source: site constraint 'BIOTOPE' from https://geodienste-umwelt.hessen.de/arcgis/services/inspire/lebensraeume_biotope/MapServer/WFSServer
+      (wfs)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:32:46+02:00'
+    sha256: 8eb5db2a16d40230e91445494025b3c04cec3df3b34bbcf906b5acc40ea973e2
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 09efb7d42c3307d4) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window farm, fetched over (441401.0, 5584464.0,
+      446375.0, 5588011.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_biotope_farm'
+  sc_0_farm:
+    kind: other
+    format: vector
+    path: layers/site_constraints/sc_0_farm.gpkg
+    status: present
+    source: site constraint '0' from https://geodienste-umwelt.hessen.de/arcgis/rest/services/natureg/schutzgebiete/MapServer
+      (rest)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:32:46+02:00'
+    sha256: a059bfc5b5365c760930f723d4abaf8cf5bcb1de9cb5fbfad3d35685f21ff154
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 09efb7d42c3307d4) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window farm, fetched over (441401.0, 5584464.0,
+      446375.0, 5588011.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_0_farm'
+  sc_hochwasser_mit_niedriger_wahrscheinlichkeit_farm:
+    kind: other
+    format: vector
+    path: layers/site_constraints/sc_hochwasser_mit_niedriger_wahrscheinlichkeit_farm.gpkg
+    status: present
+    source: site constraint 'Hochwasser_mit_niedriger_Wahrscheinlichkeit' from https://geodienste-umwelt.hessen.de/arcgis/services/inspire/gebiete_naturbedingter_risiken/MapServer/WFSServer
+      (wfs)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:32:46+02:00'
+    sha256: a4e041663ff2103a1225a1a56e685e86d75b414e0264cefcafeecc5561d5964f
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 09efb7d42c3307d4) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window farm, fetched over (441401.0, 5584464.0,
+      446375.0, 5588011.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_hochwasser_mit_niedriger_wahrscheinlichkeit_farm'
+  sc_buildings_farm:
+    kind: other
+    format: vector
+    path: layers/site_constraints/sc_buildings_farm.gpkg
+    status: present
+    source: site constraint 'ave_GebaeudeBauwerk' from https://www.gds.hessen.de/wfs2/aaa-suite/cgi-bin/alkis/vereinf/wfs
+      (buildings)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:32:46+02:00'
+    sha256: f9f2312cf47d655b88c3aaa05a19122c6b7d9892c7715cfd26bdf0ddaa0b21bd
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 09efb7d42c3307d4) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window farm, fetched over (441401.0, 5584464.0,
+      446375.0, 5588011.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_buildings_farm'
+  sc_ueberschwemmungsgebiete_hq100_nach_hwg_farm:
+    kind: other
+    format: vector
+    path: layers/site_constraints/sc_ueberschwemmungsgebiete_hq100_nach_hwg_farm.gpkg
+    status: present
+    source: site constraint 'Ueberschwemmungsgebiete_HQ100_nach_HWG' from https://geodienste-umwelt.hessen.de/arcgis/services/inspire/gebiete_naturbedingter_risiken/MapServer/WFSServer
+      (wfs)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:32:46+02:00'
+    sha256: ff84fd7521af598a99885edc27a3db90217b66df193ad4fd0c11191bc4a82238
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 09efb7d42c3307d4) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window farm, fetched over (441401.0, 5584464.0,
+      446375.0, 5588011.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_ueberschwemmungsgebiete_hq100_nach_hwg_farm'
+  sc_abflussgebiete_hq100_nach_hwg_farm:
+    kind: other
+    format: vector
+    path: layers/site_constraints/sc_abflussgebiete_hq100_nach_hwg_farm.gpkg
+    status: present
+    source: site constraint 'Abflussgebiete_HQ100_nach_HWG' from https://geodienste-umwelt.hessen.de/arcgis/services/inspire/gebiete_naturbedingter_risiken/MapServer/WFSServer
+      (wfs)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:32:46+02:00'
+    sha256: 8a856314cbff54ced675fefafbc07740401d9c0fc010333cda5629af2c4258f8
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 09efb7d42c3307d4) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window farm, fetched over (441401.0, 5584464.0,
+      446375.0, 5588011.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_abflussgebiete_hq100_nach_hwg_farm'
+  site_cost_farm:
+    kind: site_raster
+    format: raster
+    path: rasters/site_cost_farm_eur_m2.tif
+    status: present
+    source: built by build_site_raster.py, window farm, EUR per m2 of switchyard,
+      65535 = cannot build
+    licence: derived work; follows the licences of its inputs
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T15:32:46+02:00'
+    sha256: 18e0c4b5500772ea09ff6ef2f91ea9e0960d29c08f23d4ffe5c90364efdc11eb
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 09efb7d42c3307d4), python 3.13.5
+    notes: closed burn; closure check passed; 63.58% buildable; constraint model of
+      the TopoMILP site-raster script (examples/cired2027, sha256 b07b6242920dd7ea);
+      sidecar site_cost_farm_sidecar.json
+    used_for:
+    - 'done 2026-10-05: built'
+    - 'planned: the site field and the footprint screen; not yet used in a result'
+  sc_tws_hqs_alk_envelope:
+    kind: other
+    format: vector
+    path: layers/site_constraints/sc_tws_hqs_alk_envelope.gpkg
+    status: present
+    source: site constraint 'TWS_HQS_ALK' from https://geodienste-umwelt.hessen.de/arcgis/services/inspire/bewirtschaftungsgebiete/MapServer/WFSServer
+      (wfs)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T16:06:41+02:00'
+    sha256: 07612874c2d7e388fc121e1a407f78d1c460f705c7e8817447083ca970af05f8
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 c3d1d1cbb56f14cc) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window envelope, fetched over (431448.0,
+      5581917.0, 454208.0, 5593261.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_tws_hqs_alk_envelope'
+  sc_biotope_envelope:
+    kind: protected_areas
+    format: vector
+    path: layers/site_constraints/sc_biotope_envelope.gpkg
+    status: present
+    source: site constraint 'BIOTOPE' from https://geodienste-umwelt.hessen.de/arcgis/services/inspire/lebensraeume_biotope/MapServer/WFSServer
+      (wfs)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T16:06:41+02:00'
+    sha256: 7b30bd7af595cf39325fcc98515b24ffb2e52424e969403e25f20a9013460eb5
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 c3d1d1cbb56f14cc) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window envelope, fetched over (431448.0,
+      5581917.0, 454208.0, 5593261.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_biotope_envelope'
+  sc_0_envelope:
+    kind: other
+    format: vector
+    path: layers/site_constraints/sc_0_envelope.gpkg
+    status: present
+    source: site constraint '0' from https://geodienste-umwelt.hessen.de/arcgis/rest/services/natureg/schutzgebiete/MapServer
+      (rest)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T16:06:41+02:00'
+    sha256: 7d5f30b169105d3c6c4289a0e5ddd1e4a68269ef21ab234abc5a0a7b505353be
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 c3d1d1cbb56f14cc) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window envelope, fetched over (431448.0,
+      5581917.0, 454208.0, 5593261.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_0_envelope'
+  sc_hochwasser_mit_niedriger_wahrscheinlichkeit_envelope:
+    kind: other
+    format: vector
+    path: layers/site_constraints/sc_hochwasser_mit_niedriger_wahrscheinlichkeit_envelope.gpkg
+    status: present
+    source: site constraint 'Hochwasser_mit_niedriger_Wahrscheinlichkeit' from https://geodienste-umwelt.hessen.de/arcgis/services/inspire/gebiete_naturbedingter_risiken/MapServer/WFSServer
+      (wfs)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T16:06:41+02:00'
+    sha256: 7aac372cb74a8c60ee216a54b9ea72ded4792e8966f946fb5e9f5e1df2396ec6
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 c3d1d1cbb56f14cc) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window envelope, fetched over (431448.0,
+      5581917.0, 454208.0, 5593261.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_hochwasser_mit_niedriger_wahrscheinlichkeit_envelope'
+  sc_buildings_envelope:
+    kind: other
+    format: vector
+    path: layers/site_constraints/sc_buildings_envelope.gpkg
+    status: present
+    source: site constraint 'ave_GebaeudeBauwerk' from https://www.gds.hessen.de/wfs2/aaa-suite/cgi-bin/alkis/vereinf/wfs
+      (buildings)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T16:06:42+02:00'
+    sha256: 21113f469d5a8bfe379e8a569e5990508a3c27f04f7cde0c1c3b2e102f95433f
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 c3d1d1cbb56f14cc) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window envelope, fetched over (431448.0,
+      5581917.0, 454208.0, 5593261.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_buildings_envelope'
+  sc_ueberschwemmungsgebiete_hq100_nach_hwg_envelope:
+    kind: other
+    format: vector
+    path: layers/site_constraints/sc_ueberschwemmungsgebiete_hq100_nach_hwg_envelope.gpkg
+    status: present
+    source: site constraint 'Ueberschwemmungsgebiete_HQ100_nach_HWG' from https://geodienste-umwelt.hessen.de/arcgis/services/inspire/gebiete_naturbedingter_risiken/MapServer/WFSServer
+      (wfs)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T16:06:42+02:00'
+    sha256: 233ed1eb92d4288e20f01c3790e16a82846d765b34a133cc684ab50bcc67da61
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 c3d1d1cbb56f14cc) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window envelope, fetched over (431448.0,
+      5581917.0, 454208.0, 5593261.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_ueberschwemmungsgebiete_hq100_nach_hwg_envelope'
+  sc_abflussgebiete_hq100_nach_hwg_envelope:
+    kind: other
+    format: vector
+    path: layers/site_constraints/sc_abflussgebiete_hq100_nach_hwg_envelope.gpkg
+    status: present
+    source: site constraint 'Abflussgebiete_HQ100_nach_HWG' from https://geodienste-umwelt.hessen.de/arcgis/services/inspire/gebiete_naturbedingter_risiken/MapServer/WFSServer
+      (wfs)
+    licence: to be confirmed at download
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T16:06:43+02:00'
+    sha256: c0cf481f00d68638ec6f4a0ddfce8e7237026a8dd78b67a9673a02cc908a8098
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 c3d1d1cbb56f14cc) with the legacy
+      helpers (sha256 b07b6242920dd7ea); window envelope, fetched over (431448.0,
+      5581917.0, 454208.0, 5593261.0)
+    used_for:
+    - 'done 2026-10-05: fetched and saved for the site raster'
+    - 'used: site raster constraint sc_abflussgebiete_hq100_nach_hwg_envelope'
+  site_cost_envelope:
+    kind: site_raster
+    format: raster
+    path: rasters/site_cost_envelope_eur_m2.tif
+    status: present
+    source: built by build_site_raster.py, window envelope, EUR per m2 of switchyard,
+      65535 = cannot build
+    licence: derived work; follows the licences of its inputs
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T16:06:43+02:00'
+    sha256: 4cababdd1447e7e47a419ef274a997f66f6e3261b2b6ab7b49604a6cee29e037
+    crs: EPSG:25832
+    retrieved_with: build_site_raster.py (sha256 c3d1d1cbb56f14cc), python 3.13.5
+    notes: closed burn; closure check passed; 34.03% buildable; constraint model of
+      the TopoMILP site-raster script (sha256 b07b6242920dd7ea); sidecar site_cost_envelope_sidecar.json
+    used_for:
+    - 'done 2026-10-05: built'
+    - 'planned: the site field and the footprint screen; not yet used in a result'
+  site_field_farm_cents:
+    kind: site_raster
+    format: raster
+    path: rasters/site_field_farm_cents.tif
+    status: present
+    source: 'built by compute_site_field.py from site_cost_farm: pad cost in cents
+      at the best rotation, 4294967295 = infeasible'
+    licence: derived work; follows the licences of its inputs
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T16:09:58+02:00'
+    sha256: c36560b0005503d10ce5ae29bf4c9949a30b0585bc191e5d77b2308d1e6ebc98
+    crs: EPSG:25832
+    retrieved_with: compute_site_field.py (sha256 5177713e5d80080a), pyorps.siting.site_field;
+      python 3.13.5
+    notes: exact FFT site field of a 60 x 80 m pad, 36 rotations; checked against
+      direct pixel sums at 400 feasible and 100 infeasible anchors (0 disagreements);
+      31.58% feasible
+    used_for:
+    - 'done 2026-10-05: built and checked'
+    - 'planned: the site term of the total cost field; not yet used in a result'
+  site_field_farm_rotation:
+    kind: site_raster
+    format: raster
+    path: rasters/site_field_farm_rotation.tif
+    status: present
+    source: 'built by compute_site_field.py from site_cost_farm: index of the best
+      rotation (5 degree steps), 255 = none'
+    licence: derived work; follows the licences of its inputs
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T16:09:58+02:00'
+    sha256: 13e54e2d18bd34d71562469b8e171e6d816bffe01755a7945bf44aab51d1708a
+    crs: EPSG:25832
+    retrieved_with: compute_site_field.py (sha256 5177713e5d80080a), pyorps.siting.site_field;
+      python 3.13.5
+    notes: exact FFT site field of a 60 x 80 m pad, 36 rotations; checked against
+      direct pixel sums at 400 feasible and 100 infeasible anchors (0 disagreements);
+      31.58% feasible
+    used_for:
+    - 'done 2026-10-05: built and checked'
+    - 'planned: the site term of the total cost field; not yet used in a result'
+  site_field_envelope_cents:
+    kind: site_raster
+    format: raster
+    path: rasters/site_field_envelope_cents.tif
+    status: present
+    source: 'built by compute_site_field.py from site_cost_envelope: pad cost in cents
+      at the best rotation, 4294967295 = infeasible'
+    licence: derived work; follows the licences of its inputs
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T16:52:14+02:00'
+    sha256: e7595c138df7355693091d744203498d1ec1e6c53cc2f29ad00c47aa951c2c13
+    crs: EPSG:25832
+    retrieved_with: compute_site_field.py (sha256 4e1597e872fcf4ce), pyorps.siting.site_field;
+      python 3.13.5
+    notes: exact FFT site field of a 60 x 80 m pad, 36 rotations; checked against
+      direct pixel sums at 400 feasible and 100 infeasible anchors (0 disagreements);
+      15.72% feasible
+    used_for:
+    - 'done 2026-10-05: built and checked'
+    - 'planned: the site term of the total cost field; not yet used in a result'
+  site_field_envelope_rotation:
+    kind: site_raster
+    format: raster
+    path: rasters/site_field_envelope_rotation.tif
+    status: present
+    source: 'built by compute_site_field.py from site_cost_envelope: index of the
+      best rotation (5 degree steps), 255 = none'
+    licence: derived work; follows the licences of its inputs
+    captured: '2026-10-05'
+    captured_at: '2026-10-05T16:52:15+02:00'
+    sha256: 4d75b960039adaccd68facb63c180794944537e759a7295438b669bcd36c09ca
+    crs: EPSG:25832
+    retrieved_with: compute_site_field.py (sha256 4e1597e872fcf4ce), pyorps.siting.site_field;
+      python 3.13.5
+    notes: exact FFT site field of a 60 x 80 m pad, 36 rotations; checked against
+      direct pixel sums at 400 feasible and 100 infeasible anchors (0 disagreements);
+      15.72% feasible
+    used_for:
+    - 'done 2026-10-05: built and checked'
+    - 'planned: the site term of the total cost field; not yet used in a result'
+  access_entry_1m:
+    kind: access_raster
+    format: raster
+    path: rasters/access_entry_1m.tif
+    status: present
+    source: 'built by build_access_raster.py from alkis_land_use, dem: 1 on existing
+      public-road cells (entry cells of the access field)'
+    licence: derived work; follows the licences of its inputs (ALKIS, DEM)
+    captured: '2026-10-06'
+    captured_at: '2026-10-06T16:12:10+02:00'
+    sha256: 7b3e0c286a8af9de7714d270869497094a180e88cbb1ac09079809d70aa4054e
+    crs: EPSG:25832
+    retrieved_with: build_access_raster.py (sha256 44bd9d89728d8adf), constraints
+      access_constraints_2026.yaml (sha256 c4b11ffb5471a319); python 3.13.5
+    notes: closure check passed (0 cells kept as public road); forbidden 28.91%; entry
+      cells 8227889; free-cell cost min 1, max 338
+    used_for:
+    - 'done 2026-10-06: built on the DEM grid 23502 x 11162, 1 m'
+    - 'planned: access-road term of the substation siting; not yet used in a result'
+  access_field_5m_lattice:
+    kind: access_raster
+    format: raster
+    path: rasters/access_field_5m_lattice_eur.tif
+    status: present
+    source: built by compute_access_field.py (GPU many-seed field)
+    licence: derived work; follows the licences of its inputs
+    captured: '2026-10-06'
+    captured_at: '2026-10-06T16:21:56+02:00'
+    sha256: 1f15c8a4690f215ed4562919090e24fad4ed0c6ba21b374a780ec9c4f2fb18c2
+    crs: EPSG:25832
+    retrieved_with: compute_access_field.py (sha256 9c957de5172c1a1a), GpuSsspSession.solve_seeded;
+      python 3.13.5
+    notes: 'float32 GPU field (a BOUND: multiply by 1 - rounding_slack_relative for
+      a lower bound), sampled every 5th cell of the 1 m grid from its origin; the
+      5 m pad convention is still open'
+    used_for:
+    - 'done 2026-10-06: access field on a 5 m lattice'
+    - 'planned: stage S3 lower bound; not yet used in a result'
+  hv_cost_priced_1m:
+    kind: other
+    format: raster
+    path: rasters/hv_cost_priced_1m.tif
+    status: present
+    source: 'built by build_hv_raster.py: 110 kV cable cost per metre, protected areas
+      priced'
+    licence: derived work; follows the licences of its inputs (ALKIS, HLNUG, HMLU)
+    captured: '2026-10-06'
+    captured_at: '2026-10-06T16:49:20+02:00'
+    sha256: 70606f1716f5e731bcaf4554ffa42d6be0f583bc1a3459d4de7b11958b09bd00
+    crs: EPSG:25832
+    retrieved_with: build_hv_raster.py (sha256 0b5cfc5b0cee0bc2), hv_leg_constraints_2026.yaml
+      (sha256 2755e2769c040a73); python 3.13.5
+    notes: 'built from cost_priced_1m: (1 + omega) c + rho, omega 0.3906, rho 468.1
+      EUR/m (240 mm2, 3 cores + capitalised losses from W(all)); forbidden cells equal
+      the trench raster''s; no weight below its trench rate; free-cell weight 642..65534
+      EUR/m over 229399386 cells; 1486 cells capped at 65534 (already capped in the
+      trench raster); priced at zero: joints, cross_bonding, easement, fibre, dielectric_loss'
+    used_for:
+    - 'done 2026-10-06: built on the DEM grid 23502 x 11162, 1 m (replaces a withdrawn
+      first version priced from catalogue civil costs)'
+    - 'planned: 110 kV leg field, stage S2; not yet used in a result'
+  hv_field_min_5m_lattice:
+    kind: other
+    format: raster
+    path: rasters/hv_field_min_5m_lattice_eur.tif
+    status: present
+    source: 'built by compute_hv_fields.py: 110 kV cable-leg field (GPU, float32 bound)'
+    licence: derived work; follows the licences of its inputs
+    captured: '2026-10-06'
+    captured_at: '2026-10-06T17:40:56+02:00'
+    sha256: 35ef2d0843cfbe0e8adce5b01d3f141de9d5af3ba34a68ef06af0d6183284170
+    crs: EPSG:25832
+    retrieved_with: compute_hv_fields.py (sha256 5848737e3c9c63ca), GpuSsspSession.solve_seeded;
+      python 3.13.5
+    notes: 'float32 GPU field of the 110 kV cable leg to the cheapest connection point
+      (a BOUND: multiply by 1 - rounding_slack_relative for a lower bound); argmin
+      = connection point id; cable only; every 5th cell'
+    used_for:
+    - 'done 2026-10-06: 110 kV field on a 5 m lattice'
+    - 'planned: stage S2 lower bound; not yet used in a result'
+  hv_field_argmin_5m_lattice:
+    kind: other
+    format: raster
+    path: rasters/hv_field_argmin_5m_lattice.tif
+    status: present
+    source: 'built by compute_hv_fields.py: winning connection point id of the 110
+      kV field'
+    licence: derived work; follows the licences of its inputs
+    captured: '2026-10-06'
+    captured_at: '2026-10-06T17:40:56+02:00'
+    sha256: 5caf01592d708aff18da19a3d9cfeaf5086b7c0005570ddf55572d7814407864
+    crs: EPSG:25832
+    retrieved_with: compute_hv_fields.py (sha256 5848737e3c9c63ca), GpuSsspSession.solve_seeded;
+      python 3.13.5
+    notes: 'float32 GPU field of the 110 kV cable leg to the cheapest connection point
+      (a BOUND: multiply by 1 - rounding_slack_relative for a lower bound); argmin
+      = connection point id; cable only; every 5th cell'
+    used_for:
+    - 'done 2026-10-06: 110 kV field on a 5 m lattice'
+    - 'planned: stage S2 lower bound; not yet used in a result'
+  towers_110_verified:
+    kind: lines
+    format: vector
+    path: layers/towers_110_verified.gpkg
+    status: present
+    source: derived from lines and towers_110 by build_verified_towers.py (owner rule
+      2026-10-06)
+    licence: derived work; follows the licence of its inputs (OpenStreetMap, ODbL)
+    captured: '2026-10-06'
+    captured_at: '2026-10-06T17:35:07+02:00'
+    sha256: df682f33a2953a6ba5ca58284919eb6d80f9955c2524f2e619b306637e4d4732
+    crs: EPSG:25832
+    retrieved_with: build_verified_towers.py (sha256 2daeb7877a1dfa5f), pyorps.siting.hv_towers;
+      python 3.13.5
+    notes: 542 towers and poles on lines whose voltage contains 110000 (tolerance
+      1.0 m; railway traction lines dropped=True, decision D-e); with railway traction
+      lines 721, without 542; of 4977 OSM support and equipment points, only 5 carry
+      a voltage tag themselves
+    used_for:
+    - 'done 2026-10-06: tower pool for tap points and overhead lattice'
+    - 'planned: HV tap points and overhead bound; not yet used in a result'
+  mv_lb_5m_lattice:
+    kind: other
+    format: raster
+    path: rasters/mv_lb_5m_lattice_eur.tif
+    status: present
+    source: 'built by compute_mv_hv_bound_fields.py: lower bound of the collector
+      trench weight (7 turbine drains, Steiner/MST bound, slack already applied)'
+    licence: derived work; follows the licences of its inputs
+    captured: '2026-10-08'
+    captured_at: '2026-10-08T11:07:31+02:00'
+    sha256: 97d7a2c6ead516d94b1d2bdf4341bc1cf70a21866d05c343fc75e65715fb69e7
+    crs: EPSG:25832
+    retrieved_with: compute_mv_hv_bound_fields.py (sha256 b67e22108cf0f274); python
+      3.13.5
+    notes: lower bound of the collector trench weight (7 turbine drains, Steiner/MST
+      bound, slack already applied)
+    used_for:
+    - 'done 2026-10-08: lower bound of the collector trench weight (7 turbine drains,
+      Steiner/MST bound, slack already applied)'
+    - 'planned: lower bound of the bound-and-prune driver; not yet used in a result'
+  hv_field_taps_5m_lattice:
+    kind: other
+    format: raster
+    path: rasters/hv_field_taps_5m_lattice_eur.tif
+    status: present
+    source: 'built by compute_mv_hv_bound_fields.py: 110 kV cable field with verified
+      towers and connection points as seeds (GPU, float32 bound)'
+    licence: derived work; follows the licences of its inputs
+    captured: '2026-10-10'
+    captured_at: '2026-10-10T12:05:01+02:00'
+    sha256: d9807fa1a61c823268dbc59d9b8b124383b6343b389fe681f960cb80c0328608
+    crs: EPSG:25832
+    retrieved_with: compute_mv_hv_bound_fields.py (sha256 866f4f71e1f71d83); python
+      3.13.5
+    notes: 110 kV cable field, connection points (with bay cost) and verified towers
+      as seeds (GPU, float32 bound)
+    used_for:
+    - 'done 2026-10-10: 110 kV cable field, connection points (with bay cost) and
+      verified towers as seeds (GPU, float32 bound)'
+    - 'planned: lower bound of the bound-and-prune driver; not yet used in a result'
+  mv_window_dtr_5m_lattice:
+    kind: other
+    format: raster
+    path: rasters/mv_window_dtr_5m_lattice_eur.tif
+    status: present
+    source: 'built by compute_window_bound.py: trench distance from the turbine-window
+      boundary (GPU, float32 bound)'
+    licence: derived work; follows the licences of its inputs
+    captured: '2026-10-10'
+    captured_at: '2026-10-10T12:04:34+02:00'
+    sha256: 7542f4b5ec35963eb0086329a10ffb409f57da8e29717d873bf62fa2d7fa8b40
+    crs: EPSG:25832
+    retrieved_with: compute_window_bound.py (sha256 2332c96b16311608); python 3.13.5
+    notes: trench distance from the turbine-window boundary (GPU, float32 bound)
+    used_for:
+    - 'done 2026-10-10: trench distance from the turbine-window boundary (GPU, float32
+      bound)'
+    - 'planned: window decomposition bound of the driver; not yet used in a result'

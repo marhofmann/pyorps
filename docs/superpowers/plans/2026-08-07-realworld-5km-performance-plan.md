@@ -1,6 +1,6 @@
 # Real-World Route-Planning Performance Plan (routes > 5 km)
 
-**Status:** DRAFT for review — no code changed yet.
+**Status:** PARTLY IMPLEMENTED — phases 0, 1 and 2a done, phases 3-5 not started (corrected 2026-10-05 from the docs status ledger). Originally: DRAFT for review, no code changed yet.
 **Date:** 2026-08-07
 **Scope:** CPU Dijkstra, CPU delta-stepping, GPU SSSP (V5/V4/V3), constrained CPU + GPU planners,
 eikonal/FIM backend, rasterization + vector data path, and end-to-end orchestration.

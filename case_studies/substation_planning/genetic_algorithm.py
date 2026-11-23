@@ -1,14 +1,13 @@
 
-import pandapower as pp
-from pandapower.topology import create_nxgraph
 import networkx as nx
 import numpy as np
-from numba import njit
+import pandapower as pp
 from check_tree_topologies import net_valid
+from pandapower.topology import create_nxgraph
 from topology_reconfiguration_random_trees import create_trees_with_cycle_switches
 
 
-class GeneticAlgorithm(object):
+class GeneticAlgorithm:
     def __init__(self, net, population_size, tournament_size, nr_of_generations=100, crossover_rate=0.5,
                  mutation_rate=0.5, keep_best_of_all_time=True, keep_best_of_generation=True,
                  optimization_function=None, **net_valid_kwargs):

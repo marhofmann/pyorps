@@ -11,8 +11,14 @@ from __future__ import annotations
 
 import json
 import shutil
+import warnings
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from ..state import LAYER_KINDS
+from . import rasterize, routing
+from .errors import ProjectLayersSkippedWarning, ProjectLoadError
 
 ROUTE_EXTS = {".geojson", ".json", ".gpkg", ".shp", ".csv"}
 MANIFEST_VERSION = 1
@@ -141,6 +147,35 @@ SAVE_GROUPS = ("raster", "vector", "cost_table")
 _ALWAYS_SAVED_KINDS = ("route", "study_area")
 
 
+def normalise_gui_settings(raw: Any) -> dict[str, dict]:
+    """The per-card settings of the page (``state.gui_settings``) as plain JSON.
+
+    ``{"objective": {...}, "cost_field": {...}, "corridor": {...},
+    "constrained": {...}}``: each card owns one key and normalises its own
+    values when it reads them; this only makes the whole safe to write to and
+    read from ``project.json``. Anything that is not a mapping (a project
+    saved before round 14 has no key at all) gives ``{}``; an entry that is
+    not a mapping, or does not survive JSON, is left out.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    settings: dict[str, dict] = {}
+    for key, value in raw.items():
+        if not isinstance(value, dict):
+            continue
+        try:
+            settings[str(key)] = json.loads(json.dumps(value, default=str))
+        except (TypeError, ValueError):       # tuple keys, circular refs ...
+            continue
+    return settings
+
+
+def manifest_path(path: str | Path) -> Path:
+    """The ``project.json`` a save to ``path`` writes (a folder gets one)."""
+    path = Path(path)
+    return path if path.suffix.lower() == ".json" else path / "project.json"
+
+
 def save_project(state, path: str | Path, *,
                  cost_table: dict | None = None,
                  include: list | set | None = None) -> str:
@@ -157,9 +192,8 @@ def save_project(state, path: str | Path, *,
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     include_set = set(SAVE_GROUPS) if include is None else set(include)
-    path = Path(path)
-    if path.suffix.lower() != ".json":
-        path = path / "project.json"
+    skipped: list[dict] = []
+    path = manifest_path(path)
     root = path.parent
     assets = root / "assets"
     assets.mkdir(parents=True, exist_ok=True)
@@ -187,6 +221,17 @@ def save_project(state, path: str | Path, *,
                 if Path(source).resolve() != target.resolve():
                     shutil.copyfile(source, target)
                 entry["file"] = str(target.relative_to(root))
+            else:
+                # nothing to write: report it instead of saving an entry that
+                # load_project could only skip silently
+                skipped.append(_skipped(layer, "its raster file is gone "
+                                        f"({source or 'no source path'})"))
+                continue
+        elif layer.kind == "wms":
+            # a live tile overlay: the descriptor in meta["wms"] IS the data
+            if not (layer.meta or {}).get("wms"):
+                skipped.append(_skipped(layer, "it has no WMS descriptor"))
+                continue
         elif layer.gdf is not None and not layer.gdf.empty:
             target = assets / f"{layer.id}.gpkg"
             gdf = layer.gdf.copy()
@@ -200,6 +245,9 @@ def save_project(state, path: str | Path, *,
             entry["file"] = str(target.relative_to(root))
         elif layer.geojson is not None:
             entry["geojson"] = layer.geojson
+        else:
+            skipped.append(_skipped(layer, "it holds no data"))
+            continue
         layers.append(entry)
 
     manifest = {
@@ -207,82 +255,227 @@ def save_project(state, path: str | Path, *,
         "project_crs": str(state.project_crs),
         "study_area": state.study_area,
         "active_route_id": state.active_route_id,
+        "routing_settings": routing.normalise_routing_settings(
+            getattr(state, "routing_settings", None)),
+        "raster_settings": rasterize.normalise_raster_settings(
+            getattr(state, "raster_settings", None)),
+        "gui_settings": normalise_gui_settings(
+            getattr(state, "gui_settings", None)),
         "layers": layers,
+        "skipped_layers": skipped,
         "cost_table": (cost_table or {}) if "cost_table" in include_set
         else {},
     }
     path.write_text(json.dumps(manifest, indent=2, default=str),
                     encoding="utf-8")
-    state.dirty = False        # everything requested is on disk now
+    # everything requested is on disk now - unless layers had to be left out:
+    # those still exist only in this session, so the close guard keeps warning
+    state.dirty = bool(skipped)
+    _warn_skipped("Not saved", skipped)
     return str(path)
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+
+
+def _skipped(layer_or_entry, reason: str) -> dict:
+    """One ``skipped_layers`` record for a layer object or a manifest entry."""
+    get = (layer_or_entry.get if isinstance(layer_or_entry, dict)
+           else lambda key: getattr(layer_or_entry, key, None))
+    return {"id": get("id"), "name": get("name"), "kind": get("kind"),
+            "reason": reason}
+
+
+def _warn_skipped(action: str, skipped: list[dict]) -> None:
+    """Hand the skipped layers back as ONE warning (``guard`` turns it into a
+    notification box; the service return values stay as they were)."""
+    if not skipped:
+        return
+    lines = "; ".join(f"'{rec['name']}' ({rec['kind']}): {rec['reason']}"
+                      for rec in skipped)
+    warnings.warn(f"{action}: {len(skipped)} layer(s) - {lines}.",
+                  ProjectLayersSkippedWarning, stacklevel=3)
 
 
 def _manifest_meta(layer) -> dict:
     """Layer.meta minus unserializable/derived bits."""
     meta = dict(layer.meta or {})
+    meta.pop("combination_error", None)   # runtime note, not project data
     meta.pop("summary", None)
     meta.pop("combination_gdf", None)     # F2: derived GeoDataFrame, re-buildable
     meta.pop("combination_inputs", None)  # lazy-build inputs hold live gdf refs
+    meta.pop("staged_from", None)         # an edit staged by the page: not project data
     return json.loads(json.dumps(meta, default=str))
 
 
-def load_project(state, path: str | Path) -> dict:
+@dataclass
+class _StagedLayer:
+    """A layer fully read and built, waiting for the swap into the state."""
+
+    entry: dict                       # the manifest entry (view props live here)
+    add_args: dict[str, Any]          # keyword arguments for ``state.add_layer``
+    tile: Any = None                  # a served raster (its tile server runs!)
+
+
+def _asset_error(entry: dict, asset: Path, problem: str,
+                 cause: BaseException | None = None) -> ProjectLoadError:
+    """The error that names the layer and the asset file that failed."""
+    error = ProjectLoadError(
+        f"Layer '{entry.get('name')}' ({entry.get('kind')}) could not be "
+        f"loaded: its asset file '{asset}' {problem}.",
+        asset=str(asset), layer=str(entry.get("name")))
+    error.__cause__ = cause
+    return error
+
+
+def _stage_layer(entry: dict, root: Path, work_dir: Path):
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
-    """Restore a saved project into a cleared state; returns the manifest."""
-    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+    """Read one manifest entry into a :class:`_StagedLayer` WITHOUT touching
+    the session. Returns ``(staged, None)``, or ``(None, reason)`` for an entry
+    that has nothing to restore; raises :class:`ProjectLoadError` when its asset
+    file is missing or unreadable."""
     import geopandas as gpd
 
     from . import geo
     from .tiles import build_tile_layer
 
+    kind = entry.get("kind")
+    meta = entry.get("meta") or {}
+    name = entry.get("name") or "layer"
+    if kind not in LAYER_KINDS:
+        return None, f"unknown layer kind {kind!r}"
+    if kind == "wms":
+        if not meta.get("wms"):
+            return None, "its WMS descriptor is missing"
+        return _StagedLayer(entry, {
+            "name": name, "kind": "wms", "crs": entry.get("crs"),
+            "layer_id": entry.get("id"), "meta": meta}), None
+    if kind == "raster":
+        if not entry.get("file"):
+            return None, "its raster file was not saved"
+        tif = root / entry["file"]
+        if not tif.exists():
+            raise _asset_error(entry, tif, "is missing")
+        try:
+            tile = build_tile_layer(str(tif), name=name, work_dir=work_dir)
+        except Exception as exc:
+            raise _asset_error(
+                entry, tif, f"could not be read ({type(exc).__name__}: {exc})",
+                exc) from exc
+        layer_meta = {**meta, "source_path": tile.source_path}
+        if layer_meta.get("graduated"):
+            # re-register the class LUT (the custom-colormap registry is
+            # process local, so the saved "custom:" name is stale)
+            from types import SimpleNamespace
+
+            from .graduated import apply_to_layer
+            try:
+                apply_to_layer(SimpleNamespace(tile=tile, meta=layer_meta),
+                               layer_meta["graduated"])
+            except Exception:  # nosec B110  # pylint: disable=broad-exception-caught
+                # classification is cosmetic — never block a project load on it
+                pass
+        return _StagedLayer(entry, {
+            "name": name, "kind": "raster", "tile": tile,
+            "crs": entry.get("crs"), "layer_id": entry.get("id"),
+            "meta": layer_meta}, tile=tile), None
+    if entry.get("file"):
+        gpkg = root / entry["file"]
+        if not gpkg.exists():
+            raise _asset_error(entry, gpkg, "is missing")
+        try:
+            gdf = gpd.read_file(gpkg)
+            geojson = geo.gdf_to_wgs84_geojson(gdf)
+        except Exception as exc:
+            raise _asset_error(
+                entry, gpkg,
+                f"could not be read ({type(exc).__name__}: {exc})", exc) from exc
+        return _StagedLayer(entry, {
+            "name": name, "kind": kind, "gdf": gdf, "crs": gdf.crs,
+            "geojson": geojson, "layer_id": entry.get("id"),
+            "meta": meta}), None
+    if entry.get("geojson") is not None:
+        return _StagedLayer(entry, {
+            "name": name, "kind": kind, "geojson": entry["geojson"],
+            "layer_id": entry.get("id"), "meta": meta}), None
+    return None, "it holds no data"
+
+
+def _release_staged(staged: list[_StagedLayer]) -> None:
+    """Stop the tile servers of layers that were built but never adopted."""
+    from ..state import TileManager
+
+    for item in staged:
+        if item.tile is not None:
+            TileManager.shutdown_client(getattr(item.tile, "tile_client", None))
+
+
+def load_project(state, path: str | Path) -> dict:
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+    """Restore a saved project into ``state``, all or nothing; returns the manifest.
+
+    Loading is transactional: every layer is read and built FIRST, into a
+    staging list that never touches ``state`` (so the tile servers started for
+    raster layers are the only side effect). Only when ALL layers loaded is the
+    current session replaced, in one step under ``state.locked()``. If any asset
+    is missing or corrupt, those tile servers are stopped, ``state`` is exactly
+    as it was, and a :class:`~pyorps.gui.services.errors.ProjectLoadError`
+    names the layer and the asset file.
+
+    Entries with nothing to restore (an old save without the raster file, an
+    unknown kind) are left out and reported: the returned manifest gains
+    ``"load_skipped"`` (``[{"id", "name", "kind", "reason"}]``) and the same list
+    is raised as one ``ProjectLayersSkippedWarning`` (``guard`` shows it as a
+    warning box).
+    """
+    # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(str(path))
-    manifest = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ProjectLoadError(
+            f"The project file '{path}' could not be read "
+            f"({type(exc).__name__}: {exc}).", asset=str(path)) from exc
     root = path.parent
 
-    state.clear()
-    state.project_crs = manifest.get("project_crs") or state.project_crs
-    state.study_area = manifest.get("study_area")
+    staged: list[_StagedLayer] = []
+    skipped: list[dict] = []
+    try:
+        for entry in manifest.get("layers", []):
+            item, reason = _stage_layer(entry, root, state.work_dir)
+            if item is None:
+                skipped.append(_skipped(entry, reason))
+            else:
+                staged.append(item)
+    except BaseException:
+        _release_staged(staged)
+        raise
 
-    for entry in manifest.get("layers", []):
-        kind = entry.get("kind")
-        layer = None
-        if kind == "raster" and entry.get("file"):
-            tif = root / entry["file"]
-            tile = build_tile_layer(str(tif), name=entry["name"],
-                                    work_dir=state.work_dir)
-            layer = state.add_layer(
-                entry["name"], "raster", tile=tile, crs=entry.get("crs"),
-                layer_id=entry["id"],
-                meta={**(entry.get("meta") or {}),
-                      "source_path": tile.source_path})
-            if layer.meta.get("graduated"):
-                # re-register the class LUT (the custom-colormap registry is
-                # process local, so the saved "custom:" name is stale)
-                from .graduated import apply_to_layer
-                try:
-                    apply_to_layer(layer, layer.meta["graduated"])
-                except Exception:   # classification is cosmetic — never  # nosec B110  # pylint: disable=broad-exception-caught
-                    pass            # block a project load on it
-        elif entry.get("file"):
-            gdf = gpd.read_file(root / entry["file"])
-            layer = state.add_layer(
-                entry["name"], kind, gdf=gdf, crs=gdf.crs,
-                geojson=geo.gdf_to_wgs84_geojson(gdf),
-                layer_id=entry["id"], meta=entry.get("meta") or {})
-        elif entry.get("geojson") is not None:
-            layer = state.add_layer(
-                entry["name"], kind, geojson=entry["geojson"],
-                layer_id=entry["id"], meta=entry.get("meta") or {})
-        if layer is not None:
+    with state.locked():                 # the swap: in memory, no I/O
+        state.clear()
+        state.project_crs = manifest.get("project_crs") or state.project_crs
+        state.study_area = manifest.get("study_area")
+        for item in staged:
+            layer = state.add_layer(**item.add_args)
+            entry = item.entry
             layer.visible = bool(entry.get("visible", True))
             layer.z = int(entry.get("z", layer.z))
             layer.style = entry.get("style") or {}
             layer.opacity = float(entry.get("opacity", 0.7))
-    state.active_route_id = manifest.get("active_route_id")
-    if state.active_route_id not in state.layers:
-        state.active_route_id = None
-    state.dirty = False        # freshly loaded == on disk
+        # an older project has no routing settings: the page keeps its defaults
+        state.routing_settings = routing.normalise_routing_settings(
+            manifest.get("routing_settings"))
+        # likewise for the rasterize controls
+        state.raster_settings = rasterize.normalise_raster_settings(
+            manifest.get("raster_settings"))
+        # and for the cards of round 14 (objective, cost field, corridor,
+        # constrained profile): an older project gives {}
+        state.gui_settings = normalise_gui_settings(
+            manifest.get("gui_settings"))
+        state.active_route_id = manifest.get("active_route_id")
+        if state.active_route_id not in state.layers:
+            state.active_route_id = None
+        state.dirty = False        # freshly loaded == on disk
+    manifest["load_skipped"] = skipped
+    _warn_skipped("Not restored", skipped)
     return manifest

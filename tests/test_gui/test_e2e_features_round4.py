@@ -90,8 +90,6 @@ def feat_server(tmp_path_factory):
         base_layer_name="Landuse", base_crs=gdf.crs)
 
     app = build_app(state)
-    centre = [(vlayer.geojson["features"][0]["geometry"]["coordinates"][0][0][1]
-               + 0.002), rlayer.tile.bounds[0][1] + 0.002]
     for component in app.layout._traverse():
         if getattr(component, "id", None) == ids.LAYERS_VIEW:
             component.data = state.layers_view()

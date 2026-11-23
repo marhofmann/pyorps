@@ -1,0 +1,592 @@
+# Copied into pyorps on 2026-09-24 from TopoMILP/examples/cost_assumptions/cost_catalogue_2026.yaml
+# (source sha256 409063488d88bf5521f8cd6ff12b33cdbec2855740ededff79d22d4c3ca98a4c) per plan decision Q17 (everything in pyorps).
+# The only change: the section 43h note of cross_check_cable_vs_ohl_ratio_by_voltage.
+# enwg_regulatory_cap_up_to_110kv, corrected as plan rev. 5 section 15 (C1) asks.
+# Internally-consistent cost catalogue for TopoMILP / CIRED2027 corridor & free-siting work.
+# For narrative context, methodology, and reconciliation discussion see COST_CATALOGUE_2026.md.
+#
+# STRUCTURE: every leaf cost figure is an object with:
+#   value (or low/high for a range), source (a key into the `references` block below),
+#   confidence (HIGH/MEDIUM/LOW/INTERPOLATED -- see COST_CATALOGUE_2026.md section 0),
+#   and an optional `note`.
+# `source` may be a single ref key or a list of ref keys (cross-checked from multiple sources).
+# `source: interpolated` means no direct source exists -- the value is derived from a stated
+# ratio/rule found elsewhere in this file (see `note` for which one), or is a placeholder.
+#
+# v2 (2026-09-21): added lv_04kv, mv_overhead_line, mv_switchgear_by_voltage_class,
+# protection_sensors_scada, station_buildings_security, personnel_and_om, dena_blended_topdown.
+# The old (v1) cross_check_cable_vs_ohl_ratio_by_voltage.mv_hv_cable_ladder_dena entry (13x/10x)
+# is SUPERSEDED by dena_blended_topdown (direct-read figures) -- do not use the old ratio.
+
+meta:
+  reference_year: 2026
+  region: "Germany / Western-Central Europe"
+  currency: EUR
+  compiled: "2026-09-21"
+  indexation:
+    baupreisindex_tiefbau_2021_to_2025:
+      value: 1.393
+      source: destatis_baupreis
+      confidence: HIGH
+      note: "use to escalate pre-2022 civil-works figures"
+    hicp_cumulative_2015_to_2026:
+      value: 1.30
+      source: destatis_hicp
+      confidence: MEDIUM
+      note: "estimated from annual prints; verify against Destatis linked series post-2026 rebasing"
+
+references:
+  # --- Round 1 ---
+  oe_kv110:
+    title: "Österreichs Energie -- Kostenabschätzung für die Verkabelung von 110-kV-Leitungen"
+    url: "https://oesterreichsenergie.at/publikationen/ueberblick/detailseite/kostenabschaetzung-fuer-die-verkabelung-von-110-kv-leitungen"
+  muehlviertel110kv:
+    title: "Mühlviertel 110kV -- Kostenvergleich Erdkabel versus Freileitung"
+    url: "https://muehlviertel110kv.at/2026/02/01/kostenvergleich-erdkabel-versus-freileitung/"
+  bet_bmu2011:
+    title: "BET/PowerEngS/IZES for BMU -- Ausbau elektrischer Netze mit Kabel oder Freileitung (2011)"
+    url: "https://www.bet-consulting.de/fileadmin/redaktion/PDF/Studien_und_Gutachten/BET-Studie_Netzausbau_bf_BMU.pdf"
+  nep_kosten:
+    title: "Netzentwicklungsplan Strom 2035 (V2021) / 2030 -- Kostenschätzungen"
+    url: "https://www.netzentwicklungsplan.de/sites/default/files/2023-02/26_NEP_2035_V2021_2E_Kostenschaetzung_0.pdf"
+  xytower:
+    title: "xytower.com -- 110/132kV transmission tower price & guide (vendor/marketing, China)"
+    url: "https://www.xytower.com/110kv-transmission-tower/"
+  ramboll_desnz:
+    title: "Ramboll for UK DESNZ -- RAF021/2425 Study of the Potential for Cost Reduction in Undergrounding Transmission Lines (June 2025)"
+    url: "https://assets.publishing.service.gov.uk/media/6a27e1592cdcfdb7436ac131/undergrounding-transmission-cables-report.pdf"
+  gartenbau_kosten:
+    title: "gartenbau-kosten.de -- Erdkabel verlegen Kosten pro Meter 2026 (DE consumer/domestic scale)"
+    url: "https://gartenbau-kosten.de/gartenbeleuchtung/erdkabel-verlegen-kosten/"
+  destatis_baupreis:
+    title: "Destatis -- Baupreisindizes (Ingenieurbau/Tiefbau)"
+    url: "https://www.destatis.de/DE/Themen/Wirtschaft/Preise/Baupreise-Immobilienpreisindex/_inhalt.html"
+  destatis_hicp:
+    title: "Destatis/Bundesbank -- Harmonisierter Verbraucherpreisindex (HVPI)"
+    url: "https://www.destatis.de/DE/Themen/Wirtschaft/Preise/HVPI/_inhalt.html"
+  oe_positionspapier:
+    title: "Österreichs Energie -- Positionspapier Kabel/Freileitung (voltage-dependent cable:OHL ratio)"
+    url: "https://oesterreichsenergie.at/fileadmin/user_upload/Oesterreichs_Energie/Publikationsdatenbank/Positionspapiere/Positionspapier_Kabel_Freileitung.pdf"
+  consentec_enlag:
+    title: "Consentec for BMWi -- technische/planerische/regulatorische Bewertung der Erdkabelprojekte nach EnLAG und BBPlG"
+    url: "https://www.bundeswirtschaftsministerium.de/Redaktion/DE/Publikationen/Energie/consentec-technische-planerische-regulatorische-bewertung-der-erdkabel-projekte-nach-enlag-und-bbpig.pdf"
+  thueringer_ten:
+    title: "Thüringer Energienetze -- 110-kV-Netzausbaumaßnahmen / Maßnahmenliste Netzausbauplan 2024"
+    url: "https://www.thueringer-energienetze.com/Content/Documents/Ueber_uns/TEN_Netzausbaumassnahmen_110-kV.PDF"
+  acer_uic:
+    title: "ACER -- Unit Investment Cost (UIC) Indicators Report, electricity infrastructure (2023)"
+    url: "https://www.acer.europa.eu/sites/default/files/documents/Publications/UIC%20Report%20%20-%20Electricity%20infrastructure.pdf"
+  cigre_b344_secondary:
+    title: "CIGRE WG B3.44 (GIS/AIS lifecycle cost) -- cited via secondary sources only; primary TB is PAYWALLED at e-cigre.org, not accessed"
+    url: "https://www.e-cigre.org/publications/detail/638-guide-to-overall-line-design.html"
+  alterga_gisais:
+    title: "Alterga -- GIS/AIS substation comparison (blog, industry consensus)"
+    url: "https://alterga.com/en/blog/2025/gis-ais-substation-comparison/"
+  nexora_trafostation:
+    title: "Nexora -- Trafostation cost overview (DE market)"
+    url: "https://www.nex-ora.de/trafostation"
+  bauratgeber_630kva:
+    title: "Bauratgeber Deutschland -- 630 kVA Trafostation cost"
+    url: "https://bauratgeber-deutschland.de/wie-hoch-sind-die-kosten-fuer-eine-630-kva-trafostation/"
+  schneider_rm6:
+    title: "Schneider Electric -- RM6 24kV ring main unit catalogue (no differentiated pricing published)"
+    url: "https://download.schneider-electric.com/files?p_enDocType=Catalog&p_File_Name=RM6_catalogue.pdf&p_Doc_Ref=ART93643"
+  baucheck_roads:
+    title: "baucheck.io -- Schotterweg/Wegbau/Erdbau cost calculators (DE)"
+    url: "https://www.baucheck.io/baukostenrechner/landschaftsbau/strassenbau/preis-fur-einen-schotterweg"
+  hausjournal_baustrasse:
+    title: "hausjournal.net / fertighaus.de -- Baustraße (heavy-load road) cost guides (DE)"
+    url: "https://www.hausjournal.net/baustrasse-kosten"
+  wpd_carmen_windforst:
+    title: "wpd.de / carmen-ev.de -- Windenergie im Wald, access track widening (DE)"
+    url: "https://www.wpd.de/wind/deutschland/windenergie-im-wald/"
+  bayernwerk_uvp_110kv:
+    title: "Bayernwerk Netz -- 110kV UVP corridor documentation (temporary pylon worksite figures)"
+    url: "https://www.bayernwerk-netz.de/content/dam/revu-global/bayernwerk-netz/files/Netzausbau/Freileitung/Bergrheinfeld/04-Umweltbelange/04-1-UVP/04-1_UVP_Bericht_zAnhang_Alternativenpruefung.pdf"
+  # --- Round 2 ---
+  dena_vns2:
+    title: "dena-Verteilnetzstudie II -- Dokumentation der technischen Mengengerüste (direct-read, p.15 'Kosten')"
+    url: "https://www.dena.de/fileadmin/dena/Publikationen/PDFs/2026/Dokumentation_tech._Mengengerueste_dena-Verteilnetzstudie_II.pdf"
+  egtf_2024:
+    title: "EGTF Tacherting-Feichten -- Preisblatt Netzanschluss Niederspannungsnetz, 01.01.2024 (real DE DSO Preisblatt)"
+    url: "https://www.egtf.de/_Resources/Persistent/a/6/a/0/a6a06da61883d729f3755d7b541ff53b628a6028/Preisblatt_Netzanschluss_Niederspannungsnetz_V1.0_2024.pdf"
+  detmold_preisblatt:
+    title: "Stadtwerke Detmold -- Preisblatt Netz-/Hausanschluss, gültig ab 01.11.2025 (real DE DSO Preisblatt)"
+    url: "https://www.stadtwerke-detmold.de/Kopfnavigation/Netze/Hausanschluss/Preisblatt-Netz-Hausanschluss.pdf"
+  zaehlerschrank24:
+    title: "zaehlerschrank24.de -- NAYY-J/O Erdkabel retail prices (DE)"
+    url: "https://www.zaehlerschrank24.de/alu-erdkabel-nayy-j-4x150-se.html"
+  voltus_cable:
+    title: "Voltus -- NAYY-J Erdkabel retail prices (DE)"
+    url: "https://www.voltus.de/elektromaterial/kabel/erdkabel/erdkabel-nayy-j/nayy-j-4x240-sealu-starkstrom-erdkabel-mit-aluminiumleiter.html"
+  bnetza_bkz:
+    title: "Bundesnetzagentur -- Baukostenzuschüsse"
+    url: "https://www.bundesnetzagentur.de/DE/Fachthemen/ElektrizitaetundGas/Netzanschluss/Baukostenzuschuesse/start.html"
+  hansewerk_grevenkop:
+    title: "HanseWerk/Schleswig-Holstein Netz -- 'Grevenkop' digital/remote-controllable Ortsnetzstation press release"
+    url: "https://www.mynewsdesk.com/de/hansewerk/pressreleases/schleswig-holstein-netz-setzt-auf-digitale-technik-neue-fernsteuerbare-ortsnetzstation-in-grevenkop-3248822"
+  photovoltaikforum_fernwirk:
+    title: "photovoltaikforum.com -- Fernwirktechnik retrofit cost thread (indicative, DE)"
+    url: "https://www.photovoltaikforum.com/thread/94642-fernwirktechnik-statt-rundsteuerger%C3%A4t/"
+  fpi_market_de:
+    title: "wlw.de / Siemens SICAM FSI / Horstmann / Kries -- Fault Passage Indicator pricing (EU market)"
+    url: "https://www.wlw.de/de/suche/kurzschlussanzeiger"
+  smartmeter_price_caps:
+    title: "Verbraucherzentrale Niedersachsen / metrify.de / cleanthinking.de -- Smart meter (MsbG) price cap tariffs, 2026"
+    url: "https://www.verbraucherzentrale-niedersachsen.de/themen/energie-wohnen/energiepreise-anbieterwechsel/smart-meter-preisobergrenzen-gestiegen"
+  destatis_landprices:
+    title: "Destatis -- Kaufwerte für landwirtschaftliche Grundstücke 2024"
+    url: "https://www.destatis.de/DE/Themen/Wirtschaft/Preise/Baupreise-Immobilienpreisindex/Tabellen/sonderauswertung-kaufwerte-lw-grundstuecke.html"
+  bki_paywalled:
+    title: "BKI Baukosteninformationszentrum -- KD 072 Betriebs-/Werkstätten (PAYWALLED, not accessed -- only preview pages seen)"
+    url: "https://bki.de/kd-n-betriebs-und-werkstaetten-eingeschossig"
+  industrie_fachwissen_hallenbau:
+    title: "industrie-fachwissen.de / althoff-industriebau.de -- German industrial hall construction cost benchmarks (generic proxy, not substation-specific)"
+    url: "https://industrie-fachwissen.de/lager/hallenbau-kosten-quadratmeter-systemhalle-leichtbau-fertighalle-2026"
+  ak_lsa_magdeburg:
+    title: "Arbeitskreis LSA -- 110-kV-Schaltanlage Magdeburg (AIS-to-GIS building footprint reduction, qualitative)"
+    url: "https://www.ak-lsa.de/objekt/110-kv-schaltanlage-magdeburg/"
+  fencing_intl_proxy:
+    title: "ameristarperimeter.com / hbccof.com / lsfencingservices.com.au -- anti-climb security fencing cost (international proxy, non-DE)"
+    url: "https://www.ameristarperimeter.com/us/en/products/high-security-fence/wireworks-anti-climb"
+  gates_intl_proxy:
+    title: "getsafeandsound.com / onpointdfw.com / commercialgateshop.com -- commercial gate cost (international proxy, non-DE)"
+    url: "https://onpointdfw.com/how-much-do-vehicle-access-gates-cost-sliding-swing-motorized-solar-and-manual-options/"
+  gravel_yard_de:
+    title: "handwerk.cloud / hausjournal.net -- gravel/crushed stone yard surfacing cost (DE)"
+    url: "https://www.handwerk.cloud/wissen/allgemein/kies-schotter-kosten"
+  cctv_access_intl_proxy:
+    title: "getsafeandsound.com / mammothsecurity.com / acmelocksmith.com -- CCTV & access control cost (international proxy, non-DE)"
+    url: "https://getsafeandsound.com/blog/cctv-camera-installation-cost/"
+  copper_theft_de:
+    title: "security.de (CIBORIUS) / IBC-online / LivEye -- German copper-theft loss context (KRITIS-Dachgesetz substation security)"
+    url: "https://security.de/kritis-schutz/umspannwerke"
+  zveh_igmetall_ehandwerk:
+    title: "ZVEH/IG Metall -- E-Handwerk (electrical trade) minimum wage schedule 2025-2028"
+    url: "https://www.zveh.de/news/detailansicht/ig-metall-und-zveh-informieren-ab-01012025-neue-mindestentgelte-fuer-fachkraefte-im-e-handwerk.html"
+  igbau_bauhauptgewerbe:
+    title: "IG BAU / bauindustrie.de -- Bauhauptgewerbe Tariflohn tables (Lohngruppe 4, Ecklohn)"
+    url: "https://www.bauindustrie.de/zahlen-fakten/publikationen/brancheninfo-bau/loehne-und-entgelte-im-baugewerbe"
+  bauwirtschaft_hessen_oncost:
+    title: "bauwirtschaft-hessen.de -- Lohngebundene Kosten (SOKA-BAU construction-sector on-cost multiplier)"
+    url: "https://bauwirtschaft-hessen.de/lohngebundene-kosten-neuberechnung-zum-1-mai-2024-nach-tarifabschluss/"
+  vde_ar_n_4220:
+    title: "VDE-AR-N 4220/4221 -- Anforderungen an Bauunternehmen im Leitungstiefbau (trench geometry standard, DE)"
+    url: "https://www.vde.com/de/fnn/arbeitsgebiete/netzbetriebsmittel/kabel/anforderungen-bauunternehmen-leitungstiefbau-vde-ar-n-4220"
+  stromhaltig_betriebskosten:
+    title: "stromhaltig.de -- Betriebskosten (Personal+Wartung) in Netzentgelten (whole-system O&M share, DE)"
+    url: "https://stromhaltig.de/wissen/betriebskosten-personal-wartung-in-netzentgelten"
+  twpowerline_lcc:
+    title: "twpowerline.com -- Life-cycle cost analysis overhead vs. underground (fault repair ratio, US)"
+    url: "https://twpowerline.com/life-cycle-cost-analysis-overhead-vs-underground/"
+  oneanddoneprep_poles:
+    title: "oneanddoneprep.com -- Utility pole replacement cost/pricing (US)"
+    url: "https://oneanddoneprep.com/utility-pole-replacement-cost-pricing/"
+  baupreislexikon_mv:
+    title: "baupreislexikon.de -- Mittelspannung (1-24kV) Freileitung cost range (DE, low confidence, unit ambiguous)"
+    url: "https://www.baupreislexikon.de/bauleistung/kabel-12-20-kv-mittelspannungsanlage"
+  nature_33kv_lcc2026:
+    title: "Scientific Reports (Nature) -- 40-yr LCC study, 3 overhead vs 2 underground 33kV distribution designs, India, 2026"
+    url: "https://www.nature.com/articles/s41598-026-48702-0"
+  enwg_mehrkostenfaktor:
+    title: "EnWG regulatory framework -- legal Mehrkostenfaktor cap for undergrounding lines up to 110kV (2.75x), cited via BFE/energeiaplus"
+    url: "https://www.energeiaplus.com"
+  frontier_goerg2026:
+    title: "Frontier Economics/Görg -- Kostenanalyse zur Bewertung von Erdkabel und Freileitung (2026), 525kV DC case study SuedWestLink DC42/DC42+"
+    url: "https://www.frontier-economics.com/media/cxbfyhpb/rpt-frontier_goerg_efruhr-kostenanalyse-zur-bewertung-von-erdkabel-vs-freileitung-final-21-05-2026-stc.pdf"
+  tugraz_wurzer2013:
+    title: "Wurzer, G. (2013) -- Verkabelung von Verteilernetzen ≤20kV, Masterarbeit TU Graz (confirmed: NO cost data, technical/electrical parameters only)"
+    url: "https://diglib.tugraz.at/download.php?id=576a74af30c46&location=browse"
+  wikipedia_freileitungsmast:
+    title: "de.wikipedia.org -- Freileitungsmast (pole/mast type overview, DE, qualitative)"
+    url: "https://de.wikipedia.org/wiki/Freileitungsmast"
+  smartelecmfg_switchgear:
+    title: "smartelecmfg.com -- 33kV/11kV switchgear/substation cost (non-DE/Asia market)"
+    url: "https://www.smartelecmfg.com/Switchgear/news/how-much-does-it-cost-to-build-a-33kv-11kv-substation"
+  pole_transformer_intl:
+    title: "transformer4u.com / evernewtransformer.com / taishantransformer.com -- pole-mount transformer pricing (international, non-DE)"
+    url: "https://www.transformer4u.com"
+  bmwk_windkosten2024:
+    title: "BMWK/Deutsche WindGuard -- Kostensituation der Windenergie an Land, Stand 2024 (direct-read, p.19-20, N=72 projects/1470MW)"
+    url: "https://www.bundeswirtschaftsministerium.de/Redaktion/DE/Downloads/Energie/eeg-eb-wal-kostensituation-2024.pdf?__blob=publicationFile&v=8"
+  interpolated:
+    title: "No direct source -- derived from a stated ratio/rule elsewhere in this file, or a placeholder. See `note` on the field."
+    url: null
+
+overhead_line_110kv:
+  turnkey_eur_per_km:
+    single_circuit_normal_terrain:
+      value: 420000
+      source: interpolated
+      confidence: MEDIUM
+      note: "back-solved from oe_kv110's double-circuit anchor via circuit_multiplier"
+    double_circuit_normal_terrain:
+      value: 672000
+      source: [oe_kv110, muehlviertel110kv]
+      confidence: MEDIUM
+      note: "AT-specific; DE publishes no public 110kV OHL cost (DSO-owned, unlike 220/380kV NEP figures). Cross-checked against thueringer_ten project-cost distribution (no contradiction)."
+    material_only_formula_estimate:
+      value: 210000
+      source: bet_bmu2011
+      confidence: LOW
+      note: "Kiessling formula, not validated at 110kV in source; conductor/tower material only, excludes foundation/land/engineering"
+    hv_380kv_context_only:
+      low: 750935
+      high: 1482982
+      source: bet_bmu2011
+      confidence: HIGH
+      note: "380kV double-circuit, DE -- scaling context only, not 110kV"
+    hv_380kv_nep2035_newbuild:
+      value: 2500000
+      source: nep_kosten
+      confidence: HIGH
+  circuit_multiplier:
+    double_vs_single:
+      value: 1.6
+      source: interpolated
+      confidence: INTERPOLATED
+      note: "generic rule-of-thumb 1.5-1.8x, no direct source"
+  structure_share_of_total:
+    value: 0.40
+    source: interpolated
+    confidence: LOW
+    note: "generic industry source range 35-45%, not Germany-specific"
+  tower_type_multiplier:               # relative to suspension = 1.0, applied to structure share
+    suspension: {value: 1.00, source: interpolated, confidence: LOW, note: "baseline"}
+    medium_angle_15_30deg: {value: 1.30, source: xytower, confidence: LOW}
+    tension_angle: {value: 1.45, source: xytower, confidence: MEDIUM, note: "xytower 1.3-1.4x + generic engineering rule 1.43-1.67x"}
+    dead_end_terminal: {value: 1.55, source: xytower, confidence: MEDIUM}
+  height_class_multiplier:             # relative to standard 20-30m, applied to structure share
+    standard_20_30m: {value: 1.00, source: interpolated, confidence: MEDIUM, note: "typical DE 110kV range"}
+    tall_30_45m: {value: 1.35, source: interpolated, confidence: INTERPOLATED, note: "no quantified height-cost curve found; CIGRE line-design brochure likely has this, paywalled -- see cigre_b344_secondary"}
+    very_tall_45_60m: {value: 1.85, source: interpolated, confidence: INTERPOLATED}
+  foundation_terrain_multiplier:       # applied to structure share only
+    normal_soil: {value: 1.00, source: interpolated, confidence: MEDIUM}
+    sloped_10_25pct: {value: 1.20, source: interpolated, confidence: LOW, note: "generic building-cost proxy, not transmission-specific"}
+    forest: {value: 1.30, source: interpolated, confidence: INTERPOLATED}
+    wetland_high_watertable: {value: 1.80, source: interpolated, confidence: INTERPOLATED, note: "aligned to underground_cable_civil terrain factor for consistency"}
+    rock_blasting_required: {value: 2.00, source: interpolated, confidence: INTERPOLATED, note: "aligned to underground_cable_civil terrain factor for consistency"}
+  typical_span_m: {value: 250, source: interpolated, confidence: MEDIUM}
+  typical_tower_mix:
+    suspension_share: {value: 0.75, source: interpolated, confidence: LOW}
+    tension_angle_share: {value: 0.20, source: interpolated, confidence: LOW}
+    dead_end_share: {value: 0.05, source: interpolated, confidence: LOW}
+
+underground_cable_civil:
+  # Layer ON TOP OF existing material cost tables (cost_assumptions_for_mv_lines.csv,
+  # cost_assumptions_for_hv_lines.csv).
+  # total_eur_per_m = material_eur_per_m * cores_per_circuit_multiplier + civil_base_eur_per_m * terrain_multiplier
+  #
+  # *** VALIDATION FIX (2026-09-21): cores_per_circuit_multiplier ***
+  # cost_assumptions_for_hv_lines.csv prices ONE SINGLE-CORE 110kV XLPE cable per meter
+  # (110kV cables are always laid as 3 separate single-core cables per 3-phase circuit,
+  # unlike MV/LV cables which are commonly 3- or 4-core in a single sheath already
+  # representing the full circuit). Naively summing that per-core price with the civil
+  # layer as if it were already a full-circuit route-meter cost was checked numerically
+  # and made underground cable come out CHEAPER than the equivalent overhead line
+  # (0.55-0.83x of the OHL anchor at typical cross-sections) -- physically wrong and
+  # directly contradicting this file's own cross_check_cable_vs_ohl_ratio_by_voltage
+  # (cable should be ~2.5x OHL, not cheaper). Applying the x3 single-core multiplier
+  # brings the ratio to 1.3-2.1x depending on cross-section -- correct direction, and
+  # within reach of the 2.5x literature figure (residual gap plausibly land/engineering
+  # overhead not captured by material+trench alone). See COST_CATALOGUE_2026.md section 7.1.
+  cores_per_circuit_multiplier:
+    hv_110kv_single_core_cables: {value: 3, source: interpolated, confidence: HIGH, note: "3x physical necessity, not a cost estimate -- 110kV cables are single-core, one per phase"}
+    mv_lv_multicore_cable: {value: 1, source: interpolated, confidence: HIGH, note: "MV/LV tables already price a 3- or 4-core cable as one product per route-meter -- do NOT apply a x3 multiplier here"}
+  civil_base_eur_per_m:
+    mv_10_20_33_66kv: {value: 40, source: interpolated, confidence: INTERPOLATED, note: "cross-checked against 20-40% civil-fraction band from ramboll_desnz (validated: 22-44% across the MV material range, consistent); German utility Preisblätter (Wegekosten) are internal, not published"}
+    hv_110kv: {value: 80, source: interpolated, confidence: INTERPOLATED, note: "= 2x MV, structural trench-sizing uplift from ramboll_desnz cable-count/trench-width tables; civil cost is per TRENCH, not per cable, so no cores multiplier applies here"}
+  installation_method_multiplier:
+    open_cut: {value: 1.00, source: interpolated, confidence: MEDIUM}
+    cable_ploughing_unsealed_rural_only: {value: 0.30, source: ramboll_desnz, confidence: MEDIUM, note: "GB, transmission-scale, 28-34% of open-cut civils cost"}
+  terrain_surface_multiplier:
+    agricultural_greenfield: {value: 1.00, source: ramboll_desnz, confidence: MEDIUM, note: "explicit baseline in source"}
+    urban_unsealed: {value: 1.15, source: [ramboll_desnz, twpowerline_lcc], confidence: LOW}
+    urban_sealed_standard: {value: 3.00, source: gartenbau_kosten, confidence: MEDIUM, note: "DE, ~2x at domestic scale scaled toward wider utility-scale estimate (3-10x from German road-cutting estimators)"}
+    urban_sealed_high_traffic: {value: 7.50, source: interpolated, confidence: LOW, note: "German AI-assisted cost-estimator aggregation, 5-10x, low primary confidence"}
+    rocky_moderate: {value: 2.00, source: interpolated, confidence: LOW, note: "US general trenching benchmarks"}
+    rocky_hard_blasting: {value: 5.00, source: interpolated, confidence: INTERPOLATED, note: "regime-change flag, ramboll_desnz and US sources both note 'economics collapse', no clean multiplier exists"}
+    wetland_high_groundwater: {value: 1.55, source: interpolated, confidence: INTERPOLATED, note: "ramboll_desnz: technically feasible (ploughing through marsh/ditches), cost not quantified"}
+    water_crossing_open_cut_shallow: {value: 1.55, source: interpolated, confidence: INTERPOLATED, note: "by analogy to wetland"}
+    forest: {value: 1.55, source: ramboll_desnz, confidence: INTERPOLATED, note: "source flags forest as a qualitative limiting factor, not quantified"}
+  hdd_mandatory_crossing:
+    # lump-sum multiplier on the FULL open-cut (material+civil) cost of the crossing segment
+    multiplier_on_open_cut_total: {low: 1.1, high: 1.9, recommended: 1.50, source: ramboll_desnz, confidence: MEDIUM, note: "GB, transmission scale"}
+    typical_crossing_length_m: {value: 100, source: ramboll_desnz, confidence: MEDIUM}
+    typical_crossing_frequency_km: {value: 5, source: ramboll_desnz, confidence: MEDIUM}
+
+substations_110kv:
+  greenfield_full_station_multiplier_over_transformer_cost:
+    minimal_2bay: {value: 3.0, source: [dena_vns2, thueringer_ten], confidence: HIGH, note: "derived from dena's 8.5M station total minus transformer cost"}
+    typical_3_6bay: {value: 5.0, source: [dena_vns2, thueringer_ten], confidence: HIGH}
+    large_multi_feeder: {value: 8.0, source: [dena_vns2, acer_uic], confidence: MEDIUM}
+  incremental_line_bay_eur:
+    ais: {value: 1300000, source: thueringer_ten, confidence: HIGH, note: "DE, brownfield extension of existing 110kV station, incl. protection/control, excl. new land"}
+    gis: {value: 2080000, source: interpolated, confidence: LOW, note: "= ais * gis_ais_bay_multiplier"}
+  gis_ais_bay_multiplier: {low: 1.3, high: 2.0, recommended: 1.6, source: alterga_gisais, confidence: LOW, note: "industry consensus, 110kV class, converging toward GIS-favorable above ~245kV"}
+  gis_land_footprint_fraction_of_ais: {low: 0.10, high: 0.30, recommended: 0.20, source: cigre_b344_secondary, confidence: LOW, note: "CIGRE B3.44 cited only via secondary sources, primary TB paywalled"}
+  standalone_switching_station:
+    per_bay_eur_ais: {value: 1105000, source: interpolated, confidence: INTERPOLATED, note: "= incremental_line_bay_eur.ais * 0.85, reflecting no transformer civil scope (no foundation/oil containment/firewall)"}
+  validated_buildup_cross_check:
+    # *** VALIDATION CHECK (2026-09-21), PASSED: independently-built figures reconstruct
+    # dena's directly-sourced 8.5M full-station total almost exactly:
+    #   1x transformer (40MVA/20kV, ~1.4M EUR from cost_assumptions_for_hv_mv_transformers.csv)
+    #   + 5x AIS line bays (5 x 1.3M EUR = 6.5M EUR, thueringer_ten)
+    #   + control building midpoint (0.8M EUR, station_buildings_security derived estimate)
+    #   = 8.7M EUR, within 2.4% of dena_vns2's 8.5M EUR full-station figure.
+    # This is strong evidence the bay-cost, transformer-cost, and building-cost figures in
+    # this catalogue are mutually consistent, not just individually plausible.
+    result_eur: 8700000
+    reference_eur: 8500000
+    delta_pct: 0.024
+    source: [thueringer_ten, dena_vns2]
+    confidence: HIGH
+
+mv_compact_secondary_substations_eur:
+  # "Ortsnetzstation": small transformer + RMU + kiosk, ex-works, EXCLUDES civil works,
+  # MV cable, and Baukostenzuschuss (grid connection fee).
+  by_kva:
+    "250": {value: 30000, source: [nexora_trafostation, bauratgeber_630kva], confidence: MEDIUM}
+    "630": {value: 55000, source: [nexora_trafostation, bauratgeber_630kva], confidence: MEDIUM}
+    "1000": {value: 100000, source: [nexora_trafostation, bauratgeber_630kva], confidence: MEDIUM}
+    "1600": {value: 135000, source: [nexora_trafostation, bauratgeber_630kva], confidence: MEDIUM}
+    note_400kva_discarded: "a 400kVA source point (15,000-25,000 EUR, cheaper than 250kVA) was found and DISCARDED as a data-quality/aggregator inconsistency -- see COST_CATALOGUE_2026.md 2.2"
+  rmu_switchgear_share_of_total: {value: 0.275, source: interpolated, confidence: INTERPOLATED, note: "industry rule of thumb, 20-35% range"}
+  cross_check_dena_ortsnetzstation:
+    value: 86000
+    source: dena_vns2
+    confidence: HIGH
+    note: "dena's single blended Ortsnetzstation figure lands at ~630-1000kVA size class in the curve above -- consistent, no contradiction"
+
+mv_rmu_panel_multiplier:
+  # relative to a 2-way base = 1.0, standalone switching (no transformer).
+  # *** VALIDATION FIX (2026-09-21): this table previously had no absolute anchor,
+  # making it unusable on its own. Anchor derived by cross-check: mv_compact_secondary_substations_eur
+  # (250kVA Ortsnetzstation, 30,000 EUR) x rmu_switchgear_share_of_total (0.275) = 8,250 EUR
+  # for the RMU embedded in a small compact station -- this is the right order of magnitude
+  # for a COMPACT RING-MAIN-UNIT (load-break switch technology), NOT for a GIS/circuit-breaker
+  # switchgear bay (see mv_switchgear_by_voltage_class below, which is a DIFFERENT, much more
+  # expensive technology tier -- do not confuse the two when using this catalogue).
+  base_2way_eur_estimate: {value: 8250, source: interpolated, confidence: INTERPOLATED, note: "derived cross-check via mv_compact_secondary_substations_eur RMU share, see comment above"}
+  "2way": {value: 1.00, source: interpolated, confidence: LOW}
+  "3way": {value: 1.30, source: interpolated, confidence: LOW, note: "extrapolated from a low-quality India-market listing (+30-60% per extra panel), not Europe-transferable in absolute terms, ratio signal only"}
+  "4way": {value: 1.60, source: interpolated, confidence: LOW}
+  "6way": {value: 2.10, source: interpolated, confidence: LOW}
+
+switching_station_siting_multiplier:
+  urban_indoor: {value: 1.40, source: interpolated, confidence: INTERPOLATED}
+  standard_outdoor_kiosk: {value: 1.00, source: interpolated, confidence: INTERPOLATED}
+  rural_pole_mount: {value: 0.70, source: interpolated, confidence: INTERPOLATED}
+
+access_roads:
+  base_rate_eur_per_m2:
+    simple_agricultural_track: {value: 20, source: baucheck_roads, confidence: MEDIUM}
+    forest_track_simple: {value: 15, source: baucheck_roads, confidence: MEDIUM}
+    heavy_load_reinforced: {value: 75, source: hausjournal_baustrasse, confidence: MEDIUM, note: "~= 225 eur/running-m / 3m width, for per-m2 consistency"}
+  base_rate_eur_per_running_m:
+    simple_agricultural_track: {value: 70, source: baucheck_roads, confidence: MEDIUM, note: "width ~3.5m"}
+    heavy_load_reinforced: {value: 225, source: hausjournal_baustrasse, confidence: MEDIUM, note: "width ~4m, substation/turbine-grade"}
+  forest_surcharge_multiplier: {value: 1.50, source: wpd_carmen_windforst, confidence: INTERPOLATED, note: "existing 3m forest tracks typically widened to 5m for turbine transport; exact multiplier not directly stated"}
+  use_case:
+    tower_access_110kv:
+      base: simple_agricultural_track
+      permanence: temporary
+      source: bayernwerk_uvp_110kv
+      confidence: MEDIUM
+      note: "largely dismantled/renaturalized post-construction; removal cost assumed net-zero"
+    cable_trench_access:
+      base_eur_per_m: 0
+      forest_surcharge_eur_per_m2: {value: 15, source: baucheck_roads, confidence: LOW}
+      permanence: temporary
+      note: "trench corridor itself serves as access in open terrain"
+    substation_access:
+      base: heavy_load_reinforced
+      permanence: permanent
+      source: hausjournal_baustrasse
+      confidence: MEDIUM
+    wind_turbine_access_road:
+      eur_per_running_m: {value: 250, source: interpolated, confidence: MEDIUM, note: "upper-mid of heavy-load range, 5m width, cross-checked against NREL US ~75 eur/m (lower, international/lower-spec)"}
+      permanence: permanent
+    wind_turbine_crane_pad:
+      area_m2: {value: 1500, source: wpd_carmen_windforst, confidence: LOW}
+      eur_per_m2: {value: 60, source: interpolated, confidence: INTERPOLATED, note: "no direct crane-pad eur/m2 source; derived from access-road implied per-m2 rate"}
+      eur_total: {value: 90000, source: interpolated, confidence: INTERPOLATED}
+      permanence: permanent
+  wind_turbine_infrastructure_eur_per_kw:
+    value: 101
+    source: bmwk_windkosten2024
+    confidence: HIGH
+    note: "= 20% of Investitionsnebenkosten (ancillary costs), NOT of total turbine CAPEX; ~=6-7% of total CAPEX at typical 1400-1600 eur/kW -- use as the top-down default; the per-unit build-up above is a lower, terrain-decomposed alternative (~1.5-2.5% of CAPEX)"
+
+cross_check_cable_vs_ohl_ratio_by_voltage:
+  # sanity-check ratios only, not direct inputs
+  cable_to_ohl_110kv: {typical: 2.5, difficult_terrain: 10.0, source: oe_positionspapier, confidence: MEDIUM}
+  cable_to_ohl_mv:
+    typical: 2.5
+    difficult_terrain: 10.0
+    source: nature_33kv_lcc2026
+    confidence: LOW
+    note: "NOT CONFIRMED SMALLER THAN HV -- a 2026 India 33kV lifecycle study found 2-4x, comparable to HV, contradicting the intuitive 'shrinks at lower voltage' assumption. Recommend treating as EQUAL to the 110kV ratio until better German data emerges."
+  enwg_regulatory_cap_up_to_110kv:
+    value: 2.75
+    source: enwg_mehrkostenfaktor
+    confidence: HIGH
+    note: "CORRECTED 2026-09-24 (plan rev. 5, sections 2.5 and 15, C1): section 43h EnWG is a
+      PLANNING rule, not a tariff cap. A new 110 kV line is to be built as underground cable
+      when the cable's total lifecycle cost does not exceed 2.75 times that of an overhead
+      line; above that factor the overhead line is admissible (on application). It is a legal
+      predicate on the HV mode, not a ceiling on construction cost, and it does not contradict
+      the 'up to 10x difficult terrain' figure above. The earlier note read it as a limit on
+      what DSOs may recover through grid tariffs, which the plan's legal check refuted."
+  cable_to_ohl_380kv: {typical: 6.0, range_low: 5.0, range_high: 15.2, source: consentec_enlag, confidence: HIGH}
+  cable_to_ohl_525kv_dc_frontier_economics_2026:
+    investment_only: {low: 2.6, high: 3.4}
+    full_lifecycle_40yr: {low: 2.0, high: 2.1}
+    external_estimates_cited: {bundestag_public_debate: [3, 10], tennet: [4, 8], swissgrid: [2, 10]}
+    source: frontier_goerg2026
+    confidence: HIGH
+    note: "single HVDC case study (SuedWestLink DC42/DC42+), NOT directly transferable to AC voltage levels"
+
+dena_blended_topdown:
+  # Direct read of dena-Verteilnetzstudie II p.15 "Kosten" table. These are BLENDED
+  # NETWORK-LEVEL costs per km (branch cables + connections + cabinets + pro-rated
+  # overhead), NOT a single isolated cable-laying cost -- see COST_CATALOGUE_2026.md
+  # section 7 for the reconciliation against underground_cable_civil above.
+  mv_line_eur_per_km: {value: 350000, source: dena_vns2, confidence: HIGH}
+  lv_line_eur_per_km: {value: 200000, source: dena_vns2, confidence: HIGH}
+  implied_mv_to_lv_ratio: {value: 1.75, source: dena_vns2, confidence: HIGH, note: "SUPERSEDES the old v1 mv_hv_cable_ladder_dena entry (13x/10x), a secondhand paraphrase of a different dena vintage -- no longer used"}
+  ortsnetzstation_eur_per_unit: {value: 86000, source: dena_vns2, confidence: HIGH}
+  substation_110kv_eur: {value: 8500000, source: dena_vns2, confidence: HIGH}
+  opex_pct_of_capex_per_year: {value: 0.025, source: dena_vns2, confidence: HIGH, note: "use as the primary O&M input for lifecycle/NPV costing"}
+  asset_lifetime_years:
+    networks_and_transformers: {value: 55, source: dena_vns2, confidence: HIGH, note: "midpoint of dena's 40-60yr range"}
+    smart_grid_it: {value: 15, source: dena_vns2, confidence: HIGH}
+
+lv_04kv:
+  underground_cable:
+    material_eur_per_m_retail:
+      nayy_4x150mm2: {value: 18.5, source: zaehlerschrank24, confidence: MEDIUM, note: "DE retail incl. VAT, upper bound"}
+      nayy_4x240mm2: {value: 41.0, source: voltus_cable, confidence: MEDIUM}
+    material_eur_per_m_dso_bulk_estimate:
+      nayy_4x150mm2: {value: 10.5, source: interpolated, confidence: INTERPOLATED, note: "30-50% below retail, no DSO-internal price list found"}
+      nayy_4x240mm2: {value: 21.0, source: interpolated, confidence: INTERPOLATED}
+    civil_eur_per_m_private_property:
+      trench_cable_backfill_4x50mm2: {value: 39.70, source: egtf_2024, confidence: HIGH}
+      trench_cable_backfill_4x150mm2: {value: 58.30, source: egtf_2024, confidence: HIGH}
+      pure_civil_share_implied: {value: 29, source: egtf_2024, confidence: HIGH, note: "midpoint of 23-35 range, derived from EGTF's Eigenleistung (owner-dig) credit"}
+  overhead_line:
+    status: "no German eur/km or eur/pole figure found -- legacy/discontinued asset class since undergrounding mandates from 1990s-2000s"
+    source: wikipedia_freileitungsmast
+    confidence: LOW
+    fallback_recommendation: "lv underground eur/m divided by cross_check_cable_vs_ohl_ratio_by_voltage.cable_to_ohl_mv.typical (2.5x) -- INTERPOLATED placeholder"
+  service_connection_hausanschluss_eur:
+    typical_single_family_home_le30m_gross: {low: 1600, high: 2400, source: [detmold_preisblatt, egtf_2024], confidence: HIGH, note: "two real DE DSO Preisblätter, well-triangulated, essentially DSO-independent"}
+    baukostenzuschuss_threshold_kw: {value: 30, source: bnetza_bkz, confidence: HIGH, note: "BKZ = 0 below this connection capacity, NAV Section 11"}
+    baukostenzuschuss_eur_per_kw_above_threshold: {value: 175, source: [egtf_2024, detmold_preisblatt], confidence: HIGH, note: "midpoint of ~160-190 range"}
+  distribution_cabinet_eur:
+    enclosure_only_small: {low: 177, high: 628, source: interpolated, confidence: MEDIUM, note: "retail hardware, enclosure only, not an installed street cabinet"}
+    enclosure_only_street_type: {low: 1558, high: 2900, source: interpolated, confidence: MEDIUM, note: "retail hardware, enclosure only"}
+    fully_equipped_installed_estimate: {low: 5000, high: 15000, source: interpolated, confidence: LOW, note: "industry-literature estimate, no authoritative DE DSO figure found"}
+
+mv_overhead_line:
+  # WEAKEST-COVERED CATEGORY -- checked 3 primary documents directly (dena_vns2,
+  # frontier_goerg2026, tugraz_wurzer2013), none contain German MV OHL eur/km data.
+  pole_type_by_voltage:
+    rural_20kv_dominant: {value: "wood, ~50m span, up to ~20m height, 25-50+yr life", source: wikipedia_freileitungsmast, confidence: MEDIUM}
+    up_to_30kv: {value: "concrete, similar span, slightly longer", source: wikipedia_freileitungsmast, confidence: MEDIUM}
+    legacy_or_higher: {value: "steel lattice, up to 50m, 100-200t steel -- effectively HV-grade, rare at pure MV", source: wikipedia_freileitungsmast, confidence: MEDIUM}
+  weak_absolute_estimate_eur_per_km: {low: 19200, high: 200000, source: baupreislexikon_mv, confidence: LOW, note: "unit ambiguous, single aggregator source, wide range"}
+  pole_mounted_transformer_fraction_of_ground_mounted: {low: 0.30, high: 0.60, source: [pole_transformer_intl, nexora_trafostation], confidence: LOW, note: "inferred, not directly sourced -- pole-mount avoids foundation/kiosk civil works"}
+
+mv_switchgear_by_voltage_class:
+  # *** VALIDATION NOTE (2026-09-21): these figures are for GIS / circuit-breaker-grade
+  # switchgear bays (industrial/utility-substation scale), NOT compact ring-main-unit (RMU)
+  # load-break switches as used inside a small Ortsnetzstation (see mv_rmu_panel_multiplier
+  # above, ~8,250 EUR for a comparable 2-way RMU -- a ~4-10x cheaper technology tier for the
+  # same nominal voltage). Do not use this table for compact secondary-substation switchgear;
+  # use it only for larger MV switching stations built with GIS/circuit-breaker equipment.
+  # No European manufacturer publishes voltage-differentiated pricing.
+  usd_11kv_panel: {low: 30000, high: 80000, source: smartelecmfg_switchgear, confidence: LOW, note: "non-DE/Asia market"}
+  usd_33kv_gis_bay: {low: 50000, high: 100000, source: smartelecmfg_switchgear, confidence: LOW, note: "non-DE/Asia market"}
+  step_11kv_to_33kv_multiplier: {low: 1.3, high: 1.7, source: smartelecmfg_switchgear, confidence: LOW, note: "derived from the two figures above"}
+  europe_na_premium_over_baseline: {low: 0.30, high: 0.50, source: smartelecmfg_switchgear, confidence: LOW, note: "unsourced multiplier stated in the same source"}
+  "66kv":
+    value: "no data found -- interpolate closer to 110kv end than to 33kv, engineering judgment only, not literature-backed"
+    source: interpolated
+    confidence: INTERPOLATED
+
+protection_sensors_scada:
+  protection_relay_share_of_bay_cost: {value: 0.05, source: interpolated, confidence: MEDIUM, note: "cross-industry benchmark, 3-8% range, non-DE-specific; recommend as %% of relevant bay cost from substations_110kv/mv_switchgear_by_voltage_class"}
+  relay_cost_ratio_hv_to_mv: {low: 3, high: 6, source: interpolated, confidence: LOW, note: "qualitative -- HV bays typically duplicated main+backup, MV single-device-per-bay"}
+  fault_passage_indicator_eur_per_unit: {value: 100, source: fpi_market_de, confidence: MEDIUM, note: "EU market, midpoint of 80-150; MV-only (ring/loop cable fault location)"}
+  fpi_volume_discount_at_10000_units: {value: 0.22, source: fpi_market_de, confidence: MEDIUM}
+  remote_control_retrofit:
+    mv_full_station_eur: {value: 54000, source: hansewerk_grevenkop, confidence: MEDIUM, note: "DE, real case (Grevenkop), RETROFIT-ONLY -- not additive on greenfield stations already remote-control-ready"}
+    mv_single_switch_minimal_eur: {value: 2500, source: photovoltaikforum_fernwirk, confidence: MEDIUM, note: "DE, one-off + monthly comms fee, small-scale indicative case"}
+    ratio_full_station_to_single_switch: {value: 20, source: interpolated, confidence: MEDIUM, note: "derived from the two figures above"}
+    hv_110kv:
+      value: "bundled into control-building/Sekundaertechnik cost, no separate public breakout found"
+      source: interpolated
+      confidence: INTERPOLATED
+  smart_meter_ami:
+    # legally capped ANNUAL TARIFFS (MsbG), not hardware/construction cost
+    simple_messeinrichtung_eur_per_year_max: {value: 25, source: smartmeter_price_caps, confidence: HIGH}
+    gateway_standard_household_eur_per_year: {low: 20, high: 50, source: smartmeter_price_caps, confidence: HIGH}
+    gateway_high_tier_eur_per_year: {low: 100, high: 200, source: smartmeter_price_caps, confidence: HIGH}
+    meter_cabinet_upgrade_eur: {low: 500, high: 2000, source: smartmeter_price_caps, confidence: MEDIUM, note: "separate LV cost, borne by property owner, not price-capped"}
+    rollout_share_2025_12_31: {value: 0.055, source: smartmeter_price_caps, confidence: HIGH}
+  ct_vt_and_dts_sensors:
+    value: "no public unit cost found -- genuine gap"
+    source: interpolated
+    confidence: INTERPOLATED
+  communication_backhaul:
+    value: "no absolute eur/km or eur/site figure found -- qualitative only (fiber higher civil cost but protection-grade; LTE cheaper but best-effort)"
+    source: interpolated
+    confidence: INTERPOLATED
+
+station_buildings_security:
+  # BKI Baukosteninformationszentrum is PAYWALLED (bki_paywalled) -- figures below are a
+  # generic industrial-building proxy, NOT a substation-specific source.
+  building_eur_per_m2:
+    simple_uninsulated_hall: {low: 300, high: 600, source: industrie_fachwissen_hallenbau, confidence: LOW, note: "DE general commercial construction, not substation-specific"}
+    insulated_lightweight_hall: {low: 600, high: 900, source: industrie_fachwissen_hallenbau, confidence: LOW}
+    insulated_industrial_with_technical_fitout: {low: 900, high: 1500, source: industrie_fachwissen_hallenbau, confidence: LOW, note: "closest proxy for a relay/control building (HVAC, control room, battery room)"}
+  derived_building_cost_eur:
+    compact_mv_switching_station_50_150m2: {low: 75000, high: 225000, source: interpolated, confidence: LOW, note: "derived proxy estimate from building_eur_per_m2"}
+    full_110kv_control_building_300_800m2: {low: 400000, high: 1200000, source: interpolated, confidence: LOW, note: "derived proxy estimate, cross-checked as ~5-15% of the full 8.5M dena_vns2 station cost -- AIS-to-GIS footprint reduction confirmed qualitatively by ak_lsa_magdeburg"}
+  site_civil:
+    perimeter_fencing_eur_per_m: {low: 18, high: 150, source: fencing_intl_proxy, confidence: LOW, note: "international proxy, no DE substation-specific figure found"}
+    gate_unit_usd: {low: 4250, high: 33000, source: gates_intl_proxy, confidence: LOW}
+    gate_automation_usd: {low: 5000, high: 8000, source: gates_intl_proxy, confidence: LOW}
+    yard_gravel_surfacing_eur_per_m2: {low: 18, high: 24, source: gravel_yard_de, confidence: MEDIUM, note: "DE, material+delivery only, excl. earthworks"}
+  security_systems:
+    # NO German substation-specific figures exist -- vendors are quote-only (copper_theft_de
+    # confirms the business case, not the mitigation cost). International proxies only.
+    cctv_camera_installed_usd: {low: 700, high: 1500, source: cctv_access_intl_proxy, confidence: LOW}
+    cctv_ptz_camera_usd: {low: 1200, high: 3000, source: cctv_access_intl_proxy, confidence: LOW}
+    access_control_per_door_usd: {low: 400, high: 1800, source: cctv_access_intl_proxy, confidence: LOW, note: "basic keypad; up to 10,000+ for biometric"}
+    copper_theft_loss_per_incident_eur: {low: 10000, high: 50000, source: copper_theft_de, confidence: MEDIUM, note: "DE-specific context, business case not mitigation cost"}
+  land_acquisition_eur_per_m2:
+    # RURAL AGRICULTURAL ONLY -- no commercial/Bauland series found (genuine gap for semi-urban siting)
+    national_average: {value: 3.53, source: destatis_landprices, confidence: HIGH}
+    western_germany: {value: 5.35, source: destatis_landprices, confidence: HIGH}
+    eastern_germany: {value: 1.68, source: destatis_landprices, confidence: HIGH}
+    highest_nrw_cropland: {value: 9.77, source: destatis_landprices, confidence: HIGH}
+    lowest_brandenburg_thuringia: {value: 1.49, source: destatis_landprices, confidence: HIGH}
+
+personnel_and_om:
+  construction_labor_eur_per_h:
+    e_handwerk_minimum_wage_2026: {value: 14.93, source: zveh_igmetall_ehandwerk, confidence: HIGH, note: "DE, floor not skilled rate"}
+    bauhauptgewerbe_skilled_ecklohn_west_2025: {value: 23.36, source: igbau_bauhauptgewerbe, confidence: HIGH}
+    employer_oncost_multiplier_general: {low: 1.21, high: 1.25, source: interpolated, confidence: HIGH, note: "generic DE social-insurance on-cost"}
+    employer_oncost_multiplier_construction_soka_bau: {west: 1.8597, east: 1.7855, source: bauwirtschaft_hessen_oncost, confidence: HIGH, note: "use for Tiefbau/civil site crews, NOT the generic 21-25%"}
+    fully_loaded_estimate_skilled_site_labor: {low: 40, high: 50, source: interpolated, confidence: MEDIUM, note: "derived from the two rates above, not a directly published loaded rate"}
+    trench_geometry_standard: {value: "0.5m x 0.7m unpaved, 0.8m x 1m in roads, 5cm sand bedding", source: vde_ar_n_4220, confidence: HIGH, note: "no productivity rate given, geometry only"}
+  om_annual_pct_of_capex: {value: 0.025, source: dena_vns2, confidence: HIGH, note: "primary O&M input -- see dena_blended_topdown"}
+  om_share_of_netzentgelte_whole_system: {low: 0.30, high: 0.40, source: stromhaltig_betriebskosten, confidence: MEDIUM, note: "whole-system only, not per-asset -- do not use as a per-km/per-station figure"}
+  fault_repair_cost_ratio_cable_to_ohl: {low: 4, high: 7, source: twpowerline_lcc, confidence: LOW, note: "US benchmark, order-of-magnitude, no German figure found"}
+  pole_replacement_usd: {low: 3000, high: 20000, source: oneanddoneprep_poles, confidence: LOW, note: "US, wood/suburban (low end) to composite/rural (high end)"}
+  crew_productivity:
+    value: "no German figures found -- do not build bottom-up labor costs from crew-days; labor is already implicit in all turnkey/all-in figures in this catalogue"
+    source: interpolated
+    confidence: INTERPOLATED

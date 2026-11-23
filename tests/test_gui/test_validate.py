@@ -1,6 +1,5 @@
 """Unit tests: pre-flight validators (Section 21.5) neutralize F1/F3/F4/F6."""
 import geopandas as gpd
-import pytest
 from shapely.geometry import Polygon
 
 from pyorps.gui.services import validate

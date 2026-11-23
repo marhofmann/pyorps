@@ -13,17 +13,15 @@ Covers:
 
 import numpy as np
 import pytest
-
-from pyorps.utils._raster_context import RasterContext
 from pyorps.utils._dijkstra import (
     DijkstraSolver,
-    group_by_proximity_uint32,
     dijkstra_2d_cython,
-    dijkstra_single_source_multiple_targets,
     dijkstra_multiple_sources_multiple_targets,
+    dijkstra_single_source_multiple_targets,
     dijkstra_some_pairs_shortest_paths,
+    group_by_proximity_uint32,
 )
-
+from pyorps.utils._raster_context import RasterContext
 
 # ==================== FIXTURES ====================
 
@@ -173,7 +171,6 @@ class TestSingleSourceMultiTarget:
 
     def test_all_targets_reachable(self, simple_raster, simple_steps):
         solver = _make_solver(simple_raster, simple_steps)
-        cols = 5
         source = 0
         targets = np.array([1, 5, 24], dtype=np.uint32)  # (0,1), (1,0), (4,4)
         paths = solver.single_source_multi_target(source, targets)

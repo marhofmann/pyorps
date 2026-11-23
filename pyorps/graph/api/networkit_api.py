@@ -3,8 +3,8 @@ PYORPS: An Open-Source Tool for Automated Power Line Routing
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
-    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
+Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
 
 # Third party
@@ -14,12 +14,14 @@ from networkit.distance import AStar, BidirectionalDijkstra, Dijkstra
 from numpy import ndarray
 
 # Project files
-from pyorps.core.exceptions import AlgorithmNotImplementedError, NoPathFoundError
+from pyorps.core.exceptions import NoPathFoundError
 from pyorps.core.types import Node, NodeList, NodePathList
 from pyorps.graph.api.graph_library_api import GraphLibraryAPI
 
 
 class NetworkitAPI(GraphLibraryAPI):
+    #: Algorithm names shortest_path accepts (any letter case).
+    ALGORITHMS = ("dijkstra", "bidirectional_dijkstra", "astar")
 
     def create_graph(
             self,
@@ -139,7 +141,7 @@ class NetworkitAPI(GraphLibraryAPI):
             path = astar.getPath()
 
         else:
-            raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
+            raise self.unsupported_algorithm(algorithm)
 
         if len(path) == 0:
             raise NoPathFoundError(source=source, target=target)
@@ -183,7 +185,7 @@ class NetworkitAPI(GraphLibraryAPI):
                         paths.append([])
                 return paths
             return self._compute_multi_target_dijkstra(source, targets)
-        raise AlgorithmNotImplementedError(algorithm, self.__class__.__name__)
+        raise self.unsupported_algorithm(algorithm)
 
     def _compute_multi_target_dijkstra(self, source, targets):
         # Use MultiTargetDijkstra for efficient computation

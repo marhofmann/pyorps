@@ -15,9 +15,9 @@ import threading
 import warnings
 from pathlib import Path
 
-from pyorps.gui import ids
+from conftest import SOURCE, TARGET, invoke, poll_job
 
-from conftest import SOURCE, TARGET, invoke
+from pyorps.gui import ids
 
 GUI_DIR = Path(__file__).resolve().parents[2] / "pyorps" / "gui"
 
@@ -176,10 +176,10 @@ def test_background_job_completes_and_poll_finalizes(app, state, raster_path):
     params = {
         "raster_path": raster_path,
         "kwargs": dict(sources=[SOURCE], targets=[TARGET], waypoints=[],
-                       algorithm="delta-stepping", hardware="cpu",
+                       algorithm="delta-stepping", graph_api="cython",
                        neighborhood="r1", pairwise=False,
                        search_buffer_m=100.0, ignore_max_cost=True,
-                       delta=100.0, num_threads=0, use_astar=False),
+                       delta=100.0, num_threads=0),
         "meta": {"raster_layer_id": layer.id, "algorithm": "delta-stepping",
                  "simplify_tol": None, "wp_names": [], "n_sources": 1,
                  "n_targets": 1, "n_waypoints": 0},
@@ -189,8 +189,7 @@ def test_background_job_completes_and_poll_finalizes(app, state, raster_path):
     assert job.status == "done"
     assert job.result is not None
 
-    invoke(app, (f"{ids.ROUTING_POLL}.disabled", "n_intervals"), 1, [],
-           triggered=[f"{ids.ROUTING_POLL}.n_intervals"])
+    poll_job(app, ids.JOB_ACK_ROUTING, [])            # round 15: claim, finalize, confirm
     routes = state.layers_of_kind("route")
     assert len(routes) == 1
     assert state.routing_job is None

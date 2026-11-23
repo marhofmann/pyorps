@@ -1,0 +1,48 @@
+{
+ "stats": {
+  "window_full_grid_cells": {
+   "col0": 11228,
+   "col1": 13802,
+   "row0": 6568,
+   "row1": 7715
+  },
+  "omega": 0.3906,
+  "levels": {
+   "33": {
+    "win_eur": 963889.4816840211,
+    "alpha_eur_per_m_turbine": 60.82498358491893,
+    "bay_eur": 75000.0,
+    "n_turbines": 7,
+    "cpu_s_not_a_performance_figure": 2589.2
+   },
+   "30": {
+    "win_eur": 966890.5414908204,
+    "alpha_eur_per_m_turbine": 64.36443003941409,
+    "bay_eur": 75000.0,
+    "n_turbines": 7,
+    "cpu_s_not_a_performance_figure": 1915.8
+   },
+   "20": {
+    "win_eur": 997238.179032355,
+    "alpha_eur_per_m_turbine": 87.35916279462457,
+    "bay_eur": 75000.0,
+    "n_turbines": 7,
+    "cpu_s_not_a_performance_figure": 1598.1
+   }
+  },
+  "dtr": {
+   "seed_cells": 22062,
+   "d_max_eur": 7134678.0,
+   "min_step_cost": 173.0,
+   "k_max_rigorous": 41243,
+   "rounding_slack_relative": 0.007374823093414307,
+   "reached_share": 0.8737624048465127,
+   "gpu_temp_max_c": 74.0,
+   "note": "float32 GPU bound of the trench distance from the window boundary; multiply by 1 - rounding_slack_relative"
+  }
+ },
+ "inputs_sha256_prefix": {
+  "cost_priced_1m": "d33dc2f2729c25c1",
+  "turbines": "a20a675466d52d7d"
+ }
+}

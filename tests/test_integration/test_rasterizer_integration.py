@@ -1,27 +1,27 @@
-import unittest
 import os
-import tempfile
-import numpy as np
-import geopandas as gpd
-from shapely.geometry import Polygon, Point
 import random
-from typing import Tuple, Optional
+import tempfile
+import unittest
 
-from pyorps.raster.rasterizer import GeoRasterizer
-from pyorps.io.geo_dataset import InMemoryVectorDataset, InMemoryRasterDataset
+import geopandas as gpd
+import numpy as np
+from shapely.geometry import Point, Polygon
+
 from pyorps.core.cost_assumptions import CostAssumptions
+from pyorps.io.geo_dataset import InMemoryRasterDataset, InMemoryVectorDataset
+from pyorps.raster.rasterizer import GeoRasterizer
 
 
 def create_random_polygon_dataset(
         num_polygons: int = 50,
-        x_range: Tuple[float, float] = (0, 1000),
-        y_range: Tuple[float, float] = (0, 1000),
+        x_range: tuple[float, float] = (0, 1000),
+        y_range: tuple[float, float] = (0, 1000),
         crs: str = "EPSG:32632",
         min_vertices: int = 3,
         max_vertices: int = 8,
         min_size: float = 20,
         max_size: float = 100,
-        seed: Optional[int] = None
+        seed: int | None = None
 ) -> gpd.GeoDataFrame:
     """
     Create a random polygon GeoDataFrame with realistic features.

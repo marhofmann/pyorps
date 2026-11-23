@@ -14,7 +14,10 @@ TESTS = Path(__file__).resolve().parent
 #: Names that only exist when CuPy is installed (sssp_gpu & co. guard their cupy import).
 _GPU_NAMES = re.compile(r"\b(GpuSsspSession|sssp_raster_gpu\w*|eikonal_raster_gpu|import cupy|from cupy)\b")
 #: Any of these in the file means its GPU tests skip themselves without a GPU.
-_GPU_GUARDS = re.compile(r"gpu_only|importorskip\(\s*[\"']cupy|skipif|skipUnless|skipIf|skipTest|unittest\.skip|pytest\.skip|requires_gpu|needs_gpu|HAS_GPU|HAS_CUPY")
+_GPU_GUARDS = re.compile(
+    r"gpu_only|importorskip\(\s*[\"']cupy|skipif|skipUnless|skipIf|skipTest|unittest\.skip|pytest\.skip"
+    r"|requires_gpu|needs_gpu|HAS_GPU|HAS_CUPY"
+)
 #: Modules whose import needs an optional extra: a module-level importorskip in a conftest aborts the session.
 _OPTIONAL_IMPORTORSKIP = re.compile(r"^\s*pytest\.importorskip\(", re.MULTILINE)
 
@@ -66,3 +69,140 @@ def test_folders_that_tests_read_are_not_gitignored(folder):
     lines = [ln.strip() for ln in gitignore.read_text(encoding="utf-8").splitlines()]
     blanket = {f"{folder}/", f"/{folder}/", folder, f"/{folder}"}
     assert not blanket.intersection(lines), f"{folder}/ is ignored as a whole; tracked files in it would be invisible"
+
+
+# ---------------------------------------------------------------------------- the workflow design (2026-11)
+# Two workflows only: "Tests" (lint + test matrix + weekly newest-dependency run) and the release pipeline.
+# These tests read .github/ and skip in an installed-wheel test run, where there is no source tree.
+_WORKFLOWS = TESTS.parent / ".github" / "workflows"
+_SUPPORTED_PYTHONS = ("3.12", "3.13", "3.14", "3.15")
+
+
+def _workflow_text(name):
+    path = _WORKFLOWS / name
+    if not path.exists():
+        pytest.skip("no source tree (installed-wheel test run)")
+    return path.read_text(encoding="utf-8")
+
+
+def test_only_the_two_workflows_exist():
+    """Every extra workflow is one more place that goes stale.
+
+    The former code-quality and weekly newest-dependencies files are merged into tests.yml.
+    """
+    if not _WORKFLOWS.exists():
+        pytest.skip("no source tree (installed-wheel test run)")
+    found = sorted(p.name for p in _WORKFLOWS.glob("*.y*ml"))
+    assert found == ["build_and_publish_to_pypi.yml", "tests.yml"]
+
+
+def test_tests_workflow_lints_with_ruff_only():
+    text = _workflow_text("tests.yml")
+    assert "python -m ruff check ." in text
+    assert not re.search(r"flake8|pylint", text, re.IGNORECASE)
+
+
+def test_tests_workflow_covers_every_supported_python_and_system():
+    text = _workflow_text("tests.yml")
+    for version in _SUPPORTED_PYTHONS:
+        assert f'python: "{version}"' in text, f"Python {version} is missing from the test matrix"
+    for system in ("ubuntu-latest", "windows-latest", "macos-15"):
+        assert re.search(rf"os: {system}\b", text), f"{system} is missing from the test matrix"
+
+
+def test_tests_workflow_runs_the_weekly_newest_dependency_job():
+    text = _workflow_text("tests.yml")
+    assert re.search(r"^\s*schedule:", text, re.MULTILINE)
+    assert "--upgrade-strategy eager" in text
+
+
+_AFFINE_MUL = re.compile(r"(?:~\s*)?\b\w*(?:transform|affine)\w*\s*\*\s*\(")
+
+
+def test_no_code_multiplies_an_affine_transform_with_a_point():
+    """``transform * (x, y)`` is deprecated in affine 3 and its replacement ``@`` is missing in affine 2.
+
+    The newest affine warns on every call, and a test run with warnings as errors fails (a GUI service did,
+    on the environment with the newest dependencies only). Use the six coefficients instead:
+    ``x = t.a * col + t.b * row + t.c``, ``y = t.d * col + t.e * row + t.f``.
+    """
+    import pyorps
+
+    roots = [Path(pyorps.__file__).resolve().parent, TESTS]
+    hits = []
+    for root in roots:
+        for path in sorted(root.rglob("*.py")):
+            if path == Path(__file__).resolve():
+                continue
+            for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                code = line.split("#", 1)[0]
+                if _AFFINE_MUL.search(code):
+                    hits.append(f"{path.relative_to(root.parent)}:{number}: {line.strip()}")
+    assert not hits, "affine transform multiplied with a tuple: " + "; ".join(hits)
+
+
+_REPO = TESTS.parent
+#: file types that the library reads from its own folder at run time (CUDA sources and their headers)
+_RUNTIME_DATA_SUFFIXES = (".cu", ".cuh")
+
+
+def _pyproject():
+    path = _REPO / "pyproject.toml"
+    if not path.exists() or not (_REPO / "pyorps").is_dir():
+        pytest.skip("no source tree (installed-wheel test run)")
+    import tomllib
+    return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+def test_every_package_folder_is_listed_in_pyproject():
+    """pyproject.toml lists the packages by hand; a folder that is not listed is missing from the wheel.
+
+    An editable install does not show it: it imports from the source tree.
+    """
+    listed = set(_pyproject()["tool"]["setuptools"]["packages"])
+    on_disk = {".".join(path.parent.relative_to(_REPO).parts) for path in (_REPO / "pyorps").rglob("__init__.py")}
+    assert on_disk - listed == set(), "package folders missing from [tool.setuptools] packages"
+    assert listed - on_disk == set(), "listed packages without a folder"
+
+
+@pytest.mark.parametrize("suffix", _RUNTIME_DATA_SUFFIXES)
+def test_runtime_data_files_are_packaged(suffix):
+    """The GPU kernels are compiled at run time from files next to the modules.
+
+    The .cuh headers were once left out of the wheel and of the source distribution, so the kernels that
+    include them could not be built from an installed copy.
+    """
+    package_data = _pyproject()["tool"]["setuptools"]["package-data"]["pyorps"]
+    manifest = (_REPO / "MANIFEST.in").read_text(encoding="utf-8")
+    assert any((_REPO / "pyorps").rglob(f"*{suffix}")), f"no {suffix} file: drop the suffix from this test"
+    assert f"**/*{suffix}" in package_data, f"{suffix} files are missing from the wheel"
+    assert re.search(rf"^recursive-include pyorps \*\{suffix}$", manifest, re.MULTILINE), (
+        f"{suffix} files are missing from the source distribution")
+
+
+def test_workflows_do_not_depend_on_the_ubuntu_package_servers():
+    """A run must not fail because a runner cannot reach the package server.
+
+    All four Linux jobs of one run failed in "apt-get update" with "Temporary failure resolving". The
+    build needs only gcc and g++ (gcc brings libgomp), which the runner images ship, so apt-get may appear
+    only as a fallback: behind a check for the compiler and with retries.
+    """
+    for name in ("tests.yml", "build_and_publish_to_pypi.yml"):
+        text = _workflow_text(name)
+        commands = [line for line in text.splitlines() if "apt-get" in line and not line.lstrip().startswith("#")]
+        if not commands:
+            continue
+        assert "command -v g++" in text, f"{name}: apt-get runs without a check for an installed compiler"
+        for line in commands:
+            if re.search(r"apt-get\b.*\b(update|install)\b", line):
+                assert "Acquire::Retries" in line, f"{name}: apt-get without retries: {line.strip()}"
+        assert not any("libomp-dev" in line for line in commands), (
+            f"{name}: libomp-dev is not needed with gcc (libgomp)")
+
+
+def test_release_workflow_builds_and_tests_every_supported_python():
+    text = _workflow_text("build_and_publish_to_pypi.yml")
+    for version in _SUPPORTED_PYTHONS:
+        assert f"cp{version.replace('.', '')}-*" in text, f"no wheel is built for Python {version}"
+        assert f'"{version}"' in text, f"the wheel tests skip Python {version}"
+    assert not re.search(r"flake8|pylint", text, re.IGNORECASE)

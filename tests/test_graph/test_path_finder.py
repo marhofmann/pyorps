@@ -1,12 +1,14 @@
 import unittest
-from unittest.mock import patch, MagicMock
-import numpy as np
-from rasterio.transform import from_origin
-from shapely.geometry import LineString, Point, MultiPoint
-from geopandas import GeoDataFrame, GeoSeries
+from unittest.mock import MagicMock, patch
 
-from pyorps.graph.path_finder import PathFinder, timed, get_graph_api_class
+import numpy as np
+from geopandas import GeoDataFrame, GeoSeries
+from rasterio.transform import from_origin
+from shapely.geometry import LineString, MultiPoint, Point
+
+from pyorps.core.exceptions import PyorpsError
 from pyorps.core.path import Path, PathCollection
+from pyorps.graph.path_finder import PathFinder, get_graph_api_class, timed
 from pyorps.io.geo_dataset import RasterDataset, VectorDataset
 
 
@@ -216,7 +218,10 @@ class TestPathFinder(unittest.TestCase):
         indices = path_finder.get_node_indices_from_coords(coords)
 
         # Check that coords_to_indices was called with correct params
-        mock_raster_handler_instance.coords_to_indices.assert_called_once_with(coords)
+        # (check_bounds=True: the routing boundary refuses out-of-window
+        # points instead of handing their indices to a kernel)
+        mock_raster_handler_instance.coords_to_indices.assert_called_once_with(
+            coords, check_bounds=True)
 
         # Check that the returned indices are correct
         # For shape (100, 100), node indices should be [5*100+10, 15*100+20] = [510, 1520]
@@ -637,14 +642,24 @@ class TestPathFinder(unittest.TestCase):
             self.assertEqual(result, mock_gdf)
             self.assertEqual(path_finder.path_gdf, mock_gdf)
 
+    @patch("pyorps.graph.path_finder.GeoDataFrame")
     @patch("pyorps.graph.path_finder.initialize_geo_dataset")
     @patch("pyorps.graph.path_finder.RasterHandler")
-    def test_save_paths(self, mock_raster_handler, mock_initialize_geo_dataset):
-        """Test saving paths to a file."""
+    def test_save_paths(self, mock_raster_handler, mock_initialize_geo_dataset,
+                        mock_geodataframe):
+        """Test saving paths to a file.
+
+        save_paths rebuilds the GeoDataFrame from the stored paths on every
+        call: a frame cached earlier is never written (it may lack routes
+        computed since), and saving without any route raises a clear error
+        instead of writing that cached frame or failing on None.
+        """
         # Configure mocks
         mock_initialize_geo_dataset.return_value = self.mock_raster_dataset
         mock_raster_handler_instance = MagicMock()
         mock_raster_handler.return_value = mock_raster_handler_instance
+        mock_gdf = MagicMock()
+        mock_geodataframe.return_value = mock_gdf
 
         # Create PathFinder
         path_finder = PathFinder(
@@ -654,21 +669,21 @@ class TestPathFinder(unittest.TestCase):
             graph_api="networkit"
         )
 
-        # Create a mock GeoDataFrame
-        mock_gdf = MagicMock()
-        path_finder.path_gdf = mock_gdf
+        # A frame cached before (here: with no routes at all)
+        stale_gdf = MagicMock()
+        path_finder.path_gdf = stale_gdf
 
-        # Test with valid save path
-        path_finder.save_paths(self.test_output_path)
-        mock_gdf.to_file.assert_called_once_with(self.test_output_path)
+        # No routes: nothing to save, and the cached frame is not written
+        with self.assertRaises(PyorpsError) as context:
+            path_finder.save_paths(self.test_output_path)
+        self.assertIn("no routes to save", str(context.exception))
+        stale_gdf.to_file.assert_not_called()
 
         # Test with None save path
-        mock_gdf.to_file.reset_mock()
         path_finder.save_paths(None)
         mock_gdf.to_file.assert_not_called()
 
         # Test with empty string save path
-        mock_gdf.to_file.reset_mock()
         path_finder.save_paths('')
         mock_gdf.to_file.assert_not_called()
 
@@ -689,9 +704,19 @@ class TestPathFinder(unittest.TestCase):
         )
         path_finder.paths.add(test_path)
 
-        # Test with valid save path
+        # Test with valid save path: the frame is rebuilt from the paths and
+        # written; the frame cached before the route was added is not
+        path_finder.path_gdf = stale_gdf
         path_finder.save_paths(self.test_output_path)
         mock_gdf.to_file.assert_called_once_with(self.test_output_path)
+        stale_gdf.to_file.assert_not_called()
+        self.assertIs(path_finder.path_gdf, mock_gdf)
+
+        # None and empty string write nothing
+        mock_gdf.to_file.reset_mock()
+        path_finder.save_paths(None)
+        path_finder.save_paths('')
+        mock_gdf.to_file.assert_not_called()
 
         # Test with path_gdf set to None
         path_finder.path_gdf = None
@@ -1756,7 +1781,7 @@ class TestGetCoordsFromNodeIndices2D(unittest.TestCase):
 
         # This should not crash with "not enough values to unpack"
         try:
-            result = pf.get_coords_from_node_indices([55])
+            pf.get_coords_from_node_indices([55])
         except ValueError as e:
             if "not enough values to unpack" in str(e):
                 self.fail(

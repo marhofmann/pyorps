@@ -58,6 +58,7 @@ from typing import Any
 
 from shapely.geometry import LineString, Point
 
+from pyorps.core.exceptions import MissingKeyError
 from pyorps.core.types import CoordinateList, CoordinateTuple, NodeList
 
 #: Node kinds. A ``junction`` is the whole point of the object: routes merge or
@@ -288,7 +289,7 @@ class CorridorGraph:
                               (max(key), min(key))):
                 if candidate in self.pair_routes:
                     return candidate
-        raise KeyError(f"no route {key!r} in this corridor graph")
+        raise MissingKeyError(f"no route {key!r} in this corridor graph")
 
     def route_segments(self, key) -> list[CorridorSegment]:
         """The segments one route resolves into, in route order."""

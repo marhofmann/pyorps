@@ -8,7 +8,6 @@ from __future__ import annotations
 import os
 
 from sphinx.util import logging
-
 from status import pages, parse_front_matter
 
 logger = logging.getLogger(__name__)

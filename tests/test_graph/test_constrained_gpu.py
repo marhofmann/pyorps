@@ -1,9 +1,10 @@
 import os
 import unittest
+
 import numpy as np
 
 try:
-    import cupy as cp
+    import cupy as cp  # noqa: F401
     HAS_CUPY = True
 except ImportError:
     HAS_CUPY = False
@@ -109,11 +110,9 @@ class TestConstrainedGPU(unittest.TestCase):
 
     def test_gpu_matches_cython_uniform_raster(self):
         """GPU constrained SSSP produces same path as Cython on uniform."""
+        from pyorps.utils.constrained_path_algorithms import constrained_dijkstra_2d
+        from pyorps.utils.constrained_sssp_gpu import constrained_sssp_raster_gpu
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_path_algorithms import (
-            constrained_dijkstra_2d)
-        from pyorps.utils.constrained_sssp_gpu import (
-            constrained_sssp_raster_gpu)
 
         steps = get_neighborhood_steps(1, directed=True)
         raster = np.full((50, 50), 100, dtype=np.uint16)
@@ -136,9 +135,8 @@ class TestConstrainedGPU(unittest.TestCase):
 
     def test_gpu_forced_tower_placement(self):
         """Path longer than max_span forces tower placement."""
+        from pyorps.utils.constrained_sssp_gpu import constrained_sssp_raster_gpu
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu import (
-            constrained_sssp_raster_gpu)
 
         steps = get_neighborhood_steps(1, directed=True)
         raster = np.full((50, 50), 100, dtype=np.uint16)
@@ -154,11 +152,9 @@ class TestConstrainedGPU(unittest.TestCase):
 
     def test_gpu_matches_cython_nonuniform(self):
         """GPU and Cython produce same cost on random raster."""
+        from pyorps.utils.constrained_path_algorithms import constrained_dijkstra_2d
+        from pyorps.utils.constrained_sssp_gpu import constrained_sssp_raster_gpu
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_path_algorithms import (
-            constrained_dijkstra_2d)
-        from pyorps.utils.constrained_sssp_gpu import (
-            constrained_sssp_raster_gpu)
 
         steps = get_neighborhood_steps(1, directed=True)
         np.random.seed(42)
@@ -183,9 +179,8 @@ class TestConstrainedGPU(unittest.TestCase):
 
     def test_gpu_angle_rejection(self):
         """Angle penalties make path avoid sharp turns near obstacle."""
+        from pyorps.utils.constrained_sssp_gpu import constrained_sssp_raster_gpu
         from pyorps.utils.neighborhood import get_neighborhood_steps
-        from pyorps.utils.constrained_sssp_gpu import (
-            constrained_sssp_raster_gpu)
 
         # R2 for finer angular resolution
         steps = get_neighborhood_steps(2, directed=True)

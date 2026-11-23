@@ -23,7 +23,6 @@ import unittest
 
 import geopandas as gpd
 import numpy as np
-from rasterio.transform import from_bounds
 from shapely.geometry import box
 
 from pyorps.core.cost_assumptions import CostAssumptions

@@ -56,7 +56,7 @@ try:
 except ImportError:                                   # pragma: no cover
     GPU = False
 
-from pyorps.core.exceptions import NoPathFoundError, PairwiseError
+from pyorps.core.exceptions import InvalidInputError, NoPathFoundError, PairwiseError
 from pyorps.core.objective import Objective
 from pyorps.graph.api.raster_gpu_api import RasterGPUAPI, _walk_predecessors
 from pyorps.utils.traversal_gpu import prepare_step_lookup_tables
@@ -654,27 +654,14 @@ class TestReversedSingleSolve:
         finally:
             api.close()
 
-    def test_multi_to_single_is_one_solve_with_a_bare_dem(self):
-        """The guard item 1.6 removed: dem_data without gradient_luts
-        never reaches the kernel, so it cannot make anything asymmetric."""
-        raster, order = corridor_raster()
+    def test_a_bare_dem_is_refused_instead_of_ignored(self):
+        """dem_data without gradient_luts never reaches the kernel: it was
+        silently dropped (a flat route), so the constructor refuses it.
+        PathFinder always supplies the tables with a DEM."""
+        raster, _order = corridor_raster()
         dem = tilted_dem(raster.shape[0])
-        sources = [int(order[i]) for i in (2, 16, 28)]
-        target = int(order[39])
-
-        loop = RasterGPUAPI(raster, STEPS_8, dem_data=dem)
-        try:
-            expected = [loop.shortest_path(s, target) for s in sources]
-        finally:
-            loop.close()
-
-        api = CountingAPI(raster, STEPS_8, dem_data=dem)
-        try:
-            got = api.shortest_path(sources, target)
-            assert got == expected
-            assert len(api.solve_log) == 1
-        finally:
-            api.close()
+        with pytest.raises(InvalidInputError, match="gradient_luts"):
+            RasterGPUAPI(raster, STEPS_8, dem_data=dem)
 
     def test_multi_to_single_is_one_solve_with_gradient_luts(self):
         raster, order = corridor_raster()

@@ -47,6 +47,8 @@ from typing import Any
 
 import numpy as np
 
+from pyorps.core.exceptions import InvalidInputError, InvalidTypeError
+
 __all__ = [
     "PROVENANCE_SCHEMA",
     "SECTIONS",
@@ -80,7 +82,7 @@ _CHUNK = 1 << 20
 _file_hash_cache: dict[tuple[str, int, int], str] = {}
 
 
-class ProvenanceMismatch(ValueError):
+class ProvenanceMismatch(InvalidInputError):
     """A persisted object does not match what its reader expects.
 
     ``differences`` holds one line per differing key, as dotted paths.
@@ -95,6 +97,11 @@ class ProvenanceMismatch(ValueError):
         super().__init__(
             f"{what} does not match the expected provenance "
             f"({len(self.differences)} difference(s)):\n  {shown}{tail}")
+
+    def __reduce__(self):
+        # Exception pickles as cls(*args) with args == (message,), which this
+        # constructor does not accept; rebuild from the real arguments.
+        return (type(self), (self.what, self.differences))
 
 
 # --------------------------------------------------------------- hashing
@@ -195,7 +202,7 @@ def seed_hash(cells: Iterable[int], labels: Iterable[float] | None = None
         v = np.asarray(list(labels) if not isinstance(labels, np.ndarray)
                        else labels, dtype=np.float64).ravel()
     if v.size != c.size:
-        raise ValueError(f"{c.size} seed cells but {v.size} labels")
+        raise InvalidInputError(f"{c.size} seed cells but {v.size} labels")
     order = np.lexsort((v, c))
     h = hashlib.sha256()
     h.update(b"seeds|")
@@ -247,7 +254,7 @@ def record(**sections: Mapping[str, Any] | None) -> dict[str, Any]:
     """
     unknown = set(sections) - set(SECTIONS)
     if unknown:
-        raise ValueError(f"unknown provenance section(s) {sorted(unknown)}; "
+        raise InvalidInputError(f"unknown provenance section(s) {sorted(unknown)}; "
                          f"known: {SECTIONS}")
     rec: dict[str, Any] = {"schema": PROVENANCE_SCHEMA}
     for name in SECTIONS:
@@ -255,7 +262,7 @@ def record(**sections: Mapping[str, Any] | None) -> dict[str, Any]:
         if body is None:
             continue
         if not isinstance(body, Mapping):
-            raise TypeError(f"section {name!r} must be a mapping, "
+            raise InvalidTypeError(f"section {name!r} must be a mapping, "
                             f"got {type(body).__name__}")
         rec[name] = _jsonable(dict(body))
     # Round-trip once: what is compared later is what JSON stores.

@@ -3,7 +3,6 @@
 import os
 
 import matplotlib.pyplot as plt
-import numpy as np
 
 OUTPUT = os.path.join(
     os.path.dirname(__file__), "../source/_static/generated/gpu_performance.png"

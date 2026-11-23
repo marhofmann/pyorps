@@ -66,11 +66,19 @@ substation case study's winning margin is 28 EUR.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field as _field
-from typing import Any, Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass
+from dataclasses import field as _field
+from typing import Any
 
 import numpy as np
 
+from pyorps.core.exceptions import (
+    ConsistencyCheckError,
+    FeatureNotImplementedError,
+    InvalidInputError,
+    PyorpsRuntimeError,
+)
 from pyorps.utils.directional import (
     circular_window_min,
     direction_angles,
@@ -212,17 +220,17 @@ class TowerLattice:
 
     def __post_init__(self):
         if self.factor < 1:
-            raise ValueError(f"factor must be >= 1, got {self.factor}")
+            raise InvalidInputError(f"factor must be >= 1, got {self.factor}")
         if self.pooling not in _POOLINGS:
-            raise ValueError(
+            raise InvalidInputError(
                 f"pooling must be one of {_POOLINGS}, got {self.pooling!r}")
         self._resolve_cell_size()
         dirs = np.asarray(self.directions, dtype=np.int64).reshape(-1, 2)
         if dirs.shape[0] == 0:
-            raise ValueError("need at least one direction")
+            raise InvalidInputError("need at least one direction")
         for p, q in dirs:
             if math.gcd(abs(int(p)), abs(int(q))) != 1:
-                raise ValueError(
+                raise InvalidInputError(
                     f"direction ({p}, {q}) is not primitive; two directions "
                     f"on the same ray double the work and change nothing")
         object.__setattr__(self, "directions", dirs)
@@ -233,25 +241,25 @@ class TowerLattice:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         sx, sy = self.cell_size_x_m, self.cell_size_y_m
         if (sx is None) != (sy is None):
-            raise ValueError(
+            raise InvalidInputError(
                 "cell_size_x_m and cell_size_y_m come as a pair; passing one "
                 "and leaving the other to cell_size_m is how the y pixel "
                 "size got dropped in the first place")
         if sx is None:
             if self.cell_size_m is None:
-                raise ValueError(
+                raise InvalidInputError(
                     "pass cell_size_m for a square grid, or the pair "
                     "cell_size_x_m/cell_size_y_m for a real raster")
             sx = sy = self.cell_size_m
         elif self.cell_size_m is not None and not (
                 float(self.cell_size_m) == float(sx) == float(sy)):
-            raise ValueError(
+            raise InvalidInputError(
                 f"cell_size_m={self.cell_size_m!r} contradicts "
                 f"cell_size_x_m={sx!r} / cell_size_y_m={sy!r}; pass one form "
                 f"or the other")
         sx, sy = float(sx), float(sy)
         if not (sx > 0.0 and sy > 0.0):
-            raise ValueError(
+            raise InvalidInputError(
                 f"cell sizes must be positive, got x={sx!r}, y={sy!r}")
         object.__setattr__(self, "cell_size_x_m", sx)
         object.__setattr__(self, "cell_size_y_m", sy)
@@ -285,7 +293,7 @@ class TowerLattice:
         direction-dependent amount, and silently so.
         """
         if not self.is_square:
-            raise ValueError(
+            raise InvalidInputError(
                 f"this lattice is {self.sigma_x_m!r} m across columns and "
                 f"{self.sigma_y_m!r} m down rows, so it has no single "
                 f"sigma_m; use sigma_x_m/sigma_y_m, or step_length_m(d) for "
@@ -339,7 +347,7 @@ class TowerLattice:
     def cell_xy(self, rows, cols):
         """Lattice cell centres as ``(x, y)`` in the CRS of :attr:`transform`."""
         if self.transform is None:
-            raise ValueError("this lattice is not georeferenced")
+            raise InvalidInputError("this lattice is not georeferenced")
         t = self.transform
         r = np.asarray(rows, dtype=np.float64)
         c = np.asarray(cols, dtype=np.float64)
@@ -356,7 +364,7 @@ class TowerLattice:
         by one cell.
         """
         if self.transform is None:
-            raise ValueError("this lattice is not georeferenced")
+            raise InvalidInputError("this lattice is not georeferenced")
         inv = ~self.transform
         cols, rows = inv @ (np.asarray(x, dtype=np.float64),
                             np.asarray(y, dtype=np.float64))
@@ -376,11 +384,11 @@ def coarsen(a, factor: int, how: str = "mean") -> np.ndarray:
     if factor == 1:
         return a.astype(np.float64, copy=True)
     if how not in _POOLINGS:
-        raise ValueError(f"how must be one of {_POOLINGS}, got {how!r}")
+        raise InvalidInputError(f"how must be one of {_POOLINGS}, got {how!r}")
     rows = (a.shape[0] // factor) * factor
     cols = (a.shape[1] // factor) * factor
     if rows == 0 or cols == 0:
-        raise ValueError(
+        raise InvalidInputError(
             f"a {a.shape} grid holds no whole {factor}x{factor} block")
     if how == "sample":
         off = factor // 2
@@ -420,11 +428,11 @@ class AngleTables:
         prem = np.asarray(self.premium, dtype=np.float64)
         val = np.asarray(self.valid, dtype=bool)
         if prem.ndim != 2 or prem.shape[0] != prem.shape[1]:
-            raise ValueError(f"premium must be (K, K), got {prem.shape}")
+            raise InvalidInputError(f"premium must be (K, K), got {prem.shape}")
         if val.shape != prem.shape:
-            raise ValueError("valid must have the same shape as premium")
+            raise InvalidInputError("valid must have the same shape as premium")
         if np.any(prem[val] < 0):
-            raise ValueError(
+            raise InvalidInputError(
                 "a negative angle premium breaks the tier-1 lower bound, "
                 "which relies on premium >= 0 with premium(0) minimal")
         object.__setattr__(self, "premium", prem)
@@ -469,13 +477,13 @@ class ClearanceModel:
         h = tuple(float(v) for v in self.heights_m)
         p = tuple(float(v) for v in self.height_premium)
         if not h:
-            raise ValueError("ClearanceModel needs at least one height")
+            raise InvalidInputError("ClearanceModel needs at least one height")
         if len(h) != len(p):
-            raise ValueError("heights_m and height_premium must align")
+            raise InvalidInputError("heights_m and height_premium must align")
         if list(h) != sorted(h):
-            raise ValueError("heights_m must be ascending")
+            raise InvalidInputError("heights_m must be ascending")
         if self.conductor_tension_n <= 0:
-            raise ValueError("conductor_tension_n must be positive")
+            raise InvalidInputError("conductor_tension_n must be positive")
         object.__setattr__(self, "heights_m", h)
         object.__setattr__(self, "height_premium", p)
 
@@ -629,23 +637,23 @@ class TowerFieldModel:
 
     def __post_init__(self):
         if not 0.0 <= self.min_span_m <= self.max_span_m:
-            raise ValueError(
+            raise InvalidInputError(
                 f"need 0 <= min_span_m <= max_span_m, got "
                 f"{self.min_span_m} and {self.max_span_m}")
         if self.span_integral not in _INTEGRALS:
-            raise ValueError(
+            raise InvalidInputError(
                 f"span_integral must be one of {_INTEGRALS}, "
                 f"got {self.span_integral!r}")
         if self.angle_tier not in (1, 2):
-            raise ValueError(
+            raise InvalidInputError(
                 f"angle_tier must be 1 or 2, got {self.angle_tier}")
         if self.angle_mode not in ("exact", "window"):
-            raise ValueError(f"unknown angle_mode {self.angle_mode!r}")
+            raise InvalidInputError(f"unknown angle_mode {self.angle_mode!r}")
         if self.forbidden_mode not in ("exact", "conservative", "off"):
-            raise ValueError(
+            raise InvalidInputError(
                 f"unknown forbidden_mode {self.forbidden_mode!r}")
         if self.clearance_charge not in _CLEARANCE_CHARGE:
-            raise ValueError(
+            raise InvalidInputError(
                 f"clearance_charge must be one of {_CLEARANCE_CHARGE}, "
                 f"got {self.clearance_charge!r}")
 
@@ -677,7 +685,7 @@ class TowerFieldModel:
         and the two agree.
         """
         if not profile.has_span_constraints:
-            raise ValueError(
+            raise InvalidInputError(
                 f"profile {profile.name!r} has no span constraints, so it "
                 f"describes no tower chain to build a field over")
         kw: dict[str, Any] = {
@@ -900,7 +908,7 @@ class TowerField:
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if self._arr is None:
-            raise NotImplementedError(
+            raise FeatureNotImplementedError(
                 "this field was solved with record_pred=False, so it prices "
                 "positions but cannot return tower sequences")
         row, col = int(row), int(col)
@@ -934,7 +942,7 @@ class TowerField:
             if prev == self._source or layer < 0:
                 break
             if len(cells) > limit:
-                raise RuntimeError(
+                raise PyorpsRuntimeError(
                     "predecessor walk did not reach the source; the field "
                     "and its predecessor plane disagree")
             layer = max(0, min(layer, i_dir.shape[0] - 1))
@@ -1025,35 +1033,35 @@ class TowerFieldSolver:
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         self.values = np.asarray(values, dtype=np.float64)
         if self.values.ndim != 2:
-            raise ValueError(f"values must be 2-D, got {self.values.shape}")
+            raise InvalidInputError(f"values must be 2-D, got {self.values.shape}")
         if not np.isfinite(self.values).all():
-            raise ValueError(
+            raise InvalidInputError(
                 "values must be finite everywhere -- put impassable cells "
                 "in `blocked` instead, or a directional prefix sum turns "
                 "every span on that ray into inf")
         self.tower_cost = np.asarray(tower_cost, dtype=np.float64)
         if self.tower_cost.shape != self.values.shape:
-            raise ValueError("tower_cost must match values in shape")
+            raise InvalidInputError("tower_cost must match values in shape")
         self.lattice = lattice
         self.model = model
         self.shape = self.values.shape
         self.blocked = (np.zeros(self.shape, dtype=bool) if blocked is None
                         else np.asarray(blocked, dtype=bool))
         if self.blocked.shape != self.shape:
-            raise ValueError("blocked must match values in shape")
+            raise InvalidInputError("blocked must match values in shape")
         if clearance is not None and dem is None:
-            raise ValueError("a ClearanceModel needs a dem")
+            raise InvalidInputError("a ClearanceModel needs a dem")
         self.clearance = clearance
         self.dem = None if dem is None else np.asarray(dem, dtype=np.float64)
         self.obstacle = (None if obstacle is None
                          else np.asarray(obstacle, dtype=np.float64))
         self.angles = angles
         if model.angle_tier == 2 and angles is None:
-            raise ValueError(
+            raise InvalidInputError(
                 "angle_tier=2 needs an AngleTables; build one with "
                 "angle_tables_from_profile(profile, lattice)")
         if angles is not None and angles.n_directions != lattice.n_directions:
-            raise ValueError(
+            raise InvalidInputError(
                 f"AngleTables is {angles.n_directions}x{angles.n_directions} "
                 f"but the lattice has {lattice.n_directions} directions")
         # A line ENDS with a terminal tower, so the queried cell has to be
@@ -1065,7 +1073,7 @@ class TowerFieldSolver:
             (~self.blocked) & np.isfinite(self.tower_cost)
             if terminal_ok is None else np.asarray(terminal_ok, dtype=bool))
         if self.terminal_ok.shape != self.shape:
-            raise ValueError("terminal_ok must match values in shape")
+            raise InvalidInputError("terminal_ok must match values in shape")
         self._build()
 
     # -------------------------------------------------------- precompute
@@ -1164,7 +1172,7 @@ class TowerFieldSolver:
                         else None),
             }
         if not self._tables:
-            raise ValueError(
+            raise InvalidInputError(
                 f"no direction admits a span in "
                 f"[{self.model.min_span_m}, {self.model.max_span_m}] m on a "
                 f"{self.lattice.sigma_x_m:g} x {self.lattice.sigma_y_m:g} m "
@@ -1282,7 +1290,7 @@ class TowerFieldSolver:
             A :class:`TowerField`.
         """
         if record_pred and self.model.angle_mode == "window":
-            raise ValueError(
+            raise InvalidInputError(
                 "angle_mode='window' pools directions to get the plan's "
                 "K x n_classes cost, so it cannot name which incoming "
                 "direction won; solve with record_pred=False, or use "
@@ -1303,17 +1311,17 @@ class TowerFieldSolver:
         if seed_chain is not None:
             sc = np.asarray(seed_chain, dtype=np.float64)
             if sc.shape != self.shape:
-                raise ValueError(f"seed_chain has shape {sc.shape}, the "
+                raise InvalidInputError(f"seed_chain has shape {sc.shape}, the "
                                  f"lattice {self.shape}")
             if np.isnan(sc).any() or (sc < 0).any():
-                raise ValueError("seed labels must be >= 0 (inf: no seed), "
+                raise InvalidInputError("seed labels must be >= 0 (inf: no seed), "
                                  "not NaN or negative")
             if (np.isfinite(sc) & self.blocked).any():
-                raise ValueError("a seed sits on a blocked cell, where no "
+                raise InvalidInputError("a seed sits on a blocked cell, where no "
                                  "span may start")
             np.minimum(seed, sc, out=seed)
         if not np.isfinite(seed).any():
-            raise ValueError("no source and no finite seed: nothing starts "
+            raise InvalidInputError("no source and no finite seed: nothing starts "
                              "a chain")
         return seed, src
 
@@ -1325,10 +1333,10 @@ class TowerFieldSolver:
         sr, sc = int(source[0]), int(source[1])
         h, w = self.shape
         if not (0 <= sr < h and 0 <= sc < w):
-            raise ValueError(
+            raise InvalidInputError(
                 f"source cell {(sr, sc)} is outside the {h}x{w} lattice")
         if self.blocked[sr, sc]:
-            raise ValueError(
+            raise InvalidInputError(
                 f"source cell {(sr, sc)} is blocked; a line cannot start on "
                 f"a cell no span may touch")
         return sr, sc
@@ -1414,7 +1422,7 @@ class TowerFieldSolver:
             if done:
                 break
         else:
-            raise RuntimeError(
+            raise PyorpsRuntimeError(
                 f"tower field did not converge in {self.model.max_sweeps} "
                 f"sweeps; the layered argument says it should take about "
                 f"(extent / max_span_m) of them")
@@ -1528,7 +1536,7 @@ class TowerFieldSolver:
             if half >= 0:
                 out.append((int(half), float(c)))
         if not out:
-            raise ValueError(
+            raise InvalidInputError(
                 "no (incoming, outgoing) direction pair survives the hard "
                 "angle limit, so no tower can turn at all")
         return out
@@ -1614,7 +1622,7 @@ class TowerFieldSolver:
             if done:
                 break
         else:
-            raise RuntimeError(
+            raise PyorpsRuntimeError(
                 f"tier-2 tower field did not converge in "
                 f"{self.model.max_sweeps} sweeps")
 
@@ -1714,7 +1722,7 @@ def _exempt_cells(lattice, shape, unblock_xy, unblock_cells):
         pts = np.asarray(unblock_xy, dtype=np.float64).reshape(-1, 2)
         if pts.size:
             if lattice.transform is None:
-                raise ValueError(
+                raise InvalidInputError(
                     "unblock_xy needs a georeferenced lattice; pass a "
                     "transform, or name the cells with unblock_cells")
             rr, cc = lattice.xy_to_cell(pts[:, 0], pts[:, 1])
@@ -1740,13 +1748,13 @@ def _pixel_size(cell_size_m, cell_size_x_m, cell_size_y_m, transform):
     """
     if cell_size_x_m is not None or cell_size_y_m is not None:
         if cell_size_x_m is None or cell_size_y_m is None:
-            raise ValueError(
+            raise InvalidInputError(
                 "cell_size_x_m and cell_size_y_m come as a pair")
         return float(cell_size_x_m), float(cell_size_y_m)
     if cell_size_m is not None:
         return float(cell_size_m), float(cell_size_m)
     if transform is None:
-        raise ValueError(
+        raise InvalidInputError(
             "pass cell_size_m, the pair cell_size_x_m/cell_size_y_m, or a "
             "transform to read the pixel size off")
     return float(abs(transform.a)), float(abs(transform.e))
@@ -1841,7 +1849,7 @@ def tower_field_from_raster(raster, *, cell_size_m=None, source_xy=None,
     raster = np.asarray(raster)
     if model is None:
         if profile is None:
-            raise ValueError("pass either a model or a profile")
+            raise InvalidInputError("pass either a model or a profile")
         model = TowerFieldModel.matching_kernel(profile)
 
     lattice_transform = transform
@@ -1866,9 +1874,9 @@ def tower_field_from_raster(raster, *, cell_size_m=None, source_xy=None,
         else:
             fill = np.asarray(crossing_values, dtype=np.float64)
             if fill.shape != raster.shape:
-                raise ValueError("crossing_values must match the raster")
+                raise InvalidInputError("crossing_values must match the raster")
             if not np.all(np.isfinite(fill[blocked_fine])):
-                raise ValueError("crossing_values must be finite on the "
+                raise InvalidInputError("crossing_values must be finite on the "
                                  "excluded cells (forbid with "
                                  "crossing_mask instead)")
         values_fine = np.where(blocked_fine, fill, values_fine)
@@ -1894,12 +1902,12 @@ def tower_field_from_raster(raster, *, cell_size_m=None, source_xy=None,
 
     if model.angle_tier == 2 and angles is None:
         if profile is None:
-            raise ValueError("angle_tier=2 needs a profile or AngleTables")
+            raise InvalidInputError("angle_tier=2 needs a profile or AngleTables")
         angles = angle_tables_from_profile(profile, lattice)
 
     if tower_cost is None:
         if profile is None:
-            raise ValueError("pass either tower_cost or a profile")
+            raise InvalidInputError("pass either tower_cost or a profile")
         lut = profile.precompute_tower_terrain_costs()
         tower_cost = lut[np.clip(np.rint(values), 0, 65535).astype(np.int64)]
         if model.angle_tier == 1:
@@ -1927,11 +1935,11 @@ def tower_field_from_raster(raster, *, cell_size_m=None, source_xy=None,
 
     if source_cell is None and source_xy is not None:
         if lattice.transform is None:
-            raise ValueError("source_xy needs a transform")
+            raise InvalidInputError("source_xy needs a transform")
         r, c = lattice.xy_to_cell(*source_xy)
         source_cell = (int(np.ravel(r)[0]), int(np.ravel(c)[0]))
     if source_cell is None and seed_chain is None:
-        raise ValueError("pass source_cell, source_xy with a transform, or "
+        raise InvalidInputError("pass source_cell, source_xy with a transform, or "
                          "seed_chain")
 
     # `blocked` is the CROSSING mask; `tower_cost = inf` is what stops a
@@ -1940,7 +1948,7 @@ def tower_field_from_raster(raster, *, cell_size_m=None, source_xy=None,
     if crossing_mask is not None:
         cm = np.asarray(crossing_mask, dtype=bool)
         if cm.shape != raster.shape:
-            raise ValueError("crossing_mask must match the raster")
+            raise InvalidInputError("crossing_mask must match the raster")
         crossing = crossing | (coarsen(cm.astype(np.float64), factor,
                                        "mean") > 0.0)
     if terminal_ok is None:
@@ -1948,7 +1956,7 @@ def tower_field_from_raster(raster, *, cell_size_m=None, source_xy=None,
     else:
         terminal_ok = np.asarray(terminal_ok, dtype=bool)
         if terminal_ok.shape != values.shape:
-            raise ValueError(f"terminal_ok must have the lattice shape "
+            raise InvalidInputError(f"terminal_ok must have the lattice shape "
                              f"{values.shape}")
     solver = TowerFieldSolver(
         values=values, tower_cost=tower_cost, lattice=lattice, model=model,
@@ -2017,20 +2025,21 @@ def check_bounds(lower: TowerField, upper: TowerField, *,
                  tol: float = 1e-6) -> dict:
     """``LB <= UB`` on every cell -- the cheapest strong invariant there is.
 
-    Returns a summary dict; raises :class:`AssertionError` on a
+    Returns a summary dict; raises :class:`ConsistencyCheckError` (an
+    ``AssertionError``) on a
     violation, including a cell reachable in the upper bound but not the
     lower, which no relaxation can produce.
     """
     both = np.isfinite(lower.arrival) & np.isfinite(upper.arrival)
     gap = upper.arrival[both] - lower.arrival[both]
     if gap.size and float(gap.min()) < -tol:
-        raise AssertionError(
+        raise ConsistencyCheckError(
             f"LB <= UB is violated on {int((gap < -tol).sum())} cells, worst "
             f"by {-float(gap.min()):,.3f} EUR -- one of the two fields is "
             f"not the bound it claims to be")
     only_ub = (~np.isfinite(lower.arrival)) & np.isfinite(upper.arrival)
     if only_ub.any():
-        raise AssertionError(
+        raise ConsistencyCheckError(
             f"{int(only_ub.sum())} cells are reachable in the upper bound "
             f"but not in the lower one, which no relaxation can do")
     return {
@@ -2058,7 +2067,8 @@ def assert_matched_tier1(tier1: TowerField, tier2: TowerField) -> None:
     tier2.arrival`` a certificate.
 
     Raises:
-        AssertionError: listing every violated condition.
+        ConsistencyCheckError: listing every violated condition (it is also
+            an ``AssertionError``).
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     bad: list[str] = []
@@ -2116,7 +2126,7 @@ def assert_matched_tier1(tier1: TowerField, tier2: TowerField) -> None:
     elif np.any(s1 > s2):
         bad.append("tier 1 starts some chain above tier 2")
     if bad:
-        raise AssertionError("not a matched tier 1: " + "; ".join(bad))
+        raise ConsistencyCheckError("not a matched tier 1: " + "; ".join(bad))
 
 
 __all__.append("assert_matched_tier1")

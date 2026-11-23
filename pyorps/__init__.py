@@ -19,16 +19,41 @@ from .core.cost_assumptions import (  # pylint: disable=wrong-import-position
     get_zero_cost_assumptions,
     save_empty_cost_assumptions,
 )
+from .core.ensemble import EnsembleError, RouteEnsemble  # pylint: disable=wrong-import-position
 from .core.exceptions import (  # pylint: disable=wrong-import-position
     AlgorithmNotImplementedError,
+    ColumnAnalysisError,
+    ConsistencyCheckError,
     CostAssumptionsError,
+    CrsReprojectionWarning,
+    FeatureColumnError,
+    FeatureNotImplementedError,
+    FileLoadError,
+    FormatError,
+    InputFileNotFoundError,
+    InsufficientMemoryError,
+    InvalidInputError,
+    InvalidSourceError,
+    InvalidTypeError,
+    MetricStackError,
+    MissingDependencyError,
+    MissingKeyError,
     NoPathFoundError,
+    NoSuitableColumnsError,
+    NumericalPrecisionError,
+    ObjectiveError,
     PairwiseError,
     PyorpsError,
+    PyorpsRuntimeError,
+    PyorpsWarning,
     RasterShapeError,
+    WFSConnectionError,
     WFSError,
+    WFSLayerNotFoundError,
+    WFSRequestRejectedError,
+    WFSResponseParsingError,
+    WFSServerError,
 )
-from .core.ensemble import RouteEnsemble  # pylint: disable=wrong-import-position
 from .core.metric_stack import MetricStack  # pylint: disable=wrong-import-position
 from .core.objective import (  # pylint: disable=wrong-import-position
     GradientOptions,
@@ -37,6 +62,17 @@ from .core.objective import (  # pylint: disable=wrong-import-position
 from .core.path import (  # Fixed: import from core.path instead of graph  # pylint: disable=wrong-import-position
     Path,
     PathCollection,
+)
+from .core.warning_types import (
+    AlgorithmFallbackWarning,  # pylint: disable=wrong-import-position
+    CoverageWarning,  # pylint: disable=wrong-import-position
+    SpanRuleWarning,  # pylint: disable=wrong-import-position
+)
+from .graph.corridor import (  # pylint: disable=wrong-import-position
+    cell_sharing_profile,
+    corridor_graph_from_routes,
+    route_metrics,
+    supercover_cells,
 )
 from .graph.path_finder import PathFinder  # pylint: disable=wrong-import-position
 from .graph.search_session import (  # pylint: disable=wrong-import-position
@@ -62,12 +98,6 @@ from .graph.tower_field import (  # pylint: disable=wrong-import-position
     tower_field_bounds,
     tower_field_from_raster,
 )
-from .graph.corridor import (  # pylint: disable=wrong-import-position
-    cell_sharing_profile,
-    corridor_graph_from_routes,
-    route_metrics,
-    supercover_cells,
-)
 from .io.geo_dataset import (  # pylint: disable=wrong-import-position
     GeoDataset,
     InMemoryRasterDataset,
@@ -79,6 +109,7 @@ from .io.geo_dataset import (  # pylint: disable=wrong-import-position
     WFSVectorDataset,
     initialize_geo_dataset,
 )
+from .io.provenance import ProvenanceMismatch  # pylint: disable=wrong-import-position
 from .raster.rasterizer import GeoRasterizer  # pylint: disable=wrong-import-position
 from .raster.thinness import (  # pylint: disable=wrong-import-position
     MIN_FORBIDDEN_WIDTH_CELLS,
@@ -147,8 +178,23 @@ __all__ = [
     "CostAssumptions", "get_zero_cost_assumptions", "detect_feature_columns",
     "save_empty_cost_assumptions",
 
-    # Exceptions
-    "PyorpsError", "NoPathFoundError", "RasterShapeError",
+    # Exceptions: catch PyorpsError for anything the library reports.
+    # Hierarchy: see the docstring of pyorps.core.exceptions.
+    "PyorpsError",
+    "CostAssumptionsError", "FileLoadError", "InvalidSourceError", "FormatError",
+    "ObjectiveError", "MetricStackError", "EnsembleError",
+    "FeatureColumnError", "NoSuitableColumnsError", "ColumnAnalysisError",
+    "WFSError", "WFSConnectionError", "WFSResponseParsingError",
+    "WFSLayerNotFoundError", "WFSServerError", "WFSRequestRejectedError",
+    "NoPathFoundError", "RasterShapeError",
     "AlgorithmNotImplementedError", "PairwiseError",
-    "CostAssumptionsError", "WFSError",
+    "ProvenanceMismatch",
+    # Replacements for builtin exceptions (each also derives from its builtin)
+    "InvalidInputError", "InvalidTypeError", "MissingKeyError",
+    "MissingDependencyError", "FeatureNotImplementedError",
+    "PyorpsRuntimeError", "InsufficientMemoryError", "InputFileNotFoundError",
+    "ConsistencyCheckError", "NumericalPrecisionError",
+    # Warning root
+    "PyorpsWarning", "CrsReprojectionWarning", "AlgorithmFallbackWarning",
+    "CoverageWarning", "SpanRuleWarning",
 ]

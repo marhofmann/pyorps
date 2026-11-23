@@ -1,6 +1,7 @@
 name: Tests
 
-# Runs the test suite on every pull request and push, from a clean checkout (tracked files only).
+# The one workflow that checks every pull request and push: the linter first, then the test suite from a clean
+# checkout (tracked files only) on Linux, Windows and macOS, on the oldest and the newest supported Python.
 # Why: the 0.4.0 release found its test failures only when the tag was pushed - ignored or untracked files,
 # repo-relative paths, optional packages and newer dependencies all behaved differently on a clean machine.
 on:
@@ -9,14 +10,41 @@ on:
   push:
     branches: [ main, develop ]
   workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"   # Mondays 05:17 UTC: runs the "newest" job below
 
 concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # Same pin as the dev and full extras in pyproject.toml; the rules live in [tool.ruff] there.
+      - name: Install ruff
+        run: python -m pip install "ruff>=0.15,<0.16"
+
+      - name: Lint (ruff check)
+        run: python -m ruff check .
+
   tests:
     name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    # The eight test jobs start only after the linter passed: a lint error costs one short job, not nine.
+    needs: lint
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -26,7 +54,13 @@ jobs:
           - { os: ubuntu-latest,  python: "3.12" }
           - { os: ubuntu-latest,  python: "3.13" }
           - { os: ubuntu-latest,  python: "3.14" }
+          - { os: ubuntu-latest,  python: "3.15" }
           - { os: windows-latest, python: "3.12" }
+          - { os: windows-latest, python: "3.15" }
+          # networkit is not installed on macOS (its wheels need macOS 26); the tests that need it skip themselves.
+          # macos-15 is the oldest macOS runner on offer: GitHub retired the macOS 14 images on 2026-11-02.
+          - { os: macos-15, python: "3.12" }
+          - { os: macos-15, python: "3.15" }
 
     steps:
       - name: Checkout code
@@ -36,23 +70,109 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
+          allow-prereleases: true
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Install system dependencies (Linux)
+      # The GitHub Ubuntu images ship gcc and g++, and gcc brings its own OpenMP runtime (libgomp), so the
+      # build needs no package from the Ubuntu servers. The step used to run "apt-get update" and install
+      # build-essential and libomp-dev on every run; all four Linux jobs of one run failed when the runner
+      # could not resolve the package server. apt-get is now only a fallback, with retries.
+      - name: Install the C++ compiler if the runner has none (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libomp-dev
+          if command -v gcc >/dev/null && command -v g++ >/dev/null; then
+            g++ --version
+            exit 0
+          fi
+          for attempt in 1 2 3 4; do
+            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y build-essential; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              echo "apt-get failed (attempt $attempt of 4), waiting before the next attempt"
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "apt-get failed four times"
+          exit 1
 
-      - name: Install the package with the full extra
+      # setup.py finds OpenMP through "brew --prefix libomp". The release workflow builds with the same target.
+      # The deployment target equals the runner: the Homebrew libomp is built for the runner's macOS.
+      # PIP_PREFER_BINARY: when the newest release of a dependency has no wheel for this macOS (rasterio on
+      # macOS 14 was one release behind), pip would otherwise pick the source distribution and try to compile it.
+      - name: Install OpenMP and prefer wheels (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew install libomp
+          echo "MACOSX_DEPLOYMENT_TARGET=15.0" >> "$GITHUB_ENV"
+          echo "PIP_PREFER_BINARY=1" >> "$GITHUB_ENV"
+
+      - name: Install the package with the full and gui extras
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[full]"
+          python -m pip install -e ".[full,gui]"
           python -m pip list
 
       - name: Show the versions the tests run against
         run: python -c "import numpy, scipy, rasterio, affine, shapely, geopandas, pandas; print('numpy', numpy.__version__, '| scipy', scipy.__version__, '| rasterio', rasterio.__version__, '| affine', affine.__version__, '| shapely', shapely.__version__, '| geopandas', geopandas.__version__, '| pandas', pandas.__version__)"
 
+      # The browser tests (tests/test_gui/test_e2e*.py) skip themselves: Playwright is not installed here.
       - name: Run the tests
-        run: python -m pytest tests --tb=short -p no:cacheprovider --ignore=tests/test_io/test_vector_loader.py
+        run: python -m pytest tests --tb=short -p no:cacheprovider
+
+  # Weekly early warning: the release tests broke on new releases of numpy, affine and rasterio that nobody
+  # had installed locally. This job installs the newest of everything and runs the suite, so a dependency
+  # change shows up on a Monday, not on release day. A failure here is information, not a blocked pull request.
+  newest:
+    name: Newest dependencies (${{ matrix.os }}, Python ${{ matrix.python }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  python: "3.15" }
+          - { os: windows-latest, python: "3.15" }
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: true
+
+      # same step as in the test job above
+      - name: Install the C++ compiler if the runner has none (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          if command -v gcc >/dev/null && command -v g++ >/dev/null; then
+            g++ --version
+            exit 0
+          fi
+          for attempt in 1 2 3 4; do
+            if sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y build-essential; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              echo "apt-get failed (attempt $attempt of 4), waiting before the next attempt"
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "apt-get failed four times"
+          exit 1
+
+      - name: Install the package and upgrade everything to the newest release
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[full,gui]"
+          python -m pip install --upgrade --upgrade-strategy eager numpy scipy rasterio affine shapely geopandas pandas pytest
+          python -m pip list
+
+      - name: Run the tests with every pyorps deprecation as an error
+        run: python -m pytest tests --tb=short -p no:cacheprovider

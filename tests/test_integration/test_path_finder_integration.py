@@ -1,20 +1,21 @@
-import unittest
-from unittest.mock import patch, MagicMock
-
+import importlib
+import importlib.util
 import os
 import tempfile
-import geopandas as gpd
-import importlib
+import unittest
 import warnings
-from shapely.geometry import Polygon, LineString
-from numpy import array, random
+from unittest.mock import MagicMock, patch
 
-from pyorps.graph.path_finder import get_graph_api_class, PathFinder
-from pyorps.raster.handler import create_test_tiff
+import geopandas as gpd
+from numpy import array
+from shapely.geometry import LineString, Polygon
+
 from pyorps.core.cost_assumptions import CostAssumptions
-from pyorps.core.path import Path, PathCollection
-from pyorps.io.geo_dataset import initialize_geo_dataset, LocalRasterDataset, VectorDataset, RasterDataset
 from pyorps.core.exceptions import AlgorithmNotImplementedError
+from pyorps.core.path import Path, PathCollection
+from pyorps.graph.path_finder import PathFinder, get_graph_api_class
+from pyorps.io.geo_dataset import LocalRasterDataset, RasterDataset, VectorDataset, initialize_geo_dataset
+from pyorps.raster.handler import create_test_tiff
 
 # List of graph libraries to test
 LIBRARIES_AND_MODULE_NAMES = [
@@ -25,11 +26,22 @@ LIBRARIES_AND_MODULE_NAMES = [
 ]
 
 
+
+def _require_networkit(testcase: unittest.TestCase) -> None:
+    """Skip a test that routes with the optional networkit backend when it is not installed.
+
+    networkit has no wheel for macOS before 26, so the macOS test runs do not have it.
+    """
+    if importlib.util.find_spec("networkit") is None:
+        testcase.skipTest("networkit is not installed (optional backend)")
+
+
 class TestGraphFunctions(unittest.TestCase):
     """Test cases for graph-related functions in path_finder.py."""
 
     def test_get_graph_api_class_valid_apis(self):
         """Test get_graph_api_class with valid API names."""
+        _require_networkit(self)
         # Test with networkit which should be installed
         api_class = get_graph_api_class("networkit")
         self.assertEqual(api_class.__name__, "NetworkitAPI")
@@ -222,7 +234,8 @@ class TestRasterHandler(unittest.TestCase):
         """Test create_raster_handler with an unsupported dataset type."""
 
         # Setup mock dataset that is neither VectorDataset nor RasterDataset
-        class UnsupportedDataset: pass
+        class UnsupportedDataset:
+            pass
 
         mock_dataset = MagicMock(spec=UnsupportedDataset)
 
@@ -362,6 +375,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
 
     def test_multiple_source_target_path_finding(self):
         """Test path finding with multiple source and target points."""
+        _require_networkit(self)
         # Create two sets of source and target coordinates
         sources = [(500020, 5599980), (500030, 5599990)]
         targets = [(500080, 5599920), (500090, 5599910)]
@@ -491,6 +505,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
 
     def test_raster_path_finding_with_different_neighborhoods(self):
         """Test path finding with different neighborhood settings using raster data."""
+        _require_networkit(self)
         for neighborhood in ['r0', 1, 2.0, 'RAD3']:
             path_finder = PathFinder(
                 dataset_source=self.test_raster_path,
@@ -515,6 +530,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
 
     def test_path_finding_with_different_buffer_sizes(self):
         """Test path finding with different search space buffer sizes."""
+        _require_networkit(self)
         buffer_sizes = [10, 50, 100]
         for buffer in buffer_sizes:
             path_finder = PathFinder(
@@ -539,6 +555,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
 
     def test_save_and_load_path_geodataframe(self):
         """Test saving and loading path GeoDataFrame."""
+        _require_networkit(self)
         path_finder = PathFinder(
             dataset_source=self.test_raster_path,
             source_coords=self.source_coords,
@@ -567,6 +584,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
 
     def test_save_raster(self):
         """Test saving the raster used for path finding."""
+        _require_networkit(self)
         path_finder = PathFinder(
             dataset_source=self.test_raster_path,
             source_coords=self.source_coords,
@@ -592,6 +610,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
 
     def test_path_collection_replace_integration(self):
         """Test the PathCollection replace functionality in an integration context."""
+        _require_networkit(self)
         # Create a PathFinder instance
         path_finder = PathFinder(
             dataset_source=self.test_raster_path,
@@ -654,6 +673,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
 
     def test_all_graph_libraries_all_algorithms(self):
         """Test all available path finding algorithms for each graph library."""
+        _require_networkit(self)
 
         # Define which algorithms each library should support based on implementation
         library_algorithms = {
@@ -694,7 +714,8 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
             for algorithm in supported_algorithms:
                 for scenario_name, source, target, pairwise in test_scenarios:
                     test_name = f"{lib_name} with {algorithm} ({scenario_name})"
-                    if not pairwise and algorithm == "astar" and lib_name == "rustworkx" and scenario_name == "'multiple sources to single target'":
+                    if (not pairwise and algorithm == "astar" and lib_name == "rustworkx"
+                            and scenario_name == "'multiple sources to single target'"):
                         print()
                     try:
                         # Create PathFinder and find route
@@ -747,6 +768,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
 
     def test_algorithm_comparison(self):
         """Test that different algorithms produce valid paths for the same problem."""
+        _require_networkit(self)
         # We'll use networkit as it has a wide range of algorithm implementations
         lib_name = "networkit"
 
@@ -1059,7 +1081,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
             row, col = corrected[i]
             value = path_finder.raster_handler.data[0, row, col]
             self.assertLess(value, max_cost,
-                            f"Max cost position should be corrected")
+                            "Max cost position should be corrected")
 
         # Non-max position (30, 30) should remain unchanged
         self.assertEqual(corrected[3][0], 30)
@@ -1184,7 +1206,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
             row, col = corrected[i]
             value = path_finder.raster_handler.data[0, row, col]
             self.assertLess(value, max_cost,
-                            f"Position in large block should be corrected to valid location")
+                            "Position in large block should be corrected to valid location")
 
     def test_correct_max_cost_positions_mixed_values(self):
         """Test that valid positions are preserved while max cost positions are corrected."""
@@ -1254,6 +1276,7 @@ class TestGraphLibraryPathFinding(unittest.TestCase):
 
     def test_correct_max_cost_positions_path_finding_integration(self):
         """Test that max cost correction improves path finding through obstacles."""
+        _require_networkit(self)
         import numpy as np
         import rasterio
         from rasterio.transform import from_origin
@@ -1320,10 +1343,16 @@ class TestCrossBackendConsistency(unittest.TestCase):
 
     def test_cython_vs_networkit_same_cost(self):
         """CythonAPI and NetworKitAPI must find paths with equal cost."""
+        import importlib.util
+
         import numpy as np
-        from pyorps.utils.neighborhood import get_neighborhood_steps
+
+        if importlib.util.find_spec("networkit") is None:
+            self.skipTest("networkit is not installed (optional backend)")
+
         from pyorps.graph.api.cython_api import CythonAPI
         from pyorps.graph.api.networkit_api import NetworkitAPI
+        from pyorps.utils.neighborhood import get_neighborhood_steps
 
         rng = np.random.RandomState(123)
         raster = rng.randint(1, 100, size=(15, 15)).astype(np.uint16)
@@ -1347,7 +1376,7 @@ class TestCrossBackendConsistency(unittest.TestCase):
 
         # For Cython, compute cost from raster data
         from pyorps.utils.path_core import path_cost_uint32
-        cy_cost = path_cost_uint32(
+        path_cost_uint32(
             np.array(cy_path, dtype=np.uint32), raster, raster.shape[1]
         )
 
@@ -1364,7 +1393,6 @@ class TestEndToEndIntegration(unittest.TestCase):
 
     def test_in_memory_raster_pathfinding(self):
         """Create raster file → PathFinder → find_route → verify path."""
-        import numpy as np
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = os.path.join(tmpdir, "test.tiff")

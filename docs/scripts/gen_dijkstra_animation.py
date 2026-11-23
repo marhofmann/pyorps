@@ -4,13 +4,13 @@ Uses the same source/target as the S2S routing example on sample_raster.tiff.
 Runs a manual Dijkstra on the windowed raster to record the expansion frontier.
 """
 
+import heapq
 import os
 import sys
-import heapq
 
-import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))

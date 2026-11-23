@@ -124,6 +124,36 @@ Exceptions
    PairwiseError
    CostAssumptionsError
    WFSError
+   FileLoadError
+   InvalidSourceError
+   FormatError
+   ObjectiveError
+   MetricStackError
+   EnsembleError
+   FeatureColumnError
+   NoSuitableColumnsError
+   ColumnAnalysisError
+   WFSConnectionError
+   WFSResponseParsingError
+   WFSLayerNotFoundError
+   WFSServerError
+   WFSRequestRejectedError
+   ProvenanceMismatch
+   InvalidInputError
+   InvalidTypeError
+   MissingKeyError
+   MissingDependencyError
+   FeatureNotImplementedError
+   PyorpsRuntimeError
+   InsufficientMemoryError
+   InputFileNotFoundError
+   ConsistencyCheckError
+   NumericalPrecisionError
+   PyorpsWarning
+   CrsReprojectionWarning
+   AlgorithmFallbackWarning
+   CoverageWarning
+   SpanRuleWarning
 
 Packages
 --------
@@ -138,7 +168,7 @@ Essential data structures, types, and exceptions.
    :recursive:
    :nosignatures:
 
-   pyorps.core
+   core
 
 I/O Module
 ~~~~~~~~~~
@@ -151,7 +181,7 @@ raster format.
    :recursive:
    :nosignatures:
 
-   pyorps.io
+   io
 
 Graph Module
 ~~~~~~~~~~~~
@@ -164,7 +194,7 @@ fields.
    :recursive:
    :nosignatures:
 
-   pyorps.graph
+   graph
 
 Raster Module
 ~~~~~~~~~~~~~
@@ -176,7 +206,7 @@ Raster data processing: rasterization, windowing and thin-feature tools.
    :recursive:
    :nosignatures:
 
-   pyorps.raster
+   raster
 
 Utils Module
 ~~~~~~~~~~~~
@@ -188,7 +218,7 @@ Performance-critical utilities and Cython extensions.
    :recursive:
    :nosignatures:
 
-   pyorps.utils
+   utils
 
 GUI Module
 ~~~~~~~~~~
@@ -199,4 +229,4 @@ Interactive workbench (needs the ``gui`` extra).
    :toctree: ../generated
    :nosignatures:
 
-   pyorps.gui
+   gui

@@ -105,6 +105,8 @@ import shapely
 from rasterio.features import rasterize
 from rasterio.transform import Affine
 
+from pyorps.core.exceptions import InvalidInputError, PyorpsWarning
+
 #: Minimum width, in cells, at which a forbidden feature's burn is guaranteed
 #: to be non-empty and 4-connected at EVERY sub-pixel alignment. See the module
 #: docstring for the derivation and the measured sweep that confirms it.
@@ -158,7 +160,7 @@ _MIN_THIN_PART_CELL_AREA: float = 0.01
 _GAP_CELL_CHUNK: int = 256
 
 
-class ThinForbiddenFeatureWarning(UserWarning):
+class ThinForbiddenFeatureWarning(PyorpsWarning):
     """A forbidden feature did not survive the burn intact.
 
     Its own category so callers can promote it to an error with
@@ -167,7 +169,7 @@ class ThinForbiddenFeatureWarning(UserWarning):
     """
 
 
-class ForbiddenBurnRoutingAssessment(UserWarning):
+class ForbiddenBurnRoutingAssessment(PyorpsWarning):
     """Routing suitability verdict after a forbidden-feature burn audit.
 
     Emitted when the burn is intact (no hard defects). Distinct from
@@ -176,11 +178,11 @@ class ForbiddenBurnRoutingAssessment(UserWarning):
     """
 
 
-class ThinForbiddenFeatureError(ValueError):
+class ThinForbiddenFeatureError(InvalidInputError):
     """Raised instead of warning when ``on_thin_features='raise'``."""
 
 
-class SealedOpeningWarning(UserWarning):
+class SealedOpeningWarning(PyorpsWarning):
     """A forbidden-feature repair disconnected free space that was connected.
 
     Distinct from :class:`ThinForbiddenFeatureWarning` on purpose: that one
@@ -190,7 +192,7 @@ class SealedOpeningWarning(UserWarning):
     """
 
 
-class SealedOpeningError(ValueError):
+class SealedOpeningError(InvalidInputError):
     """Raised instead of warning when ``on_thin_features='raise'``."""
 
 
@@ -815,7 +817,7 @@ def _burn_forbidden_id_band(geometries, out_shape, transform,
     n = len(geometries)
     dtype = "uint16" if n <= np.iinfo(np.uint16).max else "uint32"
     if n > np.iinfo(np.uint32).max:
-        raise ValueError(f"{n} forbidden features exceed the id band capacity")
+        raise InvalidInputError(f"{n} forbidden features exceed the id band capacity")
     return rasterize(
         ((geom, index) for index, geom in enumerate(geometries, start=1)),
         out_shape=out_shape,
@@ -1269,7 +1271,7 @@ def report_forbidden_burn_defects(
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if on_thin_features not in ("warn", "raise", "ignore"):
-        raise ValueError(
+        raise InvalidInputError(
             "on_thin_features must be 'warn', 'raise' or 'ignore', got "
             f"{on_thin_features!r}")
     if on_thin_features == "ignore":
@@ -1488,7 +1490,7 @@ def detect_repair_seals(
     if plain.size == 0 and repaired.size == 0:
         return RepairSealReport(0, 0, 0, 0)
     if plain_passable is None and other_geometries is None:
-        raise ValueError(
+        raise InvalidInputError(
             "detect_repair_seals needs the PLAIN burn: pass plain_passable "
             "(plain_raster != impassable) or other_geometries (every "
             "non-forbidden geometry). It cannot be read off the finished "
@@ -1504,7 +1506,7 @@ def detect_repair_seals(
     if plain_passable is not None:
         passable_before = np.asarray(plain_passable, dtype=bool)
         if passable_before.shape != tuple(out_shape):
-            raise ValueError(
+            raise InvalidInputError(
                 f"plain_passable has shape {passable_before.shape}, expected "
                 f"{tuple(out_shape)}")
     else:
@@ -1564,7 +1566,7 @@ def report_repair_seals(
     """
     # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
     if on_thin_features not in ("warn", "raise", "ignore"):
-        raise ValueError(
+        raise InvalidInputError(
             "on_thin_features must be 'warn', 'raise' or 'ignore', got "
             f"{on_thin_features!r}")
     if on_thin_features == "ignore":

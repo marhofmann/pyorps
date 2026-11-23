@@ -1,29 +1,49 @@
 import unittest
-from unittest.mock import patch, MagicMock
-import tempfile
+from unittest.mock import MagicMock, patch
+
 import geopandas as gpd
 import numpy as np
 import pytest
-from shapely.geometry import Point, Polygon, box
 import requests
+from shapely.geometry import Point, Polygon, box
+
+from pyorps.core.exceptions import (
+    WFSConnectionError,
+    WFSError,
+    WFSLayerNotFoundError,
+    WFSRequestRejectedError,
+    WFSResponseParsingError,
+    WFSServerError,
+)
+from pyorps.io.vector_loader import (
+    MAX_CHUNK_DEPTH,
+    MAX_CONSECUTIVE_CHUNK_FAILURES,
+    MIN_CHUNK_AREA,
+    _add_buffer_to_bbox,
+    _chunk_area,
+    _chunk_intersects_mask,
+    _chunk_to_key,
+    _clip_data_by_mask,
+    _combine_geodataframes,
+    _create_grid,
+    _fetch_capabilities_xml,
+    _fetch_wfs_data,
+    _find_best_matching_layer,
+    _get_available_layers,
+    _get_bbox_from_mask,
+    _get_extent_from_capabilities,
+    _load_data_in_parallel,
+    _parse_geojson_response,
+    _parse_xml_response,
+    _resolve_layer,
+    _try_direct_load,
+    _wfs_exception_report,
+    load_from_wfs,
+)
 
 from .test_helpers import GeoTestCase
 
 
-from pyorps.io.vector_loader import (
-    load_from_wfs, _get_bbox_from_mask, _chunk_intersects_mask,
-    _clip_data_by_mask, _try_direct_load, _resolve_layer,
-    _get_available_layers, _find_best_matching_layer,
-    _get_extent_from_capabilities, _add_buffer_to_bbox,
-    _create_grid, _load_data_in_parallel, _chunk_to_key,
-    _fetch_wfs_data, _parse_geojson_response, _parse_xml_response,
-    _combine_geodataframes, _fetch_capabilities_xml, _chunk_area,
-    MAX_CHUNK_DEPTH, MIN_CHUNK_AREA
-)
-
-from pyorps.core.exceptions import (
-    WFSError, WFSConnectionError, WFSResponseParsingError, WFSLayerNotFoundError
-)
 @pytest.fixture(autouse=True)
 def _clear_capabilities_cache():
     """Drop the GetCapabilities LRU between tests.
@@ -477,7 +497,7 @@ class TestWFSFunctions(GeoTestCase):
         """Test _get_available_layers."""
         # Mock response with sample XML containing layers
         mock_response = MagicMock()
-        mock_response.content = '''
+        mock_response.content = b'''
         <wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0">
           <wfs:FeatureTypeList>
             <wfs:FeatureType>
@@ -488,7 +508,7 @@ class TestWFSFunctions(GeoTestCase):
             </wfs:FeatureType>
           </wfs:FeatureTypeList>
         </wfs:WFS_Capabilities>
-        '''.encode()
+        '''
         mock_get.return_value = mock_response
 
         result = _get_available_layers("https://example.com/wfs")
@@ -511,7 +531,7 @@ class TestWFSFunctions(GeoTestCase):
     def test_get_available_layers_parse_error(self, mock_get):
         """Test _get_available_layers with XML parse error."""
         mock_response = MagicMock()
-        mock_response.content = "Not XML".encode()
+        mock_response.content = b"Not XML"
         mock_get.return_value = mock_response
 
         with self.assertRaises(WFSResponseParsingError):
@@ -566,7 +586,7 @@ class TestWFSFunctions(GeoTestCase):
         """Test _get_extent_from_capabilities when layer not found."""
         # Mock response with sample XML not containing the target layer
         mock_response = MagicMock()
-        mock_response.content = '''
+        mock_response.content = b'''
         <wfs:WFS_Capabilities xmlns:wfs="https://www.opengis.net/wfs/2.0"
                               xmlns:ows="https://www.opengis.net/ows/1.1">
           <wfs:FeatureTypeList>
@@ -575,7 +595,7 @@ class TestWFSFunctions(GeoTestCase):
             </wfs:FeatureType>
           </wfs:FeatureTypeList>
         </wfs:WFS_Capabilities>
-        '''.encode()
+        '''
         mock_get.return_value = mock_response
 
         result = _get_extent_from_capabilities("https://example.com/wfs", "layer1")
@@ -595,7 +615,7 @@ class TestWFSFunctions(GeoTestCase):
     def test_get_extent_from_capabilities_parse_error(self, mock_get):
         """Test _get_extent_from_capabilities with XML parse error."""
         mock_response = MagicMock()
-        mock_response.content = "Not XML".encode()
+        mock_response.content = b"Not XML"
         mock_get.return_value = mock_response
 
         with self.assertRaises(WFSResponseParsingError):
@@ -762,9 +782,11 @@ class TestWFSFunctions(GeoTestCase):
         # Mock request exception
         mock_get.side_effect = requests.RequestException("Connection failed")
 
-        # Should return None rather than raise exception
-        result = _fetch_wfs_data("https://example.com/wfs", "layer1", (0, 0, 10, 10))
-        self.assertIsNone(result)
+        # A request that failed on every WFS version is a failure, not an empty
+        # chunk (audit T4 #6/#27): WFSConnectionError, cause chained.
+        with self.assertRaises(WFSConnectionError) as caught:
+            _fetch_wfs_data("https://example.com/wfs", "layer1", (0, 0, 10, 10))
+        self.assertIsInstance(caught.exception.__cause__, requests.RequestException)
 
     @patch('requests.get')
     def test_fetch_wfs_data_with_namespace(self, mock_get):
@@ -826,10 +848,10 @@ class TestWFSFunctions(GeoTestCase):
         mock_response = MagicMock()
         mock_response.json.side_effect = ValueError("Invalid JSON")
 
-        result = _parse_geojson_response(mock_response)
-
-        # Should return None for invalid JSON
-        self.assertIsNone(result)
+        # A body that is not JSON is a parsing error, not "no data" (audit T4 #27)
+        with self.assertRaises(WFSResponseParsingError) as caught:
+            _parse_geojson_response(mock_response)
+        self.assertIsInstance(caught.exception.__cause__, ValueError)
 
     def test_parse_geojson_response_empty(self):
         """Test _parse_geojson_response with empty features list."""
@@ -882,21 +904,25 @@ class TestWFSFunctions(GeoTestCase):
         mock_temp_dir.return_value.__enter__.return_value = "/tmp/mock_dir"
 
         # Mock gpd.read_file to raise an IOError
-        mock_read_file.side_effect = IOError("Failed to read file")
+        mock_read_file.side_effect = OSError("Failed to read file")
 
         # Create a mock response
         mock_response = MagicMock()
         mock_response.content = b"<xml>Test XML content</xml>"
 
-        result = _parse_xml_response(mock_response)
-
-        # Should return None for IOError
-        self.assertIsNone(result)
+        # An OSError while reading the response is a parsing error, not "no data"
+        # (audit T4 #27)
+        with self.assertRaises(WFSResponseParsingError) as caught:
+            _parse_xml_response(mock_response)
+        self.assertIsInstance(caught.exception.__cause__, OSError)
 
     def test_load_data_in_parallel_empty_result(self):
         """Test _load_data_in_parallel with no data found."""
-        # Directly mock the entire function rather than mocking internals
-        with patch('pyorps.io.vector_loader._load_data_in_parallel', return_value=None):
+        # Every chunk is answered, with no features. (This test used to patch
+        # _load_data_in_parallel itself, which does nothing to the imported name,
+        # so it sent real requests to example.com and relied on their failure
+        # being reported as "no data".)
+        with patch('pyorps.io.vector_loader._fetch_wfs_data', return_value=None):
             result = _load_data_in_parallel(
                 "https://example.com/wfs",
                 "layer1",
@@ -1284,13 +1310,18 @@ class TestChunkSubdivisionDepthLimit(unittest.TestCase):
         mock_fetch.side_effect = always_returns_1000
 
         # Use a bbox that is large enough so MIN_CHUNK_AREA won't trigger
-        # before MAX_CHUNK_DEPTH does
-        result = _load_data_in_parallel(
-            "https://example.com/wfs",
-            "layer1",
-            (0, 0, 1000, 1000),
-            max_workers=1
-        )
+        # before MAX_CHUNK_DEPTH does. The truncated finest chunks leave holes,
+        # so partial data is only returned (with a warning) when asked for
+        # (audit T4 #6); by default the same call raises (see
+        # test_io_robustness.py).
+        with self.assertWarns(UserWarning):
+            result = _load_data_in_parallel(
+                "https://example.com/wfs",
+                "layer1",
+                (0, 0, 1000, 1000),
+                max_workers=1,
+                allow_partial=True
+            )
 
         # The function should have terminated (not hung forever)
         self.assertIsNotNone(result)
@@ -1330,12 +1361,16 @@ class TestChunkSubdivisionDepthLimit(unittest.TestCase):
         # Use a tiny bbox so that after a couple of subdivisions
         # the chunk area drops below MIN_CHUNK_AREA
         tiny_size = 0.01  # 0.01 x 0.01 = 1e-4, initial chunks = 1e-4/4
-        result = _load_data_in_parallel(
-            "https://example.com/wfs",
-            "layer1",
-            (0, 0, tiny_size, tiny_size),
-            max_workers=1
-        )
+        # The chunks that are too small to split are truncated: partial data
+        # only on request, with a warning (audit T4 #6).
+        with self.assertWarns(UserWarning):
+            result = _load_data_in_parallel(
+                "https://example.com/wfs",
+                "layer1",
+                (0, 0, tiny_size, tiny_size),
+                max_workers=1,
+                allow_partial=True
+            )
 
         # Should terminate and return data
         self.assertIsNotNone(result)
@@ -1363,12 +1398,25 @@ class TestChunkSubdivisionDepthLimit(unittest.TestCase):
 
         mock_fetch.side_effect = always_fails
 
-        result = _load_data_in_parallel(
-            "https://example.com/wfs",
-            "layer1",
-            (0, 0, 1000, 1000),
-            max_workers=1
-        )
+        # All chunks failed: nothing was received, and that is an error rather
+        # than an empty result (audit T4 #6). With allow_partial the old
+        # "return None" behaviour remains, plus a warning.
+        with self.assertRaises(WFSError):
+            _load_data_in_parallel(
+                "https://example.com/wfs",
+                "layer1",
+                (0, 0, 1000, 1000),
+                max_workers=1
+            )
+        call_count = 0
+        with self.assertWarns(UserWarning):
+            result = _load_data_in_parallel(
+                "https://example.com/wfs",
+                "layer1",
+                (0, 0, 1000, 1000),
+                max_workers=1,
+                allow_partial=True
+            )
 
         # No data should be returned (all chunks failed)
         self.assertIsNone(result)
@@ -1590,3 +1638,148 @@ class TestCapabilitiesCaching(unittest.TestCase):
         with self.assertRaises(WFSResponseParsingError):
             _fetch_capabilities_xml("https://example.com/wfs")
 
+
+# Real body returned by the Hessen ALKIS WFS 1.1.0 under load (2026-10-14):
+# HTTP 200, Content-Type application/vnd.ogc.se_xml.
+# The body is kept byte for byte, so its one long line is not wrapped (noqa E501 after the closing quotes).
+_HESSEN_OVERLOAD_REPORT = b'''<?xml version="1.0" encoding="utf-8" ?>
+<ExceptionReport
+	version="1.1.0"
+	xmlns="http://www.opengis.net/ows"	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"	xsi:schemaLocation="http://www.opengis.net/ows https://www.gds.hessen.de/wfs2/aaa-suite/schema/ogc/ows/1.0.0/owsExceptionReport.xsd">
+	<Exception exceptionCode="InternalServerError" locator="unknown">
+		<ExceptionText>
+			Request rejected due to errors.
+			InternalExceptionCode: iiUnexpectedException.
+		</ExceptionText>
+	</Exception>
+</ExceptionReport>'''  # noqa: E501
+
+_BAD_LAYER_REPORT = _HESSEN_OVERLOAD_REPORT.replace(
+    b"InternalServerError", b"InvalidParameterValue")
+
+_SERVICE_EXCEPTION_REPORT = b'''<?xml version="1.0" encoding="ISO-8859-1" standalone="no" ?>
+<!DOCTYPE ServiceExceptionReport SYSTEM "http://schemas.opengis.net/wms/1.1.0/exception_1_1_0.dtd">
+<ServiceExceptionReport version="1.1.0">
+  <ServiceException code="iiServerError"> Service is not responding. </ServiceException>
+</ServiceExceptionReport>'''
+
+
+def _http_response(status, body, content_type="application/vnd.ogc.se_xml"):
+    response = requests.Response()
+    response.status_code = status
+    response._content = body
+    response.headers["Content-Type"] = content_type
+    response.url = "https://example.com/wfs"
+    return response
+
+
+class TestWFSExceptionReports(unittest.TestCase):
+    """A WFS may report an error as HTTP 200 with an OGC exception report
+    (Hessen ALKIS, WFS 1.1.0). It must count as a failed chunk, not crash
+    the GDAL reader."""
+
+    def test_detects_ows_exception_report(self):
+        report = _wfs_exception_report(_http_response(200, _HESSEN_OVERLOAD_REPORT))
+        self.assertEqual(report[0], "InternalServerError")
+        self.assertIn("iiUnexpectedException", report[1])
+
+    def test_detects_service_exception_report(self):
+        report = _wfs_exception_report(
+            _http_response(200, _SERVICE_EXCEPTION_REPORT))
+        self.assertEqual(report, ("iiServerError", "Service is not responding."))
+
+    def test_feature_collection_is_not_a_report(self):
+        body = (b'<?xml version="1.0"?><wfs:FeatureCollection xmlns:wfs="w" '
+                b'xsi:schemaLocation="x owsExceptionReport.xsd"/>')
+        self.assertIsNone(_wfs_exception_report(_http_response(200, body)))
+
+    def test_non_bytes_content_is_ignored(self):
+        self.assertIsNone(_wfs_exception_report(MagicMock()))
+        self.assertIsNone(_wfs_exception_report(None))
+
+    @patch('requests.get')
+    def test_fetch_raises_server_error_when_all_versions_fail(self, mock_get):
+        """2.0.0 -> HTTP 500 without body, 1.1.0 -> 200 report, 1.0.0 -> 500."""
+        mock_get.side_effect = [
+            _http_response(500, b"", "text/html"),
+            _http_response(200, _HESSEN_OVERLOAD_REPORT),
+            _http_response(500, b"", "text/html"),
+        ]
+        with self.assertRaises(WFSServerError):
+            _fetch_wfs_data("https://example.com/wfs", "ave:Nutzung", (0, 0, 10, 10))
+
+    @patch('requests.get')
+    def test_fetch_raises_rejected_for_invalid_request(self, mock_get):
+        """A bad layer name is a 400 for 2.0.0/1.0.0 and a 200 for 1.1.0."""
+        mock_get.side_effect = [
+            _http_response(400, _BAD_LAYER_REPORT, "text/xml"),
+            _http_response(200, _BAD_LAYER_REPORT),
+            _http_response(400, _BAD_LAYER_REPORT, "text/xml"),
+        ]
+        with self.assertRaises(WFSRequestRejectedError):
+            _fetch_wfs_data("https://example.com/wfs", "ave:Nope", (0, 0, 10, 10))
+
+    @patch('requests.get')
+    def test_fetch_falls_through_to_next_version(self, mock_get):
+        """A report from one version must not hide a good answer later."""
+        geojson = _http_response(
+            200,
+            b'{"features": [{"type": "Feature", "properties": {"id": 1}, '
+            b'"geometry": {"type": "Point", "coordinates": [0, 0]}}]}',
+            "application/json")
+        mock_get.side_effect = [_http_response(200, _HESSEN_OVERLOAD_REPORT), geojson]
+        result = _fetch_wfs_data("https://example.com/wfs", "layer1", (0, 0, 10, 10))
+        self.assertEqual(len(result), 1)
+
+    @patch('requests.get')
+    def test_fetch_plain_http_errors_raise_connection_error(self, mock_get):
+        """HTTP errors without any report are a failed request, not an empty
+        chunk any more (audit T4 #6/#27): WFSConnectionError, cause chained."""
+        mock_get.return_value = _http_response(500, b"", "text/html")
+        with self.assertRaises(WFSConnectionError) as caught:
+            _fetch_wfs_data("https://example.com/wfs", "layer1", (0, 0, 10, 10))
+        self.assertIsInstance(caught.exception.__cause__, requests.HTTPError)
+
+    def test_unreadable_xml_becomes_parsing_error(self):
+        response = _http_response(200, b"<html><body>oops</body></html>", "text/xml")
+        with self.assertRaises(WFSResponseParsingError):
+            _parse_xml_response(response)
+
+    @patch('pyorps.io.vector_loader._fetch_wfs_data')
+    def test_failed_chunks_are_split_and_all_data_is_collected(self, mock_fetch):
+        """The server fails for chunks wider than 5 units; the loader must
+        subdivide them and still return every feature."""
+        def fetch(url, layer, bbox, filter_params=None, srs=None):
+            minx, miny, maxx, maxy = bbox
+            if maxx - minx > 5:
+                raise WFSServerError("overloaded")
+            return gpd.GeoDataFrame(
+                {'id': [0]},
+                geometry=[Point((minx + maxx) / 2, (miny + maxy) / 2)],
+                crs="EPSG:25832")
+
+        mock_fetch.side_effect = fetch
+        result = _load_data_in_parallel(
+            "https://example.com/wfs", "layer1", (0, 0, 16, 16), max_workers=1)
+        self.assertEqual(len(result), 16)
+
+    @patch('pyorps.io.vector_loader._fetch_wfs_data')
+    def test_rejected_request_is_not_split(self, mock_fetch):
+        mock_fetch.side_effect = WFSRequestRejectedError("InvalidParameterValue")
+        with self.assertRaises(WFSRequestRejectedError):
+            _load_data_in_parallel(
+                "https://example.com/wfs", "layer1", (0, 0, 16, 16), max_workers=1)
+        self.assertLessEqual(mock_fetch.call_count, 4)
+
+    @patch('pyorps.io.vector_loader._fetch_wfs_data')
+    def test_dead_server_stops_after_consecutive_failures(self, mock_fetch):
+        """A server that is down must not queue 4^MAX_CHUNK_DEPTH requests."""
+        mock_fetch.side_effect = WFSServerError("down")
+        # Giving up leaves a hole: an error by default (audit T4 #6), not a
+        # silent None.
+        with self.assertRaises(WFSServerError):
+            _load_data_in_parallel(
+                "https://example.com/wfs", "layer1", (0, 0, 1000, 1000),
+                max_workers=1)
+        self.assertEqual(mock_fetch.call_count,
+                         MAX_CONSECUTIVE_CHUNK_FAILURES + 1)

@@ -1,12 +1,10 @@
 """Phase 4: click dispatcher (8.1/8.2), route builder (C13/C14, F1/F5/F8)."""
-import json
 
 import pytest
+from conftest import SOURCE, TARGET, TEST_CRS, invoke
 from pyproj import Transformer
 
 from pyorps.gui import ids
-
-from conftest import SOURCE, TARGET, TEST_CRS, invoke
 
 
 def _to_wgs84(x, y):
@@ -110,15 +108,14 @@ def test_run_routing_creates_route_layer(app, state, raster_layer):
                     "waypoint": [(500100.0, 5599950.0)]})
     resp = invoke(
         app, (f"{ids.ROUTING_STATUS}.children", ids.RUN_ROUTING_BTN),
-        1, False, draft, raster_layer.id, "dijkstra", "cpu", "r1",
-        80, True, False, False, 1.0, 100, 0, False, [], [],
+        1, False, draft, raster_layer.id, "dijkstra", None, 1, 80, False, True, False, False, 1.0, 100, 0, None, [], [],
         triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
     assert "1 route(s) built" in resp[ids.ROUTING_STATUS]["children"]
     routes = state.layers_of_kind("route")
     assert len(routes) == 1
     meta = routes[0].meta
     assert meta["origin"] == "built"
-    assert meta["params"]["use_astar"] is False          # F8
+    assert "use_astar" not in meta["params"]             # F8: no A* switch
     assert len(meta["control_points"]) == 3              # chained waypoint
     assert meta["metrics"]["total_cost"] > 0
     # the finder is cached for editing
@@ -140,8 +137,8 @@ def test_waypoint_names_stored_and_rendered(app, state, raster_layer):
         {"kind": "waypoint", "x": 500100.0, "y": 5599950.0, "name": "Bridge"},
     ]
     invoke(app, (f"{ids.ROUTING_STATUS}.children", ids.RUN_ROUTING_BTN),
-           1, False, draft, raster_layer.id, "dijkstra", "cpu", "r1",
-           80, True, False, False, 1.0, 100, 0, False, table_rows, [],
+           1, False, draft, raster_layer.id, "dijkstra",
+           None, 1, 80, False, True, False, False, 1.0, 100, 0, None, table_rows, [],
            triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
     route = state.layers_of_kind("route")[0]
     assert route.meta["waypoint_names"] == ["Bridge"]
@@ -159,8 +156,7 @@ def test_run_routing_without_raster_warns(app, state):
     resp = invoke(
         app, (f"{ids.ROUTING_STATUS}.children", ids.RUN_ROUTING_BTN),
         1, False, _draft({"source": [SOURCE], "target": [TARGET]}), None,
-        "dijkstra", "cpu", "r1", None, True, False, False, 1.0,
-        100, 0, False, [], [],
+        "dijkstra", None, 1, None, False, True, False, False, 1.0, 100, 0, None, [], [],
         triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
     assert resp[ids.NOTICES]["data"][-1]["title"] == \
         "Pick a cost raster first"
@@ -170,8 +166,7 @@ def test_run_routing_point_outside_raster(app, state, raster_layer):
     draft = _draft({"source": [SOURCE], "target": [(999999.0, 999999.0)]})
     resp = invoke(
         app, (f"{ids.ROUTING_STATUS}.children", ids.RUN_ROUTING_BTN),
-        1, False, draft, raster_layer.id, "dijkstra", "cpu", "r1",
-        80, True, False, False, 1.0, 100, 0, False, [], [],
+        1, False, draft, raster_layer.id, "dijkstra", None, 1, 80, False, True, False, False, 1.0, 100, 0, None, [], [],
         triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
     assert "outside" in resp[ids.NOTICES]["data"][-1]["title"]
 
@@ -179,8 +174,8 @@ def test_run_routing_point_outside_raster(app, state, raster_layer):
 def test_simplify_keeps_metrics_from_full_line(app, state, raster_layer):
     draft = _draft({"source": [SOURCE], "target": [TARGET]})
     invoke(app, (f"{ids.ROUTING_STATUS}.children", ids.RUN_ROUTING_BTN),
-           1, False, draft, raster_layer.id, "dijkstra", "cpu", "r1",
-           80, True, False, True, 5.0, 100, 0, False, [], [],
+           1, False, draft, raster_layer.id, "dijkstra",
+           None, 1, 80, False, True, False, True, 5.0, 100, 0, None, [], [],
            triggered=[f"{ids.RUN_ROUTING_BTN}.n_clicks"])
     route = state.layers_of_kind("route")[-1]
     assert route.meta["simplify_tol"] == 5.0
@@ -190,10 +185,10 @@ def test_simplify_keeps_metrics_from_full_line(app, state, raster_layer):
     assert n_display >= 2
 
 
-# ---------------------------------------------------------- hardware filter
-def test_algorithm_options_follow_hardware(app):
-    resp = invoke(app, (f"{ids.ALGORITHM}.options",), "gpu",
-                  triggered=[f"{ids.HARDWARE}.value"])
+# ---------------------------------------------------------- backend filter
+def test_algorithm_options_follow_backend(app):
+    resp = invoke(app, (f"{ids.ALGORITHM}.options", ids.GRAPH_API), "raster_gpu", None,
+                  triggered=[f"{ids.GRAPH_API}.value"])
     values = [o["value"] for o in resp[ids.ALGORITHM]["options"]]
     assert "bidirectional_dijkstra" not in values
     assert resp[ids.ALGORITHM]["value"] == "delta-stepping"
@@ -201,9 +196,11 @@ def test_algorithm_options_follow_hardware(app):
 
 def test_buffer_info_shows_auto_default(app):
     draft = _draft({"source": [SOURCE], "target": [TARGET]})
-    resp = invoke(app, (f"{ids.SEARCH_BUFFER_INFO}.children",), None, draft)
+    resp = invoke(app, (f"{ids.SEARCH_BUFFER_INFO}.children",), None, draft,
+                  False)
     assert "auto" in resp[ids.SEARCH_BUFFER_INFO]["children"]
-    resp = invoke(app, (f"{ids.SEARCH_BUFFER_INFO}.children",), 500, draft)
+    resp = invoke(app, (f"{ids.SEARCH_BUFFER_INFO}.children",), 500, draft,
+                  False)
     assert "500" in resp[ids.SEARCH_BUFFER_INFO]["children"]
 
 
@@ -216,9 +213,9 @@ def test_load_routes_from_file(app, state, tmp_path, finder):
         crs=finder.dataset.crs)
     path = tmp_path / "routes.gpkg"
     gdf.to_file(path, driver="GPKG")
-    resp = invoke(app, ("layers-view.data", ids.ROUTES_LOAD_BTN),
-                  1, str(path), [],
-                  triggered=[f"{ids.ROUTES_LOAD_BTN}.n_clicks"])
+    invoke(app, ("layers-view.data", ids.ROUTES_LOAD_BTN),
+           1, str(path), [],
+           triggered=[f"{ids.ROUTES_LOAD_BTN}.n_clicks"])
     routes = state.layers_of_kind("route")
     assert len(routes) == 1
     meta = routes[0].meta

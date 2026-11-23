@@ -1,17 +1,26 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import geopandas as gpd
-from shapely.geometry import Point, Polygon
 import numpy as np
 from rasterio.transform import Affine
-
+from shapely.geometry import Point, Polygon
 
 from pyorps.io.geo_dataset import (
-    GeoDataset, VectorDataset, RasterDataset,
-    InMemoryVectorDataset, LocalVectorDataset, WFSVectorDataset,
-    LocalRasterDataset, InMemoryRasterDataset,
-    initialize_geo_dataset, _determine_data_type, _create_vector_dataset, _create_raster_dataset
+    GeoDataset,
+    InMemoryRasterDataset,
+    InMemoryVectorDataset,
+    LocalRasterDataset,
+    LocalVectorDataset,
+    RasterDataset,
+    VectorDataset,
+    WFSVectorDataset,
+    _create_raster_dataset,
+    _create_vector_dataset,
+    _determine_data_type,
+    initialize_geo_dataset,
 )
+
 from .test_helpers import GeoTestCase
 
 

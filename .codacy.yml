@@ -13,6 +13,7 @@ exclude_paths:
   - "pyorps/gui/assets/**"
   - "pyorps/utils/kernels/**"
   - "pyorps/utils/*.cpp"
+  - "pyorps/utils/*.h"        # C kernel headers: the MISRA notes are not a quality gate for them
   - "**/*.ipynb"
 
 # File-length rule of the Lizard tool only: these modules hold large, cohesive numerical or GUI code.

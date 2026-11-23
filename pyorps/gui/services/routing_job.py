@@ -12,6 +12,17 @@ Thread-safety contract: the worker thread ONLY computes (PathFinder +
 geometries) and writes to its own ``RoutingJob``; every ``ProjectState``
 mutation (adding route layers, notices) happens later in the polling
 callback on the Dash side.
+
+Warnings raised by the library inside the worker (an ``AlgorithmFallbackWarning``,
+the quantisation warnings of an objective run, ...) are NOT seen by the
+``errors.guard`` of a Dash callback: that capture belongs to the Dash thread.
+The worker therefore collects them itself (:func:`jobs.run_collecting_warnings`)
+and leaves the notice dicts in ``RoutingJob.notices``; the polling callback
+adds them to the page's notices (``callbacks.routes.routing_outcome``).
+
+The ended job is handed to the page like every other background job
+(``jobs.poll_tick`` with ``jobs.ROUTING_SLOT``): it stays in
+``state.routing_job`` until the page has confirmed the outputs.
 """
 from __future__ import annotations
 
@@ -20,7 +31,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import routing
+from . import jobs, routing
 
 
 @dataclass
@@ -37,6 +48,8 @@ class RoutingJob:
     finished: float | None = None
     result: tuple | None = None      # (finder, [BuiltRoute], failed)
     error: Exception | None = None
+    notices: list[dict] = field(default_factory=list)   # the warnings the run raised, as notice dicts
+    handover: Any = None             # jobs.Handover once a poll tick has claimed the ended job
 
     @property
     def elapsed_s(self) -> float:
@@ -63,11 +76,12 @@ def start_routing_job(state, params: dict[str, Any]) -> RoutingJob:
 
     def _work() -> None:
         try:
-            job.result = routing.run_routing(
-                params["raster_path"], cancel=job.cancel,
+            job.result, job.notices = jobs.run_collecting_warnings(
+                routing.run_routing, params["raster_path"], cancel=job.cancel,
                 progress=_progress, **params["kwargs"])
             job.status = "cancelled" if job.cancel.is_set() else "done"
         except Exception as exc:  # noqa: BLE001 - reported via notices later  # pylint: disable=broad-exception-caught
+            job.notices = getattr(exc, "collected_notices", None) or job.notices   # the warnings of the failed run
             job.error = exc
             job.status = "failed"
         finally:

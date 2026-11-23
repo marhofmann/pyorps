@@ -17,7 +17,6 @@ from pyorps.graph.search_session import (
     _resolve_algorithm,
 )
 
-
 CELL = 2.0
 
 

@@ -1,8 +1,8 @@
 """Detailed comparison of routed paths with vs. without simplification.
 
-Joins ``all_mv_routes.geojson`` and
-``all_mv_routes_simplified_douglas_peucker_2.0.geojson`` on (source, target),
-then reports:
+Joins ``all_mv_routes_osm2m_v2.geojson`` and
+``all_mv_routes_osm2m_v2_simplified_douglas_peucker_1.0.geojson`` on
+(source, target), then reports:
 
 1. Per-path deltas in path length, total cost (distance-weighted), and raw
    cell cost; with summary statistics over all paths.
@@ -10,6 +10,11 @@ then reports:
 3. Per-terrain-category length shifts in absolute metres and percentage
    points (PP) -i.e. how much each category's share of every route changed.
 4. The top-10 paths with the largest absolute cost shift.
+
+Both inputs are written by ``batch_route_planning_pandapower.py`` (its
+``PATHS_PATH``): run it once with ``SIMPLIFY = None`` for the first file and
+once with ``SIMPLIFY = {"method": "douglas_peucker", "tolerance": 1.0}`` for the
+second. Neither file ships with the repository.
 """
 from __future__ import annotations
 
@@ -19,10 +24,10 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-
-OUT = Path("output/example_2025_eamex/route_planning")
-RAW = OUT / "all_mv_routes.geojson"
-SIMP = OUT / "all_mv_routes_simplified_douglas_peucker_2.0.geojson"
+# Resolved from this file (not from the working directory), like the batch script's OUTPUT_DIR.
+OUT = Path(__file__).resolve().parent.parent / "output" / "example_2025_eamex" / "route_planning"
+RAW = OUT / "all_mv_routes_osm2m_v2.geojson"
+SIMP = OUT / "all_mv_routes_osm2m_v2_simplified_douglas_peucker_1.0.geojson"
 
 # Human-readable labels for the cost integers used in the example raster.
 LABEL = {
@@ -81,6 +86,10 @@ def _to_cat(c):
 
 
 def load_and_join():
+    missing = [str(p) for p in (RAW, SIMP) if not p.exists()]
+    if missing:
+        listing = "\n  ".join(missing)
+        raise SystemExit(f"Missing routing results (run batch_route_planning_pandapower.py first):\n  {listing}")
     raw = gpd.read_file(RAW)
     simp = gpd.read_file(SIMP)
 

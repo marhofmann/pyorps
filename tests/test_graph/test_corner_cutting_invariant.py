@@ -576,7 +576,12 @@ _INTERMEDIATE_LOOP = re.compile(
 #: raster and v4 does not build on it. Dropping the entry is correct here; a
 #: count that drops for any OTHER reason is still a deleted corner rule.
 _CUDA_INTERMEDIATE_SITES = {
-    "pyorps/utils/sssp_gpu.py": 9,
+    # 2026-10-21: the V5 kernel moved into sssp_async_v5.cu (one site there); 8 + 1 = the 9 audited before. The
+    # generated per-step-set relax body of GpuSsspSession (unrolled, a blocked-cell bit mask) has no loop to count:
+    # it is guarded dynamically by the float64-reference stress runs (walls/baffle families, any admitted diagonal
+    # step with a blocked flank would show as an UNDER-estimate).
+    "pyorps/utils/sssp_gpu.py": 8,
+    "pyorps/utils/sssp_async_v5.cu": 1,
     "pyorps/utils/constrained_sssp_gpu.py": 1,
     "pyorps/utils/kernels/constrained_persistent.cu": 4,
     "pyorps/utils/kernels/adds_wtb.cuh": 1,

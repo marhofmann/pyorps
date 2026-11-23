@@ -1,0 +1,303 @@
+# Public data for the collector voltage limit (plan rev. 5, constraint C5).
+# Collected 2026-09-25 by read-only research agents (WebSearch/WebFetch);
+# the 19/33 kV cables (cables.kv33) were added the same day.
+# Plan: docs/superpowers/plans/2026-09-25-voltage-limit-c5.md
+#
+# Values only. No document is stored in the repository: manufacturer PDFs are
+# cited, never committed (user rule). Two Nordex descriptions carry a
+# "Nordex Internal Purpose" / no-redistribution notice although German permit
+# authorities publish them -- cite values, do not republish.
+#
+# confidence:  confirmed = read in the cited source
+#              secondary = summary, slides, blog, search extract
+#              inferred  = our reasoning from the sources, stated as such
+#              gap       = not found in public sources
+schema: 1
+collected: 2026-09-25
+
+sources:
+  nordex_n163_tb:
+    title: "Technische Beschreibung Delta4000 - N163/6.X"
+    doc: "2014649DE Rev. 02, 07.09.2021"
+    kind: manufacturer PDF published in a BImSchG file (proxy for the N175/6.X)
+    url: "https://www.uvp-verbund.de/documents-ige-ng/igc_ni/BBE982B7-46EA-48D9-950F-59BA35F02666/03.1%20Technische%20Beschreibung%20Nordex%20N163-6.X.pdf"
+  nordex_n149_tb:
+    title: "Technische Beschreibung Delta4000 N149/5.X"
+    doc: "E0004923352 Rev. 08, 26.10.2021"
+    kind: manufacturer PDF published in a BImSchG file
+    url: "https://www.uvp-verbund.de/documents-ige-ng/igc_mv/d390b9b3-f7da-4110-adac-2ca0a4e2bfe8/3_1_Technische%20Beschreibung_D4k_N149%205.X.pdf"
+  nordex_n149_tb_2019:
+    title: "Technische Beschreibung Delta4000 5.X"
+    doc: "Rev. 03, 14.11.2019"
+    url: "https://www.uvp-verbund.de/documents-ige-ng/igc_ni/df3f6bf0-22b1-4dd6-9347-0aea48a23abe/03.1.1%20Technische-Beschreibung_Delta4000_5.X.pdf"
+  nordex_n175_press:
+    title: "New rotor for the energy transition: Nordex Group presents the N175/6.X"
+    date: 2022-09-15
+    url: "https://www.nordex-online.com/en/2022/09/new-rotor-for-the-energy-transition-nordex-group-presents-the-n175-6-x/"
+  suedkabel_ms:
+    title: "Einadrige VPE-isolierte Mittelspannungskabel (Suedkabel 2002 D)"
+    date: 2025-01
+    kind: manufacturer PDF
+    url: "https://suedkabel.de/wp-content/uploads/2025/03/2002-D-VPE-isolierte-MS-Kabel-SK-Sumi-170125.pdf"
+    ampacity_conditions: "load factor 0.7, depth 0.7 m, flat spacing 7 cm, soil 1/2.5 K m/W, 20 degC"
+  nkt_na2xsf2y_20kv:
+    title: "Datasheet NA2XS(F)2Y 12/20 kV, CTL00205 rev. 2"
+    kind: manufacturer PDF
+    url: "https://nkt.widen.net/content/bdg4rukywe/pdf/Datasheet_NA2XS_F_2Y_12_20_kV_DE_20308.pdf?u=gj0n1y"
+  eland_na2xsf2y:
+    title: "NA2XS(F)2Y 12/20 (24) kV cable datasheet"
+    url: "https://www.elandcables.com/media/wlfnzar2/na2xs-f-2y-12-20-24-kv-cable-datasheet.pdf"
+    note: "use only the 'AC resistance at max temp' column (matches IEC 60287 R90); its 'DC at 75 degC' column is inconsistent"
+  vde_fnn_4120_page:
+    title: "TAR Hochspannung VDE-AR-N 4120 (VDE FNN status page)"
+    url: "https://www.vde.com/de/fnn/themen/tar/tar-hochspannung-vde-ar-n-4120/tar-hochspannung-vde-ar-n-4120"
+    note: "2018-11 in force with A1:2024-04; drafts 2024-11 and E/A1 2026-04"
+  vde_4120_forms_annex_e:
+    title: "VDE-AR-N 4120:2018-11 Formulare Anhang E"
+    kind: normative forms
+    url: "https://www.vde.com/resource/blob/1798774/049089d784e60b533cab2157abec20e0/vde-ar-n-4120-formulare-anhang-e-data.pdf"
+  fnn_4120_summary:
+    title: "Zusammenfassung des Entwurfs VDE-AR-N 4120:2017-05"
+    kind: FNN summary, 'rein informativ'
+    url: "https://www.vde.com/resource/blob/1667896/def899754449e238c065f996aacdcfc5/tar-hs-zusammenfassungde-data.pdf"
+  netzebw_tab_hs:
+    title: "Netze BW TAB Hochspannung, Version 4.0"
+    date: 2020-08
+    kind: normative TAB (another operator; reproduces the 4120 figures)
+    url: "https://assets.ctfassets.net/xytfb1vrn7of/6tvFlvLot20emQW8ywi8so/365d0ae11142fc1517b936cb1a5af42b/2020-08_NetzeBW_TAB_HS_wei___final.pdf"
+  ten_tar_hs:
+    title: "Thueringer Energienetze, Netzrichtlinie TAR Hochspannung"
+    date: 2025-02
+    kind: normative TAB (another operator)
+    url: "https://www.thueringer-energienetze.com/Content/Documents/Anschluss/TEN_Netzrichtlinie_TAR-HS.pdf"
+  stromnetz_berlin_ta_hs:
+    title: "TA Hochspannung Stromnetz Berlin, Ausgabe 2022"
+    url: "https://www.stromnetz.berlin/files/globalassets/dokumente/technische-anschlussbedingungen/ta-hochspannung-2022/ta_hochspannung_berlin_2022.pdf"
+  moe_2018_slides:
+    title: "M.O.E., VDE-AR-N 4110 und 4120, Windenergietage 07.11.2018"
+    kind: slides
+    url: "https://windenergietage.de/2018/wp-content/uploads/sites/3/2018/11/27WT07_F07_0945_4110_und_4120MOE_JM.pdf"
+  fnn_4110_summary:
+    title: "Zusammenfassung des Entwurfs VDE-AR-N 4110:2017-02"
+    url: "https://ivrenergy.de/wp-content/uploads/tar-ms-zusammenfassung-de-data-compressed.pdf"
+  swk_tab_ms:
+    title: "TAB Mittelspannung Stadtwerke Konstanz (Ergaenzungen zur 4110:2018-11), gueltig 18.10.2021"
+    url: "https://www.enwg-veroeffentlichungen.de/konstanz/Netze/Stromnetz/Netzanschluss/20211012-TAB-Mittelspannung.pdf"
+  bdew_ms_rl_2008:
+    title: "BDEW Technische Richtlinie Erzeugungsanlagen am Mittelspannungsnetz (2008)"
+    url: "https://www.umwelt-online.de/regelwerk/cgi-bin/suchausgabe.cgi?pfad=/energie/mittelsprl_4.htm&such=Richtlinie"
+  eci_en50160:
+    title: "European Copper Institute, application note Cu0147 (EN 50160), Issue 02"
+    date: 2013-03
+    url: "https://leonardo-energy.pl/wp-content/uploads/2016/07/EIM01201-Norma-EN-50160-ang..pdf"
+  mr_tapcon_230:
+    title: "MR TAPCON 230 Basic operating instructions 7817441/12 EN"
+    kind: manufacturer PDF
+  ews_steinriegel_uw:
+    title: "Windpark Steinriegel III, Technischer Bericht Umspannwerk, Rev. 0"
+    date: 2023-10-23
+    url: "https://www.umwelt.steiermark.at/cms/dokumente/12969430_6392227/204a1bb1/B.01.00.01-00%20Vorhabensbeschreibung%20Teil%20Umspannwerk%20Steinriegel.pdf"
+  nazir_2022:
+    title: "Nazir, Hiskens, Almassalkhi, IREP 2022"
+    url: "https://arxiv.org/abs/2207.04131"
+  operator_a_hs_map:
+    title: "operator A 110 kV network map, Stand 07/2022 (search snippet only)"
+    url: "withheld (operator not named; the user holds the document)"
+  prysmian_au_1933:
+    title: "Prysmian Australia/NZ, Aluminium 19/33 kV single core light duty screened unarmoured (1CALX33LD)"
+    date: 2016
+    kind: "manufacturer PDF (no-copy notice; cite values, do not republish)"
+    url: "https://australia.prysmian.com/sites/australia.prysmian.com/files/media/documents/aluminium-1933-kv-single-core-light-duty-screened-unarmoured.pdf"
+    ampacity_conditions: "not stated in the sheet (direct buried column)"
+  eland_bs7870_1933:
+    title: "Eland Cables, BS 7870-4.10 AL/WBT/XLPE/WBT/MDPE 19/33 kV (product group E9XA)"
+    date: 2026-04
+    kind: distributor datasheet (UK equivalent of NA2XS(F)2Y)
+    url: "https://www.elandcables.com/media/zj3d2r5q/bs7870-410-19-33kv-al-wbt-xlpe-wbt-mdpe-datasheet.pdf"
+    ampacity_conditions: "trefoil, soil 1.0 K m/W, depth 0.8 m, ground 20 degC; load factor not stated"
+    note: "capacitance 8-12 % above the geometric value with eps_r 2.5 (Prysmian AU and Trio match it)"
+  trio_na2xsf2y_1830_1933:
+    title: "Trio Global Kabel, NA2XS(F)2Y 18/30 kV or 19/33 kV (catalogue pp. 115-116)"
+    date: 2019-10
+    kind: German distributor catalogue, one table for 18/30 and 19/33 kV
+    url: "https://trioglobalkabel.de/wp-content/uploads/2019/10/NA2XSF2Y-18_30-kV-or-19_33-kV.pdf"
+    ampacity_conditions: "in ground 20 degC, depth 0.7 m, soil 1 K m/W, load factor 0.7; flat with 7 cm clearance (VDE 0276-620, as Suedkabel)"
+    note: "trefoil L ~9 % below Suedkabel and Prysmian AU and below a geometric check with its own diameter; its 90 degC resistance column is labelled DC"
+  operator_a_tab_hs_2026:
+    title: "operator A, Technische Anschlussbedingungen Hochspannung (TAB Hochspannung), Version 1.2"
+    date: 2026-01-01
+    doc: "Stand 01.01.2026, gueltig ab 01.01.2026 (replaces the operator A TAB of 27.04.2019); 77 pages"
+    kind: normative TAB of the 110 kV operator; downloaded by hand by the user 2026-09-25, not stored in the repository
+    url: "withheld (operator not named; the user holds the document)"
+  operator_b_tab_hs_2019:
+    title: "operator B, Technische Bedingungen fuer den Anschluss und Betrieb von Kundenanlagen an das Hochspannungsnetz (TAB Hochspannung), E.ON Netzrichtlinie NT-10-32"
+    date: 2019-04-01
+    doc: "Stand 01.04.2019, gueltig ab 27.04.2019; 80 pages"
+    kind: normative TAB of the 110 kV operator; downloaded by hand by the user 2026-09-25, not stored in the repository
+    url: "withheld (operator not named; the user holds the document)"
+  osm_power_lines_110:
+    title: "OpenStreetMap power lines and substations with a 110 kV tag, extract of the case study (TopoMILP data/cired2026/input/power_lines_110.geojson)"
+    kind: OpenStreetMap (ODbL); operator tags read 2026-09-25
+  pandapower_std_types:
+    title: "pandapower standard transformer and line types (open source)"
+    note: "read locally (pandapower 3.3.2 in the TopoMILP venv; 3.4.0 in the pyorps venv, same values)"
+
+turbine:                            # N175/6.X; values from the N163/6.X (same nacelle)
+  proxy_note: {value: "N175 uses 'large parts of the nacelle' of the N163/6.X; no public N175 electrical description found (Altoetting copy 404, Moerlen withheld)", source: nordex_n175_press, confidence: secondary}
+  rated_power_kw: {value: 6800, source: nordex_n163_tb, confidence: confirmed}
+  rated_apparent_power_kva: {value: 7778, source: nordex_n163_tb, confidence: confirmed}
+  generator: {value: "doubly-fed induction generator, 6-pole", source: nordex_n163_tb, confidence: confirmed}
+  lv_nominal_v: {value: 950, tolerance_pct: 10, quote: "3 x AC 950 V +/- 10 % (Grid-Code-spezifisch)", source: nordex_n163_tb, confidence: confirmed}
+  power_factor_at_rated:
+    under_excited: {value: 0.90, q_over_p: 0.484, source: nordex_n163_tb, confidence: confirmed}
+    over_excited: {value: 0.88, q_over_p: 0.540, source: nordex_n163_tb, confidence: confirmed}
+    default: {value: 1.00, source: nordex_n163_tb, confidence: confirmed}
+    apparent_power_limit_mvar: {value: 3.78, note: "sqrt(7778^2 - 6800^2)", confidence: inferred}
+  q_at_zero_power: {value: "optional STATCOM function, magnitude not given", source: nordex_n149_tb_2019, confidence: gap}
+  transformer:
+    rated_kva: {value: 7800, source: nordex_n163_tb, confidence: confirmed}
+    hv_ratings_kv: {value: [20, 30, 34], source: nordex_n163_tb, confidence: confirmed}
+    hv_taps: {value: {"20": [20.0, 20.5, 21.0, 21.5, 22.0], "30": [30.0, 30.75, 31.5, 32.25, 33.0], "34": [34.0, 34.5, 35.0, 35.5, 36.0]}, note: "upward only; 33 kV = the 30 kV unit at its top tap", source: nordex_n163_tb, confidence: confirmed}
+    impedance_pct: {value: 9, tolerance_pct: 10, source: nordex_n163_tb, confidence: confirmed}
+    vector_group: {value: Dy5, source: nordex_n163_tb, confidence: confirmed}
+    losses_w: {no_load: 3050, load: 80000, note: "Richtwerte, 50 Hz", source: nordex_n163_tb, confidence: confirmed}
+  mv_switchgear_um_kv: {value: [24, 36, 38, 40.5], source: nordex_n163_tb, confidence: confirmed}
+  unit_certificate_4110_4120: {value: "not found; only 'IEC 61400-22 und DIBt 2012'", confidence: gap}
+
+grid_code:
+  network_operator_110kv: {value: "operator A at PCC0, PCC1 and the Niederselters line; operator B at PCC2 (user decision 2026-10-05: operator A rules apply at every connection point)", source: [operator_a_tab_hs_2026, osm_power_lines_110], confidence: confirmed}
+  pcc_operator:                    # nearest operator-tagged 50 Hz way / substation in OSM (ODbL)
+    PCC0: {value: operator_a, evidence: "Station Limburg 380/110 kV, 51 m (the 16.7 Hz DB ways at 5-10 m excluded)", source: osm_power_lines_110, confidence: secondary}
+    PCC1: {value: operator_a, evidence: "UW Obertiefenbach 110/20 kV, 29 m", source: osm_power_lines_110, confidence: secondary}
+    PCC2: {value: operator_a, evidence: "110/20kV UW Essershausen, 30 m; the OSM operator tag points to operator B, but operator A rules are used here by decision of 2026-10-05", source: osm_power_lines_110, confidence: secondary}
+    niederselters_line: {value: operator_a, evidence: "110kV Niederselters Nord+Sued", source: osm_power_lines_110, confidence: secondary}
+    note: "OSM operator tags are not reproduced (operators are not named)"
+  operators:
+    operator_a:
+      entity: {value: "operator A", source: operator_a_tab_hs_2026, page: 1, confidence: confirmed}
+      q_variant: {value: 2, note: "the plant must be able to traverse the reactive range of variant 2 (0.33 under- / 0.41 over-excited Q/P_b,inst at the NAP); in individual cases the VNB may demand another variant", source: operator_a_tab_hs_2026, page: 14, confidence: confirmed}
+      q_methods: {value: ["Q(U)", "Q with voltage limitation function"], note: "switchable by telecontrol; on loss of telecontrol or of the plant controller, continue with the last valid setpoint", source: operator_a_tab_hs_2026, page: 14, confidence: confirmed}
+      q_u_characteristic: {value: {u_max_over_un: 1.05, q_max_under_over_pbinst: 0.33, deadband_pct: 0.0, u_q0_ref_over_un: 1.00, t_an90_s: 5}, source: operator_a_tab_hs_2026, page: [15, 59], confidence: confirmed}
+      q_voltage_limitation: {value: [[0.94, -0.41], [0.96, 0.0], [1.08, 0.0], [1.10, 0.33]], axes: "U/U_MS (MV side, form E.7); Q/P_b,inst, positive = under-excited", source: operator_a_tab_hs_2026, page: [15, 59], confidence: confirmed}
+      no_load_q_limit: {value: {under_excited: 0.05, over_excited: 0.02}, of: "P_b,inst, at the NAP, all turbines idle, park transformers, cables and other equipment included", note: "stated in the checklist for prototype plants (Anhang K)", source: operator_a_tab_hs_2026, page: 34, confidence: confirmed}
+      planning_checks:             # Anhang K: load-flow checks the plant's electrical design must show
+        stability_1: {value: [[0.90, 0.33], [0.90, 0.0], [1.10, 0.0], [1.10, -0.33]], axes: "U_NAP/Un (1.10 as Uc); Q_NAP/P_b,inst, positive = over-excited", p: "100 % P_b,inst", criterion: "no trip of the plant's or a turbine's decoupling protection (E.7 settings; turbine transformer tap considered, U_NS = Un / ue)", source: operator_a_tab_hs_2026, page: 34, confidence: confirmed}
+        stability_3_busbar: {value: [[1.05, 0.33]], axes: "U_NAP/Un; Q_NAP/P_b,inst over-excited", criterion: "largest turbine voltage < 1.08 U_NS (no switch into FRT mode in undisturbed operation)", note: "connection at the busbar of a substation", source: operator_a_tab_hs_2026, page: 35, confidence: confirmed}
+        stability_3_mv: {value: [[0.95, 0.0], [1.07, 0.0]], criterion: "> 0.92 U_NS and < 1.08 U_NS", note: "connection in the MV network (not this case)", source: operator_a_tab_hs_2026, page: 35, confidence: confirmed}
+      protection_e7:               # form E.7, operator's settings (recommendation column = VDE-AR-N 4120)
+        nap: {value: {"U>": [1.25, "Un", 0.5], "U<": [0.80, "Un", 5.0]}, units: "[factor, reference, delay s]", source: operator_a_tab_hs_2026, page: 57, confidence: confirmed}
+        mv_side: {value: {"U>>": [1.20, "U_MS", 0.3], "U>": [1.10, "U_MS", 180.0]}, note: "U_MS = the OLTC controller setpoint; other setpoints rescale the settings", source: operator_a_tab_hs_2026, page: 57, confidence: confirmed}
+        turbines: {value: {"U>>": [1.25, "U_NS", 0.1], "U<": [0.80, "U_NS", "1.5/1.8/2.1/2.4 s staggered"], "U<<": [0.30, "U_NS", 0.8]}, note: "U_NS = U_MS / ue (ue: turbine transformer ratio)", source: operator_a_tab_hs_2026, page: 58, confidence: confirmed}
+        q_u_protection: {value: {"U<": [0.85, "Un", 0.5], release: [0.95, "Un"], angle_deg: 3, q_min: "0.05 S_Amax"}, source: operator_a_tab_hs_2026, page: 57, confidence: confirmed}
+      k_factor: {value: 5, where: "at the turbine", source: operator_a_tab_hs_2026, page: [15, 58], confidence: confirmed}
+      network: {value: {un_kv: 110, um_kv: 123, ik_ka: 40, tk_s: 1, ip_ka: 80}, source: operator_a_tab_hs_2026, page: 7, confidence: confirmed}
+      neutral: {value: "resonant earthed (kompensiert); an increase of the capacitive earth-fault current by the customer's plant needs the VNB's approval", source: operator_a_tab_hs_2026, page: 9, confidence: confirmed}
+      connection: {value: "the VNB fixes the basic connection solution; the example in Anhang D is a 110 kV stub (Stichanschluss)", source: operator_a_tab_hs_2026, page: [6, 19], confidence: confirmed}
+      controller_failure_option: {value: "form E.7 offers 'all turbines continue at cos phi 0.975 under-excited'", source: operator_a_tab_hs_2026, page: 59, confidence: confirmed}
+    operator_b:
+      entity: {value: "operator B (E.ON Netzrichtlinie NT-10-32)", source: operator_b_tab_hs_2019, page: 4, confidence: confirmed}
+      q_variant: {value: null, note: "not fixed in the TAB: set per connection (form E.7); treated as the envelope of variants 1-3 (0.48 over-, 0.41 under-excited)", source: operator_b_tab_hs_2019, confidence: gap}
+      hv_mv_transformer: {value: "an OLTC with a range and a controller that regulate the whole HV voltage band on the MV side in every operating range; HV rated voltage 115 kV; design agreed with the NB", source: operator_b_tab_hs_2019, page: 9, confidence: confirmed}
+      preferred_transformer: {value: {s_r_mva: [10, 31.5], u_hv_kv: 115, u_mv_kv: 21, um_kv: 123, tap_range_pct: 16, tap_steps: 9, tap_side: hv, uk_pct: 12.5, uk_at: "75 degC, rated power, middle tap", vector_group: ["YNyn0(d)", "YNd5"], sk_hv_mva: 7500, sk_mv_mva: 500}, source: operator_b_tab_hs_2019, page: 59, confidence: confirmed}
+      impedance_rule: {value: "transformer impedances (also resultant ones) below 40 ohm need the NB's check and approval (4120 6.2.2.4); the NB may require two transformers (e.g. 2 x 40 MVA instead of 80 MVA), then two electrically separate NAPs (two single stubs), not permanently coupled in the customer's network", source: operator_b_tab_hs_2019, page: 7, confidence: confirmed}
+      connection_default: {value: "single stub (Einfach-Stichanschluss), preferably to an existing 110 kV line (Anhang A, Bild 1)", source: operator_b_tab_hs_2019, page: [7, 37], confidence: confirmed}
+      earthing: {value: "resonant-earthed HV networks: earth-fault residual current of 130 A at 110 kV as the design basis of the earthing system", source: operator_b_tab_hs_2019, page: 9, confidence: confirmed}
+      active_power_ramp: {value: "NSM changes as fast as possible, at least 2 %/s and at most 5 %/s of rated power", source: operator_b_tab_hs_2019, page: 23, confidence: confirmed}
+      protection: {value: "set per connection (form E.7); the VDE-AR-N 4120 recommendations are the defaults", confidence: gap}
+      no_load_q_limit: {value: {under_excited: 0.05, over_excited: 0.0}, note: "not in the TAB; the rev. 5 plan's reading of VDE-AR-N 4120 (term 11)", confidence: secondary}
+  vde_ar_n_4120:
+    edition: {value: "2018-11 with A1:2024-04 (drafts 2024-11, E/A1 2026-04)", source: vde_fnn_4120_page, confidence: confirmed}
+    q_variants_at_pcc:            # Q / P_b,inst; the operator picks one per connection
+      note: "the operator picks one per connection on form E.7; operator A's standard is variant 2 (grid_code.operators.operator_a.q_variant)"
+      variant_1: {under_excited: 0.23, over_excited: 0.48, cos_phi: [0.975, 0.90], source: [netzebw_tab_hs, fnn_4120_summary, moe_2018_slides], confidence: secondary}
+      variant_2: {under_excited: 0.33, over_excited: 0.41, cos_phi: [0.95, 0.925], source: netzebw_tab_hs, confidence: confirmed}
+      variant_3: {under_excited: 0.41, over_excited: 0.33, cos_phi: [0.925, 0.95], source: [stromnetz_berlin_ta_hs, fnn_4120_summary], confidence: secondary}
+    q_voltage_envelope_kv:
+      full_under_excited: {value: [103, 127], source: netzebw_tab_hs, confidence: confirmed}
+      full_over_excited: {value: [96, 120], source: netzebw_tab_hs, confidence: confirmed}
+    part_load: {value: "below 10 % Pmom: at most 5 % of P_AV, under-excited only; over-excited not allowed", source: moe_2018_slides, confidence: secondary}
+    pcc_voltage_range_kv:
+      continuous: {value: [96, 123], source: [moe_2018_slides, fnn_4120_summary], confidence: secondary}
+      high_30min: {value: [123, 127], confidence: secondary}
+      low_60min: {value: [93.5, 96], confidence: secondary}
+    voltage_change_limit: {value: "no general slow delta-U limit found in 4120 (unlike 4110 5.3.2); 0.5 % Un when switching compensation", source: moe_2018_slides, confidence: secondary}
+    oltc_required: {value: "the plant's network transformers need an on-load tap changer", source: fnn_4120_summary, confidence: secondary}
+    control_modes: {value: ["Q(U)", "Q(P)", "Q in Mvar", "cos phi"], source: fnn_4120_summary, confidence: secondary}
+    e7_examples: {value: {U_MAX_over_Un: 1.04, Q_max_under_over_P: 0.33, deadband_pct: 1.0, U_Q0_ref_over_Un: 1.00, T_an90_s: 5}, source: vde_4120_forms_annex_e, confidence: confirmed}
+    e7_protection:
+      hv_mv_transformer_mv_side: {value: "U> 1.10 U_MS 180 s; U>> 1.20 U_MS 300 ms (U_MS = OLTC controller setpoint)", source: vde_4120_forms_annex_e, confidence: confirmed}
+      turbines: {value: "U>> 1.25 U_NS 100 ms; U< 0.8 U_NS; U<< 0.30 U_NS 800 ms", source: vde_4120_forms_annex_e, confidence: confirmed}
+    e9_plant_model: {value: "turbine transformer taps, cable lengths and types must match the plant certificate", source: vde_4120_forms_annex_e, confidence: confirmed}
+    transformer_impedance: {value: ">= 40 ohm at middle tap (4120 6.2.2.4)", source: ten_tar_hs, confidence: confirmed}
+  other_operators:
+    netze_bw: {value: "variant 2; Q(U) deadband +/-0.5 % Un, U_Q0,ref 1.04 Un, U_MAX 1.09 Un; fallback Q(U) then cos phi 1", source: netzebw_tab_hs, confidence: confirmed}
+    ten: {value: "standard mode Q(P); example UQ0,ref 1.04 = 114 kV; plan for cos phi 0.9 ind./cap.", source: ten_tar_hs, confidence: confirmed}
+    stromnetz_berlin: {value: "variant 3", source: stromnetz_berlin_ta_hs, confidence: confirmed}
+  vde_ar_n_4110_for_comparison:
+    q_at_pcc: {value: "Q/P_b,inst = 0.33 both ways above 20 % P", source: moe_2018_slides, confidence: secondary}
+    voltage_range: {value: "continuous 0.9-1.1 Uc; 0.85-0.9 and 1.1-1.15 Uc for >= 60 s", source: fnn_4110_summary, confidence: secondary}
+    delta_u_limit_pct: {value: 2, applies_to: "public MV network at the PCC, not a private collector", source: [swk_tab_ms, bdew_ms_rl_2008], confidence: confirmed}
+  din_en_50160:
+    mv: {value: "99 % of 10-min means within +/-10 % Uc, none beyond +/-15 %", applies_to: "public networks only", source: eci_en50160, confidence: secondary}
+    hv: {value: "no limits given", source: eci_en50160, confidence: secondary}
+  collector_design_rule: {value: "no public normative in-park voltage-rise limit found; the binding limits are the turbine voltage band and protection", confidence: gap}
+
+substation_transformer:
+  oltc:
+    ten_preferred: {value: "+/-16 % in +/-9 steps (19 positions, ~1.78 %/step), 10-31.5 MVA, 115/21 kV, uk 12.5 % at middle tap, YNyn0(d)/YNd5", source: ten_tar_hs, confidence: confirmed}
+    bdew_2008_example: {value: "110 kV +/-15 kV in 1.5 kV steps (+/-10 steps, ~+/-13.6 %)", source: bdew_ms_rl_2008, confidence: confirmed}
+    steinriegel_example: {value: "50/63 MVA 115/33 kV, +/-15 x 1 %, uk 12 %, YNyn0", source: ews_steinriegel_uw, confidence: confirmed}
+    pandapower_63mva_110_20: {value: "tap_min -9, tap_max 9, 1.5 %/step on HV side, vk 18 %, vkr 0.32 %, pfe 22 kW, i0 0.04 %", source: pandapower_std_types, confidence: confirmed}
+    operator_b_preferred: {value: "10-31.5 MVA, 115/21 kV, +/-16 % in +/-9 steps (HV side), uk 12.5 % at the middle tap (as TEN)", source: operator_b_tab_hs_2019, page: 59, confidence: confirmed}
+  plant_default:                   # the C5 plant check (pyorps.collector.voltage_plant)
+    value: {s_r_mva: 63, u_hv_kv: 115, u_mv_over_un: 1.05, uk: 0.125, vkr: 0.0032, pfe_kw: 22, i0: 0.0004, tap_step_pct: 1.7778, tap_min: -9, tap_max: 9, tap_side: hv}
+    note: "two 31.5 MVA units of the operators' preferred type on one MV busbar are electrically one 63 MVA unit with uk 12.5 %; load, iron and magnetising losses from pandapower's 63 MVA 110/20 kV type; the pandapower type itself (uk 18 %, +/-9 x 1.5 %) is the sensitivity. 12.5 % on 63 MVA is 26 ohm at 115 kV, below the 40 ohm of VDE-AR-N 4120 6.2.2.4 (operator approval; operator B may require two separate NAPs)"
+    confidence: inferred
+hv_leg:                            # 110 kV connection from the UW to the NAP (pandapower standard types)
+  cable_n2xsfl2y_1x300: {value: {r_ohm_per_km: 0.06, x_ohm_per_km: 0.144, c_nf_per_km: 144.0, max_i_ka: 0.588}, source: pandapower_std_types, confidence: confirmed}
+  ohl_243_al1_39: {value: {r_ohm_per_km: 0.1188, x_ohm_per_km: 0.39, c_nf_per_km: 9.0, max_i_ka: 0.645}, source: pandapower_std_types, confidence: confirmed}
+  note: "a 110 kV cable charges ~0.55 Mvar/km at 110 kV, more than half of operator A's no-load over-excited allowance (0.02 P_b,inst = 0.95 Mvar at 47.6 MW) per km"
+  avr_deadband:
+    rule: {value: "B >= 0.6 x step (as a +/- band): 1.5 % step -> +/-0.9 %, 1.78 % step -> +/-1.07 %", source: mr_tapcon_230, confidence: confirmed}
+    typical: {value: "typically 2 % (symmetrical around the setpoint; unclear whether total or +/-)", source: "spannungshaltung.de", confidence: secondary}
+
+cables:                             # NA2XS(F)2Y, aluminium, single core
+  note: "R_AC90 includes skin effect; X = 2*pi*50*L; C per phase; ampacity in ground under each source's conditions"
+  r_dc20_ohm_per_km: {value: {150: 0.206, 185: 0.164, 240: 0.125, 300: 0.100, 400: 0.0778, 500: 0.0605, 630: 0.0469}, source: [suedkabel_ms, nkt_na2xsf2y_20kv], confidence: confirmed}
+  r_ac90_ohm_per_km: {value: {150: 0.268, 185: 0.213, 240: 0.160, 300: 0.132, 400: 0.103, 500: 0.0810, 630: 0.0640}, source: eland_na2xsf2y, confidence: secondary}
+  kv20:                              # 12/20 kV (Um 24 kV); S = Suedkabel, N = NKT
+    c_uf_per_km: {value: {150: [0.26, 0.25], 185: [0.27, 0.27], 240: [0.31, 0.30], 300: [0.33, 0.32], 400: [0.37, 0.36], 500: [0.41, 0.40], 630: [0.43, 0.44]}, order: [S, N], confidence: confirmed}
+    l_trefoil_mh_per_km: {value: {150: [0.39, 0.37], 185: [0.38, 0.36], 240: [0.36, 0.34], 300: [0.35, 0.33], 400: [0.34, 0.31], 500: [0.32, 0.30], 630: [0.32, 0.29]}, order: [S, N], confidence: confirmed}
+    l_flat_mh_per_km: {value: {150: [0.66, 0.58, 0.61], 185: [0.65, 0.57, 0.59], 240: [0.62, 0.54, 0.57], 300: [0.61, 0.53, 0.55], 400: [0.59, 0.51, 0.51], 500: [0.57, 0.48, 0.49], 630: [0.55, 0.47, 0.47]}, order: [S_outer, S_middle, N], confidence: confirmed}
+    ampacity_trefoil_a: {value: {150: [319, 319], 185: [361, 361], 240: [417, 417], 300: [471, 471], 400: [535, 535], 500: [609, 609], 630: [692, 705]}, order: [S, N], confidence: confirmed}
+    ampacity_flat_a: {value: {150: [352, 352], 185: [396, 396], 240: [455, 455], 300: [510, 510], 400: [564, 564], 500: [634, 634], 630: [712, 668]}, order: [S, N], confidence: confirmed}
+  kv30:                              # 18/30 kV (Um 36 kV), Suedkabel only; conductor as at 20 kV
+    c_uf_per_km: {value: {150: 0.19, 185: 0.21, 240: 0.23, 300: 0.25, 400: 0.27, 500: 0.30, 630: 0.32}, source: suedkabel_ms, confidence: confirmed}
+    l_trefoil_mh_per_km: {value: {150: 0.42, 185: 0.40, 240: 0.38, 300: 0.37, 400: 0.36, 500: 0.34, 630: 0.34}, source: suedkabel_ms, confidence: confirmed}
+    ampacity_trefoil_flat_a: {value: {150: [322, 354], 185: [364, 399], 240: [422, 458], 300: [476, 514], 400: [541, 570], 500: [616, 642], 630: [701, 721]}, source: suedkabel_ms, confidence: confirmed}
+    charging_kva_per_km: {value: {150: 54, 185: 58, 240: 65, 300: 71, 400: 78, 500: 85, 630: 90}, source: suedkabel_ms, confidence: confirmed}
+    note: "500 mm2 flat outer-phase L printed as 0.75 (likely ~0.58); a 33 kV collector uses 19/33 kV cables (kv33 below)"
+  kv33:                              # 19/33 kV (Um 36 kV), collected 2026-09-25
+    note: >-
+      No German manufacturer lists NA2XS(F)2Y at 19/33 kV (Suedkabel, NKT, Nexans DE, Prysmian DE,
+      Faber, Lapp, Helukabel stop at 18/30 kV; NKT also sells 20.8/36 kV). Every 19/33 kV sheet
+      found has the 8.0 mm insulation and Um 36 kV of 18/30 kV, so R, L and C are those of 18/30 kV
+      by design; only the charging power grows with U^2 (+21 % at 33 kV), which the load flow
+      computes from C. Order of the lists: Prysmian AU (first, used), Eland, Trio. The 90 degC
+      resistance of the sources agrees with r_ac90_ohm_per_km above within 1.5 %, which the loader
+      keeps for every class (one conductor).
+    c_uf_per_km: {value: {150: [0.195, 0.212, 0.194], 185: [0.211, 0.22, 0.208], 240: [0.230, 0.242, 0.229], 300: [0.254, 0.263, 0.248], 400: [0.284, 0.285, 0.276], 500: [0.312, 0.312, 0.301], 630: [0.344, 0.346, 0.330]}, order: [prysmian_au_1933, eland_bs7870_1933, trio_na2xsf2y_1830_1933], confidence: confirmed}
+    l_trefoil_mh_per_km: {value: {150: [0.419, 0.404, 0.379], 185: [0.401, 0.398, 0.367], 240: [0.386, 0.382, 0.354], 300: [0.372, 0.366, 0.343], 400: [0.361, 0.353, 0.330], 500: [0.348, 0.341, 0.320], 630: [0.336, 0.328, 0.310]}, order: [prysmian_au_1933, eland_bs7870_1933, trio_na2xsf2y_1830_1933], note: "Eland gives X (0.127 ... 0.103 ohm/km); L = X / (2 pi 50) derived", confidence: confirmed}
+    l_flat_mh_per_km: {value: {150: 0.568, 185: 0.552, 240: 0.532, 300: 0.515, 400: 0.494, 500: 0.478, 630: 0.461}, source: trio_na2xsf2y_1830_1933, confidence: confirmed}
+    r_ac90_ohm_per_km: {value: {150: [0.265, 0.2646], 185: [0.211, 0.2109], 240: [0.161, 0.1611], 300: [0.129, 0.1293], 400: [0.101, 0.1013], 500: [0.0797, 0.0796], 630: [0.0630, 0.0629]}, order: [prysmian_au_1933, eland_bs7870_1933], confidence: confirmed}
+    ampacity_trefoil_a: {value: {150: [295, 329, 324], 185: [330, 377, 366], 240: [385, 426, 426], 300: [435, 479, 479], 400: [495, 551, 545], 500: [565, 623, 614], 630: [645, 723, 690]}, order: [prysmian_au_1933, eland_bs7870_1933, trio_na2xsf2y_1830_1933], note: "different laying conditions per source (see sources); Trio's are the VDE conditions of the Suedkabel values", confidence: confirmed}
+    ampacity_flat_a: {value: {150: 355, 185: 400, 240: 461, 300: 516, 400: 572, 500: 638, 630: 728}, source: trio_na2xsf2y_1830_1933, confidence: confirmed}
+
+gaps:
+  - "operator B's reactive variant for a connection at PCC2 (set per connection on form E.7); the project-specific E.7 data of either operator (SkV, protection settings for this plant)"
+  - "whether the N175's reactive range refers to the LV or the MV terminals of the turbine"
+  - "public N175/6.X electrical description (N163/6.X used as proxy)"
+  - "turbine reactive power at zero active power (STATCOM magnitude)"
+  - "time-limited voltage ranges of the turbine"
+  - "a German manufacturer datasheet for 19/33 kV cables (the kv33 values come from Australian, UK and distributor sheets)"
+  - "whether VDE-AR-N 4110:2023-09 changes the 2 % rule (comparison only)"

@@ -1,11 +1,12 @@
-import unittest
-from unittest.mock import patch, MagicMock
-import numpy as np
 import os
 import tempfile
-from shapely.geometry import Polygon
-from rasterio.windows import Window
+import unittest
+from unittest.mock import MagicMock, patch
+
+import numpy as np
 from rasterio.transform import from_origin
+from rasterio.windows import Window
+from shapely.geometry import Polygon
 
 from pyorps.io.geo_dataset import InMemoryRasterDataset
 from pyorps.raster.handler import RasterHandler, create_test_tiff

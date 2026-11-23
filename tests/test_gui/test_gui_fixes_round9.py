@@ -13,10 +13,9 @@ Round-9 GUI changes (2026-07-20):
   default; 'Run routing' moved to the always-visible 'New routing' card
 """
 import pytest
+from conftest import invoke
 
 from pyorps.gui import ids
-
-from conftest import invoke
 
 
 # =============================================================== colormaps
@@ -73,7 +72,7 @@ def test_draw_target_radio_removed_from_layout(state):
     from pyorps.gui.layout import build_layout
 
     found = {getattr(c, "id", None) for c in build_layout(state)._traverse()}
-    assert ids.DRAW_TARGET_RADIO not in found
+    assert "draw-target-radio" not in found
 
 
 # ======================================================= data source panels

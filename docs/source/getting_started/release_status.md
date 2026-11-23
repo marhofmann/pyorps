@@ -44,7 +44,7 @@ Everything documented here is in the 0.4.0 wheel. Install extras for the optiona
 | GPU backends `raster_gpu` and `raster_fim`, `.gpur` files | experimental | {doc}`../api/graph_backends`, {doc}`../api/eikonal_fim` |
 | Interactive GUI (`pyorps.gui`, extra `gui`) | experimental | {doc}`../api/gui` |
 
-The packages `pyorps.siting`, `pyorps.collector`, `pyorps.costmodel` and `pyorps.certify` are research code. They are in the wheel, but they are not exported from `pyorps`, not documented and carry no stability promise.
+The packages `pyorps.collector`, `pyorps.certify`, `pyorps.costmodel` and `pyorps.siting` are research code. They are not exported from `pyorps` and carry no stability promise. The development tree documents them as experimental ({doc}`../api/collector`, {doc}`../api/certify`, {doc}`../api/costmodel`, {doc}`../api/siting`). The 0.4.0 wheel may hold an older, partial copy; use a source checkout to get the documented state.
 
 (release-status-main)=
 ## GitHub `main`

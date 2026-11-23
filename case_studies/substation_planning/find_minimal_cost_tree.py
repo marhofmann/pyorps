@@ -1,5 +1,5 @@
-import networkx as nx
 import geopandas as gpd
+import networkx as nx
 from substation_planning import set_node_indices_to_line_data
 
 

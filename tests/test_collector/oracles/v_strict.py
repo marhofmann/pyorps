@@ -20,7 +20,6 @@ root_transit: walks may pass the root cell; joint_at_root: a joint may sit on th
 from __future__ import annotations
 
 import itertools
-import math
 
 INF = float("inf")
 

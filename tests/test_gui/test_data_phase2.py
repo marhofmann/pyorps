@@ -3,12 +3,11 @@ import json
 
 import geopandas as gpd
 import pytest
+from conftest import invoke
 from shapely.geometry import Polygon
 
 from pyorps.gui import ids
 from pyorps.gui.services import data_io
-
-from conftest import invoke
 
 # a small WGS84 polygon near Frankfurt (drawn-area payload from EditControl)
 AREA_FEATURE = {
@@ -165,12 +164,12 @@ def test_wfs_preset_fills_fields(app):
 
 def test_wfs_load_requires_area_and_valid_url(app, state):
     resp = invoke(app, ("dataset-list.children", ids.WFS_LOAD_BTN),
-                  1, "not a url", "layer", True, [],
+                  1, "not a url", "layer", True, [], False,
                   triggered=[f"{ids.WFS_LOAD_BTN}.n_clicks"])
     assert resp[ids.NOTICES]["data"][-1]["title"] == \
         "That WFS URL looks invalid"
     resp = invoke(app, ("dataset-list.children", ids.WFS_LOAD_BTN),
-                  1, "https://x.test/wfs", "layer", True, [],
+                  1, "https://x.test/wfs", "layer", True, [], False,
                   triggered=[f"{ids.WFS_LOAD_BTN}.n_clicks"])
     assert resp[ids.NOTICES]["data"][-1]["title"] == \
         "Draw a study area first"
@@ -185,8 +184,10 @@ def test_wfs_connection_error_translated(app, state, monkeypatch):
     monkeypatch.setattr(data_io, "load_wfs_vector", boom)
     from pyorps.gui.callbacks import data as data_cb
     monkeypatch.setattr(data_cb.data_io, "load_wfs_vector", boom)
+    # Clip is off, so the load needs the explicit 'Load the whole layer'
+    # checkbox (the last argument); this test is about the error translation.
     resp = invoke(app, ("dataset-list.children", ids.WFS_LOAD_BTN),
-                  1, "https://x.test/wfs", "layer", False, [],
+                  1, "https://x.test/wfs", "layer", False, [], True,
                   triggered=[f"{ids.WFS_LOAD_BTN}.n_clicks"])
     assert resp[ids.NOTICES]["data"][-1]["title"] == \
         "Can't reach the WFS server"

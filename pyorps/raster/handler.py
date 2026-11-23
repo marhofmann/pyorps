@@ -3,8 +3,8 @@ PYORPS: An Open-Source Tool for Automated Power Line Routing
 
 Reference:
 [1] Hofmann, M., Stetz, T., Kammer, F., Repo, S.: 'PYORPS: An Open-Source Tool for
-    Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
-    Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
+Automated Power Line Routing', CIRED 2025 - 28th Conference and Exhibition on
+Electricity Distribution, 16 - 19 June 2025, Geneva, Switzerland
 """
 import math
 import warnings
@@ -20,9 +20,22 @@ from rasterio.windows import Window
 from rasterio.windows import transform as transform_window
 from shapely.geometry import LineString, MultiPoint, Polygon
 
-from pyorps.core.exceptions import RasterShapeError
+from pyorps.core.exceptions import InvalidInputError, RasterShapeError
 from pyorps.core.types import CoordinateList, CoordinateTuple
 from pyorps.io.geo_dataset import RasterDataset
+from pyorps.raster.handler_helpers import (
+    _check_finite_points,
+    _empty_search_space_error,
+    _is_single_coordinate,
+    _max_distance_pair,
+    _raise_if_outside_window,
+    _require_integer_dtype,
+)
+
+# The module-level helpers live in handler_helpers; every name stays importable
+# from this module as the same object (the redundant aliases re-export them).
+from pyorps.raster.handler_helpers import _crs_name as _crs_name
+from pyorps.raster.handler_helpers import _is_projected as _is_projected
 
 
 class RasterHandler:
@@ -135,7 +148,7 @@ class RasterHandler:
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
         if apply_mask and not copy_window:
-            raise ValueError(
+            raise InvalidInputError(
                 "copy_window=False is only allowed with apply_mask=False: masking "
                 "a view would write the outside_value sentinel through into the "
                 "source dataset and permanently corrupt it.")
@@ -154,17 +167,8 @@ class RasterHandler:
                                                            raster_crs)
 
         # Determine if we're working with single coordinates or multiple coordinates
-        is_single_source = isinstance(transformed_source_coords, tuple) or (
-                isinstance(transformed_source_coords, list) and
-                len(transformed_source_coords) == 2 and
-                not isinstance(transformed_source_coords[0], (list, tuple))
-        )
-
-        is_single_target = isinstance(transformed_target_coords, tuple) or (
-                isinstance(transformed_target_coords, list) and
-                len(transformed_target_coords) == 2 and
-                not isinstance(transformed_target_coords[0], (list, tuple))
-        )
+        is_single_source = _is_single_coordinate(transformed_source_coords)
+        is_single_target = _is_single_coordinate(transformed_target_coords)
 
         # Create appropriate geometry and buffer it
         if is_single_source and is_single_target:
@@ -201,21 +205,25 @@ class RasterHandler:
             # are NaN. Left alone that surfaces three frames down as rasterio's
             # "Number of columns or rows must be non-negative", which says
             # nothing about the cause. Buffer 0 is NOT "the whole raster".
-            raise ValueError(
-                f"search_space_buffer_m={self.search_space_buffer_m} leaves an "
-                f"empty search space: the source/target hull is a "
-                f"{buffer_geom.geom_type} with no area, so buffering it by "
-                f"zero removes it. Pass a positive buffer, or "
-                f"pyorps.full_window_buffer_m(dataset) to search the whole "
-                f"raster.")
+            # A negative buffer SHRINKS the hull, and empties it for the same
+            # hulls (and for any hull narrower than twice the buffer); the
+            # cause is then the sign, not a zero.
+            raise _empty_search_space_error(self.search_space_buffer_m,
+                                            buffer_geom.geom_type)
 
         # Calculate pixel bounds for the buffered geometry
         transform = self.raster_dataset.transform
 
         # Create window
+        # The window always holds the cell of every given point (see
+        # window_from_bounds): ``all_points`` of the hull branch, or the pair.
+        given_points = ([transformed_source_coords, transformed_target_coords]
+                        if is_single_source and is_single_target
+                        else all_points)
         self.window = self.window_from_bounds(self.buffer_geometry.bounds,
                                               transform,
-                                              self.raster_dataset.shape)
+                                              self.raster_dataset.shape,
+                                              points=given_points)
 
         # Get window-specific transform (crucial for correct coordinate transformations)
         self.window_transform = transform_window(self.window, transform)
@@ -248,7 +256,7 @@ class RasterHandler:
                 self.data = self.data.copy()
         else:
             # This shouldn't happen with current implementation
-            raise ValueError("Data must be a numpy array")
+            raise InvalidInputError("Data must be a numpy array")
 
         # Apply mask if requested
         if apply_mask:
@@ -258,7 +266,8 @@ class RasterHandler:
     def window_from_bounds(
             bounds: tuple[float, float, float, float],
             transform: Affine,
-            shape: tuple[int, int]
+            shape: tuple[int, int],
+            points: Any = None
     ) -> Window:
         """
         Pixel window of ``bounds`` in a raster of ``shape`` under ``transform``.
@@ -268,10 +277,23 @@ class RasterHandler:
         first (item 2.3). The arithmetic is unchanged from the original inline
         version, so the window is identical to the historical one.
 
+        Both corners are floored, so the far corner's own cell is left out and
+        a small buffer (or float noise in the bounds of a circular buffer) can
+        cut off the very point the bounds were built from; the route then fails
+        with "Point ... lies outside the search window". ``points`` closes this:
+        a window that already holds the cell of every given point is returned
+        exactly as before (bit-identical), any other one is grown by the
+        missing rows and columns, never further.
+
         Parameters:
             bounds: (minx, miny, maxx, maxy) in the raster CRS
             transform: Affine transform of the raster the window indexes into
             shape: (height, width) of that raster
+            points: Optional ``(x, y)`` pairs in the raster CRS (the given
+                sources and targets). The window is extended to contain the
+                cell of each point that lies inside the raster; a point
+                outside the raster stays outside (and is reported as such
+                when it is used).
 
         Returns:
             rasterio Window clipped to the raster extent
@@ -286,7 +308,47 @@ class RasterHandler:
         max_row = min(shape[0], max_row)
         max_col = min(shape[1], max_col)
 
+        if points is not None:
+            min_row, min_col, max_row, max_col = RasterHandler._grow_to_points(
+                (min_row, min_col, max_row, max_col), points, transform, shape)
+
         return Window(min_col, min_row, max_col - min_col, max_row - min_row)
+
+    @staticmethod
+    def _grow_to_points(
+            limits: tuple[int, int, int, int],
+            points: Any,
+            transform: Affine,
+            shape: tuple[int, int]
+    ) -> tuple[int, int, int, int]:
+        """Grow ``(min_row, min_col, max_row, max_col)`` over the cells of ``points``.
+
+        The cell of a point is the one :meth:`coords_to_indices` gives it
+        (``rowcol``, floor). Points outside the raster or not finite are
+        skipped. Limits that already contain every cell are returned
+        unchanged; a limit pair that is empty or inverted (no area) is
+        replaced by the cells of the points alone.
+        """
+        pts = np.asarray(list(points), dtype=float).reshape(-1, 2)
+        pts = pts[np.isfinite(pts).all(axis=1)]
+        if pts.shape[0] == 0:
+            return limits
+        rows, cols = rowcol(transform, pts[:, 0].tolist(), pts[:, 1].tolist())
+        rows = np.asarray(rows, dtype=np.int64)
+        cols = np.asarray(cols, dtype=np.int64)
+        inside = ((rows >= 0) & (rows < shape[0])
+                  & (cols >= 0) & (cols < shape[1]))
+        if not inside.any():
+            return limits
+        rows, cols = rows[inside], cols[inside]
+        min_row, min_col, max_row, max_col = limits
+        if max_row <= min_row or max_col <= min_col:
+            return (int(rows.min()), int(cols.min()),
+                    int(rows.max()) + 1, int(cols.max()) + 1)
+        grown = (min(min_row, int(rows.min())), min(min_col, int(cols.min())),
+                 max(max_row, int(rows.max()) + 1),
+                 max(max_col, int(cols.max()) + 1))
+        return limits if grown == tuple(int(v) for v in limits) else grown
 
     @staticmethod
     def covering_window(
@@ -406,10 +468,7 @@ class RasterHandler:
             return coords
 
         transformer = Transformer.from_crs(input_crs, target_crs, always_xy=True)
-        is_coord_list = (isinstance(coords, list) and
-                         len(coords) == 2 and
-                         not isinstance(coords[0], (list, tuple)))
-        if isinstance(coords, tuple) or is_coord_list:
+        if _is_single_coordinate(coords):
             # Single coordinate pair
             x, y = transformer.transform(coords[0], coords[1])
             return x, y
@@ -445,6 +504,11 @@ class RasterHandler:
             Estimated optimal buffer width in meters
         """
         # lizard forgives: inherent complexity of this numerical routine; behaviour is pinned by the test suite
+        _require_integer_dtype(
+            self.raster_dataset.dtype,
+            "estimating the search buffer (search_space_buffer_m=None) treats "
+            "the dtype maximum as forbidden",
+            "pass an explicit search_space_buffer_m")
         forbidden_value = np.iinfo(self.raster_dataset.dtype).max
         points, euclidean_dist = RasterHandler.max_distance_pair(source_coords,
                                                                  target_coords)
@@ -537,33 +601,7 @@ class RasterHandler:
         Returns:
             A tuple containing the two points with the maximum distance (point1, point2)
         """
-
-        # Normalize inputs to lists of tuples
-        def normalize_coords(coords):
-            is_coord_list = (len(coords) == 0 or not isinstance(coords[0], tuple))
-            if isinstance(coords, tuple) and is_coord_list:
-                return [coords]
-            return coords
-
-        coords1_list = normalize_coords(coords1)
-        coords2_list = normalize_coords(coords2)
-
-        if not coords1_list or not coords2_list:
-            return None  # Handle empty inputs
-
-        max_distance = -1
-        max_pair = None
-
-        for point1 in coords1_list:
-            for point2 in coords2_list:
-                # Calculate Euclidean distance
-                distance = np.sqrt(sum((a - b) ** 2 for a, b in zip(point1, point2)))
-
-                if distance > max_distance:
-                    max_distance = distance
-                    max_pair = (point1, point2)
-
-        return max_pair, max_distance
+        return _max_distance_pair(coords1, coords2)
 
     def apply_geometry_mask(
             self,
@@ -592,6 +630,11 @@ class RasterHandler:
 
         # Set default outside value if needed
         if outside_value is None:
+            _require_integer_dtype(
+                self.data.dtype,
+                "masking the search window without an outside_value writes the "
+                "dtype maximum outside the buffer",
+                "pass outside_value (e.g. numpy.inf for a float raster)")
             outside_value = np.iinfo(self.data.dtype).max
 
         # Create a mask using rasterization. Deliberately NOT routed through
@@ -622,7 +665,9 @@ class RasterHandler:
 
     def coords_to_indices(
             self,
-            coords: CoordinateTuple | CoordinateList
+            coords: CoordinateTuple | CoordinateList,
+            *,
+            check_bounds: bool = False
     ) -> np.ndarray:
         """
         Convert geographic coordinates to pixel row/column indices within this raster
@@ -630,24 +675,52 @@ class RasterHandler:
 
         Parameters:
             coords: List of (x, y) coordinate tuples or a single coordinate tuple
+            check_bounds: If True, raise when a point maps to a cell outside the
+                search window. The default (False) returns such indices unchanged
+                (negative or past the window edge), which callers use to detect
+                points outside the window; those indices must never be handed to
+                a routing kernel.
 
         Returns:
             numpy.ndarray: Array of (row, col) pixel indices
+
+        Raises:
+            PyorpsError: If a coordinate is NaN or infinite (always), or lies
+                outside the search window (only with ``check_bounds=True``).
         """
         transform = self.raster_dataset.transform
         # Use rasterio's rowcol function with the window-specific transform
         if isinstance(coords[0], tuple):
             xs, ys = zip(*coords)
-            rows, cols = rowcol(transform, xs, ys)
         else:
             # Single coordinate
-            rows, cols = rowcol(transform, coords[0], coords[1])
+            xs, ys = coords[0], coords[1]
+        # NaN/inf turn into arbitrary integers in rowcol, and a kernel then
+        # reads far outside the raster; they are never a valid position.
+        self._check_finite(xs, ys)
+        rows, cols = rowcol(transform, xs, ys)
 
         # Adjust indices to the window's local coordinate system
         rows = np.array(rows) - self.window.row_off
         cols = np.array(cols) - self.window.col_off
 
-        return np.array(list(zip(rows, cols)))
+        indices = np.array(list(zip(rows, cols)))
+        if check_bounds:
+            self._check_indices_in_window(indices, xs, ys)
+        return indices
+
+    @staticmethod
+    def _check_finite(xs, ys) -> None:
+        """Raise PyorpsError naming the first non-finite (x, y) point."""
+        _check_finite_points(xs, ys)
+
+    def _check_indices_in_window(self, indices: np.ndarray, xs, ys) -> None:
+        """Raise PyorpsError if any (row, col) lies outside the window data.
+
+        Runs once per call on the given points (never per cell).
+        """
+        _raise_if_outside_window(indices, xs, ys, self.data.shape[-2:],
+                                 self.window, self.raster_dataset)
 
     def indices_to_coords(self, indices: list[tuple[int, int]]) -> np.ndarray:
         """
@@ -749,7 +822,7 @@ def create_test_tiff(
         for i in range(bands):
             data[i] = ((x + y + i) % 2) * 50 + 25
     else:
-        raise ValueError(f"Pattern {pattern} not recognized!")
+        raise InvalidInputError(f"Pattern {pattern} not recognized!")
 
     # Write the GeoTIFF
     with rio_open(

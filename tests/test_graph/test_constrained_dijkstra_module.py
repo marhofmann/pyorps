@@ -1,6 +1,5 @@
 """Tests for _constrained_dijkstra module."""
 import numpy as np
-import pytest
 
 
 def _make_simple_inputs():
