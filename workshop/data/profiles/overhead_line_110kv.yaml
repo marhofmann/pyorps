@@ -1,0 +1,60 @@
+name: overhead_line_110kv
+description: "110kV overhead distribution line with lattice or tubular steel towers"
+
+soft_angle_limit_deg: 8.0
+hard_angle_limit_deg: 40.0
+angle_cost_function: piecewise
+angle_cost_params:
+  breakpoints: [0, 5, 8, 15, 20, 25, 30, 35, 40]
+  costs: [0, 0, 300, 1000, 4000, 10000, 25000, 50000, 80000]
+
+min_span_m: 50
+max_span_m: 300
+span_bin_size_m: 10
+
+tower_cost_function: terrain_plus_angle
+tower_cost_params:
+  # EUR per SQUARE METRE of foundation. In "uniform" mode
+  # precompute_tower_terrain_costs() multiplies this whole map by
+  # tower_ground_area_m2 (100 m^2 below), giving 35,000-180,000 EUR/tower.
+  # Values here were previously ~100x too large (EUR/tower mistaken for
+  # EUR/m^2), pricing a single tower foundation at 3.5-18 MEUR.
+  terrain_cost_map:
+    "0": 350
+    "100": 550
+    "200": 850
+    "300": 1200
+    "500": 1800
+  terrain_interpolation: linear
+  angle_types:
+    suspension:
+      max_angle_deg: 8.0
+      base_cost: 30000
+    light_angle:
+      max_angle_deg: 20.0
+      base_cost: 70000
+    heavy_angle:
+      max_angle_deg: 30.0
+      base_cost: 150000
+    strain:
+      max_angle_deg: 40.0
+      base_cost: 250000
+
+max_gradient_percent: 40.0
+gradient_cost_function: exponential
+gradient_cost_params:
+  scale: 2.0
+
+tower_height_m: 25.0              # lowest conductor attachment height [m], not physical tower top
+tower_heights_m: [25, 34, 42]     # attachment height options (implies ~30-52m physical tower)
+tower_height_cost_per_increment: 18000  # EUR per 3m step above base (25m)
+terminal_tower_height_m: 15.0
+terminal_tower_cost: 280000
+conductor_weight_per_m: 10.0
+conductor_tension_n: 20000.0
+min_clearance_m: 7.0
+
+tower_ground_area_m2: 100.0       # 10x10m lattice/tubular steel foundation
+tower_area_cost_mode: uniform     # "uniform" or "exact" (rotated pixel sum)
+
+recommended_buffer_m: 25.0

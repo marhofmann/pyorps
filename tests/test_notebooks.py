@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-NOTEBOOKS = sorted(p for folder in ("examples", "tutorial", "docs/source") for p in (ROOT / folder).rglob("*.ipynb")
+FOLDERS = ("examples", "tutorial", "workshop", "docs/source")
+NOTEBOOKS = sorted(p for folder in FOLDERS for p in (ROOT / folder).rglob("*.ipynb")
                    if ".ipynb_checkpoints" not in p.parts)
 
 pytestmark = pytest.mark.skipif(not NOTEBOOKS, reason="no notebooks next to the tests (installed-wheel test run)")
