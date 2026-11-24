@@ -29,6 +29,7 @@ ORDER = (
     "sec1_installation",
     "sec1b_grundidee",
     "sec2_kostenraster",
+    "sec2b_kostenvarianten",
     "sec4a_algorithmen_erklaerung",
     "sec4b_algorithmen_laeufe",
     "sec5_dgm_3d",
