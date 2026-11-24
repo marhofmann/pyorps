@@ -1,7 +1,6 @@
-# PYORPS-Workshop (Deutsch)
+# PYORPS-Workshop 
 
-Ein Jupyter-Notebook für einen Workshop mit Studierenden und Mitarbeitenden: Trassenplanung mit PYORPS, vom Kostenraster
-bis zur Freileitung, dazu die GUI lokal.
+Trassenplanung mit PYORPS, vom Kostenraster bis zur Freileitung.
 
 **Notebook:** `pyorps_workshop_de.ipynb`
 
