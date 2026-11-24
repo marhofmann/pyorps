@@ -15,8 +15,7 @@ Trassenplanung mit PYORPS, vom Kostenraster bis zur Freileitung.
 | 7 | Die GUI lokal betreiben |
 
 **Dauer:** grob 3,5 bis 4,5 Stunden ohne Übungen (Schätzung für Einsteiger), mit Übungen deutlich mehr. Vorschlag: zwei
-Blöcke, Teil 1 bis 4 und Teil 5 bis 7. Entbehrliche Abschnitte sind im Notebook mit „Vertiefung (optional)“ markiert.
-Empfohlen sind 8 GB Arbeitsspeicher.
+Blöcke, Teil 1 bis 4 und Teil 5 bis 7. Empfohlen sind 8 GB Arbeitsspeicher.
 
 ## Benutzen
 
