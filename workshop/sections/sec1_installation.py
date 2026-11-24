@@ -4,13 +4,13 @@
 CELLS = [
     ("md", r"""# PYORPS-Workshop: Trassenplanung mit Python
 
-**Vom Kostenraster zur Freileitung** – Workshop für Studierende und Mitarbeitende
+**Vom Kostenraster zur Freileitung**
 
 Wir planen Kabel- und Freileitungstrassen mit **PYORPS** (*Python for Optimal Routes in Power Systems*):
 Aus Geodaten entsteht ein Kostenraster, darauf suchen wir kostenoptimale Routen.
 Alles läuft als Python-Code in diesem Notebook; am Ende starten wir die grafische Oberfläche (GUI) lokal.
 
-| Teil | Thema | Was ihr danach könnt | Zeit (grobe Schätzung ohne Übung) |
+| Teil | Thema | Was ihr dabei lernt | Zeit (grobe Schätzung ohne Übung) |
 |:---:|---|---|:---:|
 | 1 | Installation und Prüfung | PYORPS und die GUI auf dem eigenen Rechner einrichten | 15–25 min |
 | 2 | Grundidee | Raster, Graph, kürzeste Route, Nachbarschaften | 10 min |
