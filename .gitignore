@@ -74,3 +74,11 @@ case_studies/runkel_free_siting/data/rasters/*.tif
 case_studies/runkel_free_siting/data/rasters/*.tif.aux.xml
 case_studies/runkel_free_siting/data/layers/towers_110.geojson
 case_studies/runkel_free_siting/data/layers/power_lines_110.geojson
+
+# Workshop (workshop/): the offline layer cache is committed on purpose; results and scratch files are not
+!workshop/data/layers/*.gpkg
+workshop/data/ergebnisse/
+workshop/data/gui_arbeit/
+workshop/data/gui_log.txt
+workshop/data/uebung_*.tiff
+workshop/data/dem_synthetisch.tif

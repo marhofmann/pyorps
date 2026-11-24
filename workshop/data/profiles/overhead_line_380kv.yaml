@@ -1,0 +1,60 @@
+name: overhead_line_380kv
+description: "380kV overhead transmission line with lattice steel towers"
+
+soft_angle_limit_deg: 5.0
+hard_angle_limit_deg: 30.0
+angle_cost_function: piecewise
+angle_cost_params:
+  breakpoints: [0, 3, 5, 10, 15, 20, 25, 30]
+  costs: [0, 0, 500, 2000, 8000, 20000, 50000, 100000]
+
+min_span_m: 50
+max_span_m: 400
+span_bin_size_m: 10
+
+tower_cost_function: terrain_plus_angle
+tower_cost_params:
+  # EUR per SQUARE METRE of foundation (x tower_ground_area_m2 = 256
+  # below -> 79,360-399,360 EUR/tower). Same fix as overhead_line_110kv.yaml:
+  # these were previously ~256x too large (EUR/tower entered directly).
+  terrain_cost_map:
+    "0": 310
+    "100": 470
+    "200": 700
+    "300": 980
+    "500": 1560
+  terrain_interpolation: linear
+  angle_types:
+    suspension:
+      max_angle_deg: 5.0
+      base_cost: 60000
+    light_angle:
+      max_angle_deg: 15.0
+      base_cost: 150000
+    heavy_angle:
+      max_angle_deg: 25.0
+      base_cost: 300000
+    strain:
+      max_angle_deg: 30.0
+      base_cost: 500000
+
+tower_ground_area_m2: 256.0       # 16x16m heavy lattice steel foundation
+tower_area_cost_mode: uniform     # "uniform" or "exact" (rotated pixel sum)
+
+cost_assumptions_path: "cost_assumptions/overhead_line_380kv.csv"
+
+max_gradient_percent: 30.0
+gradient_cost_function: exponential
+gradient_cost_params:
+  scale: 2.0
+
+tower_height_m: 40.0              # lowest conductor attachment height [m], not physical tower top
+tower_heights_m: [40, 60, 80]     # attachment height options (implies ~55-80m physical Donaumast)
+tower_height_cost_per_increment: 8000  # EUR per 3m step above base (40m)
+terminal_tower_height_m: 25.0  # substation gantry / dead-end portal height
+terminal_tower_cost: 650000  # dead-end portal + gantry + busbar transition
+conductor_weight_per_m: 20.0
+conductor_tension_n: 40000.0
+min_clearance_m: 10.0
+
+recommended_buffer_m: 35.0
